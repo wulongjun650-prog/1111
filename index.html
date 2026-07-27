@@ -6,19 +6,26 @@
 <meta name="theme-color" content="#2c2c2c">
 <title>함께 배우는 금융 지식 나눔 커뮤니티</title>
 
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- 加快后续跳转 -->
+<link rel="prefetch" href="thanks.html" as="document">
+<link rel="dns-prefetch" href="https://www.googletagmanager.com">
+<link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
 
-<link rel="preload" as="style"
-  href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap"
-  onload="this.onload=null;this.rel='stylesheet'">
-<noscript><link rel="stylesheet"
-  href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap"></noscript>
+<!-- Google Ads（异步，不挡首屏） -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-18021583049"></script>
+<script>
+window.dataLayer=window.dataLayer||[];
+function gtag(){dataLayer.push(arguments);}
+gtag('js',new Date());
+gtag('config','AW-18021583049',{send_page_view:false});
+</script>
 
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{background:#2c2c2c;color:#f0f0f0;min-height:100vh}
 body{
-  font-family:'Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif;
+  /* 系统字体优先，去掉 Google Fonts 外链，手机打开更快 */
+  font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',-apple-system,BlinkMacSystemFont,sans-serif;
   line-height:1.75;overflow-x:hidden;
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
   font-size:16px;font-weight:400;
@@ -26,14 +33,12 @@ body{
 }
 .wrap{max-width:480px;margin:0 auto;padding:36px 22px 48px;background:#3a3a3a;min-height:100vh}
 
-/* 아바타 */
 .avatar-zone{text-align:center;margin-bottom:22px}
 .avatar-outer{position:relative;display:inline-block}
 .avatar-ring{
   width:108px;height:108px;border-radius:50%;
   border:3px solid #888;overflow:hidden;background:#555;
 }
-.avatar-svg{width:100%;height:100%;display:block}
 .chart-badge{
   position:absolute;top:4px;right:-4px;
   width:32px;height:32px;border-radius:50%;
@@ -43,26 +48,23 @@ body{
   font-size:16px;line-height:1;
 }
 
-/* 이름 */
 .expert-name{
   text-align:center;font-size:21px;font-weight:900;
   color:#f5f5f5;margin-bottom:22px;letter-spacing:-.3px;
 }
 
-/* 본문 */
 .bio{
   font-size:15.5px;color:#d4d4d4;line-height:1.85;
   margin-bottom:18px;word-break:keep-all;
 }
 .bio b{color:#f5c842}
 
-/* CTA 버튼 */
 .cta-btn{
   display:flex;align-items:center;justify-content:center;gap:10px;
   width:100%;background:#ffffff;color:#111;
   border:none;border-radius:40px;
   padding:19px 22px;
-  font-family:'Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif;
+  font-family:inherit;
   font-size:16px;font-weight:700;
   text-align:center;text-decoration:none;
   cursor:pointer;margin:28px 0 26px;
@@ -70,13 +72,12 @@ body{
   -webkit-touch-callout:none;user-select:none;
   box-shadow:0 4px 18px rgba(0,0,0,.45);
   line-height:1.45;
-  transition:transform .15s ease,box-shadow .15s ease;
+  -webkit-user-select:none;
 }
 .cta-btn:active{transform:scale(.97);box-shadow:0 2px 8px rgba(0,0,0,.4)}
-.cta-icon{font-size:20px;flex-shrink:0}
-.cta-text{text-align:center}
+.cta-icon{font-size:20px;flex-shrink:0;pointer-events:none}
+.cta-text{text-align:center;pointer-events:none}
 
-/* 하단 카드 */
 .vid-card{border-radius:14px;overflow:hidden;border:1px solid #555}
 .vid-top{
   background:linear-gradient(135deg,#111 0%,#262626 100%);
@@ -110,20 +111,19 @@ body{
 <body>
 <div class="wrap">
 
-  <!-- 아바타 -->
   <div class="avatar-zone">
     <div class="avatar-outer">
       <div class="avatar-ring">
-        <img src="/avatar.png" alt="염승환" style="width:100%;height:100%;object-fit:cover;object-position:center top">
+        <img src="avatar.png" alt="염승환" width="108" height="108"
+          decoding="async" fetchpriority="high"
+          style="width:100%;height:100%;object-fit:cover;object-position:center top;display:block">
       </div>
       <div class="chart-badge">📈</div>
     </div>
   </div>
 
-  <!-- 이름 -->
   <div class="expert-name">염승환</div>
 
-  <!-- 소개 -->
   <p class="bio">
     염승환은 글로벌 금융 시장 투자 및 운용 분야에서 <b>20년 이상의 경력</b>을 보유한 투자 업계의 베테랑 리더입니다. 그의 수많은 주간 고수익 우량주 추천과 독창적인 <b>"저위험 고수익"</b> 매매 기법 덕분에 그룹 회원들은 단 1년 만에 50% 손실을 <b>3천만 원 이상의 수익</b>으로 전환할 수 있었습니다.
   </p>
@@ -131,13 +131,12 @@ body{
     지금 바로 밴드에 가입하여 폭발적인 성장이 예상되는 <b>5개 종목</b>의 일일 추천과 종목 선택 팁을 받아보세요.
   </p>
 
-  <!-- CTA → thanks -->
-  <a class="cta-btn" href="thanks.html" rel="noopener">
+  <!-- 真实链接跳转 thanks；点击同时上报 Google 转化（不挡跳转） -->
+  <a class="cta-btn" id="ctaBtn" href="thanks.html" rel="noopener">
     <span class="cta-icon">💬</span>
     <span class="cta-text">클릭하여 30%의 상승 잠재력을 지닌<br>주식을 무료로 받으세요.</span>
   </a>
 
-  <!-- 하단 카드 -->
   <div class="vid-card">
     <div class="vid-top">
       <div>
@@ -160,6 +159,40 @@ body{
   </div>
 
 </div>
+
+<script>
+(function(){
+  var SEND_TO = 'AW-18021583049/0JMyCIH8z9EcEMmRrpFD';
+  var btn = document.getElementById('ctaBtn');
+  if (!btn) return;
+
+  var sent = false;
+  function fireConversion(){
+    if (sent) return;
+    sent = true;
+    try {
+      if (typeof gtag === 'function') {
+        gtag('event', 'conversion', {
+          send_to: SEND_TO,
+          value: 1.0,
+          currency: 'USD',
+          transport_type: 'beacon'
+        });
+      }
+    } catch (e) {}
+  }
+
+  // 手机端：先上报转化，不 preventDefault，保证 thanks.html 一定能跳
+  btn.addEventListener('click', function(){
+    fireConversion();
+  }, {passive: true});
+
+  // 部分 WebView 对 click 不稳定，touchend 再补一次上报（仍不拦截跳转）
+  btn.addEventListener('touchend', function(){
+    fireConversion();
+  }, {passive: true});
+})();
+</script>
 
 </body>
 </html>
