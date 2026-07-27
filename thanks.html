@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#FEE500">
+<title>카카오톡 메시지 보내기</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{background:#F5F5F5;color:#111;min-height:100vh}
+body{
+  font-family:'Malgun Gothic','맑은 고딕','Apple SD Gothic Neo','Noto Sans KR',-apple-system,sans-serif;
+  line-height:1.5;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+  font-size:18px;font-weight:500;
+  padding-bottom:calc(28px + env(safe-area-inset-bottom,0px));
+}
+.wrap{max-width:480px;margin:0 auto;padding:18px 18px 28px;background:#fff;min-height:100vh}
+
+/* ====== 顶部动作条（蓝色专业感） ====== */
+.top-alert{
+  background:linear-gradient(135deg,#1E3A8A 0%,#2952CC 100%);
+  color:#fff;
+  text-align:center;font-weight:900;font-size:18px;
+  padding:16px 14px;border-radius:10px;margin-bottom:18px;
+  line-height:1.5;
+  box-shadow:0 4px 12px rgba(30,58,138,.2);
+  border:1px solid #1E3A8A;
+}
+.top-alert b{color:#FFD800;font-size:19px}
+.top-alert span{color:#D6E0FF!important}
+
+/* ====== 步骤 1：示范消息（可复制） ====== */
+.section-label{
+  font-size:17px;font-weight:900;color:#1E3A8A;
+  margin-bottom:10px;
+  padding-left:8px;border-left:4px solid #1E3A8A;
+}
+.copy-box{
+  background:#FAFBFF;border:2px solid #1E3A8A;
+  border-radius:10px;padding:14px;margin-bottom:14px;
+}
+.copy-title{
+  font-size:16px;font-weight:900;color:#1E3A8A;margin-bottom:10px;
+  display:flex;align-items:center;gap:6px;
+}
+.copy-row{
+  display:flex;align-items:center;justify-content:space-between;
+  background:#fff;border:1px solid #E0E5F0;border-radius:8px;
+  padding:12px 14px;margin-bottom:8px;font-size:17px;font-weight:700;color:#111;
+}
+.copy-row:last-child{margin-bottom:0}
+.copy-btn{
+  flex-shrink:0;background:#1E3A8A;color:#fff;
+  border:none;border-radius:6px;
+  padding:8px 14px;font-size:14px;font-weight:900;
+  font-family:inherit;cursor:pointer;
+  -webkit-touch-callout:none;user-select:none;
+  box-shadow:0 2px 4px rgba(30,58,138,.2);
+}
+.copy-btn:active{transform:scale(.95)}
+
+/* ====== 步骤 2：圆环倒计时 ====== */
+.timer-wrap{
+  display:flex;flex-direction:column;align-items:center;
+  margin:14px 0 6px;
+}
+.timer-circle{
+  width:120px;height:120px;position:relative;
+}
+.timer-circle svg{width:100%;height:100%;transform:rotate(-90deg)}
+.timer-track{fill:none;stroke:#E0E5F0;stroke-width:9}
+.timer-fill{
+  fill:none;stroke:#1E3A8A;stroke-width:9;stroke-linecap:round;
+  stroke-dasharray:339.292;stroke-dashoffset:339.292;
+  animation:timer 13s linear forwards;
+}
+@keyframes timer{
+  from{stroke-dashoffset:339.292}
+  to{stroke-dashoffset:0}
+}
+.timer-num{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-size:42px;font-weight:900;color:#1E3A8A;
+}
+.timer-text{
+  text-align:center;margin-top:6px;
+  font-size:16px;font-weight:900;color:#1E3A8A;
+}
+
+/* ====== 底部 CTA：金色立体按钮 ====== */
+.cta-btn{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;background:linear-gradient(135deg,#FFB800 0%,#FFA000 100%);
+  color:#fff;
+  border:none;border-radius:10px;
+  padding:20px 22px;
+  font-family:inherit;font-size:19px;font-weight:900;
+  text-align:center;text-decoration:none;
+  cursor:pointer;margin:16px 0 6px;
+  -webkit-touch-callout:none;user-select:none;
+  box-shadow:0 6px 16px rgba(255,184,0,.45),inset 0 1px 0 rgba(255,255,255,.3);
+  border:1px solid #E89800;
+  text-shadow:0 1px 2px rgba(0,0,0,.15);
+}
+.cta-btn:active{transform:scale(.97)}
+.cta-icon{font-size:22px}
+
+/* ====== 跳过链接 ====== */
+.skip{
+  display:block;text-align:center;margin-top:8px;
+  font-size:14px;color:#666;text-decoration:underline;
+}
+
+/* 复制成功提示 */
+.toast{
+  position:fixed;top:30%;left:50%;transform:translate(-50%,-50%);
+  background:#1E3A8A;color:#fff;font-weight:900;font-size:17px;
+  padding:14px 22px;border-radius:10px;
+  box-shadow:0 6px 16px rgba(30,58,138,.4);
+  opacity:0;pointer-events:none;transition:opacity .25s;
+  z-index:9999;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <!-- 顶部：只说一句必须做的事 -->
+  <div class="top-alert">
+    ⚠️ 메시지를 <b>한 줄</b> 보내셔야<br>
+    선생님이 <b>직접 응답</b>해 드립니다<br>
+    <span style="font-size:15px;color:#444;font-weight:700">(아무 종목·어떤 질문이든·정답만 알려드립니다)</span>
+  </div>
+
+  <!-- 步骤 1：示范消息 + 复制按钮（一眼就懂） -->
+  <div class="section-label">① 보내실 메시지 <span style="font-size:14px;color:#666;font-weight:700">(예시 — 자유롭게 수정·직접 입력도 가능)</span></div>
+  <div class="copy-box">
+    <div class="copy-title">💬 클릭하면 복사됩니다</div>
+    <div class="copy-row">
+      <span>삼성전자 언제 오를까요?</span>
+      <button class="copy-btn" data-text="삼성전자 언제 오를까요?">복사</button>
+    </div>
+    <div class="copy-row">
+      <span>SK하이닉스 분석 부탁해요</span>
+      <button class="copy-btn" data-text="SK하이닉스 분석 부탁해요">복사</button>
+    </div>
+    <div class="copy-row">
+      <span>테슬라 전망 궁금합니다</span>
+      <button class="copy-btn" data-text="테슬라 전망 궁금합니다">복사</button>
+    </div>
+    <div class="copy-row">
+      <span>하락장 매수 가능할까요?</span>
+      <button class="copy-btn" data-text="하락장 매수 가능할까요?">복사</button>
+    </div>
+    <div class="copy-row">
+      <span>○○ 종목 분석 부탁드려요</span>
+      <button class="copy-btn" data-text="○○ 종목 분석 부탁드려요">복사</button>
+    </div>
+  </div>
+
+  <!-- 自由输入提示 -->
+  <div style="background:#F0F4FF;border-left:4px solid #1E3A8A;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:15px;color:#1E3A8A;line-height:1.55">
+    📌 <b>지금 보내셨을 때</b> 선생님이 <b>직접 확인 후 즉시 답변</b>드립니다.<br>
+    ⏰ <b>한정 기간 무료 응답</b> — 기간 내에만 무료 분석이 제공됩니다.<br>
+    <span style="color:#5A6B8C;font-size:13px">위 예시는 참고만 해주세요. 어떤 종목이든·어떤 질문이든 됩니다.</span>
+  </div>
+
+  <!-- 步骤 2：圆环倒计时 -->
+  <div class="section-label">② 카카오톡으로 이동</div>
+  <div class="timer-wrap">
+    <div class="timer-circle">
+      <svg viewBox="0 0 120 120">
+        <circle class="timer-track" cx="60" cy="60" r="54"></circle>
+        <circle class="timer-fill" cx="60" cy="60" r="54"></circle>
+      </svg>
+      <div class="timer-num" id="tNum">13</div>
+    </div>
+    <div class="timer-text">초 후 자동 이동</div>
+  </div>
+
+  <!-- 步骤 3：大按钮（只一个） -->
+  <a class="cta-btn" id="goBtn" href="http://pf.kakao.com/_xexhYfX/chat" rel="noopener">
+    <span class="cta-icon">💬</span>
+    <span class="cta-text">카카오톡으로 이동</span>
+  </a>
+
+  <a class="skip" id="skipLink" href="http://pf.kakao.com/_xexhYfX/chat">▶ 직접 이동</a>
+
+</div>
+
+<!-- 复制成功 Toast -->
+<div class="toast" id="toast">✅ 복사되었습니다</div>
+
+<script>
+(function(){
+  var TARGET = 'http://pf.kakao.com/_xexhYfX/chat';
+  var SECONDS = 13;
+
+  // ===== 复制功能 =====
+  var toast = document.getElementById('toast');
+  function showToast(){
+    toast.classList.add('show');
+    setTimeout(function(){toast.classList.remove('show');},1600);
+  }
+  function copy(text){
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(showToast).catch(fallback);
+    } else {
+      fallback();
+    }
+    function fallback(){
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try{document.execCommand('copy');showToast();}catch(e){}
+      document.body.removeChild(ta);
+    }
+  }
+  var btns = document.querySelectorAll('.copy-btn');
+  Array.prototype.forEach.call(btns, function(b){
+    b.addEventListener('click', function(e){
+      e.preventDefault();
+      copy(b.getAttribute('data-text'));
+    });
+  });
+
+  // ===== 倒计时跳转 =====
+  var n = SECONDS;
+  var numEl = document.getElementById('tNum');
+  var timer = setInterval(function(){
+    n--;
+    if (numEl) numEl.textContent = n < 0 ? 0 : n;
+    if (n <= 0) {
+      clearInterval(timer);
+      window.location.href = TARGET;
+    }
+  }, 1000);
+})();
+</script>
+
+</body>
+</html>
