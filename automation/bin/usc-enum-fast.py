@@ -78,6 +78,8 @@ class TestedStore:
             c = sqlite3.connect(self.db_path, timeout=60, check_same_thread=False)
             c.execute("PRAGMA journal_mode=WAL")
             c.execute("PRAGMA synchronous=NORMAL")
+            c.execute("PRAGMA temp_store=MEMORY")
+            c.execute("PRAGMA cache_size=-64000")
             c.execute("CREATE TABLE IF NOT EXISTS tested(email TEXT PRIMARY KEY)")
             self._local.conn = c
         return self._local.conn
@@ -262,11 +264,14 @@ def load_hits():
     return hits, seen
 
 
-def append_global_hit(rec: dict):
+def append_global_hits(recs: list):
+    if not recs:
+        return
     GLOBAL_HITS.parent.mkdir(parents=True, exist_ok=True)
     with open(GLOBAL_HITS, "a", encoding="utf-8") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        for rec in recs:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         fcntl.flock(f, fcntl.LOCK_UN)
 
 
@@ -275,18 +280,66 @@ def export_results(out_dir: Path, hits):
     (out_dir / "registered_emails.json").write_text(json.dumps(hits, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def read_batch(cand_file: Path, line_no: int, size: int):
+def load_resume(cand_file: Path, shard_dir: Path):
+    """行号 + 字节偏移断点; 旧 resume.line 首次自动迁移为 O(1) seek。"""
+    resume_json = shard_dir / "resume.json"
+    legacy_line = shard_dir / "resume.line"
+    legacy_idx = shard_dir / "resume.idx"
+
+    if resume_json.exists():
+        try:
+            data = json.loads(resume_json.read_text(encoding="utf-8"))
+            line_no = int(data.get("line", 0))
+            offset = int(data.get("offset", 0))
+            if line_no >= 0 and offset >= 0:
+                return line_no, offset
+        except Exception:
+            pass
+
+    line_no = 0
+    for p in (legacy_line, legacy_idx):
+        if p.exists():
+            try:
+                line_no = int(p.read_text().strip())
+                break
+            except Exception:
+                line_no = 0
+
+    offset = 0
+    if line_no > 0 and cand_file.exists():
+        t0 = time.time()
+        with open(cand_file, encoding="utf-8") as f:
+            for i in range(line_no):
+                if not f.readline():
+                    line_no = i
+                    break
+            offset = f.tell()
+        print(f"migrated resume line={line_no} offset={offset} in {time.time()-t0:.1f}s", flush=True)
+
+    save_resume(shard_dir, line_no, offset)
+    return line_no, offset
+
+
+def save_resume(shard_dir: Path, line_no: int, offset: int):
+    (shard_dir / "resume.json").write_text(
+        json.dumps({"line": line_no, "offset": offset}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def read_batch(cand_file: Path, offset: int, size: int):
+    """从字节偏移读取批次 — 进度越大也不会越来越慢。"""
     batch = []
     with open(cand_file, encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            if i < line_no:
-                continue
+        f.seek(offset)
+        while len(batch) < size:
+            line = f.readline()
+            if not line:
+                break
             e = line.strip().lower()
             if e:
                 batch.append(e)
-            if len(batch) >= size:
-                return batch, i + 1
-    return batch, line_no + len(batch)
+        return batch, f.tell()
 
 
 def run_shard(args):
@@ -299,8 +352,6 @@ def run_shard(args):
     hits_path = out_dir / "hits.jsonl"
     prog_path = out_dir / "progress.txt"
     state_path = shard_dir / "state.json"
-    resume_path = shard_dir / "resume.line"
-
     if not TESTED_DB.exists():
         raise SystemExit(f"missing {TESTED_DB}, run usc-enum-bootstrap.py first")
 
@@ -312,18 +363,8 @@ def run_shard(args):
     cand_file, total_cands = ensure_candidate_file(shard_dir, surnames, seen_hit)
     print(f"candidates={total_cands} file={cand_file}", flush=True)
 
-    line_no = 0
-    if resume_path.exists():
-        try:
-            line_no = int(resume_path.read_text().strip())
-        except Exception:
-            line_no = 0
-    elif (shard_dir / "resume.idx").exists():
-        try:
-            line_no = int((shard_dir / "resume.idx").read_text().strip())
-        except Exception:
-            line_no = 0
-    print(f"resume line={line_no} remain={max(0, total_cands - line_no)}", flush=True)
+    line_no, file_offset = load_resume(cand_file, shard_dir)
+    print(f"resume line={line_no} offset={file_offset} remain={max(0, total_cands - line_no)}", flush=True)
 
     if not hits_path.exists() or hits_path.stat().st_size == 0:
         with open(hits_path, "w", encoding="utf-8") as f:
@@ -339,6 +380,7 @@ def run_shard(args):
     batch_size = args.batch_size
     export_every = 10
     batch_num = 0
+    pending_global_hits = []
 
     def get_op(force=False):
         if force or getattr(tls, "op", None) is None or getattr(tls, "n", 0) >= 500:
@@ -409,7 +451,7 @@ def run_shard(args):
                     seen_hit.add(em)
                     rec = {"email": em, "message": msg, "ts": time.time(), "shard": args.shard}
                     hits.append(rec)
-                    append_global_hit(rec)
+                    pending_global_hits.append(rec)
                     with open(hits_path, "a", encoding="utf-8") as hf:
                         hf.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     print(f"HIT shard{args.shard} total={len(hits)} {em}", flush=True)
@@ -417,14 +459,15 @@ def run_shard(args):
                         stop_flag.set()
         return em
 
-    while line_no < total_cands and not stop_flag.is_set():
-        batch_num += 1
-        chunk, next_line = read_batch(cand_file, line_no, batch_size)
-        if not chunk:
-            break
+    ex = ThreadPoolExecutor(max_workers=args.workers)
+    try:
+        while line_no < total_cands and not stop_flag.is_set():
+            batch_num += 1
+            chunk, next_offset = read_batch(cand_file, file_offset, batch_size)
+            if not chunk:
+                break
 
-        batch_tested = []
-        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            batch_tested = []
             futs = [ex.submit(check, em) for em in chunk]
             for fut in as_completed(futs):
                 if stop_flag.is_set():
@@ -436,38 +479,53 @@ def run_shard(args):
                 except Exception:
                     pass
 
-        tested_store.bulk_add(batch_tested)
-        with stats_lock:
-            stats["tested"] += len(batch_tested)
+            tested_store.bulk_add(batch_tested)
+            with stats_lock:
+                stats["tested"] += len(batch_tested)
 
-        line_no = next_line
-        resume_path.write_text(str(line_no), encoding="utf-8")
+            line_no += len(chunk)
+            file_offset = next_offset
+            save_resume(shard_dir, line_no, file_offset)
 
-        elapsed = time.time() - start
-        rps = stats["tested"] / elapsed if elapsed else 0
-        line = (
-            f"shard={args.shard} line={line_no}/{total_cands} tested={stats['tested']} "
-            f"hits={len(hits)} errors={stats['errors']} retried={stats['retried']} rps={rps:.1f} elapsed={elapsed:.0f}s"
-        )
-        print(line, flush=True)
-        prog_path.write_text(line + "\n", encoding="utf-8")
-        state_path.write_text(
-            json.dumps(
-                {
-                    "shard": args.shard,
-                    "line": line_no,
-                    "total": total_cands,
-                    "tested": stats["tested"],
-                    "hits": len(hits),
-                    "errors": stats["errors"],
-                    "rps": rps,
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        if batch_num % export_every == 0:
-            export_results(out_dir, hits)
+            with hits_lock:
+                if pending_global_hits:
+                    batch_hits = pending_global_hits[:]
+                    pending_global_hits.clear()
+            if batch_hits:
+                append_global_hits(batch_hits)
+
+            elapsed = time.time() - start
+            rps = stats["tested"] / elapsed if elapsed else 0
+            line = (
+                f"shard={args.shard} line={line_no}/{total_cands} tested={stats['tested']} "
+                f"hits={len(hits)} errors={stats['errors']} retried={stats['retried']} rps={rps:.1f} elapsed={elapsed:.0f}s"
+            )
+            print(line, flush=True)
+            prog_path.write_text(line + "\n", encoding="utf-8")
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "shard": args.shard,
+                        "line": line_no,
+                        "offset": file_offset,
+                        "total": total_cands,
+                        "tested": stats["tested"],
+                        "hits": len(hits),
+                        "errors": stats["errors"],
+                        "rps": rps,
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            if batch_num % export_every == 0:
+                export_results(out_dir, hits)
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
+        with hits_lock:
+            if pending_global_hits:
+                append_global_hits(pending_global_hits[:])
+                pending_global_hits.clear()
 
     export_results(out_dir, hits)
     print(f"DONE shard={args.shard} hits={len(hits)} tested={stats['tested']} errors={stats['errors']}", flush=True)

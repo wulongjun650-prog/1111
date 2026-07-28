@@ -39,6 +39,15 @@ print("merged", len(hits), "->", out)
 PY
 }
 
+bootstrap_if_needed() {
+  if python3 "$BIN/usc-enum-bootstrap.py" --check 2>/dev/null; then
+    echo "[launch] bootstrap skipped (tested.db fresh)"
+    return 0
+  fi
+  echo "[launch] incremental bootstrap..."
+  python3 "$BIN/usc-enum-bootstrap.py" | tee -a "$LOG/bootstrap.log"
+}
+
 stop_all() {
   pkill -f "usc-enum-fast.py" 2>/dev/null || true
   sleep 1
@@ -60,8 +69,7 @@ start_shard() {
 case "${1:-start}" in
   start)
     stop_all
-    echo "[launch] bootstrap sqlite tested db..."
-    python3 "$BIN/usc-enum-bootstrap.py" | tee -a "$LOG/bootstrap.log"
+    bootstrap_if_needed
     for ((i=0; i<ACTIVE_SHARDS; i++)); do
       start_shard "$i"
       sleep 1
@@ -70,7 +78,7 @@ case "${1:-start}" in
     ;;
   start-all)
     stop_all
-    python3 "$BIN/usc-enum-bootstrap.py" | tee -a "$LOG/bootstrap.log"
+    bootstrap_if_needed
     for ((i=0; i<SHARDS; i++)); do
       start_shard "$i"
       sleep 1
@@ -86,12 +94,16 @@ case "${1:-start}" in
     for f in "$STATE"/shard_*/state.json; do
       [ -f "$f" ] && echo "--- $f ---" && cat "$f"
     done
+    if [ -f "$STATE/.bootstrap_stamp" ]; then
+      echo "--- bootstrap stamp ---"
+      cat "$STATE/.bootstrap_stamp"
+    fi
     ;;
   merge)
     merge_hits
     ;;
   bootstrap)
-    python3 "$BIN/usc-enum-bootstrap.py"
+    python3 "$BIN/usc-enum-bootstrap.py" "${@:2}"
     ;;
   rebuild-candidates)
     stop_all
@@ -101,6 +113,7 @@ case "${1:-start}" in
   *)
     echo "usage: $0 {start|start-all|stop|status|merge|bootstrap|rebuild-candidates}"
     echo "  env: WORKERS=120 SHARDS=4 ACTIVE_SHARDS=2 BATCH_SIZE=8000 TARGET=10000"
+    echo "  bootstrap: $0 bootstrap [--force] [--check]"
     exit 1
     ;;
 esac

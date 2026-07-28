@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""构建全局去重库: tested.db (SQLite WAL) + tested.txt 备份"""
+"""构建/增量合并全局去重库: tested.db (SQLite WAL) + tested.txt 备份"""
+import argparse
 import json
 import itertools
 import re
@@ -12,6 +13,7 @@ BASE = Path("/data/automation/results/us-campus.co.kr")
 STATE_DIR = BASE / "email_enum_state"
 TESTED_TXT = STATE_DIR / "tested.txt"
 TESTED_DB = STATE_DIR / "tested.db"
+STAMP_FILE = STATE_DIR / ".bootstrap_stamp"
 PROGRESS_FILE = BASE / "email_enum_2k_20260727_191720" / "progress.txt"
 BATCH = 20000
 
@@ -129,8 +131,43 @@ def legacy_candidates():
     return out
 
 
-def collect_emails():
+def source_mtimes():
+    mtimes = {}
+    for label, p in [
+        ("tested_txt", TESTED_TXT),
+        ("progress", PROGRESS_FILE),
+        ("hits_all", STATE_DIR / "hits_all.jsonl"),
+    ]:
+        if p.exists():
+            mtimes[label] = p.stat().st_mtime
+    for p in sorted(BASE.glob("email_enum*/hits.jsonl")):
+        mtimes[f"hits:{p.name}"] = p.stat().st_mtime
+    for p in sorted(STATE_DIR.glob("shard_*/tested_shard.txt")):
+        mtimes[f"shard:{p.parent.name}"] = p.stat().st_mtime
+    if TESTED_DB.exists():
+        mtimes["tested_db_mtime"] = TESTED_DB.stat().st_mtime
+    return mtimes
+
+
+def stamp_is_fresh():
+    if not TESTED_DB.exists() or not STAMP_FILE.exists():
+        return False
+    try:
+        stamp = json.loads(STAMP_FILE.read_text(encoding="utf-8"))
+        if stamp.get("sources") != source_mtimes():
+            return False
+        conn = sqlite3.connect(TESTED_DB)
+        count = conn.execute("SELECT COUNT(*) FROM tested").fetchone()[0]
+        conn.close()
+        return count > 0 and count >= stamp.get("count", 0)
+    except Exception:
+        return False
+
+
+def collect_new_emails():
+    """只收集可能新增的来源，不重复读全库。"""
     emails = set()
+
     if TESTED_TXT.exists():
         with open(TESTED_TXT, encoding="utf-8", errors="ignore") as f:
             for line in f:
@@ -140,6 +177,16 @@ def collect_emails():
 
     for p in sorted(BASE.glob("email_enum*/hits.jsonl")):
         for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+            try:
+                em = (json.loads(line).get("email") or "").lower()
+                if em:
+                    emails.add(em)
+            except Exception:
+                pass
+
+    hits_all = STATE_DIR / "hits_all.jsonl"
+    if hits_all.exists():
+        for line in hits_all.read_text(encoding="utf-8", errors="ignore").splitlines():
             try:
                 em = (json.loads(line).get("email") or "").lower()
                 if em:
@@ -162,22 +209,22 @@ def collect_emails():
                 if e:
                     emails.add(e)
 
-    if TESTED_DB.exists():
-        conn = sqlite3.connect(TESTED_DB)
-        for (e,) in conn.execute("SELECT email FROM tested"):
-            emails.add(e)
-        conn.close()
-
     return emails
 
 
-def write_db(emails):
+def merge_db(emails, force: bool = False):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(TESTED_DB)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA temp_store=MEMORY")
     conn.execute("CREATE TABLE IF NOT EXISTS tested(email TEXT PRIMARY KEY)")
-    conn.execute("DELETE FROM tested")
+
+    if force:
+        conn.execute("DELETE FROM tested")
+        print("force rebuild: cleared tested table", flush=True)
+
+    before = conn.execute("SELECT COUNT(*) FROM tested").fetchone()[0]
     buf = []
     t0 = time.time()
     for e in emails:
@@ -189,20 +236,57 @@ def write_db(emails):
     if buf:
         conn.executemany("INSERT OR IGNORE INTO tested VALUES(?)", buf)
         conn.commit()
+
     count = conn.execute("SELECT COUNT(*) FROM tested").fetchone()[0]
     conn.close()
-    print(f"tested.db rows={count} elapsed={time.time()-t0:.1f}s", flush=True)
-    return count
+    added = count - before
+    print(
+        f"tested.db rows={count} added={added} elapsed={time.time()-t0:.1f}s",
+        flush=True,
+    )
+    return count, added
+
+
+def write_stamp(count: int):
+    STAMP_FILE.write_text(
+        json.dumps({"count": count, "sources": source_mtimes(), "ts": time.time()}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def export_txt_from_db():
+    conn = sqlite3.connect(TESTED_DB)
+    rows = [r[0] for r in conn.execute("SELECT email FROM tested ORDER BY email")]
+    conn.close()
+    with open(TESTED_TXT, "w", encoding="utf-8") as f:
+        for e in rows:
+            f.write(e + "\n")
+    return len(rows)
 
 
 def main():
-    emails = collect_emails()
+    ap = argparse.ArgumentParser(description="us-campus tested email bootstrap")
+    ap.add_argument("--force", action="store_true", help="full rebuild (DELETE + reinsert)")
+    ap.add_argument("--check", action="store_true", help="exit 0 if stamp fresh, 1 if bootstrap needed")
+    args = ap.parse_args()
+
+    if args.check:
+        raise SystemExit(0 if stamp_is_fresh() else 1)
+
+    if not args.force and stamp_is_fresh():
+        conn = sqlite3.connect(TESTED_DB)
+        count = conn.execute("SELECT COUNT(*) FROM tested").fetchone()[0]
+        conn.close()
+        print(f"bootstrap skipped (fresh), rows={count}", flush=True)
+        return
+
+    emails = collect_new_emails()
     print(f"collected {len(emails)}", flush=True)
-    count = write_db(emails)
-    with open(TESTED_TXT, "w", encoding="utf-8") as f:
-        for e in sorted(emails):
-            f.write(e + "\n")
-    print(f"TESTED_DB={TESTED_DB} TESTED_TXT={TESTED_TXT} count={count}", flush=True)
+    count, added = merge_db(emails, force=args.force)
+    if args.force or added > 1000:
+        export_txt_from_db()
+    write_stamp(count)
+    print(f"TESTED_DB={TESTED_DB} count={count}", flush=True)
 
 
 if __name__ == "__main__":
