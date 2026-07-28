@@ -14,9 +14,6 @@ TARGET="${TARGET:-10000}"
 
 mkdir -p "$LOG" "$STATE"
 
-echo "[launch] bootstrap tested db..."
-python3 "$BIN/usc-enum-bootstrap.py" | tee -a "$LOG/bootstrap.log"
-
 merge_hits() {
   python3 - <<'PY'
 import json
@@ -60,6 +57,8 @@ start_shard() {
 case "${1:-start}" in
   start)
     stop_all
+    echo "[launch] bootstrap tested db..."
+    python3 "$BIN/usc-enum-bootstrap.py" | tee -a "$LOG/bootstrap.log"
     for ((i=0; i<ACTIVE_SHARDS; i++)); do
       start_shard "$i"
       sleep 2
@@ -68,6 +67,8 @@ case "${1:-start}" in
     ;;
   start-all)
     stop_all
+    echo "[launch] bootstrap tested db..."
+    python3 "$BIN/usc-enum-bootstrap.py" | tee -a "$LOG/bootstrap.log"
     for ((i=0; i<SHARDS; i++)); do
       start_shard "$i"
       sleep 2
