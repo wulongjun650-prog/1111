@@ -487,6 +487,7 @@ def run_shard(args):
             file_offset = next_offset
             save_resume(shard_dir, line_no, file_offset)
 
+            batch_hits = []
             with hits_lock:
                 if pending_global_hits:
                     batch_hits = pending_global_hits[:]
