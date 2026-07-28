@@ -375,6 +375,14 @@ def run_shard(args):
     print(f"candidates={total_cands} file={cand_file}", flush=True)
 
     line_no, file_offset = load_resume(cand_file, shard_dir)
+    if line_no > total_cands:
+        print(f"resume reset: line {line_no} > total {total_cands}", flush=True)
+        line_no, file_offset = 0, 0
+        save_resume(shard_dir, line_no, file_offset)
+    elif cand_file.exists() and file_offset > cand_file.stat().st_size:
+        print(f"resume reset: offset {file_offset} > filesize", flush=True)
+        line_no, file_offset = 0, 0
+        save_resume(shard_dir, line_no, file_offset)
     print(f"resume line={line_no} offset={file_offset} remain={max(0, total_cands - line_no)}", flush=True)
 
     if not hits_path.exists() or hits_path.stat().st_size == 0:
