@@ -154,6 +154,9 @@ case "${1:-start}" in
     rm -f "$STATE"/shard_*/candidates.txt "$STATE"/shard_*/candidates.meta.json
     echo "[launch] candidate files cleared, run start to rebuild"
     ;;
+  chain)
+    exec "$BIN/usc-enum-chain.sh" "${@:2}"
+    ;;
   test-proxies)
     python3 - <<'PY'
 import sys, urllib.request, json
@@ -178,7 +181,8 @@ PY
     "$PROXY_FILE"
     ;;
   *)
-    echo "usage: $0 {start|start-8|start-all|stop|status|merge|bootstrap|rebuild-candidates|test-proxies}"
+    echo "usage: $0 {start|start-8|start-all|stop|status|merge|bootstrap|rebuild-candidates|chain|test-proxies}"
+    echo "  chain: $0 chain {start|stop|status}  (auto shard 0->3, HIT_GOAL=2000)"
     echo "  env: WORKERS=40 SHARDS=8 ACTIVE_SHARDS=8 PROXY_FILE=... USE_PROXY=0"
     exit 1
     ;;
