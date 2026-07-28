@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""从历次枚举结果 + 旧版候选顺序，生成全局 tested.txt 去重库。"""
+"""构建全局去重库: tested.db (SQLite WAL) + tested.txt 备份"""
 import json
 import itertools
 import re
+import sqlite3
+import time
 from datetime import date
 from pathlib import Path
 
 BASE = Path("/data/automation/results/us-campus.co.kr")
 STATE_DIR = BASE / "email_enum_state"
-TESTED = STATE_DIR / "tested.txt"
+TESTED_TXT = STATE_DIR / "tested.txt"
+TESTED_DB = STATE_DIR / "tested.db"
 PROGRESS_FILE = BASE / "email_enum_2k_20260727_191720" / "progress.txt"
+BATCH = 20000
 
 
 def legacy_candidates():
-    """与 usc-enum-2k.py 相同顺序，用于还原已测前缀。"""
     cands = []
     surnames = [
         "kim", "lee", "park", "choi", "jung", "jeong", "kang", "cho", "jo", "yoon", "yun", "jang", "lim", "im",
@@ -126,53 +129,80 @@ def legacy_candidates():
     return out
 
 
-def load_prior_tested_count():
-    if PROGRESS_FILE.exists():
-        m = re.search(r"tested=(\d+)", PROGRESS_FILE.read_text(encoding="utf-8"))
-        if m:
-            return int(m.group(1))
-    return 0
-
-
-def main():
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    tested = set()
-
-    if TESTED.exists():
-        for line in TESTED.read_text(encoding="utf-8", errors="ignore").splitlines():
-            e = line.strip().lower()
-            if e:
-                tested.add(e)
-        print("existing tested", len(tested), flush=True)
+def collect_emails():
+    emails = set()
+    if TESTED_TXT.exists():
+        with open(TESTED_TXT, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                e = line.strip().lower()
+                if e:
+                    emails.add(e)
 
     for p in sorted(BASE.glob("email_enum*/hits.jsonl")):
         for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
             try:
                 em = (json.loads(line).get("email") or "").lower()
                 if em:
-                    tested.add(em)
+                    emails.add(em)
             except Exception:
                 pass
 
-    prior_n = load_prior_tested_count()
-    if prior_n > 0:
-        print("rebuilding legacy prefix", prior_n, flush=True)
-        legacy = legacy_candidates()
-        for e in legacy[:prior_n]:
-            tested.add(e)
-        print("legacy prefix added", min(prior_n, len(legacy)), flush=True)
+    if PROGRESS_FILE.exists():
+        m = re.search(r"tested=(\d+)", PROGRESS_FILE.read_text(encoding="utf-8"))
+        if m:
+            n = int(m.group(1))
+            print(f"legacy prefix {n}", flush=True)
+            for e in legacy_candidates()[:n]:
+                emails.add(e)
 
-    for shard in sorted(STATE_DIR.glob("shard_*/tested_shard.txt")):
-        for line in shard.read_text(encoding="utf-8", errors="ignore").splitlines():
-            e = line.strip().lower()
-            if e:
-                tested.add(e)
+    for p in sorted(STATE_DIR.glob("shard_*/tested_shard.txt")):
+        with open(p, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                e = line.strip().lower()
+                if e:
+                    emails.add(e)
 
-    with open(TESTED, "w", encoding="utf-8") as f:
-        for e in sorted(tested):
+    if TESTED_DB.exists():
+        conn = sqlite3.connect(TESTED_DB)
+        for (e,) in conn.execute("SELECT email FROM tested"):
+            emails.add(e)
+        conn.close()
+
+    return emails
+
+
+def write_db(emails):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(TESTED_DB)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("CREATE TABLE IF NOT EXISTS tested(email TEXT PRIMARY KEY)")
+    conn.execute("DELETE FROM tested")
+    buf = []
+    t0 = time.time()
+    for e in emails:
+        buf.append((e,))
+        if len(buf) >= BATCH:
+            conn.executemany("INSERT OR IGNORE INTO tested VALUES(?)", buf)
+            conn.commit()
+            buf.clear()
+    if buf:
+        conn.executemany("INSERT OR IGNORE INTO tested VALUES(?)", buf)
+        conn.commit()
+    count = conn.execute("SELECT COUNT(*) FROM tested").fetchone()[0]
+    conn.close()
+    print(f"tested.db rows={count} elapsed={time.time()-t0:.1f}s", flush=True)
+    return count
+
+
+def main():
+    emails = collect_emails()
+    print(f"collected {len(emails)}", flush=True)
+    count = write_db(emails)
+    with open(TESTED_TXT, "w", encoding="utf-8") as f:
+        for e in sorted(emails):
             f.write(e + "\n")
-
-    print("TESTED", TESTED, "count", len(tested), flush=True)
+    print(f"TESTED_DB={TESTED_DB} TESTED_TXT={TESTED_TXT} count={count}", flush=True)
 
 
 if __name__ == "__main__":
