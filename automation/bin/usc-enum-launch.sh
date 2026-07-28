@@ -7,11 +7,11 @@ export PATH="/data/venvs/pentest/bin:/data/automation/bin:/data/tools:/data/go/b
 BIN="/data/automation/bin"
 STATE="/data/automation/results/us-campus.co.kr/email_enum_state"
 LOG="/data/logs/usc-enum-fast"
-WORKERS="${WORKERS:-120}"
+WORKERS="${WORKERS:-80}"
 SHARDS="${SHARDS:-4}"
 ACTIVE_SHARDS="${ACTIVE_SHARDS:-2}"
 TARGET="${TARGET:-10000}"
-BATCH_SIZE="${BATCH_SIZE:-8000}"
+BATCH_SIZE="${BATCH_SIZE:-5000}"
 
 mkdir -p "$LOG" "$STATE"
 

@@ -16,7 +16,7 @@ import threading
 import time
 import urllib.error
 import urllib.parse
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from http.cookiejar import CookieJar
 from pathlib import Path
@@ -64,12 +64,14 @@ CTX = ssl.create_default_context()
 
 
 class TestedStore:
-    """SQLite WAL: O(1) 内存查重 + 批次 bulk 写入, 速度不随数据量衰减。"""
+    """SQLite WAL 批量写入; worker 进程不加载全量内存。"""
 
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, load_mem: bool = False):
         self.db_path = db_path
         self._local = threading.local()
-        self._mem = self._load_mem_set()
+        self._mem = set()
+        if load_mem:
+            self._mem = self._load_mem_set()
 
     def _conn(self):
         if not getattr(self._local, "conn", None):
@@ -81,8 +83,6 @@ class TestedStore:
         return self._local.conn
 
     def _load_mem_set(self):
-        if not self.db_path.exists():
-            return set()
         conn = sqlite3.connect(self.db_path)
         s = {row[0] for row in conn.execute("SELECT email FROM tested")}
         conn.close()
@@ -92,21 +92,19 @@ class TestedStore:
         return item.lower() in self._mem
 
     def __len__(self):
-        return len(self._mem)
+        if self._mem:
+            return len(self._mem)
+        conn = sqlite3.connect(self.db_path)
+        n = conn.execute("SELECT COUNT(*) FROM tested").fetchone()[0]
+        conn.close()
+        return n
 
     def bulk_add(self, emails):
         if not emails:
             return
-        new = []
-        for e in emails:
-            e = e.lower()
-            if e not in self._mem:
-                self._mem.add(e)
-                new.append((e,))
-        if not new:
-            return
+        rows = [(e.lower(),) for e in emails]
         conn = self._conn()
-        conn.executemany("INSERT OR IGNORE INTO tested VALUES(?)", new)
+        conn.executemany("INSERT OR IGNORE INTO tested VALUES(?)", rows)
         conn.commit()
 
 
@@ -211,7 +209,7 @@ def iter_slim_emails(surnames):
                     yield e
 
 
-def ensure_candidate_file(shard_dir: Path, surnames, tested: TestedStore, seen_hit: set):
+def ensure_candidate_file(shard_dir: Path, surnames, seen_hit: set):
     cand_file = shard_dir / "candidates.txt"
     meta_file = shard_dir / "candidates.meta.json"
     if cand_file.exists() and meta_file.exists():
@@ -222,7 +220,9 @@ def ensure_candidate_file(shard_dir: Path, surnames, tested: TestedStore, seen_h
         except Exception:
             pass
 
-    print("building candidate file...", flush=True)
+    print("loading tested set for candidate filter...", flush=True)
+    tested = TestedStore(TESTED_DB, load_mem=True)
+    print(f"tested loaded {len(tested)}", flush=True)
     t0 = time.time()
     count = 0
     with open(cand_file, "w", encoding="utf-8") as f:
@@ -304,12 +304,12 @@ def run_shard(args):
     if not TESTED_DB.exists():
         raise SystemExit(f"missing {TESTED_DB}, run usc-enum-bootstrap.py first")
 
-    tested_store = TestedStore(TESTED_DB)
+    tested_store = TestedStore(TESTED_DB, load_mem=False)
     hits, seen_hit = load_hits()
     surnames = shard_surnames(args.shard, args.shards)
-    print(f"shard={args.shard}/{args.shards} workers={args.workers} tested_db={len(tested_store)}", flush=True)
+    print(f"shard={args.shard}/{args.shards} workers={args.workers}", flush=True)
 
-    cand_file, total_cands = ensure_candidate_file(shard_dir, surnames, tested_store, seen_hit)
+    cand_file, total_cands = ensure_candidate_file(shard_dir, surnames, seen_hit)
     print(f"candidates={total_cands} file={cand_file}", flush=True)
 
     line_no = 0
@@ -425,17 +425,16 @@ def run_shard(args):
 
         batch_tested = []
         with ThreadPoolExecutor(max_workers=args.workers) as ex:
-            pending = {ex.submit(check, em): em for em in chunk}
-            while pending and not stop_flag.is_set():
-                done, _ = wait(pending, timeout=1, return_when=FIRST_COMPLETED)
-                for fut in done:
-                    pending.pop(fut, None)
-                    try:
-                        em = fut.result()
-                        if em:
-                            batch_tested.append(em)
-                    except Exception:
-                        pass
+            futs = [ex.submit(check, em) for em in chunk]
+            for fut in as_completed(futs):
+                if stop_flag.is_set():
+                    break
+                try:
+                    em = fut.result()
+                    if em:
+                        batch_tested.append(em)
+                except Exception:
+                    pass
 
         tested_store.bulk_add(batch_tested)
         with stats_lock:
@@ -478,8 +477,8 @@ def main():
     ap = argparse.ArgumentParser(description="us-campus fast email enum v3")
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--shards", type=int, default=4)
-    ap.add_argument("--workers", type=int, default=120)
-    ap.add_argument("--batch-size", type=int, default=8000)
+    ap.add_argument("--workers", type=int, default=80)
+    ap.add_argument("--batch-size", type=int, default=5000)
     ap.add_argument("--target", type=int, default=10000)
     ap.add_argument("--retries", type=int, default=3)
     run_shard(ap.parse_args())
