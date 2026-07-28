@@ -157,6 +157,17 @@ case "${1:-start}" in
   chain)
     exec "$BIN/usc-enum-chain.sh" "${@:2}"
     ;;
+  start-gap)
+    stop_all
+    bootstrap_if_needed
+    echo "[launch] gap dict target=${TARGET:-3000}"
+    nohup python3 "$BIN/usc-enum-fast.py" \
+      --dict gap --shard 0 --shards 1 \
+      --workers "$WORKERS" --batch-size "$BATCH_SIZE" \
+      --target "${TARGET:-3000}" \
+      >>"$LOG/gap.log" 2>&1 &
+    echo "[launch] gap started log=$LOG/gap.log"
+    ;;
   test-proxies)
     python3 - <<'PY'
 import sys, urllib.request, json
@@ -181,7 +192,8 @@ PY
     "$PROXY_FILE"
     ;;
   *)
-    echo "usage: $0 {start|start-8|start-all|stop|status|merge|bootstrap|rebuild-candidates|chain|test-proxies}"
+    echo "usage: $0 {start|start-gap|start-8|start-all|stop|status|merge|bootstrap|rebuild-candidates|chain|test-proxies}"
+    echo "  start-gap: TARGET=3000 WORKERS=40 USE_PROXY=0"
     echo "  chain: $0 chain {start|stop|status}  (auto shard 0->3, HIT_GOAL=2000)"
     echo "  env: WORKERS=40 SHARDS=8 ACTIVE_SHARDS=8 PROXY_FILE=... USE_PROXY=0"
     exit 1
