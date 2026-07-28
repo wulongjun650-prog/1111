@@ -139,7 +139,7 @@ case "${1:-start}" in
     ;;
   status)
     pgrep -af "usc-enum-fast.py" || echo "not running"
-    for f in "$STATE"/shard_*/state.json; do
+    for f in "$STATE"/shard_*/state.json "$STATE"/gap/state.json "$STATE"/dense*/state.json; do
       [ -f "$f" ] && echo "--- $f ---" && cat "$f"
     done
     ;;
@@ -168,6 +168,22 @@ case "${1:-start}" in
       >>"$LOG/gap.log" 2>&1 &
     echo "[launch] gap started log=$LOG/gap.log"
     ;;
+  start-dense|start-dense1|start-dense2|start-dense3|start-dense4)
+    dict="${1#start-}"
+    if [ "$dict" = "dense" ]; then dict="dense1"; fi
+    stop_all
+    bootstrap_if_needed
+    echo "[launch] $dict target=${TARGET:-5000}"
+    nohup python3 "$BIN/usc-enum-fast.py" \
+      --dict "$dict" --shard 0 --shards 1 \
+      --workers "$WORKERS" --batch-size "$BATCH_SIZE" \
+      --target "${TARGET:-5000}" \
+      >>"$LOG/${dict}.log" 2>&1 &
+    echo "[launch] $dict started log=$LOG/${dict}.log"
+    ;;
+  chain-dense)
+    exec "$BIN/usc-enum-chain.sh" start
+    ;;
   test-proxies)
     python3 - <<'PY'
 import sys, urllib.request, json
@@ -192,9 +208,10 @@ PY
     "$PROXY_FILE"
     ;;
   *)
-    echo "usage: $0 {start|start-gap|start-8|start-all|stop|status|merge|bootstrap|rebuild-candidates|chain|test-proxies}"
+    echo "usage: $0 {start|start-gap|start-dense1|start-dense2|start-dense3|start-dense4|chain-dense|start-8|start-all|stop|status|merge|bootstrap|rebuild-candidates|chain|test-proxies}"
     echo "  start-gap: TARGET=3000 WORKERS=40 USE_PROXY=0"
-    echo "  chain: $0 chain {start|stop|status}  (auto shard 0->3, HIT_GOAL=2000)"
+    echo "  chain-dense: HIT_GOAL=5000 DICT_PHASES='gap dense1 dense2 dense3 dense4'"
+    echo "  chain: $0 chain {start|stop|status}  (auto shard 0->3, then gap+dense phases)"
     echo "  env: WORKERS=40 SHARDS=8 ACTIVE_SHARDS=8 PROXY_FILE=... USE_PROXY=0"
     exit 1
     ;;

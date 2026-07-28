@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shard 0→1→2→3 自动链式跑，达到 HIT_GOAL 停止
+# 自动链式跑字典: gap → dense1 → dense2 → dense3 → dense4
 set -euo pipefail
 
 export PATH="/data/venvs/pentest/bin:/data/automation/bin:/data/tools:/usr/local/bin:/usr/bin:$PATH"
@@ -10,12 +10,14 @@ LOG="/data/logs/usc-enum-fast"
 CHAIN_LOG="$LOG/chain.log"
 PID_FILE="$LOG/chain.pid"
 
-HIT_GOAL="${HIT_GOAL:-3000}"
+HIT_GOAL="${HIT_GOAL:-5000}"
 WORKERS="${WORKERS:-40}"
 SHARDS="${SHARDS:-4}"
 BATCH_SIZE="${BATCH_SIZE:-5000}"
 TARGET="${TARGET:-10000}"
 USE_PROXY="${USE_PROXY:-0}"
+# 默认: gap 跑完后继续 dense1-4
+DICT_PHASES="${DICT_PHASES:-gap dense1 dense2 dense3 dense4}"
 
 mkdir -p "$LOG"
 
@@ -36,6 +38,70 @@ for p in [Path("/data/automation/results/us-campus.co.kr/email_enum_state/hits_a
             pass
 print(len(seen))
 PY
+}
+
+dict_progress() {
+  local dict="$1"
+  local dir
+  if [ "$dict" = "gap" ]; then
+    dir="$STATE/gap"
+  elif [[ "$dict" == dense* ]]; then
+    dir="$STATE/$dict"
+  else
+    dir="$STATE/shard_${dict}"
+  fi
+  python3 - <<PY
+import json
+from pathlib import Path
+p = Path("$dir") / "state.json"
+if not p.exists():
+    print("0 0 0")
+else:
+    s = json.loads(p.read_text())
+    print(s.get("line", 0), s.get("total", 0), s.get("hits", 0))
+PY
+}
+
+dict_running() {
+  local dict="$1"
+  pgrep -f "usc-enum-fast.py --dict ${dict} " >/dev/null 2>&1
+}
+
+dict_complete() {
+  local dict="$1"
+  read -r line total _ <<<"$(dict_progress "$dict")"
+  [ -n "$total" ] && [ "$total" -gt 0 ] && [ "$line" -ge "$total" ]
+}
+
+start_dict() {
+  local dict="$1"
+  local log="$LOG/${dict}.log"
+  echo "[chain] starting dict=$dict workers=$WORKERS target=$HIT_GOAL" | tee -a "$CHAIN_LOG"
+  nohup python3 "$BIN/usc-enum-fast.py" \
+    --dict "$dict" \
+    --shard 0 \
+    --shards 1 \
+    --workers "$WORKERS" \
+    --batch-size "$BATCH_SIZE" \
+    --target "$HIT_GOAL" \
+    >>"$log" 2>&1 &
+  sleep 2
+}
+
+wait_dict() {
+  local dict="$1"
+  while dict_running "$dict"; do
+    local hits
+    hits=$(hit_count)
+    read -r line total _ <<<"$(dict_progress "$dict")"
+    echo "[chain] dict=$dict line=$line/$total hits=$hits goal=$HIT_GOAL" | tee -a "$CHAIN_LOG"
+    if [ "$hits" -ge "$HIT_GOAL" ]; then
+      echo "[chain] goal reached $hits >= $HIT_GOAL, stopping" | tee -a "$CHAIN_LOG"
+      "$BIN/usc-enum-launch.sh" stop
+      return 0
+    fi
+    sleep 60
+  done
 }
 
 shard_progress() {
@@ -77,43 +143,12 @@ start_shard_direct() {
   sleep 2
 }
 
-gap_running() {
-  pgrep -f "usc-enum-fast.py --dict gap" >/dev/null 2>&1
-}
-
-start_gap() {
-  echo "[chain] starting gap dict workers=$WORKERS target=$HIT_GOAL" | tee -a "$CHAIN_LOG"
-  nohup python3 "$BIN/usc-enum-fast.py" \
-    --dict gap \
-    --shard 0 \
-    --shards 1 \
-    --workers "$WORKERS" \
-    --batch-size "$BATCH_SIZE" \
-    --target "$HIT_GOAL" \
-    >>"$LOG/gap.log" 2>&1 &
-  sleep 2
-}
-
-wait_gap() {
-  while gap_running; do
-    local hits
-    hits=$(hit_count)
-    echo "[chain] gap hits=$hits goal=$HIT_GOAL" | tee -a "$CHAIN_LOG"
-    if [ "$hits" -ge "$HIT_GOAL" ]; then
-      echo "[chain] goal reached $hits >= $HIT_GOAL, stopping" | tee -a "$CHAIN_LOG"
-      "$BIN/usc-enum-launch.sh" stop
-      return 0
-    fi
-    sleep 60
-  done
-}
-
 wait_shard() {
   local shard="$1"
   while shard_running "$shard"; do
     local hits
     hits=$(hit_count)
-    read -r line total sh_hits <<<"$(shard_progress "$shard")"
+    read -r line total _ <<<"$(shard_progress "$shard")"
     echo "[chain] shard=$shard line=$line/$total hits=$hits goal=$HIT_GOAL" | tee -a "$CHAIN_LOG"
     if [ "$hits" -ge "$HIT_GOAL" ]; then
       echo "[chain] goal reached $hits >= $HIT_GOAL, stopping" | tee -a "$CHAIN_LOG"
@@ -124,16 +159,13 @@ wait_shard() {
   done
 }
 
-run_chain() {
-  echo "[chain] started hit_goal=$HIT_GOAL shards=$SHARDS workers=$WORKERS" | tee -a "$CHAIN_LOG"
-  USE_PROXY=0 "$BIN/usc-enum-launch.sh" bootstrap 2>&1 | tee -a "$CHAIN_LOG" || true
-
+run_slim_shards() {
   for ((shard=0; shard<SHARDS; shard++)); do
     local hits
     hits=$(hit_count)
     if [ "$hits" -ge "$HIT_GOAL" ]; then
       echo "[chain] already at $hits hits, done" | tee -a "$CHAIN_LOG"
-      break
+      return 0
     fi
 
     if shard_complete "$shard" && ! shard_running "$shard"; then
@@ -148,26 +180,62 @@ run_chain() {
     fi
 
     wait_shard "$shard"
-
     hits=$(hit_count)
     echo "[chain] shard=$shard finished, total hits=$hits" | tee -a "$CHAIN_LOG"
     if [ "$hits" -ge "$HIT_GOAL" ]; then
+      return 0
+    fi
+  done
+}
+
+run_dict_phases() {
+  for dict in $DICT_PHASES; do
+    local hits
+    hits=$(hit_count)
+    if [ "$hits" -ge "$HIT_GOAL" ]; then
+      echo "[chain] goal reached at $hits, skip remaining phases" | tee -a "$CHAIN_LOG"
+      return 0
+    fi
+
+    if dict_complete "$dict" && ! dict_running "$dict"; then
+      echo "[chain] dict=$dict already complete, skip" | tee -a "$CHAIN_LOG"
+      continue
+    fi
+
+    if dict_running "$dict"; then
+      echo "[chain] dict=$dict already running, waiting" | tee -a "$CHAIN_LOG"
+    else
+      start_dict "$dict"
+    fi
+
+    wait_dict "$dict"
+    hits=$(hit_count)
+    echo "[chain] dict=$dict finished, total hits=$hits" | tee -a "$CHAIN_LOG"
+  done
+}
+
+run_chain() {
+  echo "[chain] started hit_goal=$HIT_GOAL phases=$DICT_PHASES workers=$WORKERS" | tee -a "$CHAIN_LOG"
+  USE_PROXY=0 "$BIN/usc-enum-launch.sh" bootstrap 2>&1 | tee -a "$CHAIN_LOG" || true
+
+  # slim shards 仅在未跑完时执行
+  local need_slim=0
+  for ((shard=0; shard<SHARDS; shard++)); do
+    if ! shard_complete "$shard"; then
+      need_slim=1
       break
     fi
   done
-
-  hits=$(hit_count)
-  if [ "$hits" -lt "$HIT_GOAL" ]; then
-    echo "[chain] shards done at $hits hits, starting gap phase" | tee -a "$CHAIN_LOG"
-    if ! gap_running; then
-      start_gap
-    fi
-    wait_gap
-    hits=$(hit_count)
-    echo "[chain] gap finished, total hits=$hits" | tee -a "$CHAIN_LOG"
+  if [ "$need_slim" -eq 1 ]; then
+    run_slim_shards
+  else
+    echo "[chain] all slim shards complete, skip" | tee -a "$CHAIN_LOG"
   fi
 
+  run_dict_phases
+
   USE_PROXY=0 "$BIN/usc-enum-launch.sh" merge 2>&1 | tee -a "$CHAIN_LOG"
+  local hits
   hits=$(hit_count)
   echo "[chain] ALL DONE hits=$hits goal=$HIT_GOAL" | tee -a "$CHAIN_LOG"
 }
@@ -180,7 +248,7 @@ case "${1:-start}" in
     fi
     nohup bash "$0" run >>"$CHAIN_LOG" 2>&1 &
     echo $! >"$PID_FILE"
-    echo "[chain] supervisor pid=$(cat "$PID_FILE") log=$CHAIN_LOG"
+    echo "[chain] supervisor pid=$(cat "$PID_FILE") log=$CHAIN_LOG phases=$DICT_PHASES"
     ;;
   run)
     run_chain
@@ -198,13 +266,19 @@ case "${1:-start}" in
     else
       echo "[chain] supervisor not running"
     fi
-    echo "[chain] hits=$(hit_count) goal=$HIT_GOAL"
+    echo "[chain] hits=$(hit_count) goal=$HIT_GOAL phases=$DICT_PHASES"
+    for dict in $DICT_PHASES; do
+      read -r line total dhits <<<"$(dict_progress "$dict")"
+      if [ "${total:-0}" -gt 0 ]; then
+        echo "[chain] $dict: line=$line/$total hits=$dhits complete=$( [ "$line" -ge "$total" ] && echo yes || echo no )"
+      fi
+    done
     tail -5 "$CHAIN_LOG" 2>/dev/null || true
     pgrep -af "usc-enum-fast.py" || echo "no enum process"
     ;;
   *)
     echo "usage: $0 {start|stop|status}"
-    echo "  env: HIT_GOAL=3000 WORKERS=40 SHARDS=4"
+    echo "  env: HIT_GOAL=5000 WORKERS=40 DICT_PHASES='gap dense1 dense2 dense3 dense4'"
     exit 1
     ;;
 esac

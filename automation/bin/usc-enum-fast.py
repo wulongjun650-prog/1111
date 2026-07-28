@@ -28,6 +28,46 @@ TESTED_DB = STATE_DIR / "tested.db"
 GLOBAL_HITS = STATE_DIR / "hits_all.jsonl"
 CAND_VERSION = 4
 CAND_GAP_VERSION = 1
+CAND_DENSE_VERSION = 1
+
+# 从 1970 命中反推 — 高密度字典常量
+DENSE_HIT_PREFIXES = [
+    "moon", "shin", "sun", "blue", "gold", "hyun", "happy", "kim", "choi", "king", "seo", "jun", "ryu",
+    "song", "won", "park", "han", "lim", "mi", "sky", "cho", "yun", "jang", "jeong", "kwon", "eun", "nam",
+    "ahn", "an", "son", "sim", "white", "rich", "na", "cha", "lee", "kang", "shim", "yang", "woo", "seok",
+    "wook", "jung", "red", "green", "yeon", "bin", "su", "star", "oh", "hwang", "ha", "min", "bang", "suk",
+    "yoon", "apple", "yu", "bae", "kwak", "jeon", "bong", "ok", "black", "queen", "heo", "baek", "ko", "jin",
+    "byun", "chung", "gil", "jae", "jo", "im", "love", "hong", "yoo", "mun", "chae",
+]
+# gap 未覆盖但命中的前缀 (commons/given 列表里没有)
+DENSE_MISSED_PREFIXES = [
+    "white", "rich", "black", "queen", "green", "choi", "park", "han", "ryu", "won", "cho", "yun", "jang",
+    "jeong", "ahn", "son", "sim", "lee", "kang", "yang", "seok", "wook", "jung", "bae", "kwak", "jeon",
+    "bong", "heo", "baek", "ko", "byun", "chung", "gil", "jae", "jo", "hong", "yoo", "mun", "chae", "shim",
+]
+DENSE_SUFFIX_YY = [
+    "70", "71", "72", "73", "74", "75", "76", "77", "78", "79", "80", "81", "82", "83", "84", "85", "86",
+    "87", "88", "89", "90", "91", "92", "93", "94", "95", "96", "97", "98", "99", "00", "01", "02", "03",
+    "04", "05",
+]
+DENSE_SUR_COMBO = [
+    "kim", "lee", "park", "choi", "jung", "jeong", "kang", "cho", "yoon", "yun", "jang", "lim", "im", "han",
+    "oh", "seo", "shin", "kwon", "song", "hong", "ryu", "cha", "an", "ahn", "son", "baek", "heo", "nam",
+    "go", "woo", "jun", "jin", "min",
+]
+DENSE_GIV_COMBO = [
+    "min", "jun", "soo", "su", "young", "jin", "hyun", "woo", "ho", "ji", "yeon", "seo", "yoon", "yun", "ha",
+    "bin", "eun", "mi", "na", "bo", "ri", "sora", "areum", "hee", "suk", "wook", "seok", "sung", "dong", "jae",
+    "tae", "sang", "kyung", "hye", "in", "ah", "a", "sohee", "jisoo", "jimin", "yujin", "yuna", "jiyeon",
+    "haneul", "doyun", "siwoo", "minseo", "haeun", "jiwoo", "jiho", "minjun", "minjae", "seojun",
+]
+DENSE_ENGLISH = [
+    "john", "james", "david", "michael", "mark", "paul", "peter", "brian", "kevin", "jason", "eric", "leo",
+    "alex", "chris", "tom", "sam", "ben", "dan", "jack", "ryan", "tony", "andy", "henry", "steve", "mike",
+    "anna", "amy", "lisa", "mary", "sarah", "jane", "kate", "lucy", "emily", "grace", "helen", "julia",
+]
+DENSE_SUR_BD = ["ha", "moon", "go", "seo", "shin", "cha", "jun", "woo", "kim", "an", "han", "won", "choi", "jeong", "jin", "park", "lee", "lim", "kang", "jung"]
+DENSE_DICT_NAMES = ("dense1", "dense2", "dense3", "dense4")
 
 GAP_GIVEN = [
     "seo", "shin", "oh", "sun", "ma", "mok", "ban", "bang", "go", "cha", "woo", "jun", "hae", "kwon",
@@ -260,6 +300,134 @@ def iter_gap_emails():
             yield from emit(f"{s}{n:04d}")
 
 
+def iter_dense1_combo():
+    """284 无数字命中: 姓+名 / 名+姓 / 英文名+姓 / 名+名 组合"""
+    seen = set()
+
+    def emit(local):
+        e = f"{local}@naver.com".lower()
+        if e in seen:
+            return
+        seen.add(e)
+        yield e
+
+    for s, g in itertools.product(DENSE_SUR_COMBO, DENSE_GIV_COMBO):
+        if s == g:
+            continue
+        yield from emit(s + g)
+        yield from emit(g + s)
+        yield from emit(f"{s}_{g}")
+        yield from emit(f"{g}{s}")
+
+    for g1, g2 in itertools.product(DENSE_GIV_COMBO[:25], DENSE_GIV_COMBO[:25]):
+        if g1 != g2:
+            yield from emit(g1 + g2)
+
+    for eng, s in itertools.product(DENSE_ENGLISH, DENSE_SUR_COMBO[:20]):
+        yield from emit(eng + s)
+        yield from emit(s + eng)
+
+
+def iter_dense2_missed():
+    """gap 未扫到的命中前缀 × 高密度后缀区间 (0-99 + 1k-12k)"""
+    seen = set()
+
+    def emit(local):
+        e = f"{local}@naver.com".lower()
+        if e in seen:
+            return
+        seen.add(e)
+        yield e
+
+    for p in DENSE_MISSED_PREFIXES:
+        for n in range(100):
+            yield from emit(f"{p}{n:02d}")
+        for n in range(1000, 12001):
+            yield from emit(f"{p}{n:04d}")
+
+
+def iter_dense3_prefixyy():
+    """命中前缀 × 出生/幸运 2 位年份后缀"""
+    seen = set()
+
+    def emit(local):
+        e = f"{local}@naver.com".lower()
+        if e in seen:
+            return
+        seen.add(e)
+        yield e
+
+    for p in DENSE_HIT_PREFIXES:
+        for yy in DENSE_SUFFIX_YY:
+            yield from emit(f"{p}{yy}")
+
+
+def iter_dense4_surbd():
+    """高命中姓氏 × YYMMDD 生日 (6位)"""
+    seen = set()
+
+    def emit(local, dom="naver.com"):
+        e = f"{local}@{dom}".lower()
+        if e in seen:
+            return
+        seen.add(e)
+        yield e
+
+    for s in DENSE_SUR_BD:
+        for y in range(1975, 2006):
+            for m in range(1, 13):
+                for d in range(1, 32):
+                    try:
+                        date(y, m, d)
+                    except ValueError:
+                        continue
+                    bd = f"{y % 100:02d}{m:02d}{d:02d}"
+                    yield from emit(f"{s}{bd}")
+                    if s in DENSE_SUR_BD[:8]:
+                        yield from emit(f"{s}{bd}", "daum.net")
+
+
+DENSE_ITERATORS = {
+    "dense1": iter_dense1_combo,
+    "dense2": iter_dense2_missed,
+    "dense3": iter_dense3_prefixyy,
+    "dense4": iter_dense4_surbd,
+}
+
+
+def ensure_dense_candidate_file(dict_name: str, dense_dir: Path, seen_hit: set):
+    if dict_name not in DENSE_ITERATORS:
+        raise ValueError(f"unknown dense dict: {dict_name}")
+
+    cand_file = dense_dir / "candidates.txt"
+    meta_file = dense_dir / "candidates.meta.json"
+    if cand_file.exists() and meta_file.exists():
+        try:
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            if meta.get("version") == CAND_DENSE_VERSION and meta.get("dict") == dict_name and meta.get("count", 0) > 0:
+                return cand_file, meta["count"]
+        except Exception:
+            pass
+
+    print(f"loading tested set for {dict_name} candidate filter...", flush=True)
+    tested = TestedStore(TESTED_DB, load_mem=True)
+    print(f"tested loaded {len(tested)}", flush=True)
+    t0 = time.time()
+    count = 0
+    with open(cand_file, "w", encoding="utf-8") as f:
+        for e in DENSE_ITERATORS[dict_name]():
+            if e in tested or e in seen_hit:
+                continue
+            f.write(e + "\n")
+            count += 1
+    meta_file.write_text(
+        json.dumps({"version": CAND_DENSE_VERSION, "dict": dict_name, "count": count, "built": time.time()}, indent=2),
+        encoding="utf-8",
+    )
+    print(f"{dict_name} candidates written {count} in {time.time()-t0:.1f}s", flush=True)
+    return cand_file, count
+
+
 def ensure_gap_candidate_file(gap_dir: Path, seen_hit: set):
     cand_file = gap_dir / "candidates.txt"
     meta_file = gap_dir / "candidates.meta.json"
@@ -437,6 +605,9 @@ def run_shard(args):
     if args.dict == "gap":
         shard_dir = STATE_DIR / "gap"
         shard_label = "gap"
+    elif args.dict in DENSE_DICT_NAMES:
+        shard_dir = STATE_DIR / args.dict
+        shard_label = args.dict
     else:
         shard_dir = STATE_DIR / f"shard_{args.shard}"
         shard_label = str(args.shard)
@@ -460,6 +631,8 @@ def run_shard(args):
 
     if args.dict == "gap":
         cand_file, total_cands = ensure_gap_candidate_file(shard_dir, seen_hit)
+    elif args.dict in DENSE_DICT_NAMES:
+        cand_file, total_cands = ensure_dense_candidate_file(args.dict, shard_dir, seen_hit)
     else:
         surnames = shard_surnames(args.shard, args.shards)
         cand_file, total_cands = ensure_candidate_file(shard_dir, surnames, seen_hit, args.shards)
@@ -648,7 +821,7 @@ def run_shard(args):
 
 def main():
     ap = argparse.ArgumentParser(description="us-campus fast email enum v3")
-    ap.add_argument("--dict", choices=["slim", "gap"], default="slim")
+    ap.add_argument("--dict", choices=["slim", "gap", *DENSE_DICT_NAMES], default="slim")
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--shards", type=int, default=4)
     ap.add_argument("--workers", type=int, default=80)
