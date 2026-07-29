@@ -67,7 +67,27 @@ DENSE_ENGLISH = [
     "anna", "amy", "lisa", "mary", "sarah", "jane", "kate", "lucy", "emily", "grace", "helen", "julia",
 ]
 DENSE_SUR_BD = ["ha", "moon", "go", "seo", "shin", "cha", "jun", "woo", "kim", "an", "han", "won", "choi", "jeong", "jin", "park", "lee", "lim", "kang", "jung"]
-DENSE_DICT_NAMES = ("dense1", "dense2", "dense3", "dense4")
+DENSE_DICT_NAMES = ("dense1", "dense2", "dense3", "dense4", "dense5")
+
+# dense5 盲区: 纯数字 / 英文+年份 / 金融词 / 非 naver 域名
+DENSE5_ENGLISH = [
+    "john", "james", "david", "michael", "mark", "paul", "peter", "brian", "kevin", "jason", "eric", "leo",
+    "alex", "chris", "tom", "sam", "ben", "dan", "jack", "ryan", "tony", "andy", "henry", "steve", "mike",
+    "anna", "amy", "lisa", "mary", "sarah", "jane", "kate", "lucy", "emily", "grace", "helen", "julia",
+    "william", "robert", "richard", "george", "charles", "thomas", "daniel", "patrick", "joseph", "edward",
+    "jennifer", "linda", "elizabeth", "susan", "jessica", "nancy", "betty", "dorothy", "carol", "michelle",
+    "antonio", "alejandro", "allen", "brian", "patrick", "oliver", "nicholas", "stephen", "timothy", "ronald",
+]
+DENSE5_FINANCE = [
+    "stock", "money", "invest", "trade", "fund", "coin", "chart", "bull", "bear", "kospi", "kosdaq", "rich",
+    "profit", "asset", "market", "share", "bond", "future", "option", "value", "cash", "bank", "gold", "blue",
+    "campus", "academy", "student", "master", "broker", "trader", "world", "happy", "king", "star", "sky",
+]
+DENSE5_ALT_DOMAINS = ["gmail.com", "daum.net", "hanmail.net"]
+DENSE5_ALT_PREFIXES = [
+    "kim", "lee", "park", "choi", "jung", "han", "lim", "shin", "moon", "sun", "hyun", "min", "jun", "seo",
+    "blue", "gold", "happy", "king", "sky", "star", "love", "stock", "money", "invest", "korea", "seoul",
+]
 
 GAP_GIVEN = [
     "seo", "shin", "oh", "sun", "ma", "mok", "ban", "bang", "go", "cha", "woo", "jun", "hae", "kwon",
@@ -387,11 +407,48 @@ def iter_dense4_surbd():
                         yield from emit(f"{s}{bd}", "daum.net")
 
 
+def iter_dense5_blind():
+    """盲区: 纯数字 / 英文+年份 / 金融词 / 命中前缀换域名"""
+    seen = set()
+
+    def emit(local, dom="naver.com"):
+        e = f"{local}@{dom}".lower()
+        if e in seen:
+            return
+        seen.add(e)
+        yield e
+
+    # A: 纯数字 4-6 位 @naver (几乎没系统扫过)
+    for n in range(1000, 1000000):
+        yield from emit(str(n))
+
+    # B: 英文名 + 2 位年份
+    for w in DENSE5_ENGLISH:
+        for yy in DENSE_SUFFIX_YY:
+            yield from emit(f"{w}{yy}")
+
+    # C: 金融/站点相关词 + 0-99 + 1k-8k
+    for w in DENSE5_FINANCE:
+        for n in range(100):
+            yield from emit(f"{w}{n:02d}")
+        for n in range(1000, 8001):
+            yield from emit(f"{w}{n}")
+
+    # D: 高命中前缀 × 其他域名
+    for p in DENSE5_ALT_PREFIXES:
+        for dom in DENSE5_ALT_DOMAINS:
+            for n in range(1000, 8001):
+                yield from emit(f"{p}{n}", dom)
+            for yy in DENSE_SUFFIX_YY[:20]:
+                yield from emit(f"{p}{yy}", dom)
+
+
 DENSE_ITERATORS = {
     "dense1": iter_dense1_combo,
     "dense2": iter_dense2_missed,
     "dense3": iter_dense3_prefixyy,
     "dense4": iter_dense4_surbd,
+    "dense5": iter_dense5_blind,
 }
 
 

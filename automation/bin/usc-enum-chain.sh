@@ -16,8 +16,8 @@ SHARDS="${SHARDS:-4}"
 BATCH_SIZE="${BATCH_SIZE:-5000}"
 TARGET="${TARGET:-10000}"
 USE_PROXY="${USE_PROXY:-0}"
-# 默认: gap 跑完后继续 dense1-4
-DICT_PHASES="${DICT_PHASES:-gap dense1 dense2 dense3 dense4}"
+# 默认: gap → dense1-5
+DICT_PHASES="${DICT_PHASES:-gap dense1 dense2 dense3 dense4 dense5}"
 
 mkdir -p "$LOG"
 

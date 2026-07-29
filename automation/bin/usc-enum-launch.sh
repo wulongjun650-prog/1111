@@ -168,7 +168,7 @@ case "${1:-start}" in
       >>"$LOG/gap.log" 2>&1 &
     echo "[launch] gap started log=$LOG/gap.log"
     ;;
-  start-dense|start-dense1|start-dense2|start-dense3|start-dense4)
+  start-dense|start-dense1|start-dense2|start-dense3|start-dense4|start-dense5)
     dict="${1#start-}"
     if [ "$dict" = "dense" ]; then dict="dense1"; fi
     stop_all
@@ -208,9 +208,9 @@ PY
     "$PROXY_FILE"
     ;;
   *)
-    echo "usage: $0 {start|start-gap|start-dense1|start-dense2|start-dense3|start-dense4|chain-dense|start-8|start-all|stop|status|merge|bootstrap|rebuild-candidates|chain|test-proxies}"
+    echo "usage: $0 {start|start-gap|start-dense1|start-dense2|start-dense3|start-dense4|start-dense5|chain-dense|start-8|start-all|stop|status|merge|bootstrap|rebuild-candidates|chain|test-proxies}"
     echo "  start-gap: TARGET=3000 WORKERS=40 USE_PROXY=0"
-    echo "  chain-dense: HIT_GOAL=5000 DICT_PHASES='gap dense1 dense2 dense3 dense4'"
+    echo "  chain-dense: HIT_GOAL=5000 DICT_PHASES='gap dense1 dense2 dense3 dense4 dense5'"
     echo "  chain: $0 chain {start|stop|status}  (auto shard 0->3, then gap+dense phases)"
     echo "  env: WORKERS=40 SHARDS=8 ACTIVE_SHARDS=8 PROXY_FILE=... USE_PROXY=0"
     exit 1
