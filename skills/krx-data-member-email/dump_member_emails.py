@@ -46,14 +46,18 @@ UA = (
 )
 START = int(os.environ.get("KRX_START", "2000005000"))
 END = int(os.environ.get("KRX_END", "2000223000"))
-WORKERS = int(os.environ.get("KRX_WORKERS", "6"))
+WORKERS = int(os.environ.get("KRX_WORKERS", "16"))
 OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
 PROXY_AUTH = os.environ.get("KRX_PROXY_AUTH", "").strip()
 # IPs live 3–15 min; drop at 150s so we never sit on a dead one.
 PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "150"))
-EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "2"))
-KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "4"))
+# 0 = keep the count already in the extract URL (5 or 6).
+EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "0"))
+KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "12"))
+USE_DIRECT = os.environ.get("KRX_USE_DIRECT", "1") != "0"
+DIRECT = "__direct__"
+DIRECT_COOLDOWN = int(os.environ.get("KRX_DIRECT_COOLDOWN", "180"))
 EXTRACT_DEAD_HINTS = ("用完", "不足", "余额", "过期", "失效", "次数已", "提取失败", "订单不存在", "INVALID")
 CLOUD_GOOD_FROM = 2000005966
 KNOWN_MBR = 2000008331
@@ -228,7 +232,9 @@ class ProxyPool:
         self.ui = 0
         self.i = 0
         self._fetch_lock = threading.Lock()
-        self.allow_direct = not self.urls
+        self.use_direct = USE_DIRECT
+        self.direct_until = 0.0
+        self.allow_direct = self.use_direct or not self.urls
         if self.static and not self.urls:
             self.proxies = [self.static]
             self.born[self.static] = time.time()
@@ -280,7 +286,7 @@ class ProxyPool:
             wait = 1.3 - (time.time() - self.last_fetch)
             if wait > 0:
                 time.sleep(wait)
-            get_url = with_extract_count(url, EXTRACT_COUNT)
+            get_url = with_extract_count(url, EXTRACT_COUNT) if EXTRACT_COUNT > 0 else url
             try:
                 r = requests.get(get_url, timeout=15)
                 self.last_fetch = time.time()
@@ -329,20 +335,30 @@ class ProxyPool:
                 self._expire_old()
                 prefer = [p for p in self.good if self._fresh(p)]
                 live = prefer or self.live_list()
+                direct_ok = self.use_direct and time.time() >= self.direct_until
+            if direct_ok:
+                # Mix datacenter IP into rotation, do not replace panda.
+                live = live + [DIRECT]
             if live:
                 with _lock:
                     self.i += 1
                     return live[self.i % len(live)]
-            if not self._alive_urls():
+            if not self._alive_urls() and not direct_ok:
                 time.sleep(1)
                 continue
-            self.fetch()
-        if self.allow_direct:
+            self.fetch_all() if self._alive_urls() else self.fetch()
+        if self.use_direct and time.time() >= self.direct_until:
+            return DIRECT
+        if self.allow_direct and not self.use_direct:
             return self.static or None
         return None
 
     def ok(self, proxy: str | None) -> None:
         if not proxy:
+            return
+        if proxy == DIRECT:
+            with _lock:
+                self.direct_until = 0.0
             return
         with _lock:
             if not self._fresh(proxy):
@@ -354,6 +370,12 @@ class ProxyPool:
 
     def fail(self, proxy: str | None, auth: bool = False) -> None:
         if not proxy:
+            return
+        if proxy == DIRECT:
+            with _lock:
+                _stats["retry"] += 1
+                self.direct_until = time.time() + DIRECT_COOLDOWN
+            print(f"direct_cooldown {DIRECT_COOLDOWN}s", flush=True)
             return
         with _lock:
             _stats["retry"] += 1
@@ -384,7 +406,7 @@ def session_for(proxy: str | None) -> requests.Session:
         s.trust_env = False
         s.headers.update({"User-Agent": UA, "X-Requested-With": "XMLHttpRequest"})
         s.mount("https://", requests.adapters.HTTPAdapter(pool_connections=4, pool_maxsize=4, max_retries=0))
-        if proxy:
+        if proxy and proxy != DIRECT:
             s.proxies.update({"http": proxy, "https": proxy})
         cache[key] = s
         if len(cache) > 12:

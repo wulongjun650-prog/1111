@@ -58,11 +58,13 @@ class ParseTests(unittest.TestCase):
     def test_count_rewrite(self):
         u = "http://x/api?secret=a&orderNo=b&count=6&isTxt=1"
         self.assertIn("count=2", d.with_extract_count(u, 2))
+        self.assertIn("count=6", u)
 
 
 class PoolTests(unittest.TestCase):
     def test_ttl_drops_old_ip(self):
         pool = d.ProxyPool(urls=[])
+        pool.use_direct = False
         pool.allow_direct = False
         p = "http://1.2.3.4:80"
         pool.proxies = [p]
@@ -71,6 +73,12 @@ class PoolTests(unittest.TestCase):
         self.assertEqual(pool.live_n(), 0)
         pool._expire_old()
         self.assertIn(p, pool.bad)
+
+    def test_direct_cooldown(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = True
+        pool.fail(d.DIRECT)
+        self.assertGreater(pool.direct_until, time.time())
 
 
 class JobTests(unittest.TestCase):
