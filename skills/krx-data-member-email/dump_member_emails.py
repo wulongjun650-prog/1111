@@ -58,7 +58,7 @@ STATIC_FILE = os.environ.get("KRX_STATIC_FILE", "").strip()
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
 KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "12"))
 PICK_N = int(os.environ.get("KRX_PICK_N", "12"))
-HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "5"))
+HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "3"))
 CONNECT_TIMEOUT = float(os.environ.get("KRX_CONNECT_TIMEOUT", "2"))
 SESS_CACHE = int(os.environ.get("KRX_SESS_CACHE", "32"))
 MAX_PER_PROXY = int(os.environ.get("KRX_MAX_PER_PROXY", "2"))
@@ -570,7 +570,11 @@ class ProxyPool:
         print(f"static_ready {len(self.static_list)} live file/env probed={len(ok_list)}/{len(to_probe)}", flush=True)
 
     def _cap(self, proxy: str) -> int:
-        return 1 if proxy == DIRECT else MAX_PER_PROXY
+        if proxy == DIRECT:
+            return 1
+        if proxy not in self.static_set and (time.time() - self.born.get(proxy, 0)) < 8:
+            return 1
+        return MAX_PER_PROXY
 
     def try_acquire(self, proxy: str) -> bool:
         now = time.time()
@@ -612,16 +616,15 @@ class ProxyPool:
                 and p not in self.bad
                 and (now - self.born.get(p, 0)) < PROXY_TTL
             ]
-            fresh.sort(key=lambda p: self.born.get(p, 0), reverse=True)
+            fresh.sort(key=lambda p: self.born.get(p, 0))
             panda = fresh[:PICK_N]
-            live = panda + static_live
+            live = static_live + panda
             if self.use_direct and now >= self.direct_until and not panda:
                 live = live + [DIRECT]
             live.sort(key=lambda p: self.in_flight.get(p, 0))
             for p in live:
                 n = self.in_flight.get(p, 0)
-                cap = 1 if p == DIRECT else MAX_PER_PROXY
-                if n < cap:
+                if n < self._cap(p):
                     self.in_flight[p] = n + 1
                     return p
             if live:

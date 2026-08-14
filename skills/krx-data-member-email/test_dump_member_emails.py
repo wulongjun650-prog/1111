@@ -202,12 +202,21 @@ class PoolTests(unittest.TestCase):
         pool.use_direct = False
         p = "http://1.2.3.4:80"
         pool.good = [p]
-        pool.born[p] = time.time()
+        pool.born[p] = time.time() - 9
         a = pool.pick()
         b = pool.pick()
         c = pool.pick()
         self.assertEqual({a, b}, {p})
         self.assertIsNone(c)
+
+    def test_new_panda_warmup_is_one_conn(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        p = "http://1.2.3.4:80"
+        pool.good = [p]
+        pool.born[p] = time.time()
+        self.assertEqual(pool.pick(), p)
+        self.assertIsNone(pool.pick())
 
     def test_static_down_skips_after_fail(self):
         pool = d.ProxyPool(urls=["http://example/x"])
