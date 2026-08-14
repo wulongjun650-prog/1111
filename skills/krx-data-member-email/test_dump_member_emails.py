@@ -174,6 +174,9 @@ class PoolTests(unittest.TestCase):
         pool.born[st] = time.time()
         pool.born[pd] = time.time()
         self.assertEqual(pool.panda_good_n(), 1)
+        self.assertEqual(pool.panda_proven_n(), 0)
+        pool.ok(pd)
+        self.assertEqual(pool.panda_proven_n(), 1)
 
     def test_static_cooldown_skips_pick(self):
         pool = d.ProxyPool(urls=["http://example/x"])

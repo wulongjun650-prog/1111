@@ -48,7 +48,7 @@ UA = (
 )
 START = int(os.environ.get("KRX_START", "2000005000"))
 END = int(os.environ.get("KRX_END", "2000223000"))
-WORKERS = int(os.environ.get("KRX_WORKERS", "100"))
+WORKERS = int(os.environ.get("KRX_WORKERS", "20"))
 INFLIGHT = int(os.environ.get("KRX_INFLIGHT", "0")) or max(WORKERS * 2, 8)
 OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
@@ -57,10 +57,10 @@ PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "90"))
 STATIC_COOLDOWN = int(os.environ.get("KRX_STATIC_COOLDOWN", "180"))
 STATIC_FILE = os.environ.get("KRX_STATIC_FILE", "").strip()
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
-KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "50"))
-PICK_N = int(os.environ.get("KRX_PICK_N", "50"))
-HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "6"))
-CONNECT_TIMEOUT = float(os.environ.get("KRX_CONNECT_TIMEOUT", "4"))
+KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "16"))
+PICK_N = int(os.environ.get("KRX_PICK_N", "20"))
+HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "5"))
+CONNECT_TIMEOUT = float(os.environ.get("KRX_CONNECT_TIMEOUT", "3"))
 SESS_CACHE = int(os.environ.get("KRX_SESS_CACHE", "32"))
 MAX_PER_PROXY = int(os.environ.get("KRX_MAX_PER_PROXY", "2"))
 BAD_CAP = int(os.environ.get("KRX_BAD_CAP", "3000"))
@@ -354,6 +354,16 @@ class ProxyPool:
             return time.time() >= self.static_until.get(proxy, 0)
         return (time.time() - self.born.get(proxy, 0)) < PROXY_TTL
 
+    def panda_proven_n(self) -> int:
+        now = time.time()
+        n = 0
+        for p in self.proven:
+            if p in self.static_set or p in self.bad:
+                continue
+            if (now - self.born.get(p, 0)) < PROXY_TTL:
+                n += 1
+        return n
+
     def panda_good_n(self) -> int:
         now = time.time()
         n = 0
@@ -435,7 +445,7 @@ class ProxyPool:
             time.sleep(0.2)
             return
         try:
-            if self.panda_good_n() >= KEEP_LIVE:
+            if self.panda_proven_n() >= KEEP_LIVE:
                 return
             url = self._next_url()
             if url is None:
@@ -1066,19 +1076,23 @@ def main() -> None:
     pool = init_pool()
 
     def _panda_topup() -> None:
+        last_hb = 0.0
         while True:
             try:
                 pool.prune()
-                if pool.panda_good_n() < KEEP_LIVE and pool._alive_urls():
+                if pool.panda_proven_n() < KEEP_LIVE and pool._alive_urls():
                     pool.fetch()
-                print(
-                    f"hb panda={pool.panda_good_n()} proven={len(pool.proven)} "
-                    f"inflight={sum(pool.in_flight.values())} live={pool.live_n()}",
-                    flush=True,
-                )
+                now = time.time()
+                if now - last_hb >= 8:
+                    print(
+                        f"hb panda={pool.panda_good_n()} proven={pool.panda_proven_n()} "
+                        f"inflight={sum(pool.in_flight.values())} live={pool.live_n()}",
+                        flush=True,
+                    )
+                    last_hb = now
             except Exception:
                 pass
-            time.sleep(TOPUP_HUNGRY if pool.panda_good_n() < KEEP_LIVE else TOPUP_IDLE)
+            time.sleep(TOPUP_HUNGRY if pool.panda_proven_n() < KEEP_LIVE else TOPUP_IDLE)
 
     def _static_topup() -> None:
         first = True
