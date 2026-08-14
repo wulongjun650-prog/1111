@@ -55,6 +55,10 @@ class ParseTests(unittest.TestCase):
         self.assertFalse(d.is_proxy_auth_fail(text=html))
         self.assertTrue(d.is_proxy_auth_fail(text="407 Proxy Authentication Required"))
         self.assertTrue(d.is_proxy_auth_fail(text="ip not in white list"))
+        self.assertFalse(
+            d.is_proxy_auth_fail(text='{"block1":[{"MDC_MBR_NO":"2000040700","MBR_ID":"x"}]}')
+        )
+        self.assertFalse(d.is_proxy_auth_fail(text='{"isDupMbrEmail":false}'))
 
     def test_exhausted_api(self):
         self.assertTrue(d.extract_is_dead('{"code":"-1","msg":"提取次数已用完"}'))

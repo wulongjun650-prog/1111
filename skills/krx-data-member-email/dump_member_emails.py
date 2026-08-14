@@ -294,7 +294,12 @@ def is_waf_text(status: int, text: str) -> bool:
 
 
 def is_proxy_auth_fail(exc: BaseException | None = None, text: str = "") -> bool:
-    blob = f"{exc} {text}".lower()
+    raw = text or ""
+    stripped = raw.lstrip()
+    # Member JSON often contains "407" inside mbrNo (e.g. 2000040700).
+    if stripped.startswith("{") or stripped.startswith("["):
+        return False
+    blob = f"{exc or ''} {raw}".lower()
     if "<html" in blob or "에러페이지" in blob or "access denied" in blob:
         return False
     return "407" in blob or "white list" in blob or "whitelist" in blob
