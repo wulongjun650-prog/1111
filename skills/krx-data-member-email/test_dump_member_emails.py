@@ -72,13 +72,74 @@ class PoolTests(unittest.TestCase):
         pool.born[p] = time.time() - d.PROXY_TTL - 1
         self.assertEqual(pool.live_n(), 0)
         pool._expire_old()
-        self.assertIn(p, pool.bad)
+        self.assertNotIn(p, pool.born)
+        self.assertNotIn(p, pool.good)
+        self.assertNotIn(p, pool.proxies)
+
+    def test_prune_caps_bad_and_drops_expired(self):
+        pool = d.ProxyPool(urls=[])
+        old = "http://1.1.1.1:1"
+        new = "http://2.2.2.2:2"
+        pool.proxies = [old, new]
+        pool.good = [old, new]
+        pool.born = {old: time.time() - d.PROXY_TTL - 1, new: time.time()}
+        pool.bad = {f"http://9.9.9.{i}:1" for i in range(d.BAD_CAP + 50)}
+        pool.prune()
+        self.assertNotIn(old, pool.born)
+        self.assertNotIn(old, pool.good)
+        self.assertIn(new, pool.good)
+        self.assertLessEqual(len(pool.bad), d.BAD_CAP)
+
+    def test_pick_skips_direct_when_enough_good(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = True
+        for i in range(5):
+            p = f"http://1.1.1.{i}:80"
+            pool.good.append(p)
+            pool.born[p] = time.time()
+        seen = {pool.pick() for _ in range(30)}
+        self.assertNotIn(d.DIRECT, seen)
+
+    def test_pick_uses_direct_when_no_good(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = True
+        self.assertEqual(pool.pick(), d.DIRECT)
 
     def test_direct_cooldown(self):
         pool = d.ProxyPool(urls=["http://example/x"])
         pool.use_direct = True
         pool.fail(d.DIRECT)
         self.assertGreater(pool.direct_until, time.time())
+
+
+class SpeedTests(unittest.TestCase):
+    def test_window_rate_uses_recent_only(self):
+        d._recent.clear()
+        now = 1_000_000.0
+        d._recent.append(now - 90)
+        d._recent.append(now - 2)
+        d._recent.append(now - 1)
+        d._recent.append(now)
+        rate = d.window_rate(now, 30.0)
+        self.assertGreater(rate, 0.5)
+        self.assertLess(rate, 3.0)
+
+    def test_inflight_releases_before_slowest(self):
+        order = []
+
+        def work(n):
+            time.sleep(0.12 if n == 1 else 0.01)
+            return n
+
+        t0 = time.time()
+        first_at = None
+        with d.ThreadPoolExecutor(max_workers=3) as ex:
+            for fut in d.iter_inflight(ex, [1, 2, 3, 4], lambda e, n: e.submit(work, n), 3):
+                order.append(fut.result())
+                if first_at is None:
+                    first_at = time.time() - t0
+        self.assertEqual(sorted(order), [1, 2, 3, 4])
+        self.assertLess(first_at, 0.1)
 
 
 class JobTests(unittest.TestCase):

