@@ -46,15 +46,13 @@ UA = (
 )
 START = int(os.environ.get("KRX_START", "2000005000"))
 END = int(os.environ.get("KRX_END", "2000223000"))
-WORKERS = int(os.environ.get("KRX_WORKERS", "16"))
+WORKERS = int(os.environ.get("KRX_WORKERS", "32"))
 OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
 PROXY_AUTH = os.environ.get("KRX_PROXY_AUTH", "").strip()
-# IPs live 3–15 min; drop at 150s so we never sit on a dead one.
-PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "150"))
-# 0 = keep the count already in the extract URL (5 or 6).
-EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "0"))
-KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "8"))
+PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "90"))
+EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
+KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "20"))
 USE_DIRECT = os.environ.get("KRX_USE_DIRECT", "1") != "0"
 DIRECT = "__direct__"
 DIRECT_COOLDOWN = int(os.environ.get("KRX_DIRECT_COOLDOWN", "180"))
@@ -305,7 +303,7 @@ class ProxyPool:
                 print("api_exhausted all extract URLs used up", flush=True)
                 time.sleep(2)
                 return
-            wait = 1.3 - (time.time() - self.last_fetch)
+            wait = 1.05 - (time.time() - self.last_fetch)
             if wait > 0:
                 time.sleep(wait)
             get_url = with_extract_count(url, EXTRACT_COUNT) if EXTRACT_COUNT > 0 else url
@@ -435,9 +433,9 @@ class ProxyPool:
                     self.bad.add(proxy)
                     if proxy in self.good:
                         self.good.remove(proxy)
-            live = len(self.live_list())
+            live = self.good_n()
         if live < KEEP_LIVE:
-            self.fetch()
+            self.fetch_all()
 
 
 def session_for(proxy: str | None) -> requests.Session:
@@ -744,6 +742,17 @@ def main() -> None:
     pool = init_pool()
     if pool.urls:
         pool.fetch_all()
+
+    def _topup() -> None:
+        while True:
+            time.sleep(8)
+            try:
+                if pool.good_n() < KEEP_LIVE and pool._alive_urls():
+                    pool.fetch_all()
+            except Exception:
+                pass
+
+    threading.Thread(target=_topup, name="proxy-topup", daemon=True).start()
 
     mail_jobs, head, tail, holes = build_jobs(START, END, have_id, have_email, scanned)
     idor_jobs = tail + head + holes
