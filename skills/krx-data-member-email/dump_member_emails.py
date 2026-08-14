@@ -54,7 +54,7 @@ PROXY_AUTH = os.environ.get("KRX_PROXY_AUTH", "").strip()
 PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "150"))
 # 0 = keep the count already in the extract URL (5 or 6).
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "0"))
-KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "12"))
+KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "8"))
 USE_DIRECT = os.environ.get("KRX_USE_DIRECT", "1") != "0"
 DIRECT = "__direct__"
 DIRECT_COOLDOWN = int(os.environ.get("KRX_DIRECT_COOLDOWN", "180"))
@@ -253,6 +253,28 @@ class ProxyPool:
     def live_n(self) -> int:
         return len(self.live_list())
 
+    def good_n(self) -> int:
+        return len([p for p in self.good if self._fresh(p)])
+
+    def _probe(self, proxy: str) -> bool:
+        s = requests.Session()
+        s.trust_env = False
+        s.proxies = {"http": proxy, "https": proxy}
+        s.headers.update({"User-Agent": UA, "X-Requested-With": "XMLHttpRequest"})
+        try:
+            r = s.post(
+                IDOR,
+                data={"bld": "dbms/MDC/DATA/mbr_add_info_select", "locale": "ko_KR", "mbrNo": str(KNOWN_MBR)},
+                headers={"Referer": BASE + "/contents/MDC/MAIN/main/index.cmd"},
+                timeout=6,
+            )
+            if is_proxy_auth_fail(text=r.text) or r.status_code == 407:
+                return False
+            body = json_from_response(r)
+            return bool(body and "block1" in body)
+        except Exception as e:
+            return not is_proxy_auth_fail(e) and False
+
     def _expire_old(self) -> None:
         now = time.time()
         dead = [p for p, t0 in self.born.items() if now - t0 >= PROXY_TTL]
@@ -276,7 +298,7 @@ class ProxyPool:
             time.sleep(0.2)
             return
         try:
-            if self.live_n() >= KEEP_LIVE:
+            if self.good_n() >= KEEP_LIVE:
                 return
             url = self._next_url()
             if url is None:
@@ -308,17 +330,34 @@ class ProxyPool:
                     print(f"api_dead_empty {url.split('orderNo=')[-1][:28]}", flush=True)
                 return
             self.empty_streak[url] = 0
+            ok_list: list[str] = []
+            with ThreadPoolExecutor(max_workers=min(8, len(got))) as ex:
+                futs = {ex.submit(self._probe, p): p for p in got}
+                for fut in as_completed(futs):
+                    p = futs[fut]
+                    try:
+                        if fut.result():
+                            ok_list.append(p)
+                    except Exception:
+                        pass
             now = time.time()
             with _lock:
                 for p in got:
+                    if p not in ok_list:
+                        self.bad.add(p)
+                        if p in self.good:
+                            self.good.remove(p)
+                        continue
                     if p not in self.proxies:
                         self.proxies.append(p)
                     self.bad.discard(p)
                     self.strikes.pop(p, None)
                     self.born[p] = now
+                    if p not in self.good:
+                        self.good.append(p)
                 self._expire_old()
             print(
-                f"proxy_pool +{len(got)} live={self.live_n()} good={len([p for p in self.good if self._fresh(p)])} "
+                f"proxy_pool +{len(got)} usable={len(ok_list)} good={self.good_n()} "
                 f"apis={len(self._alive_urls())}/{len(self.urls)}",
                 flush=True,
             )
@@ -334,7 +373,12 @@ class ProxyPool:
             with _lock:
                 self._expire_old()
                 prefer = [p for p in self.good if self._fresh(p)]
-                live = prefer or self.live_list()
+                extra = [
+                    p
+                    for p in self.proxies
+                    if p not in self.bad and p not in prefer and self._fresh(p)
+                ]
+                live = prefer + extra
                 direct_ok = self.use_direct and time.time() >= self.direct_until
             if direct_ok:
                 # Mix datacenter IP into rotation, do not replace panda.
