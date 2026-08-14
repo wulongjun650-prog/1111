@@ -12,7 +12,6 @@ import csv
 import json
 import os
 import random
-import socket
 import threading
 import time
 from collections import deque
@@ -69,6 +68,7 @@ DIRECT = "__direct__"
 DIRECT_COOLDOWN = int(os.environ.get("KRX_DIRECT_COOLDOWN", "180"))
 DIRECT_WHEN_GOOD_LT = int(os.environ.get("KRX_DIRECT_WHEN_GOOD_LT", "3"))
 STATIC_STRIKES = int(os.environ.get("KRX_STATIC_STRIKES", "3"))
+PANDA_STRIKES = int(os.environ.get("KRX_PANDA_STRIKES", "3"))
 STATIC_REPROBE = int(os.environ.get("KRX_STATIC_REPROBE", "60"))
 PANDA_PROBE = os.environ.get("KRX_PANDA_PROBE", "0") != "0"
 TOPUP_HUNGRY = float(os.environ.get("KRX_TOPUP_HUNGRY", "1.1"))
@@ -457,7 +457,9 @@ class ProxyPool:
                 time.sleep(wait)
             get_url = with_extract_count(url, EXTRACT_COUNT) if EXTRACT_COUNT > 0 else url
             try:
-                r = requests.get(get_url, timeout=15)
+                sess = requests.Session()
+                sess.trust_env = False
+                r = sess.get(get_url, timeout=15)
                 self.last_fetch = time.time()
                 text = r.text
             except Exception as e:
@@ -586,26 +588,23 @@ class ProxyPool:
         print(f"static_ready {len(self.static_list)} live file/env probed={len(ok_list)}/{len(to_probe)}", flush=True)
 
     def _note_hold(self, proxy: str) -> None:
-        if proxy not in self.hold_t:
-            self.hold_t[proxy] = time.time()
+        self.hold_t[proxy] = time.time()
 
     def _reap_hung(self) -> None:
+        # Do not pop in_flight or mark bad here. A late release() would steal
+        # the next worker's slot, and one slow POST is not a dead panda IP.
         now = time.time()
-        lim = CONNECT_TIMEOUT + HTTP_TIMEOUT + 2.0
-        hung = [
-            p
-            for p, n in self.in_flight.items()
-            if n > 0 and now - self.hold_t.get(p, 0) >= lim
-        ]
-        for p in hung:
-            self.in_flight.pop(p, None)
-            self.hold_t.pop(p, None)
-            self.proven.discard(p)
-            if p != DIRECT and p not in self.static_set:
-                self.bad.add(p)
-                if p in self.good:
-                    self.good.remove(p)
-            print(f"hung_drop {urlparse(p).hostname or urlparse(p).username or p[-18:]}", flush=True)
+        lim = CONNECT_TIMEOUT + HTTP_TIMEOUT + 8.0
+        for p, n in list(self.in_flight.items()):
+            if n > 0 and now - self.hold_t.get(p, 0) >= lim:
+                last = self.static_tried.get("hung:" + p, 0.0)
+                if now - last >= 15:
+                    self.static_tried["hung:" + p] = now
+                    print(
+                        f"hung_hold {urlparse(p).hostname or urlparse(p).username or p[-18:]} "
+                        f"n={n}",
+                        flush=True,
+                    )
 
     def _cap(self, proxy: str) -> int:
         return 1 if proxy == DIRECT else MAX_PER_PROXY
@@ -729,18 +728,20 @@ class ProxyPool:
             return
         with _lock:
             _stats["retry"] += 1
-            self.proven.discard(proxy)
             if auth:
                 self.strikes[proxy] = 99
                 self.bad.add(proxy)
+                self.proven.discard(proxy)
                 if proxy in self.good:
                     self.good.remove(proxy)
             else:
                 n = self.strikes.get(proxy, 0) + 1
                 self.strikes[proxy] = n
-                self.bad.add(proxy)
-                if proxy in self.good:
-                    self.good.remove(proxy)
+                if n >= PANDA_STRIKES:
+                    self.bad.add(proxy)
+                    self.proven.discard(proxy)
+                    if proxy in self.good:
+                        self.good.remove(proxy)
         # Do not fetch here. Scanning threads must not block on extract/probe.
 
 
@@ -802,6 +803,9 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
                 pool.fail(held, auth=True)
                 proxy = None
                 fails += 1
+                if fails % 10 == 1:
+                    host = urlparse(held).hostname or held[-18:]
+                    print(f"fail_auth {host} status={r.status_code}", flush=True)
                 continue
             body = json_from_response(r)
             if body is not None and need in body:
@@ -811,11 +815,18 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
             pool.fail(held)
             proxy = None
             fails += 1
+            if fails % 10 == 1:
+                host = urlparse(held).hostname or held[-18:]
+                kind = "waf" if is_waf_text(r.status_code, r.text) else f"status={r.status_code}"
+                print(f"fail_http {host} {kind}", flush=True)
         except Exception as e:
             drop_session(held)
             pool.fail(held, auth=is_proxy_auth_fail(e))
             proxy = None
             fails += 1
+            if fails % 10 == 1:
+                host = urlparse(held).hostname or held[-18:]
+                print(f"fail_exc {host} {type(e).__name__}", flush=True)
             if fails % 20 == 0:
                 print(f"stall fails={fails} inflight={sum(pool.in_flight.values())} panda={pool.panda_good_n()} proven={len(pool.proven)}", flush=True)
             if fails % 4 == 0:
@@ -1047,7 +1058,6 @@ def acquire_run_lock(outdir: str):
 
 
 def main() -> None:
-    socket.setdefaulttimeout(CONNECT_TIMEOUT + HTTP_TIMEOUT)
     os.makedirs(OUTDIR, exist_ok=True)
     acquire_run_lock(OUTDIR)
     state_path = os.path.join(OUTDIR, "state.json")

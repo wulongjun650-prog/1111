@@ -240,7 +240,7 @@ class PoolTests(unittest.TestCase):
         self.assertEqual(seen.count(proven), 2)
         self.assertEqual(len([x for x in seen if x in pandas]), 8)
 
-    def test_reap_hung_frees_slot_for_panda(self):
+    def test_reap_hung_does_not_steal_slot(self):
         pool = d.ProxyPool(urls=["http://example/x"])
         pool.use_direct = False
         proven = "http://9.9.9.9:80"
@@ -250,10 +250,29 @@ class PoolTests(unittest.TestCase):
         pool.born[panda] = time.time()
         pool.ok(proven)
         pool.in_flight[proven] = 2
-        pool.hold_t[proven] = time.time() - (d.CONNECT_TIMEOUT + d.HTTP_TIMEOUT + 3)
+        pool.hold_t[proven] = time.time() - (d.CONNECT_TIMEOUT + d.HTTP_TIMEOUT + 30)
         got = pool.pick()
         self.assertEqual(got, panda)
-        self.assertNotIn(proven, pool.proven)
+        self.assertIn(proven, pool.proven)
+        self.assertNotIn(proven, pool.bad)
+        self.assertEqual(pool.in_flight[proven], 2)
+
+    def test_panda_needs_three_fails(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        p = "http://1.2.3.4:80"
+        pool.good = [p]
+        pool.born[p] = time.time()
+        pool.ok(p)
+        pool.fail(p)
+        pool.fail(p)
+        self.assertIn(p, pool.good)
+        self.assertIn(p, pool.proven)
+        self.assertNotIn(p, pool.bad)
+        pool.fail(p)
+        self.assertNotIn(p, pool.good)
+        self.assertIn(p, pool.bad)
+        self.assertNotIn(p, pool.proven)
 
     def test_static_down_skips_after_fail(self):
         pool = d.ProxyPool(urls=["http://example/x"])
