@@ -51,9 +51,12 @@ def mbr_id(mno: int) -> str | None:
     r = sess().post(
         IDOR,
         data={"bld": "dbms/MDC/DATA/mbr_add_info_select", "locale": "ko_KR", "mbrNo": str(mno)},
+        headers={"Referer": BASE + "/contents/MDC/MAIN/main/index.cmd"},
         timeout=12,
     )
-    if "MBR_ID" not in r.text:
+    if r.status_code != 200 or "MBR_ID" not in r.text:
+        if r.status_code == 403 or "Access Denied" in r.text or "에러페이지" in r.text:
+            time.sleep(2)
         return None
     block = r.json().get("block1") or []
     if not block:
