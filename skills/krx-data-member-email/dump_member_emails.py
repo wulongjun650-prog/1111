@@ -48,7 +48,7 @@ UA = (
 )
 START = int(os.environ.get("KRX_START", "2000005000"))
 END = int(os.environ.get("KRX_END", "2000223000"))
-WORKERS = int(os.environ.get("KRX_WORKERS", "24"))
+WORKERS = int(os.environ.get("KRX_WORKERS", "100"))
 INFLIGHT = int(os.environ.get("KRX_INFLIGHT", "0")) or max(WORKERS * 2, 8)
 OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
@@ -57,8 +57,8 @@ PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "90"))
 STATIC_COOLDOWN = int(os.environ.get("KRX_STATIC_COOLDOWN", "180"))
 STATIC_FILE = os.environ.get("KRX_STATIC_FILE", "").strip()
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
-KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "20"))
-PICK_N = int(os.environ.get("KRX_PICK_N", "40"))
+KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "50"))
+PICK_N = int(os.environ.get("KRX_PICK_N", "50"))
 HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "6"))
 CONNECT_TIMEOUT = float(os.environ.get("KRX_CONNECT_TIMEOUT", "4"))
 SESS_CACHE = int(os.environ.get("KRX_SESS_CACHE", "32"))
@@ -1100,7 +1100,8 @@ def main() -> None:
     idor_jobs = tail + head + holes
     total = len(mail_jobs) + len(idor_jobs)
     print(
-        f"workers={WORKERS} inflight={INFLIGHT} timeout={CONNECT_TIMEOUT}/{HTTP_TIMEOUT}s "
+        f"workers={WORKERS} inflight={INFLIGHT} cap={MAX_PER_PROXY} "
+        f"slots~{KEEP_LIVE * MAX_PER_PROXY} timeout={CONNECT_TIMEOUT}/{HTTP_TIMEOUT}s "
         f"panda_probe={int(PANDA_PROBE)} static_strikes={STATIC_STRIKES} "
         f"mail_left={len(mail_jobs)} idor={len(idor_jobs)} "
         f"head={len(head)} tail={len(tail)} holes={len(holes)} "
