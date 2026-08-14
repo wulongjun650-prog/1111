@@ -397,7 +397,7 @@ class TimeoutSessionTests(unittest.TestCase):
         self.pool.in_flight[raw] = 1
         self.pool.in_flight[proven] = 1
         self.pool.hold_t[raw] = time.time() - (d.UNPROVEN_CONNECT + d.UNPROVEN_READ + 3)
-        self.pool.hold_t[proven] = time.time() - (d.UNPROVEN_CONNECT + d.UNPROVEN_READ + 3)
+        self.pool.hold_t[proven] = time.time() - 1
         self.pool._reap_hung()
         self.assertNotIn(raw, self.pool.in_flight)
         self.assertIn(proven, self.pool.in_flight)
