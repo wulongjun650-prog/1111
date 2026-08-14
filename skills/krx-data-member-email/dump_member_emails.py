@@ -48,7 +48,7 @@ UA = (
 )
 START = int(os.environ.get("KRX_START", "2000005000"))
 END = int(os.environ.get("KRX_END", "2000223000"))
-WORKERS = int(os.environ.get("KRX_WORKERS", "16"))
+WORKERS = int(os.environ.get("KRX_WORKERS", "24"))
 INFLIGHT = int(os.environ.get("KRX_INFLIGHT", "0")) or max(WORKERS * 2, 8)
 OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
@@ -57,8 +57,8 @@ PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "90"))
 STATIC_COOLDOWN = int(os.environ.get("KRX_STATIC_COOLDOWN", "180"))
 STATIC_FILE = os.environ.get("KRX_STATIC_FILE", "").strip()
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
-KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "12"))
-PICK_N = int(os.environ.get("KRX_PICK_N", "12"))
+KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "20"))
+PICK_N = int(os.environ.get("KRX_PICK_N", "40"))
 HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "6"))
 CONNECT_TIMEOUT = float(os.environ.get("KRX_CONNECT_TIMEOUT", "4"))
 SESS_CACHE = int(os.environ.get("KRX_SESS_CACHE", "32"))
@@ -575,41 +575,11 @@ class ProxyPool:
                 print(f"static_ok {label}", flush=True)
         print(f"static_ready {len(self.static_list)} live file/env probed={len(ok_list)}/{len(to_probe)}", flush=True)
 
-    def _is_workhorse(self, proxy: str) -> bool:
-        return proxy == DIRECT or proxy in self.static_set or proxy in self.proven
-
-    def _trial_used(self) -> int:
-        n = 0
-        for p, c in self.in_flight.items():
-            if not self._is_workhorse(p):
-                n += c
-        return n
-
-    def _work_has_slot(self) -> bool:
-        now = time.time()
-        for p in list(self.proven) + list(self.static_list):
-            if p in self.bad or p in self.static_down:
-                continue
-            if p in self.static_set and now < self.static_until.get(p, 0):
-                continue
-            if p not in self.static_set and not self._fresh(p):
-                continue
-            if self.in_flight.get(p, 0) < self._cap(p):
-                return True
-        return False
-
-    def _trial_limit(self) -> int:
-        # Proven still has room: only a few untested. Otherwise all idle workers use panda.
-        if self._work_has_slot():
-            return TRIAL_SLOTS
-        return max(WORKERS, 12)
-
     def _note_hold(self, proxy: str) -> None:
         if proxy not in self.hold_t:
             self.hold_t[proxy] = time.time()
 
     def _reap_hung(self) -> None:
-        """Drop sockets that ignored requests timeout (common with SOCKS). Caller holds _lock."""
         now = time.time()
         lim = CONNECT_TIMEOUT + HTTP_TIMEOUT + 2.0
         hung = [
@@ -628,9 +598,7 @@ class ProxyPool:
             print(f"hung_drop {urlparse(p).hostname or urlparse(p).username or p[-18:]}", flush=True)
 
     def _cap(self, proxy: str) -> int:
-        if proxy == DIRECT or not self._is_workhorse(proxy):
-            return 1
-        return MAX_PER_PROXY
+        return 1 if proxy == DIRECT else MAX_PER_PROXY
 
     def try_acquire(self, proxy: str) -> bool:
         now = time.time()
@@ -639,8 +607,6 @@ class ProxyPool:
             if proxy in self.bad or proxy in self.static_down:
                 return False
             if proxy in self.static_set and now < self.static_until.get(proxy, 0):
-                return False
-            if not self._is_workhorse(proxy) and self._trial_used() >= self._trial_limit():
                 return False
             n = self.in_flight.get(proxy, 0)
             if n >= self._cap(proxy):
@@ -671,35 +637,26 @@ class ProxyPool:
                 and p not in self.static_down
                 and now >= self.static_until.get(p, 0)
             ]
-            fresh = [
+            panda = [
                 p
                 for p in self.good
                 if p not in self.static_set
                 and p not in self.bad
                 and (now - self.born.get(p, 0)) < PROXY_TTL
             ]
-            fresh.sort(key=lambda p: self.born.get(p, 0))
-            panda = fresh[:PICK_N]
-            live = static_live + panda
+            panda.sort(key=lambda p: (0 if p in self.proven else 1, self.born.get(p, 0)))
+            if PICK_N > 0:
+                panda = panda[:PICK_N]
+            live = panda + static_live
             if self.use_direct and now >= self.direct_until and not panda:
                 live = live + [DIRECT]
-            work = [p for p in live if self._is_workhorse(p)]
-            trial = [p for p in live if p not in work]
-            work.sort(key=lambda p: self.in_flight.get(p, 0))
-            for p in work:
+            live.sort(key=lambda p: (self.in_flight.get(p, 0), 0 if p in self.proven or p in self.static_set else 1))
+            for p in live:
                 n = self.in_flight.get(p, 0)
                 if n < self._cap(p):
                     self.in_flight[p] = n + 1
                     self._note_hold(p)
                     return p
-            if self._trial_used() < self._trial_limit():
-                trial.sort(key=lambda p: self.in_flight.get(p, 0))
-                for p in trial:
-                    n = self.in_flight.get(p, 0)
-                    if n < self._cap(p):
-                        self.in_flight[p] = n + 1
-                        self._note_hold(p)
-                        return p
             if live:
                 return None
         if self.use_direct and now >= self.direct_until:
@@ -1116,8 +1073,7 @@ def main() -> None:
                     pool.fetch()
                 print(
                     f"hb panda={pool.panda_good_n()} proven={len(pool.proven)} "
-                    f"inflight={sum(pool.in_flight.values())} trial={pool._trial_used()} "
-                    f"live={pool.live_n()}",
+                    f"inflight={sum(pool.in_flight.values())} live={pool.live_n()}",
                     flush=True,
                 )
             except Exception:

@@ -210,33 +210,32 @@ class PoolTests(unittest.TestCase):
         self.assertEqual({a, b}, {p})
         self.assertIsNone(c)
 
-    def test_new_panda_warmup_is_one_conn(self):
+    def test_new_panda_gets_full_cap(self):
         pool = d.ProxyPool(urls=["http://example/x"])
         pool.use_direct = False
         p = "http://1.2.3.4:80"
         pool.good = [p]
         pool.born[p] = time.time()
         self.assertEqual(pool.pick(), p)
+        self.assertEqual(pool.pick(), p)
         self.assertIsNone(pool.pick())
 
-    def test_pick_keeps_workers_on_proven(self):
+    def test_pick_uses_all_panda_not_four_trials(self):
         pool = d.ProxyPool(urls=["http://example/x"])
         pool.use_direct = False
         proven = "http://9.9.9.9:80"
         pool.good = [proven]
         pool.born[proven] = time.time() - 9
         pool.ok(proven)
-        untested = []
+        pandas = []
         for i in range(8):
             p = f"http://1.1.1.{i}:80"
             pool.good.append(p)
             pool.born[p] = time.time()
-            untested.append(p)
-        seen = [pool.pick() for _ in range(2 + d.TRIAL_SLOTS)]
+            pandas.append(p)
+        seen = [pool.pick() for _ in range(2 + 8)]
         self.assertEqual(seen.count(proven), 2)
-        self.assertEqual(sum(1 for x in seen if x in untested), d.TRIAL_SLOTS)
-        extra = pool.pick()
-        self.assertIn(extra, untested)
+        self.assertEqual(len([x for x in seen if x in pandas]), 8)
 
     def test_reap_hung_frees_slot_for_panda(self):
         pool = d.ProxyPool(urls=["http://example/x"])
@@ -247,8 +246,7 @@ class PoolTests(unittest.TestCase):
         pool.born[proven] = time.time() - 9
         pool.born[panda] = time.time()
         pool.ok(proven)
-        self.assertEqual(pool.pick(), proven)
-        self.assertEqual(pool.pick(), proven)
+        pool.in_flight[proven] = 2
         pool.hold_t[proven] = time.time() - (d.CONNECT_TIMEOUT + d.HTTP_TIMEOUT + 3)
         got = pool.pick()
         self.assertEqual(got, panda)
