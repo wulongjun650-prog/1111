@@ -59,8 +59,8 @@ STATIC_FILE = os.environ.get("KRX_STATIC_FILE", "").strip()
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
 KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "16"))
 PICK_N = int(os.environ.get("KRX_PICK_N", "20"))
-HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "10"))
-CONNECT_TIMEOUT = float(os.environ.get("KRX_CONNECT_TIMEOUT", "5"))
+HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "5"))
+CONNECT_TIMEOUT = float(os.environ.get("KRX_CONNECT_TIMEOUT", "3"))
 SESS_CACHE = int(os.environ.get("KRX_SESS_CACHE", "32"))
 MAX_PER_PROXY = int(os.environ.get("KRX_MAX_PER_PROXY", "2"))
 BAD_CAP = int(os.environ.get("KRX_BAD_CAP", "3000"))
@@ -69,10 +69,9 @@ DIRECT = "__direct__"
 DIRECT_COOLDOWN = int(os.environ.get("KRX_DIRECT_COOLDOWN", "180"))
 DIRECT_WHEN_GOOD_LT = int(os.environ.get("KRX_DIRECT_WHEN_GOOD_LT", "3"))
 STATIC_STRIKES = int(os.environ.get("KRX_STATIC_STRIKES", "3"))
-PANDA_STRIKES = int(os.environ.get("KRX_PANDA_STRIKES", "3"))
 STATIC_REPROBE = int(os.environ.get("KRX_STATIC_REPROBE", "60"))
 PANDA_PROBE = os.environ.get("KRX_PANDA_PROBE", "0") != "0"
-TOPUP_HUNGRY = float(os.environ.get("KRX_TOPUP_HUNGRY", "4"))
+TOPUP_HUNGRY = float(os.environ.get("KRX_TOPUP_HUNGRY", "1.1"))
 TOPUP_IDLE = float(os.environ.get("KRX_TOPUP_IDLE", "6"))
 TRIAL_SLOTS = int(os.environ.get("KRX_TRIAL_SLOTS", "4"))
 EXTRACT_DEAD_HINTS = ("用完", "不足", "余额", "过期", "失效", "次数已", "提取失败", "订单不存在", "INVALID")
@@ -338,7 +337,6 @@ class ProxyPool:
         self.in_flight: dict[str, int] = {}
         self.hold_t: dict[str, float] = {}
         self.proven: set[str] = set()
-        self.epoch: dict[str, int] = {}
         if static:
             p = static.rstrip("/")
             if p:
@@ -593,25 +591,21 @@ class ProxyPool:
 
     def _reap_hung(self) -> None:
         now = time.time()
-        # Wait until the HTTP timeout has already had a chance to fire.
-        lim = CONNECT_TIMEOUT + HTTP_TIMEOUT + 8.0
+        lim = CONNECT_TIMEOUT + HTTP_TIMEOUT + 2.0
         hung = [
             p
             for p, n in self.in_flight.items()
             if n > 0 and now - self.hold_t.get(p, 0) >= lim
         ]
         for p in hung:
-            self.epoch[p] = self.epoch.get(p, 0) + 1
             self.in_flight.pop(p, None)
             self.hold_t.pop(p, None)
             self.proven.discard(p)
-            n = self.strikes.get(p, 0) + 1
-            self.strikes[p] = n
-            if p != DIRECT and p not in self.static_set and n >= PANDA_STRIKES:
+            if p != DIRECT and p not in self.static_set:
                 self.bad.add(p)
                 if p in self.good:
                     self.good.remove(p)
-            print(f"hung_drop {urlparse(p).hostname or urlparse(p).username or p[-18:]} strikes={n}", flush=True)
+            print(f"hung_drop {urlparse(p).hostname or urlparse(p).username or p[-18:]}", flush=True)
 
     def _cap(self, proxy: str) -> int:
         return 1 if proxy == DIRECT else MAX_PER_PROXY
@@ -629,19 +623,12 @@ class ProxyPool:
                 return False
             self.in_flight[proxy] = n + 1
             self._note_hold(proxy)
-            _tls.lease = (proxy, self.epoch.get(proxy, 0))
             return True
 
     def release(self, proxy: str | None) -> None:
         if not proxy:
             return
         with _lock:
-            lease = getattr(_tls, "lease", None)
-            if isinstance(lease, tuple) and len(lease) == 2 and lease[0] == proxy:
-                if lease[1] != self.epoch.get(proxy, 0):
-                    _tls.lease = None
-                    return
-            _tls.lease = None
             n = self.in_flight.get(proxy, 0) - 1
             if n <= 0:
                 self.in_flight.pop(proxy, None)
@@ -679,7 +666,6 @@ class ProxyPool:
                 if n < self._cap(p):
                     self.in_flight[p] = n + 1
                     self._note_hold(p)
-                    _tls.lease = (p, self.epoch.get(p, 0))
                     return p
             if live:
                 return None
@@ -743,8 +729,8 @@ class ProxyPool:
             return
         with _lock:
             _stats["retry"] += 1
+            self.proven.discard(proxy)
             if auth:
-                self.proven.discard(proxy)
                 self.strikes[proxy] = 99
                 self.bad.add(proxy)
                 if proxy in self.good:
@@ -752,11 +738,9 @@ class ProxyPool:
             else:
                 n = self.strikes.get(proxy, 0) + 1
                 self.strikes[proxy] = n
-                if n >= PANDA_STRIKES:
-                    self.proven.discard(proxy)
-                    self.bad.add(proxy)
-                    if proxy in self.good:
-                        self.good.remove(proxy)
+                self.bad.add(proxy)
+                if proxy in self.good:
+                    self.good.remove(proxy)
         # Do not fetch here. Scanning threads must not block on extract/probe.
 
 
@@ -1063,7 +1047,7 @@ def acquire_run_lock(outdir: str):
 
 
 def main() -> None:
-    socket.setdefaulttimeout(CONNECT_TIMEOUT + HTTP_TIMEOUT + 1.0)
+    socket.setdefaulttimeout(CONNECT_TIMEOUT + HTTP_TIMEOUT)
     os.makedirs(OUTDIR, exist_ok=True)
     acquire_run_lock(OUTDIR)
     state_path = os.path.join(OUTDIR, "state.json")
@@ -1096,7 +1080,7 @@ def main() -> None:
         while True:
             try:
                 pool.prune()
-                if pool.panda_proven_n() < KEEP_LIVE and pool.panda_good_n() < KEEP_LIVE and pool._alive_urls():
+                if pool.panda_proven_n() < KEEP_LIVE and pool._alive_urls():
                     pool.fetch()
                 now = time.time()
                 if now - last_hb >= 8:

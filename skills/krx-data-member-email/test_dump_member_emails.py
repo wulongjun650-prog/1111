@@ -250,44 +250,10 @@ class PoolTests(unittest.TestCase):
         pool.born[panda] = time.time()
         pool.ok(proven)
         pool.in_flight[proven] = 2
-        pool.hold_t[proven] = time.time() - (d.CONNECT_TIMEOUT + d.HTTP_TIMEOUT + 9)
+        pool.hold_t[proven] = time.time() - (d.CONNECT_TIMEOUT + d.HTTP_TIMEOUT + 3)
         got = pool.pick()
-        self.assertIsNotNone(got)
+        self.assertEqual(got, panda)
         self.assertNotIn(proven, pool.proven)
-
-    def test_panda_waf_needs_three_strikes(self):
-        pool = d.ProxyPool(urls=["http://example/x"])
-        pool.use_direct = False
-        p = "http://1.2.3.4:80"
-        pool.good = [p]
-        pool.born[p] = time.time()
-        pool.ok(p)
-        pool.fail(p)
-        pool.fail(p)
-        self.assertEqual(pool.pick(), p)
-        self.assertIn(p, pool.proven)
-        self.assertNotIn(p, pool.bad)
-        pool.release(p)
-        pool.fail(p)
-        self.assertIn(p, pool.bad)
-        self.assertNotIn(p, pool.proven)
-        self.assertIsNone(pool.pick())
-
-    def test_late_release_after_hung_does_not_steal(self):
-        pool = d.ProxyPool(urls=["http://example/x"])
-        pool.use_direct = False
-        p = "http://1.2.3.4:80"
-        pool.good = [p]
-        pool.born[p] = time.time()
-        self.assertEqual(pool.pick(), p)
-        old = d._tls.lease
-        pool.hold_t[p] = time.time() - (d.CONNECT_TIMEOUT + d.HTTP_TIMEOUT + 9)
-        pool._reap_hung()
-        self.assertEqual(pool.pick(), p)
-        self.assertEqual(pool.in_flight.get(p), 1)
-        d._tls.lease = old
-        pool.release(p)
-        self.assertEqual(pool.in_flight.get(p), 1)
 
     def test_static_down_skips_after_fail(self):
         pool = d.ProxyPool(urls=["http://example/x"])
