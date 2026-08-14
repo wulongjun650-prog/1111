@@ -65,6 +65,13 @@ class ParseTests(unittest.TestCase):
         self.assertTrue(d.extract_is_dead("余额不足"))
         self.assertFalse(d.extract_is_dead("1.2.3.4:80"))
 
+    def test_quota_wait_does_not_kill_url(self):
+        pool = d.ProxyPool(urls=["http://a/x", "http://b/x"])
+        pool.exhausted_until["http://a/x"] = time.time() + 60
+        self.assertEqual(pool._alive_urls(), ["http://b/x"])
+        pool.exhausted_until["http://a/x"] = time.time() - 1
+        self.assertEqual(pool._alive_urls(), ["http://a/x", "http://b/x"])
+
     def test_count_rewrite(self):
         u = "http://x/api?secret=a&orderNo=b&count=6&isTxt=1"
         self.assertIn("count=2", d.with_extract_count(u, 2))

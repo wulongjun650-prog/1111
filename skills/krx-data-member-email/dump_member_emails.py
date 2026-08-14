@@ -326,6 +326,7 @@ class ProxyPool:
         self.strikes: dict[str, int] = {}
         self.born: dict[str, float] = {}
         self.dead_urls: set[str] = set()
+        self.exhausted_until: dict[str, float] = {}
         self.empty_streak: dict[str, int] = {}
         self.last_fetch = 0.0
         self.ui = 0
@@ -348,7 +349,12 @@ class ProxyPool:
                 self.static_tried[p] = 0.0
 
     def _alive_urls(self) -> list[str]:
-        return [u for u in self.urls if u not in self.dead_urls]
+        now = time.time()
+        return [
+            u
+            for u in self.urls
+            if u not in self.dead_urls and now >= self.exhausted_until.get(u, 0)
+        ]
 
     def _fresh(self, proxy: str) -> bool:
         if proxy in self.bad:
@@ -472,11 +478,22 @@ class ProxyPool:
                 print(f"extract_err {type(e).__name__}", flush=True)
                 return
             if extract_is_dead(text):
+                if any(h in text for h in ("用完", "不足", "余额", "次数已")):
+                    self.exhausted_until[url] = time.time() + 120
+                    print(
+                        f"api_wait 120s {url.split('orderNo=')[-1][:28]} "
+                        f"{text[:80].replace(chr(10), ' ')}",
+                        flush=True,
+                    )
+                    return
                 self.dead_urls.add(url)
                 print(f"api_dead {url.split('orderNo=')[-1][:28]} {text[:80].replace(chr(10),' ')}", flush=True)
                 return
             got = parse_extract_body(text, self.extra_auth)
             if not got:
+                if "请按规定" in text or '"code":"-102"' in text:
+                    print("extract_rate_limit", flush=True)
+                    return
                 n = self.empty_streak.get(url, 0) + 1
                 self.empty_streak[url] = n
                 if n >= 3:
