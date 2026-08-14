@@ -599,10 +599,10 @@ class ProxyPool:
         return False
 
     def _trial_limit(self) -> int:
-        # Proven/static still have room: only a few untested. All busy/hung: use panda.
+        # Proven still has room: only a few untested. Otherwise all idle workers use panda.
         if self._work_has_slot():
             return TRIAL_SLOTS
-        return max(TRIAL_SLOTS * 3, 12)
+        return max(WORKERS, 12)
 
     def _note_hold(self, proxy: str) -> None:
         if proxy not in self.hold_t:
@@ -615,7 +615,7 @@ class ProxyPool:
         hung = [
             p
             for p, n in self.in_flight.items()
-            if n > 0 and now - self.hold_t.get(p, now) >= lim
+            if n > 0 and now - self.hold_t.get(p, 0) >= lim
         ]
         for p in hung:
             self.in_flight.pop(p, None)
@@ -785,7 +785,7 @@ def session_for(proxy: str | None) -> requests.Session:
     if s is None:
         s = requests.Session()
         s.trust_env = False
-        s.headers.update({"User-Agent": UA, "X-Requested-With": "XMLHttpRequest"})
+        s.headers.update({"User-Agent": UA, "X-Requested-With": "XMLHttpRequest", "Connection": "close"})
         s.mount("https://", requests.adapters.HTTPAdapter(pool_connections=4, pool_maxsize=4, max_retries=0))
         if proxy and proxy != DIRECT:
             s.proxies.update({"http": proxy, "https": proxy})
@@ -849,8 +849,10 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
             pool.fail(held, auth=is_proxy_auth_fail(e))
             proxy = None
             fails += 1
+            if fails % 20 == 0:
+                print(f"stall fails={fails} inflight={sum(pool.in_flight.values())} panda={pool.panda_good_n()} proven={len(pool.proven)}", flush=True)
             if fails % 4 == 0:
-                time.sleep(min(0.15 * (fails // 4), 1.0) + random.random() * 0.1)
+                time.sleep(0.05)
         finally:
             pool.release(held)
 
@@ -1112,6 +1114,12 @@ def main() -> None:
                 pool.prune()
                 if pool.panda_good_n() < KEEP_LIVE and pool._alive_urls():
                     pool.fetch()
+                print(
+                    f"hb panda={pool.panda_good_n()} proven={len(pool.proven)} "
+                    f"inflight={sum(pool.in_flight.values())} trial={pool._trial_used()} "
+                    f"live={pool.live_n()}",
+                    flush=True,
+                )
             except Exception:
                 pass
             time.sleep(TOPUP_HUNGRY if pool.panda_good_n() < KEEP_LIVE else TOPUP_IDLE)
