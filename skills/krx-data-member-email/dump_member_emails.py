@@ -354,6 +354,7 @@ class ProxyPool:
         self.in_flight: dict[str, int] = {}
         self.hold_t: dict[str, float] = {}
         self.proven: set[str] = set()
+        self.live_sess: dict[str, list] = {}
         if static:
             p = static.rstrip("/")
             if p:
@@ -611,8 +612,9 @@ class ProxyPool:
             return CONNECT_TIMEOUT + HTTP_TIMEOUT + 2.0
         return UNPROVEN_CONNECT + UNPROVEN_READ + 2.0
 
-    def _reap_hung(self) -> None:
+    def _reap_hung(self) -> list:
         now = time.time()
+        to_close: list = []
         hung = [
             p
             for p, n in self.in_flight.items()
@@ -627,6 +629,36 @@ class ProxyPool:
                 if p in self.good:
                     self.good.remove(p)
             print(f"hung_drop {urlparse(p).hostname or urlparse(p).username or p[-18:]}", flush=True)
+            to_close.extend(self.live_sess.pop(p, []))
+        return to_close
+
+    def _close_sessions(self, sessions: list) -> None:
+        for s in sessions:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+    def bind_session(self, proxy: str, session: requests.Session) -> None:
+        with _lock:
+            self.live_sess.setdefault(proxy, []).append(session)
+
+    def unbind_session(self, proxy: str, session: requests.Session) -> None:
+        with _lock:
+            lst = self.live_sess.get(proxy)
+            if not lst:
+                return
+            try:
+                lst.remove(session)
+            except ValueError:
+                pass
+            if not lst:
+                self.live_sess.pop(proxy, None)
+
+    def reap_now(self) -> None:
+        with _lock:
+            sessions = self._reap_hung()
+        self._close_sessions(sessions)
 
     def _cap(self, proxy: str) -> int:
         return 1 if proxy == DIRECT else MAX_PER_PROXY
@@ -634,17 +666,21 @@ class ProxyPool:
     def try_acquire(self, proxy: str) -> bool:
         now = time.time()
         with _lock:
-            self._reap_hung()
+            sessions = self._reap_hung()
+            ok = True
             if proxy in self.bad or proxy in self.static_down:
-                return False
-            if proxy in self.static_set and now < self.static_until.get(proxy, 0):
-                return False
-            n = self.in_flight.get(proxy, 0)
-            if n >= self._cap(proxy):
-                return False
-            self.in_flight[proxy] = n + 1
-            self._note_hold(proxy)
-            return True
+                ok = False
+            elif proxy in self.static_set and now < self.static_until.get(proxy, 0):
+                ok = False
+            else:
+                n = self.in_flight.get(proxy, 0)
+                if n >= self._cap(proxy):
+                    ok = False
+                else:
+                    self.in_flight[proxy] = n + 1
+                    self._note_hold(proxy)
+        self._close_sessions(sessions)
+        return ok
 
     def release(self, proxy: str | None) -> None:
         if not proxy:
@@ -660,7 +696,7 @@ class ProxyPool:
     def pick(self) -> str | None:
         now = time.time()
         with _lock:
-            self._reap_hung()
+            sessions = self._reap_hung()
             static_live = [
                 p
                 for p in self.static_list
@@ -682,15 +718,19 @@ class ProxyPool:
             if self.use_direct and now >= self.direct_until and not panda:
                 live = live + [DIRECT]
             live.sort(key=lambda p: (self.in_flight.get(p, 0), 0 if p in self.proven or p in self.static_set else 1))
+            chosen = None
             for p in live:
                 n = self.in_flight.get(p, 0)
                 if n < self._cap(p):
                     self.in_flight[p] = n + 1
                     self._note_hold(p)
-                    return p
-            if live:
-                return None
-        if self.use_direct and now >= self.direct_until:
+                    chosen = p
+                    break
+            empty = not live and chosen is None
+        self._close_sessions(sessions)
+        if chosen:
+            return chosen
+        if empty and self.use_direct and now >= self.direct_until:
             if self.try_acquire(DIRECT):
                 return DIRECT
         return None
@@ -827,6 +867,7 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
         held = proxy
         warm_before = is_warm_proxy(held)
         s = session_for(held, keep_alive=warm_before)
+        pool.bind_session(held, s)
         try:
             r = s.post(
                 url,
@@ -860,6 +901,7 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
             if fails % 4 == 0:
                 time.sleep(0.05)
         finally:
+            pool.unbind_session(held, s)
             pool.release(held)
 
 
@@ -1123,6 +1165,7 @@ def main() -> None:
                 pool.prune()
                 if pool.panda_proven_n() < KEEP_LIVE and pool._alive_urls():
                     pool.fetch()
+                pool.reap_now()
                 now = time.time()
                 if now - last_hb >= 8:
                     print(
@@ -1146,8 +1189,17 @@ def main() -> None:
             except Exception:
                 pass
 
+    def _reaper() -> None:
+        while True:
+            time.sleep(1.0)
+            try:
+                pool.reap_now()
+            except Exception:
+                pass
+
     threading.Thread(target=_panda_topup, name="panda-topup", daemon=True).start()
     threading.Thread(target=_static_topup, name="static-topup", daemon=True).start()
+    threading.Thread(target=_reaper, name="hung-reaper", daemon=True).start()
     if pool.urls:
         pool.fetch_all()
 

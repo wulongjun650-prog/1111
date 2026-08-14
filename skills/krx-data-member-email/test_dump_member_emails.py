@@ -402,6 +402,26 @@ class TimeoutSessionTests(unittest.TestCase):
         self.assertNotIn(raw, self.pool.in_flight)
         self.assertIn(proven, self.pool.in_flight)
 
+    def test_hung_drop_closes_bound_session(self):
+        p = "http://1.1.1.1:80"
+        self.pool.good = [p]
+        self.pool.born[p] = time.time()
+        self.pool.in_flight[p] = 1
+        self.pool.hold_t[p] = time.time() - 30
+
+        class Fake:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        s = Fake()
+        self.pool.live_sess[p] = [s]
+        self.pool.reap_now()
+        self.assertTrue(s.closed)
+        self.assertNotIn(p, self.pool.in_flight)
+
 
 if __name__ == "__main__":
     unittest.main()
