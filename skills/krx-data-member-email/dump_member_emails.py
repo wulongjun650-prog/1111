@@ -46,13 +46,14 @@ UA = (
 )
 START = int(os.environ.get("KRX_START", "2000005000"))
 END = int(os.environ.get("KRX_END", "2000223000"))
-WORKERS = int(os.environ.get("KRX_WORKERS", "32"))
+WORKERS = int(os.environ.get("KRX_WORKERS", "16"))
 OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
 PROXY_AUTH = os.environ.get("KRX_PROXY_AUTH", "").strip()
 PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "90"))
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
-KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "20"))
+KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "12"))
+PICK_N = int(os.environ.get("KRX_PICK_N", "12"))
 USE_DIRECT = os.environ.get("KRX_USE_DIRECT", "1") != "0"
 DIRECT = "__direct__"
 DIRECT_COOLDOWN = int(os.environ.get("KRX_DIRECT_COOLDOWN", "180"))
@@ -367,32 +368,20 @@ class ProxyPool:
             self.fetch()
 
     def pick(self) -> str | None:
-        for _ in range(12):
+        with _lock:
+            self._expire_old()
+            fresh = [p for p in self.good if self._fresh(p)]
+            fresh.sort(key=lambda p: self.born.get(p, 0), reverse=True)
+            live = fresh[:PICK_N]
+            direct_ok = self.use_direct and time.time() >= self.direct_until
+        if direct_ok:
+            live = live + [DIRECT]
+        if live:
             with _lock:
-                self._expire_old()
-                prefer = [p for p in self.good if self._fresh(p)]
-                extra = [
-                    p
-                    for p in self.proxies
-                    if p not in self.bad and p not in prefer and self._fresh(p)
-                ]
-                live = prefer + extra
-                direct_ok = self.use_direct and time.time() >= self.direct_until
-            if direct_ok:
-                # Mix datacenter IP into rotation, do not replace panda.
-                live = live + [DIRECT]
-            if live:
-                with _lock:
-                    self.i += 1
-                    return live[self.i % len(live)]
-            if not self._alive_urls() and not direct_ok:
-                time.sleep(1)
-                continue
-            self.fetch_all() if self._alive_urls() else self.fetch()
-        if self.use_direct and time.time() >= self.direct_until:
+                self.i += 1
+                return live[self.i % len(live)]
+        if self.use_direct:
             return DIRECT
-        if self.allow_direct and not self.use_direct:
-            return self.static or None
         return None
 
     def ok(self, proxy: str | None) -> None:
@@ -433,9 +422,7 @@ class ProxyPool:
                     self.bad.add(proxy)
                     if proxy in self.good:
                         self.good.remove(proxy)
-            live = self.good_n()
-        if live < KEEP_LIVE:
-            self.fetch_all()
+        # Do not fetch here. Scanning threads must not block on extract/probe.
 
 
 def session_for(proxy: str | None) -> requests.Session:
@@ -471,10 +458,8 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
     fails = 0
     while True:
         proxy = pool.pick()
-        if proxy is None and not pool.allow_direct:
-            time.sleep(1.0)
-            pool.fetch()
-            fails += 1
+        if proxy is None:
+            time.sleep(0.4)
             continue
         s = session_for(proxy)
         try:
@@ -745,10 +730,10 @@ def main() -> None:
 
     def _topup() -> None:
         while True:
-            time.sleep(8)
+            time.sleep(12)
             try:
                 if pool.good_n() < KEEP_LIVE and pool._alive_urls():
-                    pool.fetch_all()
+                    pool.fetch()
             except Exception:
                 pass
 
