@@ -250,9 +250,9 @@ class PoolTests(unittest.TestCase):
         pool.born[panda] = time.time()
         pool.ok(proven)
         pool.in_flight[proven] = 2
-        pool.hold_t[proven] = time.time() - (d.CONNECT_TIMEOUT + d.HTTP_TIMEOUT + 3)
+        pool.hold_t[proven] = time.time() - (d.CONNECT_TIMEOUT + d.HTTP_TIMEOUT + 9)
         got = pool.pick()
-        self.assertEqual(got, panda)
+        self.assertIsNotNone(got)
         self.assertNotIn(proven, pool.proven)
 
     def test_panda_waf_needs_three_strikes(self):
@@ -261,14 +261,33 @@ class PoolTests(unittest.TestCase):
         p = "http://1.2.3.4:80"
         pool.good = [p]
         pool.born[p] = time.time()
+        pool.ok(p)
         pool.fail(p)
         pool.fail(p)
         self.assertEqual(pool.pick(), p)
+        self.assertIn(p, pool.proven)
         self.assertNotIn(p, pool.bad)
         pool.release(p)
         pool.fail(p)
         self.assertIn(p, pool.bad)
+        self.assertNotIn(p, pool.proven)
         self.assertIsNone(pool.pick())
+
+    def test_late_release_after_hung_does_not_steal(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        p = "http://1.2.3.4:80"
+        pool.good = [p]
+        pool.born[p] = time.time()
+        self.assertEqual(pool.pick(), p)
+        old = d._tls.lease
+        pool.hold_t[p] = time.time() - (d.CONNECT_TIMEOUT + d.HTTP_TIMEOUT + 9)
+        pool._reap_hung()
+        self.assertEqual(pool.pick(), p)
+        self.assertEqual(pool.in_flight.get(p), 1)
+        d._tls.lease = old
+        pool.release(p)
+        self.assertEqual(pool.in_flight.get(p), 1)
 
     def test_static_down_skips_after_fail(self):
         pool = d.ProxyPool(urls=["http://example/x"])
@@ -370,73 +389,6 @@ class CsvTests(unittest.TestCase):
             self.assertEqual(m[2000008331], "ryujt")
         finally:
             os.unlink(path)
-
-
-class TimeoutSessionTests(unittest.TestCase):
-    def setUp(self):
-        d._tls.cache = {}
-        d._tls.proxy = None
-        self.pool = d.init_pool([])
-        self.pool.use_direct = False
-
-    def tearDown(self):
-        d.POOL = None
-        d._tls.cache = {}
-        d._tls.proxy = None
-
-    def test_unproven_uses_short_timeout(self):
-        p = "http://1.2.3.4:80"
-        self.pool.good = [p]
-        self.pool.born[p] = time.time()
-        self.assertEqual(d.http_timeout(p), (d.UNPROVEN_CONNECT, d.UNPROVEN_READ))
-        self.pool.ok(p)
-        self.assertEqual(d.http_timeout(p), (d.CONNECT_TIMEOUT, d.HTTP_TIMEOUT))
-
-    def test_session_close_then_keepalive(self):
-        p = "http://1.2.3.4:80"
-        self.pool.good = [p]
-        self.pool.born[p] = time.time()
-        s0 = d.session_for(p)
-        self.assertEqual(s0.headers.get("Connection"), "close")
-        self.pool.ok(p)
-        d.drop_session(p)
-        s1 = d.session_for(p)
-        self.assertEqual(s1.headers.get("Connection"), "keep-alive")
-
-    def test_unproven_hung_reaps_sooner(self):
-        raw = "http://1.1.1.1:80"
-        proven = "http://9.9.9.9:80"
-        self.pool.good = [raw, proven]
-        self.pool.born[raw] = self.pool.born[proven] = time.time()
-        self.pool.ok(proven)
-        self.pool.in_flight[raw] = 1
-        self.pool.in_flight[proven] = 1
-        self.pool.hold_t[raw] = time.time() - (d.UNPROVEN_CONNECT + d.UNPROVEN_READ + 3)
-        self.pool.hold_t[proven] = time.time() - 1
-        self.pool._reap_hung()
-        self.assertGreaterEqual(self.pool.strikes.get(raw, 0), 1)
-        self.assertEqual(self.pool.strikes.get(proven, 0), 0)
-        self.assertIn(proven, self.pool.in_flight)
-
-    def test_hung_drop_closes_bound_session(self):
-        p = "http://1.1.1.1:80"
-        self.pool.good = [p]
-        self.pool.born[p] = time.time()
-        self.pool.in_flight[p] = 1
-        self.pool.hold_t[p] = time.time() - 30
-
-        class Fake:
-            def __init__(self):
-                self.closed = False
-
-            def close(self):
-                self.closed = True
-
-        s = Fake()
-        self.pool.live_sess[p] = [s]
-        self.pool.reap_now()
-        self.assertTrue(s.closed)
-        self.assertEqual(self.pool.in_flight.get(p), 1)
 
 
 if __name__ == "__main__":
