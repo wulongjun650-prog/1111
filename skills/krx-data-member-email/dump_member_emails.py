@@ -622,14 +622,17 @@ class ProxyPool:
             if n > 0 and now - self.hold_t.get(p, 0) >= self._hung_limit(p)
         ]
         for p in hung:
-            self.in_flight.pop(p, None)
-            self.hold_t.pop(p, None)
+            # Close sockets so the worker can fail and release the slot itself.
+            # Do not pop in_flight here: a late release() would steal the next
+            # worker's slot and proven never sticks.
             self.proven.discard(p)
-            if p != DIRECT and p not in self.static_set:
+            n = self.strikes.get(p, 0) + 1
+            self.strikes[p] = n
+            if p != DIRECT and p not in self.static_set and n >= PANDA_STRIKES:
                 self.bad.add(p)
                 if p in self.good:
                     self.good.remove(p)
-            print(f"hung_drop {urlparse(p).hostname or urlparse(p).username or p[-18:]}", flush=True)
+            print(f"hung_drop {urlparse(p).hostname or urlparse(p).username or p[-18:]} strikes={n}", flush=True)
             to_close.extend(self.live_sess.pop(p, []))
         return to_close
 

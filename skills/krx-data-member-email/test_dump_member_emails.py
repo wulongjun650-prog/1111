@@ -414,7 +414,8 @@ class TimeoutSessionTests(unittest.TestCase):
         self.pool.hold_t[raw] = time.time() - (d.UNPROVEN_CONNECT + d.UNPROVEN_READ + 3)
         self.pool.hold_t[proven] = time.time() - 1
         self.pool._reap_hung()
-        self.assertNotIn(raw, self.pool.in_flight)
+        self.assertGreaterEqual(self.pool.strikes.get(raw, 0), 1)
+        self.assertEqual(self.pool.strikes.get(proven, 0), 0)
         self.assertIn(proven, self.pool.in_flight)
 
     def test_hung_drop_closes_bound_session(self):
@@ -435,7 +436,7 @@ class TimeoutSessionTests(unittest.TestCase):
         self.pool.live_sess[p] = [s]
         self.pool.reap_now()
         self.assertTrue(s.closed)
-        self.assertNotIn(p, self.pool.in_flight)
+        self.assertEqual(self.pool.in_flight.get(p), 1)
 
 
 if __name__ == "__main__":
