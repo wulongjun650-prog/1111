@@ -438,7 +438,7 @@ class ProxyPool:
             if live:
                 self.i += 1
                 return live[self.i % len(live)]
-        if self.use_direct:
+        if self.use_direct and now >= self.direct_until:
             return DIRECT
         return None
 
@@ -463,8 +463,11 @@ class ProxyPool:
         if proxy == DIRECT:
             with _lock:
                 _stats["retry"] += 1
-                self.direct_until = time.time() + DIRECT_COOLDOWN
-            print(f"direct_cooldown {DIRECT_COOLDOWN}s", flush=True)
+                now = time.time()
+                first = now >= self.direct_until
+                self.direct_until = now + DIRECT_COOLDOWN
+            if first:
+                print(f"direct_cooldown {DIRECT_COOLDOWN}s", flush=True)
             return
         with _lock:
             _stats["retry"] += 1
@@ -765,8 +768,24 @@ def selftest() -> int:
     return 0
 
 
+def acquire_run_lock(outdir: str):
+    import fcntl
+
+    path = os.path.join(outdir, "dump.lock")
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("another dump is running", path, flush=True)
+        raise SystemExit(2)
+    os.ftruncate(fd, 0)
+    os.write(fd, f"{os.getpid()}\n".encode())
+    return fd
+
+
 def main() -> None:
     os.makedirs(OUTDIR, exist_ok=True)
+    acquire_run_lock(OUTDIR)
     state_path = os.path.join(OUTDIR, "state.json")
     scanned_path = os.path.join(OUTDIR, "scanned.csv")
     email_path = os.path.join(OUTDIR, "emails.csv")
@@ -796,7 +815,7 @@ def main() -> None:
 
     def _topup() -> None:
         while True:
-            time.sleep(8)
+            time.sleep(2 if pool.good_n() == 0 else 8)
             try:
                 pool.prune()
                 if pool.good_n() < KEEP_LIVE and pool._alive_urls():

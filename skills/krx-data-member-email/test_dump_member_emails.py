@@ -105,6 +105,12 @@ class PoolTests(unittest.TestCase):
         pool.use_direct = True
         self.assertEqual(pool.pick(), d.DIRECT)
 
+    def test_pick_none_during_direct_cooldown(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = True
+        pool.fail(d.DIRECT)
+        self.assertIsNone(pool.pick())
+
     def test_direct_cooldown(self):
         pool = d.ProxyPool(urls=["http://example/x"])
         pool.use_direct = True
