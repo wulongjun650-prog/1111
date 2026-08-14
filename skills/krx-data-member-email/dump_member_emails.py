@@ -74,7 +74,7 @@ STATIC_STRIKES = int(os.environ.get("KRX_STATIC_STRIKES", "3"))
 PANDA_STRIKES = int(os.environ.get("KRX_PANDA_STRIKES", "3"))
 STATIC_REPROBE = int(os.environ.get("KRX_STATIC_REPROBE", "60"))
 PANDA_PROBE = os.environ.get("KRX_PANDA_PROBE", "0") != "0"
-TOPUP_HUNGRY = float(os.environ.get("KRX_TOPUP_HUNGRY", "1.1"))
+TOPUP_HUNGRY = float(os.environ.get("KRX_TOPUP_HUNGRY", "4"))
 TOPUP_IDLE = float(os.environ.get("KRX_TOPUP_IDLE", "6"))
 TRIAL_SLOTS = int(os.environ.get("KRX_TRIAL_SLOTS", "4"))
 EXTRACT_DEAD_HINTS = ("用完", "不足", "余额", "过期", "失效", "次数已", "提取失败", "订单不存在", "INVALID")
@@ -1165,8 +1165,12 @@ def main() -> None:
         while True:
             try:
                 pool.prune()
+                busy = sum(pool.in_flight.values())
                 if pool.panda_proven_n() < KEEP_LIVE and pool._alive_urls():
-                    pool.fetch()
+                    # Extract storm while every worker is blocked makes every
+                    # KRX request time out. Wait until a slot is free or the pool is empty.
+                    if busy < WORKERS or pool.panda_good_n() < 4:
+                        pool.fetch()
                 pool.reap_now()
                 now = time.time()
                 if now - last_hb >= 8:
