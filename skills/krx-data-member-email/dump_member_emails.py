@@ -490,6 +490,16 @@ class ProxyPool:
 
     def sync_static(self) -> None:
         wanted = static_proxy_list()
+        wanted_set = set(wanted)
+        with _lock:
+            dropped = [p for p in list(self.static_list) if p not in wanted_set]
+            for p in dropped:
+                if p in self.static_list:
+                    self.static_list.remove(p)
+                self.static_set.discard(p)
+                if p in self.good:
+                    self.good.remove(p)
+                print(f"static_drop {urlparse(p).hostname}", flush=True)
         now = time.time()
         to_probe: list[str] = []
         for p in wanted:

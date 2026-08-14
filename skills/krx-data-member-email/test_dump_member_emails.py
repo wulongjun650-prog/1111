@@ -72,6 +72,22 @@ class ParseTests(unittest.TestCase):
             "socks5h://bee68:6566@210.223.226.182:5588",
         )
 
+    def test_sync_drops_removed_static(self):
+        pool = d.ProxyPool(urls=[])
+        gone = "socks5h://aa:aa@1.1.1.1:5588"
+        keep = "socks5h://aa:aa@2.2.2.2:5588"
+        pool.static_list = [gone, keep]
+        pool.static_set = {gone, keep}
+        pool.good = [gone, keep]
+        orig = d.static_proxy_list
+        d.static_proxy_list = lambda: [keep]
+        try:
+            pool.sync_static()
+        finally:
+            d.static_proxy_list = orig
+        self.assertNotIn(gone, pool.static_list)
+        self.assertIn(keep, pool.static_list)
+
 
 class PoolTests(unittest.TestCase):
     def test_ttl_drops_old_ip(self):
