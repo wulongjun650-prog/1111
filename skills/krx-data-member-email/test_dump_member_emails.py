@@ -2,6 +2,7 @@
 import os
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -49,10 +50,27 @@ class ParseTests(unittest.TestCase):
         self.assertTrue(d.is_waf_text(403, "{}"))
         self.assertFalse(d.is_waf_text(200, '{"block1":[]}'))
 
-    def test_407(self):
-        self.assertTrue(d.is_proxy_auth_fail(text="407 White list IP"))
-        self.assertTrue(d.is_proxy_auth_fail(Exception("Tunnel connection failed: 407")))
-        self.assertFalse(d.is_proxy_auth_fail(text='{"block1":[]}'))
+    def test_exhausted_api(self):
+        self.assertTrue(d.extract_is_dead('{"code":"-1","msg":"提取次数已用完"}'))
+        self.assertTrue(d.extract_is_dead("余额不足"))
+        self.assertFalse(d.extract_is_dead("1.2.3.4:80"))
+
+    def test_count_rewrite(self):
+        u = "http://x/api?secret=a&orderNo=b&count=6&isTxt=1"
+        self.assertIn("count=2", d.with_extract_count(u, 2))
+
+
+class PoolTests(unittest.TestCase):
+    def test_ttl_drops_old_ip(self):
+        pool = d.ProxyPool(urls=[])
+        pool.allow_direct = False
+        p = "http://1.2.3.4:80"
+        pool.proxies = [p]
+        pool.good = [p]
+        pool.born[p] = time.time() - d.PROXY_TTL - 1
+        self.assertEqual(pool.live_n(), 0)
+        pool._expire_old()
+        self.assertIn(p, pool.bad)
 
 
 class JobTests(unittest.TestCase):
