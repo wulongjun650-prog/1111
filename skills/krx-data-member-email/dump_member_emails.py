@@ -12,6 +12,7 @@ import csv
 import json
 import os
 import random
+import socket
 import threading
 import time
 from collections import deque
@@ -334,6 +335,7 @@ class ProxyPool:
         self.static_tried: dict[str, float] = {}
         self.static_down: set[str] = set()
         self.in_flight: dict[str, int] = {}
+        self.hold_t: dict[str, float] = {}
         self.proven: set[str] = set()
         if static:
             p = static.rstrip("/")
@@ -583,12 +585,47 @@ class ProxyPool:
                 n += c
         return n
 
+    def _work_has_slot(self) -> bool:
+        now = time.time()
+        for p in list(self.proven) + list(self.static_list):
+            if p in self.bad or p in self.static_down:
+                continue
+            if p in self.static_set and now < self.static_until.get(p, 0):
+                continue
+            if p not in self.static_set and not self._fresh(p):
+                continue
+            if self.in_flight.get(p, 0) < self._cap(p):
+                return True
+        return False
+
     def _trial_limit(self) -> int:
-        if any(self._is_workhorse(p) for p in self.good if p != DIRECT) or any(
-            p in self.static_list and p not in self.static_down and p not in self.bad for p in self.static_list
-        ):
+        # Proven/static still have room: only a few untested. All busy/hung: use panda.
+        if self._work_has_slot():
             return TRIAL_SLOTS
         return max(TRIAL_SLOTS * 3, 12)
+
+    def _note_hold(self, proxy: str) -> None:
+        if proxy not in self.hold_t:
+            self.hold_t[proxy] = time.time()
+
+    def _reap_hung(self) -> None:
+        """Drop sockets that ignored requests timeout (common with SOCKS). Caller holds _lock."""
+        now = time.time()
+        lim = CONNECT_TIMEOUT + HTTP_TIMEOUT + 2.0
+        hung = [
+            p
+            for p, n in self.in_flight.items()
+            if n > 0 and now - self.hold_t.get(p, now) >= lim
+        ]
+        for p in hung:
+            self.in_flight.pop(p, None)
+            self.hold_t.pop(p, None)
+            self.proven.discard(p)
+            if p != DIRECT and p not in self.static_set:
+                self.bad.add(p)
+                if p in self.good:
+                    self.good.remove(p)
+            print(f"hung_drop {urlparse(p).hostname or urlparse(p).username or p[-18:]}", flush=True)
 
     def _cap(self, proxy: str) -> int:
         if proxy == DIRECT or not self._is_workhorse(proxy):
@@ -598,6 +635,7 @@ class ProxyPool:
     def try_acquire(self, proxy: str) -> bool:
         now = time.time()
         with _lock:
+            self._reap_hung()
             if proxy in self.bad or proxy in self.static_down:
                 return False
             if proxy in self.static_set and now < self.static_until.get(proxy, 0):
@@ -608,6 +646,7 @@ class ProxyPool:
             if n >= self._cap(proxy):
                 return False
             self.in_flight[proxy] = n + 1
+            self._note_hold(proxy)
             return True
 
     def release(self, proxy: str | None) -> None:
@@ -617,12 +656,14 @@ class ProxyPool:
             n = self.in_flight.get(proxy, 0) - 1
             if n <= 0:
                 self.in_flight.pop(proxy, None)
+                self.hold_t.pop(proxy, None)
             else:
                 self.in_flight[proxy] = n
 
     def pick(self) -> str | None:
         now = time.time()
         with _lock:
+            self._reap_hung()
             static_live = [
                 p
                 for p in self.static_list
@@ -649,6 +690,7 @@ class ProxyPool:
                 n = self.in_flight.get(p, 0)
                 if n < self._cap(p):
                     self.in_flight[p] = n + 1
+                    self._note_hold(p)
                     return p
             if self._trial_used() < self._trial_limit():
                 trial.sort(key=lambda p: self.in_flight.get(p, 0))
@@ -656,6 +698,7 @@ class ProxyPool:
                     n = self.in_flight.get(p, 0)
                     if n < self._cap(p):
                         self.in_flight[p] = n + 1
+                        self._note_hold(p)
                         return p
             if live:
                 return None
@@ -1035,6 +1078,7 @@ def acquire_run_lock(outdir: str):
 
 
 def main() -> None:
+    socket.setdefaulttimeout(CONNECT_TIMEOUT + HTTP_TIMEOUT)
     os.makedirs(OUTDIR, exist_ok=True)
     acquire_run_lock(OUTDIR)
     state_path = os.path.join(OUTDIR, "state.json")

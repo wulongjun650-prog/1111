@@ -235,7 +235,24 @@ class PoolTests(unittest.TestCase):
         seen = [pool.pick() for _ in range(2 + d.TRIAL_SLOTS)]
         self.assertEqual(seen.count(proven), 2)
         self.assertEqual(sum(1 for x in seen if x in untested), d.TRIAL_SLOTS)
-        self.assertIsNone(pool.pick())
+        extra = pool.pick()
+        self.assertIn(extra, untested)
+
+    def test_reap_hung_frees_slot_for_panda(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        proven = "http://9.9.9.9:80"
+        panda = "http://1.1.1.1:80"
+        pool.good = [proven, panda]
+        pool.born[proven] = time.time() - 9
+        pool.born[panda] = time.time()
+        pool.ok(proven)
+        self.assertEqual(pool.pick(), proven)
+        self.assertEqual(pool.pick(), proven)
+        pool.hold_t[proven] = time.time() - (d.CONNECT_TIMEOUT + d.HTTP_TIMEOUT + 3)
+        got = pool.pick()
+        self.assertEqual(got, panda)
+        self.assertNotIn(proven, pool.proven)
 
     def test_static_down_skips_after_fail(self):
         pool = d.ProxyPool(urls=["http://example/x"])
