@@ -178,6 +178,28 @@ class PoolTests(unittest.TestCase):
         pool.fail(p)
         self.assertIsNone(pool.pick())
 
+    def test_pick_caps_in_flight(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        p = "http://1.2.3.4:80"
+        pool.good = [p]
+        pool.born[p] = time.time()
+        a = pool.pick()
+        b = pool.pick()
+        c = pool.pick()
+        self.assertEqual({a, b}, {p})
+        self.assertIsNone(c)
+
+    def test_static_down_skips_after_fail(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        p = "http://u:p@proxy.ipdeep.com:7085"
+        pool.static_list = [p]
+        pool.static_set = {p}
+        pool.fail(p)
+        pool.static_until[p] = 0
+        self.assertIsNone(pool.pick())
+
     def test_static_auth_cools_down_not_dead(self):
         pool = d.ProxyPool(urls=["http://example/x"])
         pool.use_direct = False

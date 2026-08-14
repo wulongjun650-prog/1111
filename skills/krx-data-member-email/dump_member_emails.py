@@ -58,8 +58,9 @@ STATIC_FILE = os.environ.get("KRX_STATIC_FILE", "").strip()
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
 KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "12"))
 PICK_N = int(os.environ.get("KRX_PICK_N", "12"))
-HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "8"))
+HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "5"))
 SESS_CACHE = int(os.environ.get("KRX_SESS_CACHE", "32"))
+MAX_PER_PROXY = int(os.environ.get("KRX_MAX_PER_PROXY", "2"))
 BAD_CAP = int(os.environ.get("KRX_BAD_CAP", "3000"))
 USE_DIRECT = os.environ.get("KRX_USE_DIRECT", "1") != "0"
 DIRECT = "__direct__"
@@ -318,6 +319,8 @@ class ProxyPool:
         self.static_set: set[str] = set()
         self.static_until: dict[str, float] = {}
         self.static_tried: dict[str, float] = {}
+        self.static_down: set[str] = set()
+        self.in_flight: dict[str, int] = {}
         if static:
             p = static.rstrip("/")
             if p:
@@ -330,6 +333,8 @@ class ProxyPool:
         if proxy in self.bad:
             return False
         if proxy in self.static_set:
+            if proxy in self.static_down:
+                return False
             return time.time() >= self.static_until.get(proxy, 0)
         return (time.time() - self.born.get(proxy, 0)) < PROXY_TTL
 
@@ -348,7 +353,7 @@ class ProxyPool:
         return [
             p
             for p in self.static_list
-            if p not in self.bad and now >= self.static_until.get(p, 0)
+            if p not in self.bad and p not in self.static_down and now >= self.static_until.get(p, 0)
         ]
 
     def live_list(self) -> list[str]:
@@ -497,17 +502,21 @@ class ProxyPool:
                 if p in self.static_list:
                     self.static_list.remove(p)
                 self.static_set.discard(p)
+                self.static_down.discard(p)
                 if p in self.good:
                     self.good.remove(p)
                 print(f"static_drop {urlparse(p).hostname}", flush=True)
         now = time.time()
         to_probe: list[str] = []
         for p in wanted:
-            if p in self.static_set:
+            down = p in self.static_down
+            if p in self.static_set and not down:
+                continue
+            if down and now < self.static_until.get(p, 0):
                 continue
             self.bad.discard(p)
             last = self.static_tried.get(p)
-            if last is not None and now - last < 60:
+            if last is not None and now - last < 60 and not down:
                 continue
             to_probe.append(p)
         if not to_probe:
@@ -538,6 +547,7 @@ class ProxyPool:
                     self.proxies.append(p)
                 self.bad.discard(p)
                 self.static_until.pop(p, None)
+                self.static_down.discard(p)
                 self.strikes.pop(p, None)
                 self.born[p] = now
                 if p not in self.good:
@@ -545,11 +555,41 @@ class ProxyPool:
                 print(f"static_ok {label}", flush=True)
         print(f"static_ready {len(self.static_list)} live file/env probed={len(ok_list)}/{len(to_probe)}", flush=True)
 
+    def _cap(self, proxy: str) -> int:
+        return 1 if proxy == DIRECT else MAX_PER_PROXY
+
+    def try_acquire(self, proxy: str) -> bool:
+        now = time.time()
+        with _lock:
+            if proxy in self.bad or proxy in self.static_down:
+                return False
+            if proxy in self.static_set and now < self.static_until.get(proxy, 0):
+                return False
+            n = self.in_flight.get(proxy, 0)
+            if n >= self._cap(proxy):
+                return False
+            self.in_flight[proxy] = n + 1
+            return True
+
+    def release(self, proxy: str | None) -> None:
+        if not proxy:
+            return
+        with _lock:
+            n = self.in_flight.get(proxy, 0) - 1
+            if n <= 0:
+                self.in_flight.pop(proxy, None)
+            else:
+                self.in_flight[proxy] = n
+
     def pick(self) -> str | None:
         now = time.time()
         with _lock:
             static_live = [
-                p for p in self.static_list if p not in self.bad and now >= self.static_until.get(p, 0)
+                p
+                for p in self.static_list
+                if p not in self.bad
+                and p not in self.static_down
+                and now >= self.static_until.get(p, 0)
             ]
             fresh = [
                 p
@@ -560,15 +600,25 @@ class ProxyPool:
             ]
             fresh.sort(key=lambda p: self.born.get(p, 0), reverse=True)
             panda = fresh[:PICK_N]
-            # Panda first so a WAF'd Korean farm cannot occupy every worker.
             live = panda + static_live
             if self.use_direct and now >= self.direct_until and not panda:
                 live = live + [DIRECT]
-            if live:
+            nlive = len(live)
+            for _ in range(max(nlive, 1)):
+                if not live:
+                    break
                 self.i += 1
-                return live[self.i % len(live)]
+                p = live[self.i % nlive]
+                n = self.in_flight.get(p, 0)
+                cap = 1 if p == DIRECT else MAX_PER_PROXY
+                if n < cap:
+                    self.in_flight[p] = n + 1
+                    return p
+            if live:
+                return None
         if self.use_direct and now >= self.direct_until:
-            return DIRECT
+            if self.try_acquire(DIRECT):
+                return DIRECT
         return None
 
     def ok(self, proxy: str | None) -> None:
@@ -584,6 +634,7 @@ class ProxyPool:
             self.strikes.pop(proxy, None)
             self.bad.discard(proxy)
             self.static_until.pop(proxy, None)
+            self.static_down.discard(proxy)
             if proxy not in self.good:
                 self.good.append(proxy)
 
@@ -607,15 +658,12 @@ class ProxyPool:
                 n = self.strikes.get(proxy, 0) + 1
                 self.strikes[proxy] = n
                 self.static_until[proxy] = now + STATIC_COOLDOWN
-                if auth and n >= 8:
-                    self.bad.add(proxy)
-                    if proxy in self.good:
-                        self.good.remove(proxy)
-                    print(f"static_dead {urlparse(proxy).username}", flush=True)
-                    return
+                self.static_down.add(proxy)
+                if proxy in self.good:
+                    self.good.remove(proxy)
             if first:
                 kind = "auth" if auth else "waf"
-                print(f"static_cooldown {urlparse(proxy).username} {kind} {STATIC_COOLDOWN}s", flush=True)
+                print(f"static_cooldown {urlparse(proxy).hostname or urlparse(proxy).username} {kind} {STATIC_COOLDOWN}s", flush=True)
             return
         with _lock:
             _stats["retry"] += 1
@@ -627,10 +675,9 @@ class ProxyPool:
             else:
                 n = self.strikes.get(proxy, 0) + 1
                 self.strikes[proxy] = n
-                if n >= 2:
-                    self.bad.add(proxy)
-                    if proxy in self.good:
-                        self.good.remove(proxy)
+                self.bad.add(proxy)
+                if proxy in self.good:
+                    self.good.remove(proxy)
         # Do not fetch here. Scanning threads must not block on extract/probe.
 
 
@@ -669,13 +716,17 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
     fails = 0
     proxy = getattr(_tls, "proxy", None)
     while True:
+        if proxy is not None and not pool.try_acquire(proxy):
+            _tls.proxy = None
+            proxy = None
         if proxy is None:
             proxy = pool.pick()
             if proxy is None:
-                time.sleep(0.2)
+                time.sleep(0.12)
                 continue
             _tls.proxy = proxy
-        s = session_for(proxy)
+        held = proxy
+        s = session_for(held)
         try:
             r = s.post(
                 url,
@@ -684,29 +735,28 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
                 timeout=HTTP_TIMEOUT,
             )
             if r.status_code == 407 or is_proxy_auth_fail(text=r.text):
-                drop_session(proxy)
-                pool.fail(proxy, auth=True)
+                drop_session(held)
+                pool.fail(held, auth=True)
                 proxy = None
                 fails += 1
                 continue
             body = json_from_response(r)
             if body is not None and need in body:
-                pool.ok(proxy)
+                pool.ok(held)
                 return body
+            drop_session(held)
+            pool.fail(held)
+            proxy = None
+            fails += 1
         except Exception as e:
-            drop_session(proxy)
-            pool.fail(proxy, auth=is_proxy_auth_fail(e))
+            drop_session(held)
+            pool.fail(held, auth=is_proxy_auth_fail(e))
             proxy = None
             fails += 1
             if fails % 4 == 0:
                 time.sleep(min(0.15 * (fails // 4), 1.0) + random.random() * 0.1)
-            continue
-        drop_session(proxy)
-        pool.fail(proxy)
-        proxy = None
-        fails += 1
-        if fails % 4 == 0:
-            time.sleep(min(0.15 * (fails // 4), 1.0) + random.random() * 0.1)
+        finally:
+            pool.release(held)
 
 
 def mbr_id(mno: int) -> str | None:
