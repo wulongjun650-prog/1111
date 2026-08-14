@@ -72,6 +72,7 @@ STATIC_REPROBE = int(os.environ.get("KRX_STATIC_REPROBE", "60"))
 PANDA_PROBE = os.environ.get("KRX_PANDA_PROBE", "0") != "0"
 TOPUP_HUNGRY = float(os.environ.get("KRX_TOPUP_HUNGRY", "1.1"))
 TOPUP_IDLE = float(os.environ.get("KRX_TOPUP_IDLE", "6"))
+TRIAL_SLOTS = int(os.environ.get("KRX_TRIAL_SLOTS", "4"))
 EXTRACT_DEAD_HINTS = ("用完", "不足", "余额", "过期", "失效", "次数已", "提取失败", "订单不存在", "INVALID")
 CLOUD_GOOD_FROM = 2000005966
 KNOWN_MBR = 2000008331
@@ -333,6 +334,7 @@ class ProxyPool:
         self.static_tried: dict[str, float] = {}
         self.static_down: set[str] = set()
         self.in_flight: dict[str, int] = {}
+        self.proven: set[str] = set()
         if static:
             p = static.rstrip("/")
             if p:
@@ -406,6 +408,7 @@ class ProxyPool:
         for p in dead:
             self.born.pop(p, None)
             self.strikes.pop(p, None)
+            self.proven.discard(p)
         self.good = [p for p in self.good if p not in dead_set]
         self.proxies = [p for p in self.proxies if p not in dead_set]
 
@@ -566,13 +569,29 @@ class ProxyPool:
                 self.born[p] = now
                 if p not in self.good:
                     self.good.append(p)
+                self.proven.add(p)
                 print(f"static_ok {label}", flush=True)
         print(f"static_ready {len(self.static_list)} live file/env probed={len(ok_list)}/{len(to_probe)}", flush=True)
 
+    def _is_workhorse(self, proxy: str) -> bool:
+        return proxy == DIRECT or proxy in self.static_set or proxy in self.proven
+
+    def _trial_used(self) -> int:
+        n = 0
+        for p, c in self.in_flight.items():
+            if not self._is_workhorse(p):
+                n += c
+        return n
+
+    def _trial_limit(self) -> int:
+        if any(self._is_workhorse(p) for p in self.good if p != DIRECT) or any(
+            p in self.static_list and p not in self.static_down and p not in self.bad for p in self.static_list
+        ):
+            return TRIAL_SLOTS
+        return max(TRIAL_SLOTS * 3, 12)
+
     def _cap(self, proxy: str) -> int:
-        if proxy == DIRECT:
-            return 1
-        if proxy not in self.static_set and (time.time() - self.born.get(proxy, 0)) < 8:
+        if proxy == DIRECT or not self._is_workhorse(proxy):
             return 1
         return MAX_PER_PROXY
 
@@ -582,6 +601,8 @@ class ProxyPool:
             if proxy in self.bad or proxy in self.static_down:
                 return False
             if proxy in self.static_set and now < self.static_until.get(proxy, 0):
+                return False
+            if not self._is_workhorse(proxy) and self._trial_used() >= self._trial_limit():
                 return False
             n = self.in_flight.get(proxy, 0)
             if n >= self._cap(proxy):
@@ -621,12 +642,21 @@ class ProxyPool:
             live = static_live + panda
             if self.use_direct and now >= self.direct_until and not panda:
                 live = live + [DIRECT]
-            live.sort(key=lambda p: self.in_flight.get(p, 0))
-            for p in live:
+            work = [p for p in live if self._is_workhorse(p)]
+            trial = [p for p in live if p not in work]
+            work.sort(key=lambda p: self.in_flight.get(p, 0))
+            for p in work:
                 n = self.in_flight.get(p, 0)
                 if n < self._cap(p):
                     self.in_flight[p] = n + 1
                     return p
+            if self._trial_used() < self._trial_limit():
+                trial.sort(key=lambda p: self.in_flight.get(p, 0))
+                for p in trial:
+                    n = self.in_flight.get(p, 0)
+                    if n < self._cap(p):
+                        self.in_flight[p] = n + 1
+                        return p
             if live:
                 return None
         if self.use_direct and now >= self.direct_until:
@@ -650,6 +680,7 @@ class ProxyPool:
             self.static_down.discard(proxy)
             if proxy not in self.good:
                 self.good.append(proxy)
+            self.proven.add(proxy)
 
     def fail(self, proxy: str | None, auth: bool = False) -> None:
         if not proxy:
@@ -677,6 +708,7 @@ class ProxyPool:
                     self.static_down.add(proxy)
                     if proxy in self.good:
                         self.good.remove(proxy)
+                    self.proven.discard(proxy)
             if first:
                 kind = "auth" if auth else "waf"
                 print(
@@ -687,6 +719,7 @@ class ProxyPool:
             return
         with _lock:
             _stats["retry"] += 1
+            self.proven.discard(proxy)
             if auth:
                 self.strikes[proxy] = 99
                 self.bad.add(proxy)
@@ -1133,7 +1166,7 @@ def main() -> None:
                 json.dump(state, sfj)
             print(
                 f"done={snap['done']}/{total} ids+={snap['ids']} emails+={snap['emails']} "
-                f"retry={snap['retry']} good={good_n} panda={pool.panda_good_n()} "
+                f"retry={snap['retry']} good={good_n} proven={len(pool.proven)} panda={pool.panda_good_n()} "
                 f"static={len(pool.static_live())} down={len(pool.static_down)} "
                 f"born={len(pool.born)} win={win:.1f}/s avg={avg:.1f}/s "
                 f"eta={eta/60:.1f}min last={mno}",

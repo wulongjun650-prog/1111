@@ -203,6 +203,7 @@ class PoolTests(unittest.TestCase):
         p = "http://1.2.3.4:80"
         pool.good = [p]
         pool.born[p] = time.time() - 9
+        pool.ok(p)
         a = pool.pick()
         b = pool.pick()
         c = pool.pick()
@@ -216,6 +217,24 @@ class PoolTests(unittest.TestCase):
         pool.good = [p]
         pool.born[p] = time.time()
         self.assertEqual(pool.pick(), p)
+        self.assertIsNone(pool.pick())
+
+    def test_pick_keeps_workers_on_proven(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        proven = "http://9.9.9.9:80"
+        pool.good = [proven]
+        pool.born[proven] = time.time() - 9
+        pool.ok(proven)
+        untested = []
+        for i in range(8):
+            p = f"http://1.1.1.{i}:80"
+            pool.good.append(p)
+            pool.born[p] = time.time()
+            untested.append(p)
+        seen = [pool.pick() for _ in range(2 + d.TRIAL_SLOTS)]
+        self.assertEqual(seen.count(proven), 2)
+        self.assertEqual(sum(1 for x in seen if x in untested), d.TRIAL_SLOTS)
         self.assertIsNone(pool.pick())
 
     def test_static_down_skips_after_fail(self):
