@@ -53,7 +53,7 @@ OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
 PROXY_AUTH = os.environ.get("KRX_PROXY_AUTH", "").strip()
 PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "90"))
-STATIC_COOLDOWN = int(os.environ.get("KRX_STATIC_COOLDOWN", "60"))
+STATIC_COOLDOWN = int(os.environ.get("KRX_STATIC_COOLDOWN", "180"))
 STATIC_FILE = os.environ.get("KRX_STATIC_FILE", "").strip()
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
 KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "12"))
@@ -549,14 +549,10 @@ class ProxyPool:
                 and (now - self.born.get(p, 0)) < PROXY_TTL
             ]
             fresh.sort(key=lambda p: self.born.get(p, 0), reverse=True)
-            live = static_live + fresh[:PICK_N]
-            n_good = len(static_live) + len(fresh)
-            direct_ok = (
-                self.use_direct
-                and now >= self.direct_until
-                and n_good < DIRECT_WHEN_GOOD_LT
-            )
-            if direct_ok:
+            panda = fresh[:PICK_N]
+            # Panda first so a WAF'd Korean farm cannot occupy every worker.
+            live = panda + static_live
+            if self.use_direct and now >= self.direct_until and not panda:
                 live = live + [DIRECT]
             if live:
                 self.i += 1
