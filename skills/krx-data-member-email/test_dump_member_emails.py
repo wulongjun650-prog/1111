@@ -175,8 +175,21 @@ class PoolTests(unittest.TestCase):
         p = "http://u:p@proxy.ipdeep.com:7085"
         pool.static_list = [p]
         pool.static_set = {p}
-        pool.fail(p)
+        pool.good = [p]
+        for _ in range(d.STATIC_STRIKES):
+            pool.fail(p)
         self.assertIsNone(pool.pick())
+
+    def test_static_one_waf_stays_pickable(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        p = "http://u:p@proxy.ipdeep.com:7085"
+        pool.static_list = [p]
+        pool.static_set = {p}
+        pool.good = [p]
+        pool.fail(p)
+        self.assertEqual(pool.pick(), p)
+        self.assertNotIn(p, pool.static_down)
 
     def test_pick_caps_in_flight(self):
         pool = d.ProxyPool(urls=["http://example/x"])
@@ -196,7 +209,9 @@ class PoolTests(unittest.TestCase):
         p = "http://u:p@proxy.ipdeep.com:7085"
         pool.static_list = [p]
         pool.static_set = {p}
-        pool.fail(p)
+        pool.good = [p]
+        for _ in range(d.STATIC_STRIKES):
+            pool.fail(p)
         pool.static_until[p] = 0
         self.assertIsNone(pool.pick())
 
@@ -212,6 +227,18 @@ class PoolTests(unittest.TestCase):
 
 
 class SpeedTests(unittest.TestCase):
+    def test_http_timeout_is_connect_read(self):
+        self.assertEqual(d.http_timeout(), (d.CONNECT_TIMEOUT, d.HTTP_TIMEOUT))
+
+    def test_pick_spreads_across_exits(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        a, b = "http://1.1.1.1:80", "http://2.2.2.2:80"
+        pool.good = [a, b]
+        pool.born[a] = pool.born[b] = time.time()
+        seen = [pool.pick(), pool.pick()]
+        self.assertEqual(set(seen), {a, b})
+
     def test_window_rate_uses_recent_only(self):
         d._recent.clear()
         now = 1_000_000.0
