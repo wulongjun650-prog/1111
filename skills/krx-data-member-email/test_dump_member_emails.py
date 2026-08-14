@@ -50,6 +50,12 @@ class ParseTests(unittest.TestCase):
         self.assertTrue(d.is_waf_text(403, "{}"))
         self.assertFalse(d.is_waf_text(200, '{"block1":[]}'))
 
+    def test_waf_html_is_not_proxy_auth(self):
+        html = "<html>Access Denied. You are not authorized.</html>"
+        self.assertFalse(d.is_proxy_auth_fail(text=html))
+        self.assertTrue(d.is_proxy_auth_fail(text="407 Proxy Authentication Required"))
+        self.assertTrue(d.is_proxy_auth_fail(text="ip not in white list"))
+
     def test_exhausted_api(self):
         self.assertTrue(d.extract_is_dead('{"code":"-1","msg":"提取次数已用完"}'))
         self.assertTrue(d.extract_is_dead("余额不足"))

