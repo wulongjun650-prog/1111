@@ -71,6 +71,7 @@ DIRECT = "__direct__"
 DIRECT_COOLDOWN = int(os.environ.get("KRX_DIRECT_COOLDOWN", "180"))
 DIRECT_WHEN_GOOD_LT = int(os.environ.get("KRX_DIRECT_WHEN_GOOD_LT", "3"))
 STATIC_STRIKES = int(os.environ.get("KRX_STATIC_STRIKES", "3"))
+PANDA_STRIKES = int(os.environ.get("KRX_PANDA_STRIKES", "3"))
 STATIC_REPROBE = int(os.environ.get("KRX_STATIC_REPROBE", "60"))
 PANDA_PROBE = os.environ.get("KRX_PANDA_PROBE", "0") != "0"
 TOPUP_HUNGRY = float(os.environ.get("KRX_TOPUP_HUNGRY", "1.1"))
@@ -799,9 +800,10 @@ class ProxyPool:
             else:
                 n = self.strikes.get(proxy, 0) + 1
                 self.strikes[proxy] = n
-                self.bad.add(proxy)
-                if proxy in self.good:
-                    self.good.remove(proxy)
+                if n >= PANDA_STRIKES:
+                    self.bad.add(proxy)
+                    if proxy in self.good:
+                        self.good.remove(proxy)
         # Do not fetch here. Scanning threads must not block on extract/probe.
 
 

@@ -255,6 +255,21 @@ class PoolTests(unittest.TestCase):
         self.assertEqual(got, panda)
         self.assertNotIn(proven, pool.proven)
 
+    def test_panda_waf_needs_three_strikes(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        p = "http://1.2.3.4:80"
+        pool.good = [p]
+        pool.born[p] = time.time()
+        pool.fail(p)
+        pool.fail(p)
+        self.assertEqual(pool.pick(), p)
+        self.assertNotIn(p, pool.bad)
+        pool.release(p)
+        pool.fail(p)
+        self.assertIn(p, pool.bad)
+        self.assertIsNone(pool.pick())
+
     def test_static_down_skips_after_fail(self):
         pool = d.ProxyPool(urls=["http://example/x"])
         pool.use_direct = False
