@@ -54,6 +54,7 @@ STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or
 PROXY_AUTH = os.environ.get("KRX_PROXY_AUTH", "").strip()
 PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "90"))
 STATIC_COOLDOWN = int(os.environ.get("KRX_STATIC_COOLDOWN", "60"))
+STATIC_FILE = os.environ.get("KRX_STATIC_FILE", "").strip()
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
 KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "12"))
 PICK_N = int(os.environ.get("KRX_PICK_N", "12"))
@@ -167,6 +168,11 @@ def parse_proxy_line(line: str, extra_auth: str = "") -> str | None:
         return None
     if "://" in line:
         return inject_auth(line, extra_auth)
+    if "/" in line:
+        sp = line.split("/")
+        if len(sp) >= 4 and sp[1].isdigit():
+            host, port, user, pwd = sp[0], sp[1], sp[2], "/".join(sp[3:])
+            return f"socks5h://{user}:{pwd}@{host}:{port}"
     if "@" in line and line.count(":") >= 2:
         return inject_auth("http://" + line, extra_auth)
     parts = line.split(":")
@@ -198,6 +204,15 @@ def static_proxy_list() -> list[str]:
             raw.append(v)
     if STATIC_PROXY:
         raw.append(STATIC_PROXY)
+    path = STATIC_FILE
+    if not path:
+        path = os.path.join(os.path.dirname(OUTDIR.rstrip("/")), "static_proxies.txt")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.replace("\r", "").strip()
+                if line and not line.startswith("#"):
+                    raw.append(line)
     out: list[str] = []
     for line in raw:
         p = parse_proxy_line(line)
@@ -299,13 +314,14 @@ class ProxyPool:
         self.use_direct = USE_DIRECT
         self.direct_until = 0.0
         self.allow_direct = self.use_direct or not self.urls
-        self.static_list = static_proxy_list()
+        self.static_list: list[str] = []
+        self.static_set: set[str] = set()
+        self.static_until: dict[str, float] = {}
+        self.static_tried: dict[str, float] = {}
         if static:
             p = static.rstrip("/")
-            if p and p not in self.static_list:
-                self.static_list.append(p)
-        self.static_set = set(self.static_list)
-        self.static_until: dict[str, float] = {}
+            if p:
+                self.static_tried[p] = 0.0
 
     def _alive_urls(self) -> list[str]:
         return [u for u in self.urls if u not in self.dead_urls]
@@ -470,11 +486,25 @@ class ProxyPool:
             self.fetch()
 
     def load_static(self) -> None:
-        if not self.static_list:
+        self.sync_static()
+
+    def sync_static(self) -> None:
+        wanted = static_proxy_list()
+        now = time.time()
+        to_probe: list[str] = []
+        for p in wanted:
+            if p in self.static_set or p in self.bad:
+                continue
+            if now - self.static_tried.get(p, 0) < 60:
+                continue
+            to_probe.append(p)
+        if not to_probe:
             return
+        for p in to_probe:
+            self.static_tried[p] = now
         ok_list: list[str] = []
-        with ThreadPoolExecutor(max_workers=min(8, len(self.static_list))) as ex:
-            futs = {ex.submit(self._probe, p): p for p in self.static_list}
+        with ThreadPoolExecutor(max_workers=min(8, len(to_probe))) as ex:
+            futs = {ex.submit(self._probe, p): p for p in to_probe}
             for fut in as_completed(futs):
                 p = futs[fut]
                 try:
@@ -484,11 +514,14 @@ class ProxyPool:
                     pass
         now = time.time()
         with _lock:
-            for p in self.static_list:
-                user = urlparse(p).username or ""
+            for p in to_probe:
+                label = urlparse(p).hostname or urlparse(p).username or p[-18:]
                 if p not in ok_list:
-                    print(f"static_fail {user}", flush=True)
+                    print(f"static_fail {label}", flush=True)
                     continue
+                self.static_set.add(p)
+                if p not in self.static_list:
+                    self.static_list.append(p)
                 if p not in self.proxies:
                     self.proxies.append(p)
                 self.bad.discard(p)
@@ -497,8 +530,8 @@ class ProxyPool:
                 self.born[p] = now
                 if p not in self.good:
                     self.good.append(p)
-                print(f"static_ok {user}", flush=True)
-        print(f"static_ready {len(ok_list)}/{len(self.static_list)}", flush=True)
+                print(f"static_ok {label}", flush=True)
+        print(f"static_ready {len(self.static_list)} live file/env probed={len(ok_list)}/{len(to_probe)}", flush=True)
 
     def pick(self) -> str | None:
         now = time.time()
@@ -926,6 +959,7 @@ def main() -> None:
             time.sleep(2 if pool.panda_good_n() == 0 and not pool.static_live() else 8)
             try:
                 pool.prune()
+                pool.sync_static()
                 if pool.panda_good_n() < KEEP_LIVE and pool._alive_urls():
                     pool.fetch()
             except Exception:

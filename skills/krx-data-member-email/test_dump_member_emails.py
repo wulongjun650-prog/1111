@@ -66,6 +66,12 @@ class ParseTests(unittest.TestCase):
             "http://user:pa:ss@proxy.ipdeep.com:7085",
         )
 
+    def test_slash_socks5(self):
+        self.assertEqual(
+            d.parse_proxy_line("210.223.226.182/5588/bee68/6566"),
+            "socks5h://bee68:6566@210.223.226.182:5588",
+        )
+
 
 class PoolTests(unittest.TestCase):
     def test_ttl_drops_old_ip(self):
