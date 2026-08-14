@@ -562,16 +562,19 @@ class ProxyPool:
             with _lock:
                 _stats["retry"] += 1
                 now = time.time()
-                if auth:
+                first = now >= self.static_until.get(proxy, 0)
+                n = self.strikes.get(proxy, 0) + 1
+                self.strikes[proxy] = n
+                self.static_until[proxy] = now + STATIC_COOLDOWN
+                if auth and n >= 8:
                     self.bad.add(proxy)
                     if proxy in self.good:
                         self.good.remove(proxy)
-                    print(f"static_auth_fail {urlparse(proxy).username}", flush=True)
+                    print(f"static_dead {urlparse(proxy).username}", flush=True)
                     return
-                first = now >= self.static_until.get(proxy, 0)
-                self.static_until[proxy] = now + STATIC_COOLDOWN
             if first:
-                print(f"static_cooldown {urlparse(proxy).username} {STATIC_COOLDOWN}s", flush=True)
+                kind = "auth" if auth else "waf"
+                print(f"static_cooldown {urlparse(proxy).username} {kind} {STATIC_COOLDOWN}s", flush=True)
             return
         with _lock:
             _stats["retry"] += 1

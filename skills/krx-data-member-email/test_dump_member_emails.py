@@ -156,6 +156,16 @@ class PoolTests(unittest.TestCase):
         pool.fail(p)
         self.assertIsNone(pool.pick())
 
+    def test_static_auth_cools_down_not_dead(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        p = "http://u:p@proxy.ipdeep.com:7085"
+        pool.static_list = [p]
+        pool.static_set = {p}
+        pool.fail(p, auth=True)
+        self.assertNotIn(p, pool.bad)
+        self.assertIsNone(pool.pick())
+
 
 class SpeedTests(unittest.TestCase):
     def test_window_rate_uses_recent_only(self):
