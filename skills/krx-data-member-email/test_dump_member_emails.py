@@ -357,5 +357,51 @@ class CsvTests(unittest.TestCase):
             os.unlink(path)
 
 
+class TimeoutSessionTests(unittest.TestCase):
+    def setUp(self):
+        d._tls.cache = {}
+        d._tls.proxy = None
+        self.pool = d.init_pool([])
+        self.pool.use_direct = False
+
+    def tearDown(self):
+        d.POOL = None
+        d._tls.cache = {}
+        d._tls.proxy = None
+
+    def test_unproven_uses_short_timeout(self):
+        p = "http://1.2.3.4:80"
+        self.pool.good = [p]
+        self.pool.born[p] = time.time()
+        self.assertEqual(d.http_timeout(p), (d.UNPROVEN_CONNECT, d.UNPROVEN_READ))
+        self.pool.ok(p)
+        self.assertEqual(d.http_timeout(p), (d.CONNECT_TIMEOUT, d.HTTP_TIMEOUT))
+
+    def test_session_close_then_keepalive(self):
+        p = "http://1.2.3.4:80"
+        self.pool.good = [p]
+        self.pool.born[p] = time.time()
+        s0 = d.session_for(p)
+        self.assertEqual(s0.headers.get("Connection"), "close")
+        self.pool.ok(p)
+        d.drop_session(p)
+        s1 = d.session_for(p)
+        self.assertEqual(s1.headers.get("Connection"), "keep-alive")
+
+    def test_unproven_hung_reaps_sooner(self):
+        raw = "http://1.1.1.1:80"
+        proven = "http://9.9.9.9:80"
+        self.pool.good = [raw, proven]
+        self.pool.born[raw] = self.pool.born[proven] = time.time()
+        self.pool.ok(proven)
+        self.pool.in_flight[raw] = 1
+        self.pool.in_flight[proven] = 1
+        self.pool.hold_t[raw] = time.time() - (d.UNPROVEN_CONNECT + d.UNPROVEN_READ + 3)
+        self.pool.hold_t[proven] = time.time() - (d.UNPROVEN_CONNECT + d.UNPROVEN_READ + 3)
+        self.pool._reap_hung()
+        self.assertNotIn(raw, self.pool.in_flight)
+        self.assertIn(proven, self.pool.in_flight)
+
+
 if __name__ == "__main__":
     unittest.main()
