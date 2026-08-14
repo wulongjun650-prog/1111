@@ -60,6 +60,12 @@ class ParseTests(unittest.TestCase):
         self.assertIn("count=2", d.with_extract_count(u, 2))
         self.assertIn("count=6", u)
 
+    def test_host_port_user_pass(self):
+        self.assertEqual(
+            d.parse_proxy_line("proxy.ipdeep.com:7085:user:pa:ss"),
+            "http://user:pa:ss@proxy.ipdeep.com:7085",
+        )
+
 
 class PoolTests(unittest.TestCase):
     def test_ttl_drops_old_ip(self):
@@ -116,6 +122,39 @@ class PoolTests(unittest.TestCase):
         pool.use_direct = True
         pool.fail(d.DIRECT)
         self.assertGreater(pool.direct_until, time.time())
+
+    def test_static_survives_ttl_and_is_picked(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        p = "http://u:p@proxy.ipdeep.com:7085"
+        pool.static_list = [p]
+        pool.static_set = {p}
+        pool.good = [p]
+        pool.born[p] = time.time() - d.PROXY_TTL - 10
+        pool._expire_old()
+        self.assertIn(p, pool.born)
+        self.assertIn(p, pool.good)
+        self.assertEqual(pool.pick(), p)
+
+    def test_panda_good_n_ignores_static(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        st = "http://u:p@proxy.ipdeep.com:7085"
+        pd = "http://1.2.3.4:80"
+        pool.static_list = [st]
+        pool.static_set = {st}
+        pool.good = [st, pd]
+        pool.born[st] = time.time()
+        pool.born[pd] = time.time()
+        self.assertEqual(pool.panda_good_n(), 1)
+
+    def test_static_cooldown_skips_pick(self):
+        pool = d.ProxyPool(urls=["http://example/x"])
+        pool.use_direct = False
+        p = "http://u:p@proxy.ipdeep.com:7085"
+        pool.static_list = [p]
+        pool.static_set = {p}
+        pool.fail(p)
+        self.assertIsNone(pool.pick())
 
 
 class SpeedTests(unittest.TestCase):
