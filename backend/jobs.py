@@ -147,8 +147,9 @@ def _render_sync(job_id: str, board: dict[str, Any], work: Path) -> None:
     outfile = OUTPUT_DIR / f"{job_id}.mp4"
     composer.mux(silent, audio, ass, outfile)
     rel = f"/api/jobs/{job_id}/video"
-    store.update(job_id, video=rel, stills=stills)
-    _emit(job_id, 98, "封装完成", {"video": rel, "stills": stills})
+    dl = f"/api/jobs/{job_id}/download"
+    store.update(job_id, video=rel, download=dl, stills=stills)
+    _emit(job_id, 98, "封装完成", {"video": rel, "download": dl, "stills": stills})
 
 
 def plan_storyboard(payload: dict[str, Any]) -> dict[str, Any]:

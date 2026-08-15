@@ -5,6 +5,7 @@ type Meta = {
   aspects: string[];
   voices: Record<string, string>;
   samples: string[];
+  videos?: { id: string; title: string; play: string; download: string }[];
 };
 
 type Scene = {
@@ -39,6 +40,7 @@ type Job = {
   message: string;
   stills?: string[];
   video?: string | null;
+  download?: string | null;
 };
 
 const DEFAULT_META: Meta = {
@@ -46,7 +48,22 @@ const DEFAULT_META: Meta = {
   aspects: ["16:9", "9:16", "1:1", "21:9"],
   voices: {},
   samples: [],
+  videos: [],
 };
+
+async function saveFile(url: string, filename: string) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("下载失败，请稍后重试");
+  const blob = await res.blob();
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(href), 1500);
+}
 
 export default function App() {
   const [meta, setMeta] = useState<Meta>(DEFAULT_META);
@@ -81,6 +98,7 @@ export default function App() {
               status: data.status ?? prev.status,
               stills: data.stills ?? prev.stills,
               video: data.video ?? prev.video,
+              download: data.download ?? prev.download,
             }
           : prev
       );
@@ -233,6 +251,7 @@ export default function App() {
                     progress: 100,
                     message: "粤语清货广告 30s 已成片",
                     video: data.video,
+                    download: data.download,
                   });
                 } catch (e) {
                   setError(e instanceof Error ? e.message : "广告成片失败");
@@ -273,10 +292,42 @@ export default function App() {
 
           {job?.video && (
             <p className="hint">
-              <a href={job.video} download style={{ color: "var(--gold)" }}>
+              <button
+                className="btn primary"
+                onClick={() =>
+                  saveFile(
+                    job.download || (job.id !== "car-ad" ? `/api/jobs/${job.id}/download` : job.video!),
+                    job.id === "car-ad" ? "car-ad-30s.mp4" : `lumina-${job.id}.mp4`
+                  ).catch((e) => setError(e instanceof Error ? e.message : "下载失败"))
+                }
+              >
                 下载 MP4
-              </a>
+              </button>
             </p>
+          )}
+
+          {!!meta.videos?.length && (
+            <div className="strip" style={{ marginTop: 14 }}>
+              {meta.videos.map((clip) => (
+                <article className="card" key={clip.id}>
+                  <video src={clip.play} controls preload="metadata" />
+                  <div className="meta">
+                    <b>{clip.title}</b>
+                    <button
+                      className="btn ghost"
+                      style={{ marginTop: 8, width: "100%" }}
+                      onClick={() =>
+                        saveFile(clip.download, `${clip.id}.mp4`).catch((e) =>
+                          setError(e instanceof Error ? e.message : "下载失败")
+                        )
+                      }
+                    >
+                      下载这支成片
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
 
           {board && (

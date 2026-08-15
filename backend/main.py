@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend.config import ASPECTS, JOBS_DIR, OUTPUT_DIR, STYLES, VOICES
+from backend.config import ASPECTS, JOBS_DIR, OUTPUT_DIR, ROOT, STYLES, VOICES
 from backend.jobs import plan_storyboard, render_job, store
 
 app = FastAPI(title="映界 Lumina", version="1.0.0")
@@ -46,6 +46,20 @@ def meta():
             "2049 年的雨夜都市，霓虹在积水里碎成光带，一名信使穿过天桥。",
             "一瓶被棚灯吻过的香水，玻璃里藏着海岸与日落，奢侈而安静。",
             "A silent astronaut drifting above a copper-colored planet, remembering home.",
+        ],
+        "videos": [
+            {
+                "id": "car-ad-30s",
+                "title": "粤语车广告 30s",
+                "play": "/api/samples/car-ad-30s.mp4",
+                "download": "/api/download/car-ad-30s.mp4",
+            },
+            {
+                "id": "demo-30s",
+                "title": "国风短片 30s",
+                "play": "/api/samples/demo-30s.mp4",
+                "download": "/api/download/demo-30s.mp4",
+            },
         ],
     }
 
@@ -93,7 +107,7 @@ async def job_events(job_id: str):
                     yield f"data: {line}\n\n"
                 last = len(lines)
             if job and job["status"] in {"done", "error"}:
-                yield f"data: {json.dumps({'status': job['status'], 'progress': job['progress'], 'message': job['message'], 'video': job.get('video'), 'stills': job.get('stills')}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'status': job['status'], 'progress': job['progress'], 'message': job['message'], 'video': job.get('video'), 'download': job.get('download'), 'stills': job.get('stills')}, ensure_ascii=False)}\n\n"
                 break
             await asyncio.sleep(0.4)
 
@@ -113,15 +127,49 @@ async def render_car_ad():
     from backend.campaign import render as render_campaign
 
     path = await render_campaign()
-    return {"video": "/api/samples/car-ad-30s.mp4", "file": path.name}
+    return {
+        "video": "/api/samples/car-ad-30s.mp4",
+        "download": "/api/download/car-ad-30s.mp4",
+        "file": path.name,
+    }
+
+
+def _sample_path(name: str) -> Path:
+    safe = Path(name).name
+    path = ROOT / "samples" / safe
+    if not path.exists() or path.suffix not in {".mp4", ".zip"}:
+        raise HTTPException(404, "样片不存在")
+    return path
+
+
+def _send_file(path: Path, *, download: bool, filename: str) -> FileResponse:
+    media = "application/zip" if path.suffix == ".zip" else "video/mp4"
+    if download:
+        return FileResponse(
+            path,
+            media_type=media,
+            filename=filename,
+            content_disposition_type="attachment",
+            headers={"Accept-Ranges": "bytes", "Cache-Control": "no-store"},
+        )
+    return FileResponse(
+        path,
+        media_type=media,
+        content_disposition_type="inline",
+        headers={"Accept-Ranges": "bytes"},
+    )
 
 
 @app.get("/api/samples/{name}")
 def sample_video(name: str):
-    path = Path(__file__).resolve().parent.parent / "samples" / name
-    if not path.exists() or path.suffix != ".mp4":
-        raise HTTPException(404, "样片不存在")
-    return FileResponse(path, media_type="video/mp4", filename=name)
+    path = _sample_path(name)
+    return _send_file(path, download=False, filename=path.name)
+
+
+@app.get("/api/download/{name}")
+def download_sample(name: str):
+    path = _sample_path(name)
+    return _send_file(path, download=True, filename=path.name)
 
 
 @app.get("/api/jobs/{job_id}/video")
@@ -129,7 +177,15 @@ def video(job_id: str):
     path = OUTPUT_DIR / f"{job_id}.mp4"
     if not path.exists():
         raise HTTPException(404, "成片未就绪")
-    return FileResponse(path, media_type="video/mp4", filename=f"lumina-{job_id}.mp4")
+    return _send_file(path, download=False, filename=f"lumina-{job_id}.mp4")
+
+
+@app.get("/api/jobs/{job_id}/download")
+def download_job(job_id: str):
+    path = OUTPUT_DIR / f"{job_id}.mp4"
+    if not path.exists():
+        raise HTTPException(404, "成片未就绪")
+    return _send_file(path, download=True, filename=f"lumina-{job_id}.mp4")
 
 
 frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

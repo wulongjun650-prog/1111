@@ -307,7 +307,7 @@ select {
   border: 1px solid var(--line);
 }
 
-.card img {
+.card video {
   width: 100%;
   aspect-ratio: 16/10;
   object-fit: cover;
