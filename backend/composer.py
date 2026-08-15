@@ -38,10 +38,10 @@ def ken_burns(
         scale = f"scale=-2:{height}"
         crop = f"crop={width}:{height}:'max(0,in_w-{width})*t/{dur}':(in_h-{height})/2"
 
-    fade_out_start = max(0.05, dur - 0.35)
+    fade_out_start = max(0.05, dur - 0.18)
     vf = (
         f"{scale},{crop},setsar=1,fps={FPS},format=yuv420p,"
-        f"fade=t=in:st=0:d=0.35,fade=t=out:st={fade_out_start:.2f}:d=0.35"
+        f"fade=t=in:st=0:d=0.18,fade=t=out:st={fade_out_start:.2f}:d=0.18"
     )
     _run(
         [
@@ -130,7 +130,24 @@ def fit_voiceover(src: Path, dest: Path, target: float) -> Path:
     """Keep each line of VO inside the planned scene length (~30s totals stay ~30s)."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     target = max(0.8, target)
-    actual = probe_duration(src) if src.exists() and src.stat().st_size > 400 else 0.0
+    if not src.exists() or src.stat().st_size < 400:
+        _run(
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=44100:cl=stereo",
+                "-t",
+                f"{target:.2f}",
+                "-c:a",
+                "aac",
+                str(dest),
+            ]
+        )
+        return dest
+    actual = probe_duration(src)
     filters = [f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo"]
     if actual > target * 1.03:
         tempo = actual / target
