@@ -198,6 +198,49 @@ select {
   display: flex;
   gap: 10px;
   margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.callout {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #0c0c11;
+}
+
+.callout b {
+  color: var(--gold-2);
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.callout p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+}
+
+.callout pre {
+  white-space: pre-wrap;
+  font-size: 12px;
+  color: var(--ink);
+  background: #050507;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin: 0;
+  overflow-x: auto;
+}
+
+.callout.ok {
+  border-color: rgba(155, 231, 196, 0.35);
+}
+
+.callout.bad {
+  border-color: rgba(255, 107, 107, 0.35);
 }
 
 .btn {

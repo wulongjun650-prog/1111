@@ -1,8 +1,44 @@
 # 映界 Lumina
 
-本地可运行的视频生成工作室：一句话 → 分镜 → 旁白 → 运镜成片。
+本地视频生成工作室。
 
-不依赖付费视频模型。画面由电影级程序化光影引擎绘制，旁白使用 Microsoft Edge 神经网络语音，成片由 FFmpeg 完成 Ken Burns 运镜、配乐与字幕烧录。
+**真人开口必须用你自己的电脑（NVIDIA 显卡）。** 云端没有 GPU，做不出人在说话、转头；静帧推拉不是开口。
+
+## 本机真人开口（需要 NVIDIA 显卡）
+
+同一男人先站在奔驰 / 宝马 / 奥迪 / Tesla 中间讲前两段口播，再坐进驾驶位介绍皮笼、天窗、360、WhatsApp。口型与头部动作由本机 [SadTalker](https://github.com/OpenTalker/SadTalker) 驱动，不是幻灯片。
+
+成片：`samples/host-talking.mp4`
+
+### Windows
+
+1. 安装 [Python 3.10](https://www.python.org/downloads/)（勾选 Add to PATH）、[Git](https://git-scm.com/download/win)、NVIDIA 驱动。FFmpeg 安装脚本会尝试 `winget install Gyan.FFmpeg`。
+2. 双击 `run-talking-host.bat`  
+   或在项目目录 PowerShell：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup_talking_host.ps1
+python -m backend.talking_host
+```
+
+第一次会下载约 2GB 模型，之后只跑成片。显存 8GB 用 256，10GB 以上自动用 512。
+
+### Linux
+
+```bash
+bash scripts/setup_talking_host.sh
+PYTHONPATH=. python3 -m backend.talking_host
+```
+
+也可 `./start.sh` 打开 http://127.0.0.1:8000 ，点 **本机真人开口（需 NVIDIA 显卡）**。
+
+只检查本机是否就绪：
+
+```bash
+PYTHONPATH=. python3 -m backend.talking_host --status
+```
+
+---
 
 ## 能力
 
@@ -14,7 +50,7 @@
 - 实时进度、分镜预览、MP4 下载
 - 粤语豪华车清货广告分镜：`python3 -m backend.campaign` → `samples/car-ad-30s.mp4`
 
-## 运行
+## 运行（普通分镜成片，不需要显卡）
 
 需要 Python 3.10+、Node.js 18+、FFmpeg。
 

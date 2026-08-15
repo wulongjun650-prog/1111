@@ -57,7 +57,7 @@ def _emit(job_id: str, progress: int, message: str, extra: dict[str, Any] | None
     payload = {"progress": progress, "message": message}
     if extra:
         payload.update(extra)
-    store.update(job_id, progress=progress, message=message, **{k: v for k, v in (extra or {}).items() if k in {"stills", "video", "status"}})
+    store.update(job_id, progress=progress, message=message, **{k: v for k, v in (extra or {}).items() if k in {"stills", "video", "status", "download"}})
     path = JOBS_DIR / job_id / "events.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:

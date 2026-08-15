@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from backend.config import FONT_PATH, FPS
+from backend.config import FONT_FAMILY, FONT_PATH, FPS
 from backend.tts import probe_duration
 
 
@@ -81,7 +81,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,WenQuanYi Micro Hei,{fontsize},&H00E8DCC8,&H000000FF,&H64101010,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,48,48,{margin_v},1
+Style: Default,{FONT_FAMILY},{fontsize},&H00E8DCC8,&H000000FF,&H64101010,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,48,48,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

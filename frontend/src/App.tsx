@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 
+type TalkingStatus = {
+  ok: boolean;
+  gpu?: string | null;
+  message: string;
+  setup: string[];
+  missing?: string[];
+};
+
 type Meta = {
   styles: Record<string, { label: string; hint: string }>;
   aspects: string[];
   voices: Record<string, string>;
   samples: string[];
   videos?: { id: string; title: string; play: string; download: string }[];
+  talking_host?: TalkingStatus;
 };
 
 type Scene = {
@@ -76,11 +85,15 @@ export default function App() {
   const [job, setJob] = useState<Job | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [talking, setTalking] = useState<TalkingStatus | null>(null);
 
   useEffect(() => {
     fetch("/api/meta")
       .then((r) => r.json())
-      .then(setMeta)
+      .then((data: Meta) => {
+        setMeta(data);
+        if (data.talking_host) setTalking(data.talking_host);
+      })
       .catch(() => setError("无法连接成片引擎，请先启动后端。"));
   }, []);
 
@@ -162,6 +175,31 @@ export default function App() {
     }
   }
 
+  async function renderTalkingHost() {
+    setError("");
+    setBusy(true);
+    try {
+      const res = await fetch("/api/campaigns/talking-host", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 412) {
+        const detail = data.detail || data;
+        setTalking(detail);
+        throw new Error(detail.message || "本机还不能真人开口，请先跑安装脚本");
+      }
+      if (!res.ok) throw new Error(data.detail || "本机真人开口任务提交失败");
+      setJob({
+        id: data.job_id,
+        status: "queued",
+        progress: 0,
+        message: "本机 GPU 开口任务已入队",
+        stills: [],
+      });
+    } catch (e) {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : "本机真人开口失败");
+    }
+  }
+
   function patchScene(index: number, narration: string) {
     if (!board) return;
     setBoard({
@@ -235,6 +273,9 @@ export default function App() {
             <button className="btn primary" disabled={busy || !board} onClick={renderVideo}>
               开始成片
             </button>
+            <button className="btn ghost" disabled={busy} onClick={renderTalkingHost}>
+              本机真人开口（需 NVIDIA 显卡）
+            </button>
             <button
               className="btn ghost"
               disabled={busy}
@@ -263,6 +304,16 @@ export default function App() {
               精修五版粤语广告
             </button>
           </div>
+          {talking && (
+            <div className={"callout " + (talking.ok ? "ok" : "bad")}>
+              <b>{talking.ok ? "本机 GPU 已就绪" : "真人开口必须用你自己的电脑"}</b>
+              <p>{talking.message}</p>
+              {talking.gpu && <p>显卡：{talking.gpu}</p>}
+              {!talking.ok && (
+                <pre>{talking.setup.join("\n")}</pre>
+              )}
+            </div>
+          )}
           {error && <p className="hint" style={{ color: "var(--danger)" }}>{error}</p>}
           {job && (
             <div className="progress">
@@ -297,7 +348,11 @@ export default function App() {
                 onClick={() =>
                   saveFile(
                     job.download || (job.id !== "car-ad" ? `/api/jobs/${job.id}/download` : job.video!),
-                    job.id.startsWith("cantonese") ? "cantonese-v1-v5.zip" : `lumina-${job.id}.mp4`
+                    job.id.startsWith("cantonese")
+                      ? "cantonese-v1-v5.zip"
+                      : job.id === "host-talking" || job.download?.includes("host-talking")
+                        ? "host-talking.mp4"
+                        : `lumina-${job.id}.mp4`
                   ).catch((e) => setError(e instanceof Error ? e.message : "下载失败"))
                 }
               >

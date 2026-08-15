@@ -7,7 +7,7 @@ from pathlib import Path
 from PIL import Image
 
 from backend import composer, music, overlays, tts
-from backend.config import ASPECTS, JOBS_DIR, OUTPUT_DIR, ROOT
+from backend.config import ASPECTS, FONT_FAMILY, JOBS_DIR, OUTPUT_DIR, ROOT
 
 ASSETS = ROOT / "assets" / "car-ad"
 SAMPLES = ROOT / "samples"
@@ -148,7 +148,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,WenQuanYi Micro Hei,34,&H00FFFFFF,&H000000FF,&H64000000,&H80000000,0,0,0,0,100,100,0,0,1,3,0,2,40,40,48,1
+Style: Default,{FONT_FAMILY},34,&H00FFFFFF,&H000000FF,&H64000000,&H80000000,0,0,0,0,100,100,0,0,1,3,0,2,40,40,48,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

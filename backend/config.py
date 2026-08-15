@@ -5,7 +5,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 JOBS_DIR = ROOT / "jobs"
 OUTPUT_DIR = ROOT / "output"
-FONT_PATH = Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc")
+
+
+def _pick_font() -> tuple[Path, str]:
+    candidates = [
+        (Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"), "WenQuanYi Micro Hei"),
+        (Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"), "Noto Sans CJK SC"),
+        (Path("/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf"), "Noto Sans SC"),
+        (Path("C:/Windows/Fonts/msyh.ttc"), "Microsoft YaHei"),
+        (Path("C:/Windows/Fonts/msyhbd.ttc"), "Microsoft YaHei"),
+        (Path("C:/Windows/Fonts/simhei.ttf"), "SimHei"),
+        (Path("/System/Library/Fonts/PingFang.ttc"), "PingFang SC"),
+        (Path("/Library/Fonts/Arial Unicode.ttf"), "Arial Unicode MS"),
+    ]
+    for path, name in candidates:
+        if path.exists():
+            return path, name
+    return Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"), "WenQuanYi Micro Hei"
+
+
+FONT_PATH, FONT_FAMILY = _pick_font()
 
 FPS = 24
 
