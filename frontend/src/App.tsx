@@ -217,6 +217,32 @@ export default function App() {
             <button className="btn primary" disabled={busy || !board} onClick={renderVideo}>
               开始成片
             </button>
+            <button
+              className="btn ghost"
+              disabled={busy}
+              onClick={async () => {
+                setError("");
+                setBusy(true);
+                try {
+                  const res = await fetch("/api/campaigns/car-ad", { method: "POST" });
+                  if (!res.ok) throw new Error("粤语车广告渲染失败");
+                  const data = await res.json();
+                  setJob({
+                    id: "car-ad",
+                    status: "done",
+                    progress: 100,
+                    message: "粤语清货广告 30s 已成片",
+                    video: data.video,
+                  });
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "广告成片失败");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              渲染粤语车广告 30s
+            </button>
           </div>
           {error && <p className="hint" style={{ color: "var(--danger)" }}>{error}</p>}
           {job && (

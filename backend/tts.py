@@ -24,13 +24,13 @@ def probe_duration(path: Path) -> float:
     return float(data["format"]["duration"])
 
 
-async def synthesize(text: str, voice_key: str, dest: Path) -> float:
+async def synthesize(text: str, voice_key: str, dest: Path, rate: str = "+0%") -> float:
     dest.parent.mkdir(parents=True, exist_ok=True)
     voice = VOICES.get(voice_key, VOICES["xiaoxiao"])[0]
     try:
         import edge_tts
 
-        communicate = edge_tts.Communicate(text, voice)
+        communicate = edge_tts.Communicate(text, voice, rate=rate)
         await communicate.save(str(dest))
         if dest.exists() and dest.stat().st_size > 500:
             return probe_duration(dest)

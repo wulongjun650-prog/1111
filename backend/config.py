@@ -23,6 +23,9 @@ VOICES = {
     "xiaoyi": ("zh-CN-XiaoyiNeural", "晓伊 · 知性女声"),
     "jenny": ("en-US-JennyNeural", "Jenny · English"),
     "guy": ("en-US-GuyNeural", "Guy · English"),
+    "wanlung": ("zh-HK-WanLungNeural", "云龙 · 粤语男声"),
+    "hiumaan": ("zh-HK-HiuMaanNeural", "晓曼 · 粤语女声"),
+    "hiugaai": ("zh-HK-HiuGaaiNeural", "晓佳 · 粤语女声"),
 }
 
 STYLES = {

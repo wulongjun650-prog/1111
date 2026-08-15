@@ -25,7 +25,7 @@ app.add_middleware(
 class StoryboardIn(BaseModel):
     prompt: str = Field(min_length=2, max_length=2000)
     style: str = "cinematic"
-    duration: int = Field(default=24, ge=8, le=90)
+    duration: int = Field(default=30, ge=8, le=90)
     aspect: str = "16:9"
     voice: str = "xiaoxiao"
     language: str = "auto"
@@ -106,6 +106,22 @@ def still(job_id: str, index: int):
     if not path.exists():
         raise HTTPException(404, "画面未生成")
     return FileResponse(path, media_type="image/png")
+
+
+@app.post("/api/campaigns/car-ad")
+async def render_car_ad():
+    from backend.campaign import render as render_campaign
+
+    path = await render_campaign()
+    return {"video": "/api/samples/car-ad-30s.mp4", "file": path.name}
+
+
+@app.get("/api/samples/{name}")
+def sample_video(name: str):
+    path = Path(__file__).resolve().parent.parent / "samples" / name
+    if not path.exists() or path.suffix != ".mp4":
+        raise HTTPException(404, "样片不存在")
+    return FileResponse(path, media_type="video/mp4", filename=name)
 
 
 @app.get("/api/jobs/{job_id}/video")

@@ -38,10 +38,11 @@ def ken_burns(
         scale = f"scale=-2:{height}"
         crop = f"crop={width}:{height}:'max(0,in_w-{width})*t/{dur}':(in_h-{height})/2"
 
-    fade_out_start = max(0.05, dur - 0.18)
+    fade = 0.06 if dur < 2.4 else 0.16
+    fade_out_start = max(0.05, dur - fade)
     vf = (
         f"{scale},{crop},setsar=1,fps={FPS},format=yuv420p,"
-        f"fade=t=in:st=0:d=0.18,fade=t=out:st={fade_out_start:.2f}:d=0.18"
+        f"fade=t=in:st=0:d={fade:.2f},fade=t=out:st={fade_out_start:.2f}:d={fade:.2f}"
     )
     _run(
         [
