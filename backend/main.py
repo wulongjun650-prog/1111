@@ -27,7 +27,7 @@ class StoryboardIn(BaseModel):
     style: str = "cinematic"
     duration: int = Field(default=30, ge=8, le=90)
     aspect: str = "16:9"
-    voice: str = "xiaoxiao"
+    voice: str = "wanlung"
     language: str = "auto"
 
 
@@ -48,18 +48,8 @@ def meta():
             "A silent astronaut drifting above a copper-colored planet, remembering home.",
         ],
         "videos": [
-            {
-                "id": "car-ad-30s",
-                "title": "粤语车广告 30s",
-                "play": "/api/samples/car-ad-30s.mp4",
-                "download": "/api/download/car-ad-30s.mp4",
-            },
-            {
-                "id": "demo-30s",
-                "title": "国风短片 30s",
-                "play": "/api/samples/demo-30s.mp4",
-                "download": "/api/download/demo-30s.mp4",
-            },
+            {"id": "host-upcar", "title": "主持人站中间再坐车里 30s", "play": "/api/samples/host-upcar.mp4", "download": "/api/download/host-upcar.mp4"},
+            {"id": "cantonese-v1", "title": "V1 稳阵男声 16:9", "play": "/api/samples/cantonese-v1.mp4", "download": "/api/download/cantonese-v1.mp4"},
         ],
     }
 
@@ -120,6 +110,27 @@ def still(job_id: str, index: int):
     if not path.exists():
         raise HTTPException(404, "画面未生成")
     return FileResponse(path, media_type="image/png")
+
+
+@app.post("/api/campaigns/host-upcar")
+async def render_host_upcar():
+    from backend.host_cut import render as render_host
+
+    path = await render_host()
+    return {
+        "video": "/api/samples/host-upcar.mp4",
+        "download": "/api/download/host-upcar.mp4",
+        "file": path.name,
+    }
+async def render_cantonese_pack():
+    from backend.cantonese_cut import render_all
+
+    paths = await render_all()
+    return {
+        "files": [p.name for p in paths],
+        "zip": "/api/download/cantonese-v1-v5.zip",
+        "videos": [f"/api/samples/{p.name}" for p in paths],
+    }
 
 
 @app.post("/api/campaigns/car-ad")

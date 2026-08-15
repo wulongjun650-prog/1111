@@ -70,7 +70,7 @@ export default function App() {
   const [prompt, setPrompt] = useState("一座被云海托起的仙山，少年持灯走入晨雾，寻找失落的星图。");
   const [style, setStyle] = useState("cinematic");
   const [aspect, setAspect] = useState("16:9");
-  const [voice, setVoice] = useState("xiaoxiao");
+  const [voice, setVoice] = useState("wanlung");
   const [duration, setDuration] = useState(30);
   const [board, setBoard] = useState<Storyboard | null>(null);
   const [job, setJob] = useState<Job | null>(null);
@@ -242,16 +242,16 @@ export default function App() {
                 setError("");
                 setBusy(true);
                 try {
-                  const res = await fetch("/api/campaigns/car-ad", { method: "POST" });
-                  if (!res.ok) throw new Error("粤语车广告渲染失败");
+                  const res = await fetch("/api/campaigns/cantonese-pack", { method: "POST" });
+                  if (!res.ok) throw new Error("粤语精修五版渲染失败");
                   const data = await res.json();
                   setJob({
-                    id: "car-ad",
+                    id: "cantonese-v1",
                     status: "done",
                     progress: 100,
-                    message: "粤语清货广告 30s 已成片",
-                    video: data.video,
-                    download: data.download,
+                    message: "五版粤语精修已成片，右侧可分别下载",
+                    video: data.videos?.[0],
+                    download: data.zip,
                   });
                 } catch (e) {
                   setError(e instanceof Error ? e.message : "广告成片失败");
@@ -260,7 +260,7 @@ export default function App() {
                 }
               }}
             >
-              渲染粤语车广告 30s
+              精修五版粤语广告
             </button>
           </div>
           {error && <p className="hint" style={{ color: "var(--danger)" }}>{error}</p>}
@@ -297,7 +297,7 @@ export default function App() {
                 onClick={() =>
                   saveFile(
                     job.download || (job.id !== "car-ad" ? `/api/jobs/${job.id}/download` : job.video!),
-                    job.id === "car-ad" ? "car-ad-30s.mp4" : `lumina-${job.id}.mp4`
+                    job.id.startsWith("cantonese") ? "cantonese-v1-v5.zip" : `lumina-${job.id}.mp4`
                   ).catch((e) => setError(e instanceof Error ? e.message : "下载失败"))
                 }
               >

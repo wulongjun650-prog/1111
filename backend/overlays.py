@@ -42,15 +42,71 @@ def save(im: Image.Image, path: Path) -> Path:
     return path
 
 
-def hook(w: int, h: int, path: Path) -> Path:
+def hook_badge(w: int, h: int, path: Path) -> Path:
     im = blank(w, h)
     d = ImageDraw.Draw(im)
-    d.rectangle([0, 0, w, int(h * 0.16)], fill=(0, 0, 0, 150))
-    d.rectangle([0, int(h * 0.78), w, h], fill=(0, 0, 0, 170))
-    _text(d, (int(w * 0.05), int(h * 0.04)), "限时清货", 28, YELLOW, 3)
-    _text(d, (int(w * 0.05), int(h * 0.10)), "廿萬 揸走 奔驰 / 宝马 / 奥迪 / Tesla", 36, WHITE, 4)
-    _text(d, (w // 2, int(h * 0.88)), "冇听错，真系咁笋！", 34, YELLOW, 4, anchor="mm")
+    s = min(w, h) / 720
+    d.rounded_rectangle(
+        [int(w * 0.05), int(h * 0.05), int(w * 0.95), int(h * 0.05 + 70 * s)],
+        radius=int(18 * s),
+        fill=(0, 0, 0, 170),
+        outline=YELLOW,
+        width=max(2, int(3 * s)),
+    )
+    _text(d, (w // 2, int(h * 0.05 + 35 * s)), "限时清货 · 廿萬揸走豪车", int(32 * s), YELLOW, 3, anchor="mm")
     return save(im, path)
+
+
+def price_was(w: int, h: int, path: Path) -> Path:
+    im = blank(w, h)
+    d = ImageDraw.Draw(im)
+    s = min(w, h) / 720
+    d.rounded_rectangle(
+        [int(w * 0.10), int(h * 0.34), int(w * 0.90), int(h * 0.52)],
+        radius=int(22 * s),
+        fill=(10, 10, 14, 205),
+        outline=WHITE,
+        width=3,
+    )
+    _text(d, (w // 2, int(h * 0.43)), "原价 40-50万", int(40 * s), WHITE, 3, anchor="mm")
+    return save(im, path)
+
+
+def price_now(w: int, h: int, path: Path) -> Path:
+    im = blank(w, h)
+    d = ImageDraw.Draw(im)
+    s = min(w, h) / 720
+    d.rounded_rectangle(
+        [int(w * 0.08), int(h * 0.30), int(w * 0.92), int(h * 0.58)],
+        radius=int(22 * s),
+        fill=(10, 10, 14, 220),
+        outline=RED,
+        width=5,
+    )
+    y = int(h * 0.38)
+    _text(d, (w // 2, y), "原价 40-50万", int(28 * s), (200, 200, 200, 255), 2, anchor="mm")
+    d.line([(int(w * 0.26), y), (int(w * 0.74), y)], fill=RED, width=max(4, int(5 * s)))
+    _text(d, (w // 2, int(h * 0.50)), "活动价 20万左右", int(46 * s), RED, 4, anchor="mm")
+    return save(im, path)
+
+
+def feature_one(w: int, h: int, label: str, path: Path) -> Path:
+    im = blank(w, h)
+    d = ImageDraw.Draw(im)
+    s = min(w, h) / 720
+    d.rounded_rectangle(
+        [int(w * 0.18), int(h * 0.82), int(w * 0.82), int(h * 0.93)],
+        radius=int(16 * s),
+        fill=(0, 0, 0, 200),
+        outline=YELLOW,
+        width=3,
+    )
+    _text(d, (w // 2, int(h * 0.875)), label, int(36 * s), YELLOW, 3, anchor="mm")
+    return save(im, path)
+
+
+def hook(w: int, h: int, path: Path) -> Path:
+    return hook_badge(w, h, path)
 
 
 def reason(w: int, h: int, label: str, path: Path) -> Path:
