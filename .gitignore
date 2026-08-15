@@ -1,0 +1,15 @@
+vendor/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+frontend/node_modules/
+frontend/dist/
+output/
+jobs/
+*.egg-info/
+!samples/*.mp4
+.DS_Store
+.idea/
+.vscode/
