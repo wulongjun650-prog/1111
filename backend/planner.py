@@ -176,7 +176,7 @@ def plan(
                     n,
                     chinese,
                     title,
-                    int(max(12, durs[i] * (4.4 if chinese else 13))),
+                    int(max(16, durs[i] * (5.8 if chinese else 14))),
                 ),
                 "duration": max(2.4, durs[i]),
                 "motion": ["zoom_in", "pan_right", "zoom_out", "pan_left"][i % 4],

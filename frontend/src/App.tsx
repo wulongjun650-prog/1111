@@ -54,7 +54,7 @@ export default function App() {
   const [style, setStyle] = useState("cinematic");
   const [aspect, setAspect] = useState("16:9");
   const [voice, setVoice] = useState("xiaoxiao");
-  const [duration, setDuration] = useState(24);
+  const [duration, setDuration] = useState(30);
   const [board, setBoard] = useState<Storyboard | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [busy, setBusy] = useState(false);

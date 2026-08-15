@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from backend.config import FONT_PATH, FPS
+from backend.tts import probe_duration
 
 
 def _run(cmd: list[str]) -> None:
@@ -119,6 +120,42 @@ def concat_videos(clips: list[Path], dest: Path) -> Path:
             str(lst),
             "-c",
             "copy",
+            str(dest),
+        ]
+    )
+    return dest
+
+
+def fit_voiceover(src: Path, dest: Path, target: float) -> Path:
+    """Keep each line of VO inside the planned scene length (~30s totals stay ~30s)."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    target = max(0.8, target)
+    actual = probe_duration(src) if src.exists() and src.stat().st_size > 400 else 0.0
+    filters = [f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo"]
+    if actual > target * 1.03:
+        tempo = actual / target
+        while tempo > 2.0:
+            filters.append("atempo=2.0")
+            tempo /= 2.0
+        filters.append(f"atempo={max(0.5, tempo):.4f}")
+    filters.append(f"apad=whole_dur={target:.2f}")
+    fade_out = max(0.08, target - 0.22)
+    filters.append("afade=t=in:d=0.12")
+    filters.append(f"afade=t=out:st={fade_out:.2f}:d=0.2")
+    _run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(src),
+            "-af",
+            ",".join(filters),
+            "-t",
+            f"{target:.2f}",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "160k",
             str(dest),
         ]
     )

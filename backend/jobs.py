@@ -110,10 +110,11 @@ def _render_sync(job_id: str, board: dict[str, Any], work: Path) -> None:
     _emit(job_id, 42, "正在录制旁白…")
     narrations: list[Path] = []
     for i, scene in enumerate(scenes):
-        vo = work / f"vo_{i:02d}.mp3"
-        dur = asyncio.run(tts.synthesize(scene["narration"], board["voice"], vo))
-        scene["duration"] = max(scene["duration"], round(dur + 0.45, 2))
-        narrations.append(vo)
+        raw = work / f"vo_raw_{i:02d}.mp3"
+        fitted = work / f"vo_{i:02d}.m4a"
+        asyncio.run(tts.synthesize(scene["narration"], board["voice"], raw))
+        composer.fit_voiceover(raw, fitted, scene["duration"])
+        narrations.append(fitted)
         _emit(job_id, 42 + int(18 * (i + 1) / n), f"旁白 {i + 1}/{n}")
 
     (work / "storyboard.json").write_text(json.dumps(board, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -154,7 +155,7 @@ def plan_storyboard(payload: dict[str, Any]) -> dict[str, Any]:
     return planner.plan(
         prompt=payload["prompt"],
         style=payload.get("style") or "cinematic",
-        duration=int(payload.get("duration") or 24),
+        duration=int(payload.get("duration") or 30),
         aspect=payload.get("aspect") or "16:9",
         voice=payload.get("voice") or "xiaoxiao",
         language=payload.get("language") or "auto",
