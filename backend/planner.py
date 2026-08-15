@@ -88,7 +88,7 @@ def _title(prompt: str, chinese: bool) -> str:
     return " ".join(words[:5])
 
 
-def _narration(prompt: str, idx: int, total: int, chinese: bool, title: str) -> str:
+def _narration(prompt: str, idx: int, total: int, chinese: bool, title: str, max_chars: int) -> str:
     sents = _sentences(prompt)
     if sents:
         base = sents[idx % len(sents)]
@@ -121,7 +121,18 @@ def _narration(prompt: str, idx: int, total: int, chinese: bool, title: str) -> 
         text = f"{title}。{base}"
     if idx == total - 1 and chinese:
         text = f"{base}。{title}，完。"
-    return text[:80]
+    return _clip(text, max(12, max_chars))
+
+
+def _clip(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    for sep in ("。", "！", "？", "；", "，", ".", "!", "?", " "):
+        i = cut.rfind(sep)
+        if i >= max(8, limit // 3):
+            return cut[: i + (0 if sep == " " else 1)]
+    return cut
 
 
 def plan(
@@ -159,7 +170,14 @@ def plan(
                 "title": tpl[0],
                 "visual": tpl[1],
                 "motif": motif,
-                "narration": _narration(prompt, i, n, chinese, title),
+                "narration": _narration(
+                    prompt,
+                    i,
+                    n,
+                    chinese,
+                    title,
+                    int(max(12, durs[i] * (4.4 if chinese else 13))),
+                ),
                 "duration": max(2.4, durs[i]),
                 "motion": ["zoom_in", "pan_right", "zoom_out", "pan_left"][i % 4],
             }

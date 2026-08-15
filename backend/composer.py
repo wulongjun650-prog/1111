@@ -25,10 +25,10 @@ def ken_burns(
     # still is 1.28x; pan/zoom inside the oversized plate.
     dur = max(0.8, duration)
     if motion == "zoom_in":
-        scale = f"scale=iw*(1+0.16*t/{dur}):-2"
+        scale = f"scale=trunc(iw*(1+0.16*t/{dur})/2)*2:trunc(ih*(1+0.16*t/{dur})/2)*2:eval=frame"
         crop = f"crop={width}:{height}:(in_w-{width})/2:(in_h-{height})/2"
     elif motion == "zoom_out":
-        scale = f"scale=iw*(1.16-0.16*t/{dur}):-2"
+        scale = f"scale=trunc(iw*(1.16-0.16*t/{dur})/2)*2:trunc(ih*(1.16-0.16*t/{dur})/2)*2:eval=frame"
         crop = f"crop={width}:{height}:(in_w-{width})/2:(in_h-{height})/2"
     elif motion == "pan_left":
         scale = f"scale=-2:{height}"
@@ -193,6 +193,10 @@ def mux(video: Path, audio: Path, ass: Path, dest: Path) -> Path:
             "aac",
             "-b:a",
             "192k",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
             "-shortest",
             "-movflags",
             "+faststart",
