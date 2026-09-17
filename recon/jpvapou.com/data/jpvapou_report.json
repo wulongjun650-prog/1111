@@ -1,0 +1,377 @@
+{
+  "target": "http://www.jpvapou.com",
+  "vulnerabilities": [
+    {
+      "id": "V1",
+      "name": "未授权IDOR",
+      "endpoint": "GET /Client/GetClientInfoByID?ID=",
+      "severity": "高危"
+    },
+    {
+      "id": "V2",
+      "name": "水平越权IDOR",
+      "endpoint": "GET /Client/GetClientInfoByID?ID=任意",
+      "severity": "高危"
+    },
+    {
+      "id": "V3",
+      "name": "后台弱口令",
+      "credential": "test/123456",
+      "severity": "严重"
+    },
+    {
+      "id": "V4",
+      "name": "客户弱口令",
+      "credential": "LDD/123456",
+      "severity": "高"
+    },
+    {
+      "id": "V5",
+      "name": "全量订单泄露",
+      "endpoint": "POST /Admin/GetOrderDetailByMainOrder",
+      "total": 13771,
+      "severity": "严重"
+    }
+  ],
+  "clients_total": 22,
+  "clients": [
+    {
+      "ID": 70,
+      "Uid": "TMYT",
+      "Name": "TMYT",
+      "Phone": "12132134",
+      "Email": null,
+      "Money": 0.0
+    },
+    {
+      "ID": 69,
+      "Uid": "WTD",
+      "Name": "WTD",
+      "Phone": "1313123121",
+      "Email": null,
+      "Money": -32424.0
+    },
+    {
+      "ID": 68,
+      "Uid": "LDD",
+      "Name": "LDD",
+      "Phone": "11111111",
+      "Email": null,
+      "Money": -10276.62
+    },
+    {
+      "ID": 66,
+      "Uid": "AUS",
+      "Name": "AUS",
+      "Phone": "11111",
+      "Email": null,
+      "Money": 0.0
+    },
+    {
+      "ID": 65,
+      "Uid": "zhuzhu",
+      "Name": "zhuzhu",
+      "Phone": "11111111111",
+      "Email": null,
+      "Money": 0.0
+    },
+    {
+      "ID": 61,
+      "Uid": "QZHW",
+      "Name": "QZHW",
+      "Phone": "1111111",
+      "Email": null,
+      "Money": -393.6
+    },
+    {
+      "ID": 55,
+      "Uid": "xiaobao",
+      "Name": "xiaobao",
+      "Phone": "11111",
+      "Email": null,
+      "Money": -34521.6
+    },
+    {
+      "ID": 54,
+      "Uid": "lew",
+      "Name": "LEW",
+      "Phone": "11",
+      "Email": null,
+      "Money": -4281.6
+    },
+    {
+      "ID": 53,
+      "Uid": "baoye",
+      "Name": "baoye",
+      "Phone": "1111111",
+      "Email": null,
+      "Money": -8313.6
+    },
+    {
+      "ID": 52,
+      "Uid": "yomi",
+      "Name": "yomi",
+      "Phone": "111111",
+      "Email": null,
+      "Money": -66191.12
+    },
+    {
+      "ID": 46,
+      "Uid": "laofan",
+      "Name": "laofan",
+      "Phone": "11111111111",
+      "Email": null,
+      "Money": -410933.0
+    },
+    {
+      "ID": 45,
+      "Uid": "gq001",
+      "Name": "gq001",
+      "Phone": "11111",
+      "Email": null,
+      "Money": -2423.44
+    },
+    {
+      "ID": 40,
+      "Uid": "mich",
+      "Name": "mich",
+      "Phone": "11111",
+      "Email": null,
+      "Money": -18748.8
+    },
+    {
+      "ID": 38,
+      "Uid": "LXS",
+      "Name": "LXS",
+      "Phone": "1111",
+      "Email": null,
+      "Money": -43438.84
+    },
+    {
+      "ID": 36,
+      "Uid": "xp001",
+      "Name": "xp001",
+      "Phone": "111",
+      "Email": null,
+      "Money": -134897.0
+    },
+    {
+      "ID": 31,
+      "Uid": "ZY",
+      "Name": "ZY",
+      "Phone": "1111",
+      "Email": null,
+      "Money": 0.0
+    },
+    {
+      "ID": 27,
+      "Uid": "Zling",
+      "Name": "Zling",
+      "Phone": "1111",
+      "Email": null,
+      "Money": 2086.02
+    },
+    {
+      "ID": 9,
+      "Uid": "rbw888",
+      "Name": "RBW",
+      "Phone": "1111",
+      "Email": null,
+      "Money": -87426.36
+    },
+    {
+      "ID": 7,
+      "Uid": "Niuge1688",
+      "Name": "clt",
+      "Phone": "1111",
+      "Email": null,
+      "Money": -50493.66
+    },
+    {
+      "ID": 6,
+      "Uid": "ydg",
+      "Name": "ydg",
+      "Phone": "1111111",
+      "Email": null,
+      "Money": -270022.88
+    },
+    {
+      "ID": 5,
+      "Uid": "CHEN",
+      "Name": "CHEN",
+      "Phone": "111111111",
+      "Email": null,
+      "Money": -737433.6
+    },
+    {
+      "ID": 4,
+      "Uid": "客户1",
+      "Name": "客户1",
+      "Phone": "1111",
+      "Email": "123456@qq.com",
+      "Money": 0.0
+    }
+  ],
+  "client_emails": [
+    {
+      "ID": 4,
+      "Uid": "客户1",
+      "Name": "客户1",
+      "Phone": "1111",
+      "Email": "123456@qq.com",
+      "Money": 0.0
+    }
+  ],
+  "ldd_orders_recipients": [
+    {
+      "name": "Jason Mackin",
+      "phone": "0418292861",
+      "email": null,
+      "address": "1 Nutwood Lane Windosr Downs 1 WINDSOR New South Wales"
+    },
+    {
+      "name": "Scott MacDonald",
+      "phone": "0407468353",
+      "email": null,
+      "address": "8a Tyrwhitt Avenue Bulli BULLI New South Wales"
+    },
+    {
+      "name": " Saad Khan",
+      "phone": "0410231990",
+      "email": null,
+      "address": "52 bronhill street MONCRIEFF Australian Capital Territory"
+    },
+    {
+      "name": "Greg Haron",
+      "phone": "0407669059",
+      "email": null,
+      "address": "Unit 10 10-12 Franklin Road ORANGE New South Wales"
+    },
+    {
+      "name": "Saad Khan",
+      "phone": "0410231990",
+      "email": null,
+      "address": "52 bronhill street CANBERRA Australian Capital Territory"
+    },
+    {
+      "name": "vicky belstead",
+      "phone": "0449176276",
+      "email": null,
+      "address": "10 Watson Dr MOUNT COMPASS South Australia"
+    },
+    {
+      "name": "Danny Roe",
+      "phone": "0416777430",
+      "email": null,
+      "address": "Apartment  Unit 8, 10 Woomba placr MOOLOOLABA Queensland"
+    },
+    {
+      "name": "Deb Rodgers",
+      "phone": "0451072924",
+      "email": null,
+      "address": "52 Fisher road Thorneside 12 THORNESIDE Queensland"
+    },
+    {
+      "name": "Lyn Coskun",
+      "phone": "0403396773",
+      "email": null,
+      "address": "6 Dormans Rd MORLEY Western Australia"
+    },
+    {
+      "name": "Christina Tabor",
+      "phone": "0402431481",
+      "email": null,
+      "address": "32 Santorini Turn ELLENBROOK Western Australia"
+    },
+    {
+      "name": " Kylie Wittkowsky",
+      "phone": "0422957225",
+      "email": null,
+      "address": "Post office KANMANTOO South Australia"
+    },
+    {
+      "name": "Rebecca Edwards",
+      "phone": "0421873846",
+      "email": null,
+      "address": "15 Daisy St SOLOMONTOWN South Australia"
+    },
+    {
+      "name": "Sandra Stanley",
+      "phone": "0439002535",
+      "email": null,
+      "address": "41 parfitt sreet WHYALLA JENKINS South Australia"
+    },
+    {
+      "name": "Scott MacDonald",
+      "phone": "0407468353",
+      "email": null,
+      "address": "8a Tyrwhitt Avenue Bulli BULLI New South Wales"
+    },
+    {
+      "name": " Kirsty Thornton",
+      "phone": "0477424723",
+      "email": null,
+      "address": "105 Currajong Pl BRASSALL Queensland"
+    },
+    {
+      "name": "True Ilich",
+      "phone": "0415487252",
+      "email": null,
+      "address": "P.O. Box 780 JURIEN BAY Western Australia"
+    },
+    {
+      "name": "Samantha Simpson",
+      "phone": "0497494404",
+      "email": null,
+      "address": "27 Grasmere Way KELMSCOTT Western Australia"
+    },
+    {
+      "name": "Rupen Shrestha",
+      "phone": "0410607327",
+      "email": null,
+      "address": "Unit 9, 6 foambark street MCDOWALL Queensland"
+    },
+    {
+      "name": " Georgia Quartermaine",
+      "phone": "0410410670",
+      "email": null,
+      "address": "16 marsh court WOODRIDGE Western Australia"
+    },
+    {
+      "name": " Jamie Muntelwit",
+      "phone": "0476501721",
+      "email": null,
+      "address": "28 rhodes street south kalgoorlie Western Australia "
+    },
+    {
+      "name": "Cameron Jones",
+      "phone": "0474024959",
+      "email": null,
+      "address": "11 MALLEE WAY FORRESTFIELD PERTH Western Australia"
+    },
+    {
+      "name": "Shauna Cross",
+      "phone": "0476142547",
+      "email": null,
+      "address": "1159 Kumbia Road ALICE CREEK Queensland"
+    },
+    {
+      "name": "Luke Palcer",
+      "phone": "0477816710",
+      "email": null,
+      "address": "74 lackersteen CALLALA BAY New South Wales"
+    },
+    {
+      "name": "Robert Burling",
+      "phone": "0419414292",
+      "email": null,
+      "address": "96a Pitt street NORTH NOWRA New South Wales"
+    },
+    {
+      "name": "Shauna Cross",
+      "phone": "0476142547",
+      "email": null,
+      "address": "1159 Kumbia Road ALICE CREEK Queensland"
+    }
+  ]
+}
