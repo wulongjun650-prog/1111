@@ -86,7 +86,15 @@
 - 此模块没有接入线上入口；`ManagedPanel.certificate()` / `verify()` 仍拒绝标记成功。账户与条款确认、专用配置审计（包括 hooks）、目录权限、真实证书校验、不可变版本、TLS 配置、续期服务及端到端验收仍需继续实现。
 - 原始目录基线已提交为 `15d2bb6`；未改服务器、未更新发布 ZIP。
 
-### 回归命令
+## 2026-09-21 证书材料校验与受限读取器
+
+- 新增离线真实 X.509 校验：精确单域名 SAN、当前有效期、服务器用途、完整有序可信链、公私钥匹配；生产/staging 信任根隔离，返回同一份归一化 PEM 字节，私钥不进入 repr 或错误文本。依赖固定 cryptography 50.0.1。
+- 只允许 Certbot live 的最后一级链接；目标必须是同环境、同站点、同代次 archive 常规文件。检查大小、链接、硬链接、POSIX 所有者/权限及读取前后状态；不修改材料。
+- 全量 Python 266 项通过、17 项平台跳过、2 项既有弃用警告；JavaScript 8 项通过，pip check 通过。Windows 跳过不是 Linux 验收。
+- 真实 Linux 标准库读取探针 18 项通过，提取源码哈希 `c32059753fdf949091b7547e4d414e307f07af6b0b42a927b5e1fa3135f3cad1`，夹具保留 `/tmp/ab-lab-cert-read-cme30nze`。生成器为 `deploy/build_cert_reader_probe.py`。探针未读取现有证书、未安装依赖、未访问 CA 或更改站点；尚未运行 Linux 完整 X.509 测试。
+- 独立审查无 Critical/Important 问题。模块尚未接入线上；不可变版本、配置审计、TLS 切换、续期服务和受控真实建站仍待完成，不能开启自动写入或发布为已完成。
+
+### 回归命令（本地开发）
 
 ```bash
 python -m pytest tests -q
