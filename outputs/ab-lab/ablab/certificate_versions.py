@@ -9,6 +9,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import stat
 
 from .certificates import CHAIN_LIMIT, KEY_LIMIT, _read_archive
@@ -39,6 +40,44 @@ class CertificateVersions:
         self.verifier = verifier
         self.base = Path(base_dir)
         self.writes_enabled = writes_enabled is True
+
+    def load(self, identity, panel_id, digest, *, now=None):
+        """Revalidate a complete immutable version without repairing any files."""
+        validate_identity(identity)
+        identity = dict(identity)
+        if type(panel_id) is not int or panel_id <= 0:
+            raise ValueError('面板站点 ID 无效')
+        if not isinstance(digest, str) or not re.fullmatch('[0-9a-f]{64}', digest):
+            raise ValueError('证书版本摘要无效')
+        try:
+            base = no_symlinks(self.base)
+            environment = base / 'production'
+            deployed = environment / 'deployed'
+            site = deployed / ('ab-' + identity['site_id'])
+            version = site / digest
+            directories = (base, environment, deployed, site, version)
+            for path in directories:
+                _private_directory(path)
+            if {p.name for p in version.iterdir()} != {'fullchain.pem', 'privkey.pem', 'ready.json'}:
+                raise ValueError('incomplete or foreign version')
+            owner = dict(schema=1, identity=identity, panel_id=panel_id)
+            if _read_archive(site / 'owner.json', 8192, private=True) != _record(owner).encode('ascii'):
+                raise ValueError('foreign owner')
+            chain = _read_archive(version / 'fullchain.pem', CHAIN_LIMIT, private=True)
+            key = _read_archive(version / 'privkey.pem', KEY_LIMIT, private=True)
+            verified = self.verifier.verify(identity, 'production', chain, key, now=now)
+            if (chain != verified.fullchain or key != verified.private_key
+                    or sha256(chain + b'\0' + key).hexdigest() != digest):
+                raise ValueError('stored material differs')
+            ready = dict(owner, environment='production', version=digest,
+                         fingerprint=verified.fingerprint, not_after=verified.not_after.isoformat())
+            if _read_archive(version / 'ready.json', 8192, private=True) != _record(ready).encode('ascii'):
+                raise ValueError('invalid ready receipt')
+            for path in directories:
+                _private_directory(path)
+            return version, verified
+        except (OSError, ValueError):
+            raise ProvisioningError('证书版本读取或复核失败，禁止自动修复') from None
 
     def publish(self, identity, panel_id, fullchain, private_key, authorize, *, now=None):
         validate_identity(identity)

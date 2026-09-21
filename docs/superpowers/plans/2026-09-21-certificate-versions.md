@@ -68,3 +68,8 @@ digest = sha256(verified.fullchain + b'\0' + verified.private_key).hexdigest()
 - 全量回归：303 项 Python 通过、21 项平台跳过、2 项既有弃用警告；8 项 JavaScript 通过；git diff --check 无空白错误。
 - 浏览器页面读取/导航多次超时，本轮探针尚未上传或运行。旧读取器探针的 Linux 通过记录不覆盖这次修改后的读取器或新版本模块。
 - 未接通 TLS 配置、配置审计、续期 timer、ManagedPanel 或后台入口；自动建站仍未完成，服务器现有站点与服务未改变。
+
+## 后续 Linux 验证补充
+
+- [x] 恢复浏览器后上传隔离脚本到 `/tmp/cert-versions-probe.py`，同进程核对文件哈希后执行同一字节。读取器 18 项、版本保存 15 项均通过；详见 PROVISIONING-PROGRESS 的补充记录。
+- 使用服务器已有 cryptography 46.0.5，没有安装依赖；本地固定 50.0.1 仍需正式部署验收。夹具保留，未操作线上配置。证书版本文件层已取得 Linux 隔离证据，不代表完成真实签发/上线。

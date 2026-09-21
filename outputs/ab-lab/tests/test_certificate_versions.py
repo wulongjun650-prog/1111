@@ -212,3 +212,69 @@ def test_symbolic_link_version_is_rejected(publication):
     with pytest.raises(ProvisioningError):
         publish(publication)
     assert snapshot(moved) == before
+
+
+def test_load_revalidates_existing_version_without_writes(publication):
+    store, base, chain, key = publication
+    version = publish(publication)
+    before = snapshot(base)
+    store.writes_enabled = False
+    path, certificate = store.load(IDENTITY, 22, version.name, now=NOW)
+    assert path == version and certificate.domain == 'new.example.com'
+    assert certificate.fullchain == chain and certificate.private_key == key
+    assert snapshot(base) == before
+
+
+@pytest.mark.parametrize('defect', ['digest', 'owner', 'panel', 'expired', 'ready', 'key', 'extra', 'missing',
+                                     'hardlink', 'renamed-version', 'missing-owner'])
+def test_load_rejects_invalid_versions_without_repair(publication, defect):
+    store, base, _, _ = publication
+    version = publish(publication)
+    args = dict(identity=IDENTITY, panel_id=22, digest=version.name, now=NOW)
+    if defect == 'digest': args['digest'] = '../outside'
+    elif defect == 'owner': args['identity'] = dict(IDENTITY, owner='c' * 32)
+    elif defect == 'panel': args['panel_id'] = 23
+    elif defect == 'expired': args['now'] = NOW + timedelta(days=100)
+    elif defect == 'ready': (version / 'ready.json').write_text('{}')
+    elif defect == 'key': (version / 'privkey.pem').write_text('changed')
+    elif defect == 'extra': (version / 'extra').write_text('foreign')
+    elif defect == 'hardlink': os.link(version / 'privkey.pem', base / 'linked-key')
+    elif defect == 'renamed-version':
+        args['digest'] = '0' * 64
+        version.rename(version.with_name(args['digest']))
+    elif defect == 'missing-owner': (version.parent / 'owner.json').unlink()
+    else: (version / 'fullchain.pem').unlink()
+    before = snapshot(base)
+    with pytest.raises((ValueError, ProvisioningError)):
+        store.load(**args)
+    assert snapshot(base) == before
+
+
+@pytest.mark.parametrize('part', ['version', 'key'])
+def test_load_rejects_symbolic_links(publication, part):
+    store, base, _, _ = publication
+    version = publish(publication)
+    target = version if part == 'version' else version / 'privkey.pem'
+    moved = target.with_name('retained-' + target.name) if part == 'version' else base / 'retained-key'
+    target.rename(moved)
+    try:
+        target.symlink_to(moved, target_is_directory=part == 'version')
+    except OSError as error:
+        if os.name == 'nt' and getattr(error, 'winerror', None) == 1314:
+            pytest.skip('Windows symlink privilege unavailable')
+        raise
+    before = snapshot(base)
+    with pytest.raises(ProvisioningError): store.load(IDENTITY, 22, version.name, now=NOW)
+    assert snapshot(base) == before
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX permissions require Linux')
+@pytest.mark.parametrize('part', ['base', 'version', 'key'])
+def test_load_rejects_unsafe_permissions_without_chmod(publication, part):
+    store, base, _, _ = publication
+    version = publish(publication)
+    target = {'base': base, 'version': version, 'key': version / 'privkey.pem'}[part]
+    target.chmod(0o755 if target.is_dir() else 0o644)
+    before, mode = snapshot(base), target.stat().st_mode
+    with pytest.raises(ProvisioningError): store.load(IDENTITY, 22, version.name, now=NOW)
+    assert snapshot(base) == before and target.stat().st_mode == mode
