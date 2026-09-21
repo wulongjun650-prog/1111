@@ -280,3 +280,42 @@ def test_symlink_rotation_during_read_is_not_returned_as_a_snapshot(tmp_path, ma
     with pytest.raises(ProvisioningError):
         read_certbot_material(base, 'production', IDENTITY)
     assert calls == ['rotated']
+
+
+def test_exclusive_published_file_can_be_read_with_stable_metadata(tmp_path):
+    from ablab.certificates import _read_archive
+    from ablab.nginx_entry import exclusive_text
+    path = tmp_path / 'material.pem'
+    exclusive_text(path, 'bounded-test-material\n')
+    assert _read_archive(path, 128, private=True) == b'bounded-test-material\n'
+
+
+@pytest.mark.parametrize('changed_api', ['descriptor', 'path'])
+def test_ctime_only_change_during_read_is_still_rejected(tmp_path, monkeypatch, changed_api):
+    from types import SimpleNamespace
+    from ablab.certificates import _read_archive
+    from ablab.nginx_entry import exclusive_text
+    path = tmp_path / 'material.pem'
+    exclusive_text(path, 'bounded-test-material\n')
+    original_fd, original_path = os.fstat, Path.lstat
+    opened = []
+
+    def changed(info):
+        fields = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_uid')
+        value = SimpleNamespace(**{name: getattr(info, name) for name in fields})
+        value.st_ctime_ns += 1
+        return value
+
+    def fd_stat(fd):
+        info = original_fd(fd)
+        opened.append(True)
+        return changed(info) if changed_api == 'descriptor' and len(opened) > 1 else info
+
+    def path_stat(target, *args, **kwargs):
+        info = original_path(target, *args, **kwargs)
+        return changed(info) if changed_api == 'path' and opened and target == path else info
+
+    monkeypatch.setattr(os, 'fstat', fd_stat)
+    monkeypatch.setattr(Path, 'lstat', path_stat)
+    with pytest.raises(ValueError, match='changed while reading'):
+        _read_archive(path, 128, private=True)

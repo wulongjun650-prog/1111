@@ -94,6 +94,17 @@
 - 真实 Linux 标准库读取探针 18 项通过，提取源码哈希 `c32059753fdf949091b7547e4d414e307f07af6b0b42a927b5e1fa3135f3cad1`，夹具保留 `/tmp/ab-lab-cert-read-cme30nze`。生成器为 `deploy/build_cert_reader_probe.py`。探针未读取现有证书、未安装依赖、未访问 CA 或更改站点；尚未运行 Linux 完整 X.509 测试。
 - 独立审查无 Critical/Important 问题。模块尚未接入线上；不可变版本、配置审计、TLS 切换、续期服务和受控真实建站仍待完成，不能开启自动写入或发布为已完成。
 
+## 2026-09-21 独立证书版本目录（尚未接线上）
+
+- `CertificateVersions.publish()` 重新校验原始 PEM 为 production，然后保存到 `production/deployed/ab-ID/<sha256>`；摘要覆盖完整链与密钥，不直接跟随 live 链接。
+- 站点级 owner 记录核对完整身份与面板 ID；文件排他创建、完成记录最后发布。相同版本逐字节复核后复用，残缺/冲突目录不覆盖、不修复。新证书另建版本，旧版本保留。
+- 目录 0700、文件 0600；默认禁写，每次创建目录/发布文件前重新核对归属和暂停。沿用 worker 锁与特权私有目录约束，不声称可隔离同权限恶意管理员。
+- 修复 Windows 硬链接发布后的 ctime 跨 API 差异；保留每种 API 的前后变化检测和 Linux 全部检查。两项 ctime 变化回归已通过，禁用检查的内存变异测试能正确捕获缺陷。补充各写入边界撤权检查。
+- 独立审查无 Critical/Important 问题；目标测试 60 项通过、21 项平台跳过。新增生成器 `deploy/build_cert_versions_probe.py` 为后续 Linux 隔离验证准备，不安装依赖、不联系 CA。
+- 最新完整回归：**303 项 Python 通过、21 项平台跳过、2 项既有弃用警告；8 项 JavaScript 通过**。
+- **本轮 Linux 探针未运行**：宝塔浏览器页面读取和导航多次超时，未上传脚本；不能引用上一轮 Linux 结果证明本轮新代码通过。没有更改站点、证书、Nginx 或服务，也没有更新发布 ZIP。
+- 尚需完成 Linux 新代码验证、专用 Certbot 配置审计、TLS 配置事务、续期服务、worker 接入和受控真实建站验收。自动写入继续关闭。
+
 ### 回归命令（本地开发）
 
 ```bash

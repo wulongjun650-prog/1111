@@ -107,8 +107,8 @@ class CertificateVerifier:
             raise ProvisioningError('证书校验未通过：请核对域名、有效期、可信链和密钥') from None
 
 
-def _file_snapshot(info):
-    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+def _file_snapshot(info, *, include_ctime=True):
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns if include_ctime else None,
             info.st_mode, info.st_nlink)
 
 
@@ -123,10 +123,15 @@ def _read_archive(path, limit, *, private):
     flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_BINARY', 0)
     fd = os.open(path, flags)
     with os.fdopen(fd, 'rb') as source:
-        if _file_snapshot(os.fstat(source.fileno())) != _file_snapshot(before):
+        opened = os.fstat(source.fileno())
+        # Windows path stat and descriptor stat may expose different ctime
+        # semantics after hard-link publication. Compare ctime within each API
+        # below, not across APIs; retain every other cross-API identity check.
+        compare_ctime = os.name != 'nt'
+        if _file_snapshot(opened, include_ctime=compare_ctime) != _file_snapshot(before, include_ctime=compare_ctime):
             raise ValueError('material changed before open')
         content = source.read(limit + 1)
-        if (_file_snapshot(os.fstat(source.fileno())) != _file_snapshot(before)
+        if (_file_snapshot(os.fstat(source.fileno())) != _file_snapshot(opened)
                 or _file_snapshot(no_symlinks(path).lstat()) != _file_snapshot(before)
                 or len(content) != before.st_size):
             raise ValueError('material changed while reading')
