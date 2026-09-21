@@ -1,0 +1,8 @@
+work/
+.venv/
+__pycache__/
+.pytest_cache/
+data/
+*.pyc
+outputs/*.zip
+.firecrawl/

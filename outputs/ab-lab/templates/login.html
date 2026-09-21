@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token | e }}">
+  <title>登录 · AB Lab</title>
+  <link rel="stylesheet" href="/static/app.css"><script src="/static/login.js" defer></script>
+</head>
+<body class="login-body">
+  <main class="card login-card">
+    <p class="eyebrow">AB LAB / PRIVATE CONSOLE</p><h1>欢迎回来。</h1>
+    <p class="muted">单管理员控制台 · 账号密码登录</p>
+    <form id="login-form">
+      <label>账号<input name="username" autocomplete="username" maxlength="64" required autofocus></label>
+      <label>密码<input name="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+      <p id="login-error" role="alert" class="danger"></p>
+      <button class="button primary" type="submit">登录后台</button>
+    </form>
+    <p class="subtle">忘记密码？在服务器终端运行管理命令重设。</p>
+  </main>
+</body>
+</html>

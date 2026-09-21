@@ -1,0 +1,68 @@
+"""Loopback services: local demo or explicit HTTPS reverse-proxy deployment."""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+
+def main():
+    parser = argparse.ArgumentParser(description='AB Lab local console')
+    parser.add_argument('--service', choices=['admin', 'target', 'dns'])
+    parser.add_argument('--data', type=Path, default=Path(__file__).resolve().parent / 'data')
+    parser.add_argument('--config', type=Path, help='Public deployment JSON; requires --service')
+    args = parser.parse_args()
+    deployment = None
+    config = {}
+    if args.config:
+        if not args.service:
+            parser.error('--config 必须与 --service 一起使用；正式环境由 systemd 分别托管')
+        from ablab.settings import Deployment
+        config = json.loads(args.config.read_text(encoding='utf-8'))
+        deployment = Deployment(admin_origin=config['admin_origin'], target_origin=config['target_origin'])
+        args.data = Path(config['data_dir'])
+        if not args.data.is_absolute():
+            parser.error('正式环境 data_dir 必须是绝对路径')
+        os.environ['AB_GEOIP_PATH'] = config.get('geoip_path', '')
+    if args.service == 'dns':
+        from ablab.provisioning import inspect_pending
+        from ablab.sites import Registry
+        registry = Registry(args.data, deployment.host(False) if deployment else '', registry_dir=config.get('registry_dir'))
+        print('DNS inspection only. Automatic panel writes are disabled.', flush=True)
+        while True:
+            inspect_pending(registry, config.get('server_ip', ''))
+            time.sleep(60)
+    if args.service:
+        import uvicorn
+        from ablab.web import create_admin, create_target
+        factory, port = (create_admin, 8765) if args.service == 'admin' else (create_target, 8766)
+        options = {'deployment': deployment, 'registry_dir': config.get('registry_dir')}
+        if args.service == 'admin':
+            options['server_ip'] = config.get('server_ip', '')
+        uvicorn.run(factory(args.data, **options), host='127.0.0.1', port=port, proxy_headers=False, access_log=False, limit_concurrency=40, timeout_keep_alive=5)
+        return
+    children = []
+    try:
+        for service in ('admin', 'target'):
+            children.append(subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--service', service, '--data', str(args.data.resolve())]))
+        print('AB Lab console: http://127.0.0.1:8765\nTarget: http://127.0.0.1:8766\nLocal only. Press Ctrl+C to stop.', flush=True)
+        while all(child.poll() is None for child in children):
+            time.sleep(0.3)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.terminate()
+        for child in children:
+            try:
+                child.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+
+
+if __name__ == '__main__':
+    main()

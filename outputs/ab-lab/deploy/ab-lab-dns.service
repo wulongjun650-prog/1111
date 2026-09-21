@@ -1,0 +1,25 @@
+[Unit]
+Description=AB Lab DNS inspection only (no panel writes)
+After=network-online.target ab-lab-admin.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ab-lab
+Group=ab-lab
+WorkingDirectory=/opt/ab-lab
+ExecStart=/opt/ab-lab/.venv/bin/python /opt/ab-lab/run.py --service dns --config /etc/ab-lab/config.json
+Restart=on-failure
+RestartSec=30
+UMask=0077
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ab-lab
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

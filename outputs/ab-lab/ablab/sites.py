@@ -1,0 +1,154 @@
+"""Registered domains only. Business stores never use a hostname as a path."""
+from contextlib import contextmanager
+import ipaddress
+from pathlib import Path
+import re
+import sqlite3
+import time
+import uuid
+
+from .store import Conflict, Store
+
+
+def normalize_domain(value):
+    if not isinstance(value, str) or value != value.strip() or len(value) > 253:
+        raise ValueError('请输入完整域名，不含协议、端口、路径或空白')
+    try:
+        domain = value.encode('idna').decode('ascii').lower()
+    except UnicodeError:
+        raise ValueError('域名格式不正确') from None
+    labels = domain.split('.')
+    if len(labels) < 2 or any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', label) for label in labels):
+        raise ValueError('域名格式不正确')
+    try:
+        ipaddress.ip_address(domain)
+    except ValueError:
+        if not labels[-1].isdigit() and labels[-1] not in ('localhost', 'local', 'internal'):
+            return domain
+    raise ValueError('需要公网域名，不能填写 IP 或本地主机名')
+
+
+class Registry:
+    def __init__(self, data_dir, default_domain='', reserved=(), registry_dir=None):
+        self.root = Path(data_dir).resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.reserved = set(reserved)
+        folder = Path(registry_dir).resolve() if registry_dir else self.root
+        folder.mkdir(parents=True, exist_ok=True)
+        self.path = folder / 'registry.db'
+        with self.connect() as db:
+            db.executescript('''
+                CREATE TABLE IF NOT EXISTS sites(
+                    id TEXT PRIMARY KEY, domain TEXT UNIQUE NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+                    stage TEXT NOT NULL, error TEXT NOT NULL DEFAULT '', created REAL NOT NULL,
+                    next_attempt REAL NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
+                    panel_id INTEGER, managed_path TEXT NOT NULL DEFAULT '', generation INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS site_events(
+                    id INTEGER PRIMARY KEY, site_id TEXT NOT NULL, created REAL NOT NULL,
+                    stage TEXT NOT NULL, detail TEXT NOT NULL);
+            ''')
+            # Serialize migration across admin and target startup. SQLite backup
+            # includes WAL; only a complete backup is installed at the final path.
+            db.execute('BEGIN IMMEDIATE')
+            if not db.execute("SELECT 1 FROM sites WHERE id='default'").fetchone() and (self.root / 'app.db').exists():
+                backup = self.root / 'backups' / 'pre-multidomain.db'
+                backup.parent.mkdir(exist_ok=True)
+                if not backup.exists():
+                    temporary = backup.with_suffix('.' + uuid.uuid4().hex + '.tmp')
+                    with sqlite3.connect(self.root / 'app.db') as source:
+                        dest = sqlite3.connect(temporary)
+                        try:
+                            source.backup(dest)
+                        finally:
+                            dest.close()
+                    temporary.replace(backup)
+            db.execute("INSERT OR IGNORE INTO sites(id,domain,stage,created) VALUES('default',?,'legacy',?)", (default_domain, time.time()))
+            old = db.execute("SELECT domain FROM sites WHERE id='default'").fetchone()[0]
+            if default_domain and old != default_domain:
+                raise ValueError('原站域名与登记表不一致，请先备份并核对配置，不能自动迁移到其他域名')
+
+    @contextmanager
+    def connect(self):
+        db = sqlite3.connect(self.path, timeout=10)
+        db.row_factory = sqlite3.Row
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
+
+    def list(self):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute("SELECT * FROM sites ORDER BY CASE id WHEN 'default' THEN 0 ELSE 1 END,created")]
+
+    def get(self, site_id):
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM sites WHERE id=?', (site_id,)).fetchone()
+        if row is None:
+            raise KeyError(site_id)
+        return dict(row)
+
+    def for_host(self, host):
+        try:
+            domain = normalize_domain(host)
+        except ValueError:
+            return None
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM sites WHERE domain=? AND enabled=1', (domain,)).fetchone()
+        return dict(row) if row else None
+
+    def add(self, domain):
+        domain = normalize_domain(domain)
+        if domain in self.reserved:
+            raise ValueError('不能将后台管理域名登记为访客站点')
+        site_id = uuid.uuid4().hex
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute('SELECT count(*) FROM sites').fetchone()[0] >= 200:
+                raise ValueError('最多登记200个站点')
+            try:
+                db.execute('INSERT INTO sites(id,domain,stage,created) VALUES(?,?,?,?)', (site_id, domain, 'unconfigured', time.time()))
+            except sqlite3.IntegrityError:
+                raise Conflict('域名已经登记') from None
+            self._event(db, site_id, 'unconfigured', '域名已登记；等待服务器配置接入服务')
+        return self.get(site_id)
+
+    def store(self, site_id):
+        site = self.get(site_id)
+        if site['id'] == 'default':
+            return Store(self.root)
+        if not re.fullmatch('[a-f0-9]{32}', site['id']):
+            raise ValueError('站点ID格式错误')
+        directory = self.root / 'sites' / site['id']
+        if not directory.resolve().is_relative_to(self.root):
+            raise ValueError('站点目录越界')
+        return Store(directory)
+
+    def _event(self, db, site_id, stage, detail):
+        db.execute('INSERT INTO site_events(site_id,created,stage,detail) VALUES(?,?,?,?)', (site_id, time.time(), stage, detail))
+        db.execute('DELETE FROM site_events WHERE id <= (SELECT MAX(id)-5000 FROM site_events)')
+
+    def events(self, site_id):
+        self.get(site_id)
+        with self.connect() as db:
+            return [dict(row) for row in db.execute('SELECT created,stage,detail FROM site_events WHERE site_id=? ORDER BY id DESC LIMIT 100', (site_id,))]
+
+    def control(self, site_id, action):
+        self.get(site_id)
+        if site_id == 'default':
+            raise ValueError('原站由已有部署管理，不在自动接入任务范围内')
+        enabled = action == 'retry'
+        stage = 'waiting_dns' if enabled else 'paused'
+        with self.connect() as db:
+            db.execute('UPDATE sites SET enabled=?,stage=?,error=?,next_attempt=0,generation=generation+1 WHERE id=?', (enabled, stage, '', site_id))
+            self._event(db, site_id, stage, '用户请求重试' if enabled else '用户暂停接入和访问；不删除面板站点或数据')
+        return self.get(site_id)
+
+    def transition(self, site_id, generation, stage, detail='', delay=0, panel_id=None, managed_path=None):
+        """CAS prevents an in-flight worker from undoing an administrator pause."""
+        with self.connect() as db:
+            cursor = db.execute('UPDATE sites SET stage=?,error=?,next_attempt=?,attempts=attempts+1,panel_id=COALESCE(?,panel_id),managed_path=COALESCE(?,managed_path) WHERE id=? AND generation=? AND enabled=1',
+                                (stage, detail, time.time() + delay, panel_id, managed_path, site_id, generation))
+            if cursor.rowcount:
+                self._event(db, site_id, stage, detail)
+            return bool(cursor.rowcount)
