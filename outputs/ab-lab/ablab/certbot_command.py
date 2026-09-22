@@ -1,6 +1,6 @@
 """Internal Certbot command boundary, NOT a complete certificate manager.
 
-No live callers: private directory/config auditing, account registration,
+No live callers: account registration, installed-client compatibility,
 certificate verification and deployment must precede production integration.
 """
 from dataclasses import dataclass
@@ -9,6 +9,7 @@ import re
 import subprocess
 
 from .nginx_entry import no_symlinks
+from .certbot_config import audit_private_config
 from .panel_sites import validate_identity
 from .provisioning import ProvisioningError
 
@@ -69,7 +70,7 @@ class CertbotCommand:
                 *(('--dry-run',) if dry_run else ()))
 
     def run(self, identity, *, operation, enabled=False, authorize, runner=subprocess.run):
-        """Caller holds the worker lock, persisted intent and audited configs.
+        """Caller holds the worker lock, persisted intent and verified material.
 
         authorize must recheck ownership and pause immediately before launch.
         None means exit 0 only; inspect and validate files separately. Unknown
@@ -85,10 +86,12 @@ class CertbotCommand:
             raise ValueError('证书操作无效')
         root = '/var/lib/ab-lab-certificates/' + self.environment
         check_default_configs(root)
+        audit_private_config(root, identity, self.account_id,
+                             args[args.index('--server') + 1], operation=operation)
         if authorize() is not True:
             raise ProvisioningError('站点归属或暂停复核未通过，未执行证书操作')
         try:
-            result = runner(args, shell=False, timeout=180, check=False,
+            result = runner(args, shell=False, timeout=180, check=False, umask=0o077,
                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL, cwd=root,
                             env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': root,

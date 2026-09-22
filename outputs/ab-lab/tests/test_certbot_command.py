@@ -88,8 +88,9 @@ def test_disabled_execution_never_launches(enabled):
 
 
 @pytest.mark.parametrize('authorized', [False, None, 1, 'true'])
-def test_ownership_and_pause_recheck_must_explicitly_authorize(authorized):
+def test_ownership_and_pause_recheck_must_explicitly_authorize(authorized, monkeypatch):
     from ablab.certbot_command import CertbotCommand
+    monkeypatch.setattr('ablab.certbot_command.audit_private_config', lambda *a, **kw: None)
     calls = []
     with pytest.raises(ProvisioningError):
         CertbotCommand('staging', 'c' * 32).run(
@@ -107,16 +108,25 @@ def test_launch_is_bounded_without_inherited_environment(monkeypatch, operation,
     monkeypatch.setenv('PYTHONPATH', '/untrusted')
     events = []
 
+    def audited(root, identity, account, server, *, operation):
+        assert root == '/var/lib/ab-lab-certificates/staging'
+        assert identity == IDENTITY and account == 'c' * 32
+        assert server == 'https://acme-staging-v02.api.letsencrypt.org/directory'
+        assert operation in ('issue', 'renew', 'dry-run')
+        events.append('audited')
+
+    monkeypatch.setattr('ablab.certbot_command.audit_private_config', audited)
+
     def authorize():
         events.append('checked')
         return True
 
     def run(args, **kwargs):
-        assert events == ['checked']
+        assert events == ['audited', 'checked']
         events.append('launched')
         assert args[:2] == ('/usr/bin/certbot', verb)
         assert ('--dry-run' in args) is dry
-        assert kwargs == dict(shell=False, timeout=180, check=False,
+        assert kwargs == dict(shell=False, timeout=180, check=False, umask=0o077,
                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL, cwd='/var/lib/ab-lab-certificates/staging',
                               env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8',
@@ -126,13 +136,14 @@ def test_launch_is_bounded_without_inherited_environment(monkeypatch, operation,
 
     result = CertbotCommand('staging', 'c' * 32).run(
         IDENTITY, operation=operation, enabled=True, authorize=authorize, runner=run)
-    assert events == ['checked', 'launched']
+    assert events == ['audited', 'checked', 'launched']
     assert result is None  # Exit 0 is NOT evidence that a certificate changed.
 
 
 @pytest.mark.parametrize('failure', ['timeout', 'oserror', 'exit'])
-def test_launch_failure_is_redacted_and_never_retried(failure):
+def test_launch_failure_is_redacted_and_never_retried(failure, monkeypatch):
     from ablab.certbot_command import CertbotCommand
+    monkeypatch.setattr('ablab.certbot_command.audit_private_config', lambda *a, **kw: None)
     calls = []
 
     def run(args, **kwargs):

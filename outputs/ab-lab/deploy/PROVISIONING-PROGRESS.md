@@ -136,6 +136,22 @@
 - 该证据不覆盖真实 TCP 80/443 监听、HTTPS 握手、线上 reload、CA 签发或续期。未更改现有站点、服务或发布 ZIP，自动写入继续关闭。
 - 新增 7 项探针边界回归先失败后通过；最新完整本地回归 **358 项 Python 通过、26 平台跳过、2 项既有弃用警告，8 项 JavaScript 通过**。
 
+## 2026-09-22 私有 Certbot 配置审计（本地开发，尚未上线）
+
+- 命令入口新增强制只读检查：专用目录、仅含注释的私有 CLI 文件、指定站点续期配置。核对精确账户、CA、域名、webroot、live/archive 路径；拒绝 hooks、installer、未知选项、重复项、额外域名和歧义语法，不自动改写。
+- 复用现有受限文件读取器：限制大小，拒绝符号链接、硬链接、非普通文件和不安全 POSIX 权限。新申请遇到目标已有配置/材料目录即停止；`.conf.new` 残留需要人工核对，禁止静默覆盖。
+- Certbot 子进程显式设置 `umask=0077`，不依赖启动者的默认权限。正常 LF/CRLF 支持，注释中夹带裸 CR/控制字符拒绝；ARI 时间要求无时区的规范时间，避免和上游 naive datetime 比较失败。
+- 按 [Certbot 官方用户指南](https://eff-certbot.readthedocs.io/en/stable/using.html) 及官方 `storage.py` / `renewal.py` 核对配置和续期逻辑；该检查器刻意只接受受管配置子集，不声称兼容任意 Certbot 历史配置。实际安装版本、默认配置搜索路径与真实生成配置仍须隔离验收。
+- 独立审查指出空 CLI 应允许；已以失败测试复现并修正。共享受限读取器仅增加默认关闭的空文件选项，只有 CLI 开启，证书材料和续期文件仍禁止为空；其他安全检查不变。补齐密钥参数、ARI 小数秒拒绝、续期文件权限与所有者测试；复审无剩余问题。
+- 最终完整本地回归：**436 项 Python 通过、33 平台跳过、2 项既有弃用警告；8 项 JavaScript 通过；pip check / git diff --check 通过**。本轮新增代码和读取器调整尚未运行 Linux 验收；不复用上轮探针当作新代码验收。
+- 未更改服务器配置，没有安装客户端、注册账户、接受条款、申请证书或更新 ZIP。账户、完整材料复核、worker 接入、独立 timer、真实建站和 HTTPS/续期验收仍未完成；自动写入保持关闭。
+
+## 2026-09-23 服务器客户端只读核对
+
+- 通过用户已登录的宝塔终端运行只读检查，看到 `AB_CERTBOT_INSPECT_DONE` 并返回 root 提示符。PATH 中没有 Certbot，系统 Python 元数据中没有 Certbot / ConfigObj。
+- `apt-cache policy certbot` 显示 Installed `(none)`、Candidate `4.0.0-4`，来源为 Ubuntu archive。`apt-get -s install certbot` 仅模拟安装，输出 Certbot、python3-certbot、ACME / ConfigObj 等依赖计划；没有实际安装。
+- 需要按实际客户端版本做隔离配置兼容测试，不能仅依据 5.8.0 文档认定 4.0.0-4 部署通过。后续安装还要核对并隔离包自带默认续期任务；未批准前不执行安装、mask 或服务改动。
+
 ### 回归命令（本地开发）
 
 ```bash

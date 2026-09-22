@@ -112,11 +112,11 @@ def _file_snapshot(info, *, include_ctime=True):
             info.st_mode, info.st_nlink)
 
 
-def _read_archive(path, limit, *, private):
+def _read_archive(path, limit, *, private, allow_empty=False):
     before = no_symlinks(path).lstat()
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
         raise ValueError('not an exclusive regular file')
-    if not 0 < before.st_size <= limit:
+    if not (0 if allow_empty else 1) <= before.st_size <= limit:
         raise ValueError('material size invalid')
     if os.name != 'nt' and (before.st_uid != os.geteuid() or before.st_mode & (0o077 if private else 0o022)):
         raise ValueError('unsafe material permissions')
