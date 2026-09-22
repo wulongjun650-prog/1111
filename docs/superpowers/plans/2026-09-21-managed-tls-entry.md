@@ -64,3 +64,9 @@ assert not tls.configure(IDENTITY, 22, version.name, lambda: True, now=NOW)
 ## Self-review
 
 此任务覆盖已批准的 HTTPS 配置步骤，不改变 CA 或自动建站授权范围。没有引入新的事务框架；复用现有保存旧配置的文件操作。证书命令配置审计、续期、worker 联调和线上验收继续保留未完成状态。
+
+## Linux 局部验收补充（2026-09-22）
+
+- [x] 经独立复核后，在宝塔终端执行摘要核验过的 v2 隔离脚本：11 项 load 检查、9 次真实 Nginx 合法配置检查、错误密钥拒绝、4 项文件事务场景通过。
+- [x] Nginx 仅检查改用私有 Unix socket 的配置副本；实际 reload 由替身截断。没有修改现有站点或申请证书。完整哈希、临时目录、依赖版本与边界见 `outputs/ab-lab/deploy/PROVISIONING-PROGRESS.md`。
+- [ ] 真实域名 TCP/HTTPS 握手、线上重载、CA 签发、续期以及 worker 端到端验收。以上局部测试不能替代这些步骤。

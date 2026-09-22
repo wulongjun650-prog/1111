@@ -111,7 +111,7 @@
 - 新读取器 18 项通过，提取源码哈希 `7833d0f09421836e4b348ec0bfd72497de099dd9c921b548ba9412eae74f1821`。
 - 新版本发布 15 项通过，现场生成测试 CA/中间证书/服务器证书并执行真实验证、排他文件写入、目录 fsync、权限检查。涵盖重复不写、更新保留旧版、缺失完成记录、密钥修改、硬链接、目录链接、权限错误、归属冲突、模拟写中断、暂停、staging 拒绝和默认禁写。提取源码/测试载荷哈希 `ee9adb0f16bb4e0b3d63f16ac76ed8165c2d15651cbf03b9ffb51f751401b49f`。
 - 终端明确输出 `READER_PASS 18`、`VERSION_PASS 15`、`CRYPTOGRAPHY 46.0.5`。这是服务器已有依赖，不等同于项目固定的 50.0.1 部署验收；没有安装或升级依赖。
-- 保留夹具 `/tmp/ab-lab-cert-read-emuewum4`、`/tmp/ab-lab-cert-versions-uvt4ohz8` 和上传的测试脚本供核对。只使用这些新建临时测试对象，不读取真实私钥、不联系 CA、不改网站/Nginx/服务配置。
+- 保留夹具 `/tmp/ab-lab-cert-read-emuewum4`、`/tmp/ab-lab-cert-versions-uyt4ohz8` 和上传的测试脚本供核对（版本目录拼写于 09-22 按宝塔文件列表更正）。只使用这些新建临时测试对象，不读取真实私钥、不联系 CA、不改网站/Nginx/服务配置。
 - 此证据补上上一节未完成的局部 Linux 验证，仍不是完整 worker、线上 HTTPS 或自动建站验收。
 
 ## 2026-09-22 受管 HTTPS 配置事务（仅本地验证）
@@ -124,6 +124,17 @@
 - 独立审查未发现 Critical/Important 问题；补充了续期完成记录替换前后中断、load 链接与 POSIX 权限回归。后者在本次 Windows 环境跳过，需后续 Linux 验证。
 - 此轮未更改服务器或现有三个测试站点，未安装依赖、调用 CA、重载 Nginx 或更新发布 ZIP。上节 Linux 探针不覆盖本轮新增 load/TLS 代码。
 - 仍需：真实 Linux/Nginx TLS 检查及握手、专用 Certbot 配置和 hooks 审计、续期服务、worker 接入、受控真实建站与 HTTPS 路由/续期验收。自动建站尚未完成，自动写入继续关闭。
+
+## 2026-09-22 补充：真实 Linux/Nginx 隔离检查通过
+
+- 新增生成器 `deploy/build_tls_probe.py`，从当前生产函数和测试证书夹具生成自包含脚本，不安装依赖、不读取真实站点配置或密钥。服务器执行的是 `/tmp/tls-isolated-probe-v2.py`，同一进程先读取字节并核对 SHA-256 `843bfc4db693b800630e5096fc8b18dddbd076f66afdf88936aae552a312ee36`，再编译执行同一份字节。
+- 审查发现 `nginx -t` 仍可能绑定监听 socket，且可以创建空 PID 文件。根据 [Nginx socket 源码](https://github.com/nginx/nginx/blob/master/src/core/ngx_connection.c) 和 [PID 源码](https://github.com/nginx/nginx/blob/master/src/core/ngx_cycle.c) 修正探针：测试副本只允许把已知 80/443 模板改为私有目录内 Unix socket，未知监听形式拒绝；PID 文件允许不存在或为空，不允许写入进程号。所有日志、临时文件、PID 和 include 均在临时根下。
+- 旧 `/tmp/tls-isolated-probe.py` 已上传但**从未执行，不应使用**；修正后的 v2 经独立复核无剩余 Critical/Important 问题后才执行。两份脚本保留供核对。
+- 终端明确输出 `AB_TLS_HASH_OK` 与最终 `AB_TLS_DONE`，并返回 root 提示符。读取器 18 项、版本发布 15 项再次通过；新增 load 11 项通过，覆盖链接、硬链接、权限、篡改、过期、归属与摘要，确认拒绝时不修复文件。
+- `AB_TLS_PROBE` 输出 `nginx_valid_checks: 9`、`mismatched_key_rejected: true`、`transaction_pass: 4`、`reload_simulated: 3`、`real_reload: false`、`listeners: private-unix-sockets`。真实 Nginx 验证语法/PEM 加载，Linux 文件替换与保留备份也实际执行；首次 TLS、同版不重载、更新保留旧版、失败回滚/阻止重试通过。归属接口与重载结果为替身，未启动工作进程。
+- TLS 夹具保留 `/tmp/ab-lab-tls-probe-bz705k64`。TLS 提取源码摘要 `74d944328e44fbf3c5e8df56fce318e17c207046b2deb66b254801aeb58c4649`，版本源码摘要 `de70333901198c455c663ed26d0feec20f9ed20059aa2e4f70447ee4eb556e2f`。服务器使用既有 cryptography 46.0.5，不等同于固定 50.0.1 安装验收。
+- 该证据不覆盖真实 TCP 80/443 监听、HTTPS 握手、线上 reload、CA 签发或续期。未更改现有站点、服务或发布 ZIP，自动写入继续关闭。
+- 新增 7 项探针边界回归先失败后通过；最新完整本地回归 **358 项 Python 通过、26 平台跳过、2 项既有弃用警告，8 项 JavaScript 通过**。
 
 ### 回归命令（本地开发）
 
