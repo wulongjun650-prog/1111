@@ -171,6 +171,17 @@
 - 客户端安装与默认续期隔离完成，但私有配置兼容验证尚未完成：保留安装包新增的全局 CLI，不删除、不临时绕过审计。尚未创建 CA 账户、接受条款、申请证书、启用独立续期任务、重载 Nginx 或上线自动建站。
 - 安装后最终服务核对显示 `APP_STATUS ab-lab-admin.service active`、`APP_STATUS ab-lab-target.service active`，随后返回 root 提示符。本轮只修改安装记录，未更改应用源码或发布包；原有本地测试结果不作为新的线上 HTTPS 验收证据。
 
+## 2026-09-23 补充：安装版参数检查与默认 CLI 隔离
+
+- 服务器实际安装代码报告默认 CLI 搜索路径为 `/etc/letsencrypt/cli.ini` 和 `~/.config/letsencrypt/cli.ini`。只运行 `cli.prepare_and_parse_args()`，没有调用 Certbot 主流程、认证插件准备、签发或续期。
+- 首次 certonly 参数测试使用不存在的虚拟 webroot，被参数解析阶段拒绝；改用已有 `/tmp` 后解析完成。域名和账户均为虚拟值，未创建站点。此时 authenticator/installer 为 None、webroot_map 为空，说明解析本身尚未完成插件选择和续期配置生成；不能把 `storage.relevant_values()` 的这次输出当成实际签发后的续期文件兼容证据。
+- 对 `/etc/letsencrypt/cli.ini` 核对 dpkg conffile 记录和实际 MD5，均为 `d409bf370c29a96fe865b5536b2135da`；文件为 root 所有、普通文件、0644、单链接，隔离目标不存在且无旧 diversion。该文件安装前不存在，确认是本次包新增的未修改默认配置。
+- 再次用上述类型、权限、链接数、校验值和目标不存在条件作前置保护，执行 `mv -n -- /etc/letsencrypt/cli.ini /etc/ab-lab-certbot.cli.disabled`。终端输出 `AB_CONFIG_ISOLATED`，原默认路径不存在，恢复副本校验值未变；没有删除配置，也没有改动宝塔证书目录。
+- 这是保留副本的移动，不是 CLI conffile 的 dpkg diversion；不能声称软件升级后一定保持缺失。未来包操作若重新生成默认 CLI，现有运行前审计仍应拒绝执行，待人工核对。需要恢复时也须先暂停独立证书执行、确认原路径未被重新创建，再恢复这个确切副本，禁止覆盖新配置。
+- 移动后重新执行实际安装版 renew 参数解析：显式私有 config/work/logs、虚拟账户/证书名、staging CA、`--no-directory-hooks`、`--no-random-sleep-on-renew` 和 `--dry-run`。断言 random_sleep_on_renew=False、dry_run=True、三种 hook 均空；终端输出 `AB_RENEW_PARSE_OK` 和 `AB_PARSE_ONLY_NO_ISSUANCE`。仅解析参数，**没有执行 dry-run 续期或联系 CA**。
+- 最终 `systemctl show`：certbot.service / certbot.timer 均 masked / inactive；ab-lab-admin.service / ab-lab-target.service 均 loaded / active。未重载 Nginx、改变现有网站、创建账户、接受条款或申请证书。
+- 尚未完成：实际生成续期配置与私有审计的 Linux 兼容验证、私有账户/目录初始化、worker certificate/verify 接入、独立续期任务和真实建站 HTTPS 验收。本轮仅更新部署记录，不改业务代码或发布 ZIP，不把旧回归结果当作本轮端到端验收。自动建站仍未完成，自动写入保持关闭。
+
 ### 回归命令（本地开发）
 
 ```bash
