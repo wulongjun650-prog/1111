@@ -152,6 +152,25 @@
 - `apt-cache policy certbot` 显示 Installed `(none)`、Candidate `4.0.0-4`，来源为 Ubuntu archive。`apt-get -s install certbot` 仅模拟安装，输出 Certbot、python3-certbot、ACME / ConfigObj 等依赖计划；没有实际安装。
 - 需要按实际客户端版本做隔离配置兼容测试，不能仅依据 5.8.0 文档认定 4.0.0-4 部署通过。后续安装还要核对并隔离包自带默认续期任务；未批准前不执行安装、mask 或服务改动。
 
+## 2026-09-23 客户端安装授权与前置核对
+
+- 用户明确回复“允许”，授权从 Ubuntu 源安装 Certbot 4.0.0-4 及依赖，并隔离默认续期任务；不包含 CA 账户注册、条款接受、正式签发或网站改动。
+- 安装前终端检查：uid 0；`/etc/letsencrypt`、`/etc/cron.d/certbot`、`/etc/systemd/system/certbot.timer` 和 `.service` 均不存在；两个 unit 均 `not-found` / `inactive`。安装模拟退出 0，计划新增 15 个软件包、删除 0 个。
+- 安装采用不升级/不删除现有包、不安装推荐插件的参数；先屏蔽新默认 systemd 服务/定时器，并核对 cron 隔离。最终安装及隔离结果须以下实际终端结果为准，不以模拟输出视为安装成功。
+
+### 实际操作与断线核对
+
+- 安装前执行 `systemctl mask certbot.service certbot.timer`，终端确认两个新建 `/etc/systemd/system/` 链接指向 `/dev/null`，两个 unit 均 `masked` / `inactive`。未停用既有其他服务。
+- 核对 cron 原路径、隔离目标均不存在，且不存在旧 diversion 后，执行 `dpkg-divert --local --add --rename --divert /etc/ab-lab-certbot.cron.disabled /etc/cron.d/certbot`。包自带 cron 将保存到 cron 搜索目录外；登记由包管理器保留，未删除文件。
+- 实际安装命令：`DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get -y --no-install-recommends --no-remove --no-upgrade -o DPkg::Lock::Timeout=30 install certbot=4.0.0-4`。
+- 安装后浏览器终端断线并重连，未看到原命令完整输出。没有盲重试；重连后 `dpkg-query` 确认 certbot 和 python3-certbot 均 `install ok installed 4.0.0-4`，没有 apt-get / dpkg PID 输出；默认 service / timer 再次确认 `masked` / `inactive`，`AB_STATUS_DONE` 后返回 root 提示符。
+- 默认任务隔离是可恢复的包管理配置，不是删除；如未来需要恢复，必须先核对独立续期任务与默认扫描范围，再针对这两个 mask 和这条 diversion 作恢复，不能直接开启全局续期。
+- 安装后实际运行 `/usr/bin/certbot --version` 退出 0，输出 `certbot 4.0.0`；`--help all` 退出 0。帮助包含 `--no-directory-hooks` / `--config-dir` / `--webroot-path`，没有显示 `--no-random-sleep-on-renew`，继续核对已安装代码，不能凭帮助字符串缺失就认定参数不支持。
+- cron 活跃路径不存在，隔离文件存在。`dpkg --audit` 退出 0 且 stdout 为空。安装包新增 `/etc/letsencrypt/cli.ini`；现有命令审计会拒绝该默认配置，因此仍未放开业务证书命令。
+- 已读取服务器实际安装的 `certbot._internal.cli` 对应选项代码：`--no-random-sleep-on-renew` 使用 `action="store_false"`、`dest="random_sleep_on_renew"`，并设置 `help=argparse.SUPPRESS`。帮助不显示是隐藏参数，不是缺少支持；此核对没有发出续期或 CA 请求。
+- 客户端安装与默认续期隔离完成，但私有配置兼容验证尚未完成：保留安装包新增的全局 CLI，不删除、不临时绕过审计。尚未创建 CA 账户、接受条款、申请证书、启用独立续期任务、重载 Nginx 或上线自动建站。
+- 安装后最终服务核对显示 `APP_STATUS ab-lab-admin.service active`、`APP_STATUS ab-lab-target.service active`，随后返回 root 提示符。本轮只修改安装记录，未更改应用源码或发布包；原有本地测试结果不作为新的线上 HTTPS 验收证据。
+
 ### 回归命令（本地开发）
 
 ```bash
