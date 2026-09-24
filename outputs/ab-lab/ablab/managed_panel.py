@@ -19,11 +19,28 @@ class ManagedPanel:
             raise ValueError('私有备份不能与公开入口目录重叠')
         self.nginx = NginxEntry(state_dir, self.inspect, config_dir=config_dir,
                                 runner=runner, writes_enabled=api.writes_enabled)
-        self.certificate_deployment = certificate_deployment
-        if acceptance is not None and (certificate_deployment is None
-                or getattr(acceptance, 'versions', None) is not certificate_deployment.versions):
+        self._certificate_deployment = self._acceptance = None
+        if certificate_deployment is not None and acceptance is None:
+            self._certificate_deployment = certificate_deployment
+        elif certificate_deployment is not None or acceptance is not None:
+            self.attach_certificates(certificate_deployment, acceptance)
+
+    @property
+    def certificate_deployment(self):
+        return self._certificate_deployment
+
+    @property
+    def acceptance(self):
+        return self._acceptance
+
+    def attach_certificates(self, deployment, acceptance):
+        if self._certificate_deployment is not None or self._acceptance is not None:
+            raise ValueError('证书管线已经绑定，不能在运行中替换')
+        versions = getattr(deployment, 'versions', None)
+        if (deployment is None or acceptance is None or versions is None
+                or getattr(acceptance, 'versions', None) is not versions):
             raise ValueError('证书部署与验收必须使用同一个不可变版本存储')
-        self.acceptance = acceptance
+        self._certificate_deployment, self._acceptance = deployment, acceptance
 
     def _directory(self, path):
         if not isinstance(path, str) or not re.fullmatch('/www/wwwroot/ab-lab-sites/[a-f0-9]{32}', path):

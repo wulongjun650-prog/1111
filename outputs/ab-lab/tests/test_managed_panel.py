@@ -213,6 +213,44 @@ def test_acceptance_and_deployment_must_share_the_same_version_store(tmp_path):
         setup(tmp_path, certificate_deployment=Deployment(), acceptance=Acceptance())
 
 
+def test_certificate_pipeline_can_be_bound_exactly_once_after_nginx_exists(tmp_path):
+    managed, _, _, _ = setup(tmp_path)
+    versions = object()
+    deployment = type('Deployment', (), {'versions': versions})()
+    acceptance = type('Acceptance', (), {'versions': versions})()
+    managed.attach_certificates(deployment, acceptance)
+    assert managed.certificate_deployment is deployment and managed.acceptance is acceptance
+    with pytest.raises(ValueError):
+        managed.attach_certificates(deployment, acceptance)
+
+
+def test_late_certificate_binding_rejects_mismatched_store(tmp_path):
+    managed, _, _, _ = setup(tmp_path)
+    deployment = type('Deployment', (), {'versions': object()})()
+    acceptance = type('Acceptance', (), {'versions': object()})()
+    with pytest.raises(ValueError):
+        managed.attach_certificates(deployment, acceptance)
+
+
+def test_certificate_pipeline_properties_cannot_be_replaced_directly(tmp_path):
+    managed, _, _, _ = setup(tmp_path)
+    with pytest.raises(AttributeError):
+        managed.certificate_deployment = object()
+    with pytest.raises(AttributeError):
+        managed.acceptance = object()
+
+
+def test_late_binding_rejects_missing_or_none_version_store(tmp_path):
+    managed, _, _, _ = setup(tmp_path)
+    for deployment, acceptance in [
+        (object(), object()),
+        (type('Deployment', (), {'versions': None})(),
+         type('Acceptance', (), {'versions': None})()),
+    ]:
+        with pytest.raises(ValueError):
+            managed.attach_certificates(deployment, acceptance)
+
+
 def test_default_disabled_api_cannot_create_local_directories(tmp_path):
     managed, api, roots, _ = setup(tmp_path, enabled=False)
     with pytest.raises(ProvisioningError):
