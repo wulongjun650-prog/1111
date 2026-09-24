@@ -193,6 +193,15 @@
 - 最新完整本地回归：**458 项 Python 通过、33 项平台跳过、2 项既有依赖弃用警告；8 项 JavaScript 通过；pip check 与 git diff --check 通过**。相关 certificate/Certbot/managed-panel/worker 聚焦测试 93 项通过。
 - 本轮尚未部署源码、创建证书账户、接受 CA 条款、申请真实证书、启用 timer、重载线上 Nginx 或更改现有宝塔站点。完整 HTTPS 握手、目标应用路由、续期演练和服务器端 worker 接入仍未完成，自动建站继续保持未完成状态。
 
+## 2026-09-24 HTTPS 与应用路由验收（本地开发）
+
+- 目标应用新增独立于上传内容的 `/.well-known/ab-lab-route/<site-id>` 只读证明。中间件先按精确 Host 查找已启用登记站点，端点再核对请求站点 ID；错误 ID、未知或暂停域名不能得到证明，上传页面的 catch-all 不能覆盖该路由。
+- 新增只读 `TlsRouteProbe`：直连部署配置中的固定公网 IPv4:443，不依赖公共 DNS 的当前结果；同时用规范站点域名作为 TLS SNI 和 HTTP Host。使用系统默认 TLS 信任与主机名校验，不提供关闭验证的选项。
+- 验收同时比较线上叶证书 DER 的 SHA-256 与不可变生产版本复核得到的指纹，并严格要求 200、单一 JSON content type、`no-store`、4 KiB 上限和精确的站点 ID/域名响应。证书部署与验收必须共享同一个版本存储实例。
+- 每个证书读取、面板归属查询和外部 TLS 慢边界前后继续复核 worker 暂停/世代状态。`ManagedPanel.verify()` 可以返回 HTTPS 与路由两项真实证明；未注入独立续期证明时固定返回 `renewal: false`，worker 仍不能把站点标记 active。
+- 测试先出现 37 项预期失败后实现；聚焦 68 项通过。完整本地回归 **479 项 Python 通过、33 项平台跳过、2 项既有弃用警告；8 项 JavaScript 通过；pip check 与 git diff --check 通过**。独立复查未发现 Critical 或 Important 问题。
+- 本轮没有连接真实 443、申请证书、接受 CA 条款、重载 Nginx、修改服务器或发布 ZIP。staging 续期演练、持久化续期证明、独立 timer、特权服务装配和真实线上验收仍未完成；自动建站继续保持未完成状态。
+
 ### 回归命令（本地开发）
 
 ```bash

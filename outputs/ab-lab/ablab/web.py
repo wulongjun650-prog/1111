@@ -7,6 +7,7 @@ import logging
 import mimetypes
 import os
 from pathlib import Path
+import re
 import secrets
 import time
 from typing import Literal
@@ -110,7 +111,6 @@ class LocalBoundary:
             if origin != expected_origin.encode() or not secrets.compare_digest(headers.get(b'x-csrf-token', b''), csrf.encode()):
                 await JSONResponse({'detail': '请求校验失败，请刷新页面'}, status_code=403)(scope, receive, send)
                 return
-        import re
         is_upload = re.fullmatch(r'/api/(?:sites/[a-f0-9]{32}/|sites/default/)?upload/[AB]', scope['path'])
         limit = MAX_ZIP if self.admin and is_upload else 256 * 1024
         chunks, size = [], 0
@@ -399,6 +399,14 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
 
     def site_store(request: Request):
         return registry.store(request.state.site_id)
+
+    @app.get('/.well-known/ab-lab-route/{site_id}')
+    def route_proof(site_id: str, request: Request):
+        if (not re.fullmatch('[a-f0-9]{32}', site_id)
+                or request.state.site_id != site_id):
+            raise HTTPException(404, '路由证明不存在')
+        site = registry.get(site_id)
+        return {'schema': 1, 'site_id': site_id, 'domain': site['domain']}
 
     @app.api_route('/_preview/{expiry}/{version_id}/{signature}/{path:path}', methods=['GET', 'HEAD'])
     def preview(expiry: int, version_id: str, signature: str, path: str, request: Request, store=Depends(site_store)):

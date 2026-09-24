@@ -1,8 +1,4 @@
-"""Local filesystem guard joining site creation and managed HTTP configuration.
-
-Development-only adapter: certificate and final verification deliberately fail
-closed. Do not wire to the production worker until those gates are implemented.
-"""
+"""Local filesystem guard joining site creation and managed configuration."""
 from pathlib import Path
 import re
 import subprocess
@@ -15,7 +11,7 @@ from .provisioning import ProvisioningError, ProvisioningNotStarted
 class ManagedPanel:
     def __init__(self, api, state_dir, *, entry_root=Path('/www/wwwroot/ab-lab-sites'),
                  config_dir=Path('/www/server/panel/vhost/nginx'), runner=subprocess.run,
-                 certificate_deployment=None):
+                 certificate_deployment=None, acceptance=None):
         self.api = api
         self.entry_root = no_symlinks(Path(entry_root))
         private = no_symlinks(Path(state_dir))
@@ -24,6 +20,10 @@ class ManagedPanel:
         self.nginx = NginxEntry(state_dir, self.inspect, config_dir=config_dir,
                                 runner=runner, writes_enabled=api.writes_enabled)
         self.certificate_deployment = certificate_deployment
+        if acceptance is not None and (certificate_deployment is None
+                or getattr(acceptance, 'versions', None) is not certificate_deployment.versions):
+            raise ValueError('证书部署与验收必须使用同一个不可变版本存储')
+        self.acceptance = acceptance
 
     def _directory(self, path):
         if not isinstance(path, str) or not re.fullmatch('/www/wwwroot/ab-lab-sites/[a-f0-9]{32}', path):
@@ -82,7 +82,10 @@ class ManagedPanel:
             identity, panel_id, self._certificate_authorization(identity, panel_id, authorize))
 
     def verify(self, identity, panel_id, authorize):
+        owned_and_current = self._certificate_authorization(identity, panel_id, authorize)
         if self.certificate_deployment is not None:
-            self.certificate_deployment.deploy_existing(
-                identity, panel_id, self._certificate_authorization(identity, panel_id, authorize))
-        raise ProvisioningError('HTTPS、应用路由及续期验收尚未接入，不能标记已接入')
+            digest = self.certificate_deployment.deploy_existing(
+                identity, panel_id, owned_and_current)
+            if self.acceptance is not None:
+                return self.acceptance.verify(identity, panel_id, digest, owned_and_current)
+        raise ProvisioningError('HTTPS、应用路由及续期验收尚未完整接入，不能标记已接入')

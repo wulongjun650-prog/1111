@@ -7,7 +7,7 @@ from ablab.provisioning import ProvisioningError
 from test_panel_sites import IDENTITY
 
 
-def setup(tmp_path, enabled=True, certificate_deployment=None):
+def setup(tmp_path, enabled=True, certificate_deployment=None, acceptance=None):
     from ablab.managed_panel import ManagedPanel
     configs = tmp_path / 'nginx'
     configs.mkdir()
@@ -36,7 +36,7 @@ def setup(tmp_path, enabled=True, certificate_deployment=None):
     api = API()
     runner = lambda args, **kwargs: subprocess.CompletedProcess(args, 0, '', '')
     managed = ManagedPanel(api, tmp_path / 'private', entry_root=roots, config_dir=configs, runner=runner,
-                           certificate_deployment=certificate_deployment)
+                           certificate_deployment=certificate_deployment, acceptance=acceptance)
     return managed, api, roots, configs
 
 
@@ -170,6 +170,47 @@ def test_verification_reconciles_existing_material_but_remains_fail_closed(tmp_p
     with pytest.raises(ProvisioningError, match='HTTPS'):
         managed.verify(IDENTITY, 22, lambda: True)
     assert deployment.calls == [(IDENTITY, 22)]
+
+
+def test_verification_passes_current_version_to_matching_acceptance_store(tmp_path):
+    versions = object()
+
+    class Deployment:
+        def __init__(self):
+            self.versions = versions
+
+        def deploy_existing(self, identity, panel_id, authorize):
+            assert authorize() is True
+            return 'd' * 64
+
+    class Acceptance:
+        def __init__(self):
+            self.versions = versions
+            self.calls = []
+
+        def verify(self, identity, panel_id, digest, authorize):
+            self.calls.append((identity, panel_id, digest))
+            assert authorize() is True
+            return {'https': True, 'route': True, 'renewal': False}
+
+    acceptance = Acceptance()
+    managed, _, _, _ = setup(tmp_path, certificate_deployment=Deployment(),
+                             acceptance=acceptance)
+    managed.create(IDENTITY)
+    assert managed.verify(IDENTITY, 22, lambda: True) == {
+        'https': True, 'route': True, 'renewal': False}
+    assert acceptance.calls == [(IDENTITY, 22, 'd' * 64)]
+
+
+def test_acceptance_and_deployment_must_share_the_same_version_store(tmp_path):
+    class Deployment:
+        versions = object()
+
+    class Acceptance:
+        versions = object()
+
+    with pytest.raises(ValueError):
+        setup(tmp_path, certificate_deployment=Deployment(), acceptance=Acceptance())
 
 
 def test_default_disabled_api_cannot_create_local_directories(tmp_path):
