@@ -1,5 +1,6 @@
 """Fixed argv contracts; no Certbot executable or CA is contacted."""
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 import subprocess
 
 import pytest
@@ -15,6 +16,7 @@ from ablab.provisioning import ProvisioningError, ProvisioningNotStarted
 def test_issue_is_one_domain_with_isolated_directories(environment, server):
     from ablab.certbot_command import CertbotCommand
     command = CertbotCommand(environment, 'c' * 32)
+    assert command.root == Path('/var/lib/ab-lab-certificates') / environment
     args = command.issue(IDENTITY)
     root = '/var/lib/ab-lab-certificates/' + environment
     assert args[:2] == ('/usr/bin/certbot', 'certonly')

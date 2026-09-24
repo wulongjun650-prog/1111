@@ -106,6 +106,20 @@ def test_literal_renewal_checker_can_complete_the_third_proof():
     assert acceptance.verify(IDENTITY, 22, DIGEST, lambda: True)['renewal'] is True
 
 
+@pytest.mark.parametrize('value', [False, None, 0, 1, 'yes'])
+def test_truthy_renewal_results_never_complete_the_third_proof(value):
+    from ablab.certificate_acceptance import CertificateAcceptance, TlsRouteProbe
+
+    class Renewal:
+        def verify(self, *args):
+            return value
+
+    acceptance = CertificateAcceptance(
+        Versions(), TlsRouteProbe('8.8.8.8', transport=lambda *args: response()),
+        renewal=Renewal())
+    assert acceptance.verify(IDENTITY, 22, DIGEST, lambda: True)['renewal'] is False
+
+
 def test_default_transport_uses_system_context_sni_and_exact_host(monkeypatch):
     from ablab import certificate_acceptance as module
     events = []

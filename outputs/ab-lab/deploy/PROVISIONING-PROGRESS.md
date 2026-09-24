@@ -202,6 +202,17 @@
 - 测试先出现 37 项预期失败后实现；聚焦 68 项通过。完整本地回归 **479 项 Python 通过、33 项平台跳过、2 项既有弃用警告；8 项 JavaScript 通过；pip check 与 git diff --check 通过**。独立复查未发现 Critical 或 Important 问题。
 - 本轮没有连接真实 443、申请证书、接受 CA 条款、重载 Nginx、修改服务器或发布 ZIP。staging 续期演练、持久化续期证明、独立 timer、特权服务装配和真实线上验收仍未完成；自动建站继续保持未完成状态。
 
+## 2026-09-24 staging 续期演练证明（本地开发）
+
+- 新增默认禁写的 `RenewalRehearsal`。首次没有 staging lineage 时，先持久化 `issue_intent`，再用已登记的独立 staging 账户签发测试证书；严格审计生成的 webroot 续期配置后，才写入 `issued` 收据。
+- dry-run 前先持久化 `dry_run_intent`，再运行一次受控 `renew --dry-run`。只有命令成功返回、续期配置再次通过审计且暂停/归属仍有效，才发布绑定完整 identity、panel_id、staging account 和当前生产证书摘要的 `verified` 收据。换生产证书摘要后必须重新演练。
+- issue 结果未知时，仅当既有 staging lineage 可严格审计才恢复，绝不重发签发；dry-run 不保存可供事后复核的证书，因此结果未知时永久停止自动重试并要求人工核对。只有 `ProvisioningNotStarted` 明确保证命令未启动时才删除本次 intent。
+- 证明记录是私有目录中的排他发布文件，读取时复用普通文件、单链接、权限、大小和并发快照检查。staging 证书永不传入生产版本存储或 Nginx。
+- 根据 Certbot 官方指南核对：`--dry-run` 使用测试服务器、获取但不保存测试证书，默认不运行 deploy hook。系统仍显式关闭目录 hooks，并使用预登记 staging 账户及私有目录。
+- 独立审查发现并复现一个 Important：测试可注入证书根可能与真实 Certbot 固定执行目录分离。现已由 `CertbotCommand.root` 成为参数、cwd、lineage 和审计的唯一目录来源；复审确认问题消除且无剩余 Critical/Important。
+- 本地 TDD 先观察 16 项模块缺失失败，目录统一修复另观察 8 项失败；相关核心 71 项通过，较宽聚焦 198 项通过、7 项平台跳过。完整回归在最终提交前重新执行。
+- 本轮没有注册账户、接受 CA 条款、联系 staging/production CA、运行真实 dry-run、修改服务器或发布 ZIP。生产续期 timer、证书变化部署、服务装配和指定域名真实验收仍未完成；自动建站继续保持未完成状态。
+
 ### 回归命令（本地开发）
 
 ```bash

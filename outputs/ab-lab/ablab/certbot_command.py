@@ -45,9 +45,13 @@ class CertbotCommand:
         if not isinstance(self.account_id, str) or not re.fullmatch('[a-f0-9]{32}', self.account_id):
             raise ValueError('必须提供已登记的证书账户 ID')
 
+    @property
+    def root(self):
+        return Path('/var/lib/ab-lab-certificates') / self.environment
+
     def _common(self, identity):
         validate_identity(identity)
-        root = '/var/lib/ab-lab-certificates/' + self.environment
+        root = self.root.as_posix()
         server = ('https://acme-v02.api.letsencrypt.org/directory'
                   if self.environment == 'production'
                   else 'https://acme-staging-v02.api.letsencrypt.org/directory')
@@ -84,7 +88,7 @@ class CertbotCommand:
             args = self.renew(identity, dry_run=operation == 'dry-run')
         else:
             raise ValueError('证书操作无效')
-        root = '/var/lib/ab-lab-certificates/' + self.environment
+        root = self.root.as_posix()
         try:
             check_default_configs(root)
             audit_private_config(root, identity, self.account_id,
