@@ -20,6 +20,7 @@ class ManagedPanel:
         self.nginx = NginxEntry(state_dir, self.inspect, config_dir=config_dir,
                                 runner=runner, writes_enabled=api.writes_enabled)
         self._certificate_deployment = self._acceptance = None
+        self._production_renewal = None
         if certificate_deployment is not None and acceptance is None:
             self._certificate_deployment = certificate_deployment
         elif certificate_deployment is not None or acceptance is not None:
@@ -33,6 +34,10 @@ class ManagedPanel:
     def acceptance(self):
         return self._acceptance
 
+    @property
+    def production_renewal(self):
+        return self._production_renewal
+
     def attach_certificates(self, deployment, acceptance):
         if self._certificate_deployment is not None or self._acceptance is not None:
             raise ValueError('证书管线已经绑定，不能在运行中替换')
@@ -41,6 +46,15 @@ class ManagedPanel:
                 or getattr(acceptance, 'versions', None) is not versions):
             raise ValueError('证书部署与验收必须使用同一个不可变版本存储')
         self._certificate_deployment, self._acceptance = deployment, acceptance
+
+    def attach_renewal(self, renewal):
+        if self._production_renewal is not None:
+            raise ValueError('生产续期管线已经绑定，不能在运行中替换')
+        if (self._certificate_deployment is None or self._acceptance is None
+                or getattr(renewal, 'deployment', None) is not self._certificate_deployment
+                or getattr(renewal, 'acceptance', None) is not self._acceptance):
+            raise ValueError('生产续期必须绑定现有证书部署与验收管线')
+        self._production_renewal = renewal
 
     def _directory(self, path):
         if not isinstance(path, str) or not re.fullmatch('/www/wwwroot/ab-lab-sites/[a-f0-9]{32}', path):
@@ -106,3 +120,9 @@ class ManagedPanel:
             if self.acceptance is not None:
                 return self.acceptance.verify(identity, panel_id, digest, owned_and_current)
         raise ProvisioningError('HTTPS、应用路由及续期验收尚未完整接入，不能标记已接入')
+
+    def renew(self, identity, panel_id, authorize):
+        if self.production_renewal is None:
+            raise ProvisioningNotStarted('生产续期未配置，未执行证书命令')
+        return self.production_renewal.run(
+            identity, panel_id, self._certificate_authorization(identity, panel_id, authorize))

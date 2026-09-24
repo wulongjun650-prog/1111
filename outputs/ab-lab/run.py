@@ -10,22 +10,25 @@ import time
 
 def main():
     parser = argparse.ArgumentParser(description='AB Lab local console')
-    parser.add_argument('--service', choices=['admin', 'target', 'dns', 'provision'])
+    parser.add_argument('--service', choices=['admin', 'target', 'dns', 'provision', 'renew'])
     parser.add_argument('--data', type=Path, default=Path(__file__).resolve().parent / 'data')
     parser.add_argument('--config', type=Path, help='Public deployment JSON; requires --service')
     parser.add_argument('--private-config', type=Path, help='Root-only provisioning JSON')
     args = parser.parse_args()
-    if args.service == 'provision':
+    if args.service in ('provision', 'renew'):
         if args.config or not args.private_config:
-            parser.error('provision 只接受并且必须提供 --private-config')
-        from ablab.privileged_worker import load_worker, run_pending
+            parser.error('provision/renew 只接受并且必须提供 --private-config')
+        from ablab.privileged_worker import load_worker, run_pending, run_renewals
         worker = load_worker(args.private_config)
+        if args.service == 'renew':
+            print(f'Production renewal checked {run_renewals(worker)} active sites.', flush=True)
+            return
         print('Privileged provisioning enabled by private configuration.', flush=True)
         while True:
             run_pending(worker)
             time.sleep(60)
     if args.private_config:
-        parser.error('--private-config 只能用于 --service provision')
+        parser.error('--private-config 只能用于 --service provision/renew')
     deployment = None
     config = {}
     if args.config:

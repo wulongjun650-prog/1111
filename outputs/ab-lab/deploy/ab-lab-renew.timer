@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AB Lab production certificate renewal daily (opt-in)
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+Unit=ab-lab-renew.service
+
+[Install]
+WantedBy=timers.target

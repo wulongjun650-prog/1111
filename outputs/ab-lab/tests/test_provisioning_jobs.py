@@ -68,6 +68,12 @@ class Panel:
         self.calls.append('verify')
         return self.proof
 
+    def renew(self, identity, panel_id, authorize):
+        assert panel_id == 22 and identity['owner'] == self.object['owner']
+        assert authorize() is True
+        self.calls.append('renew')
+        return self.proof
+
 
 def worker(tmp_path, registry, panel, dns=None):
     from ablab.provisioning_jobs import ProvisioningWorker
@@ -93,6 +99,40 @@ def test_complete_job_requires_verified_remote_ownership_and_all_proofs(tmp_path
     assert owner not in json.dumps(registry.events(site['id']))
     worker(tmp_path, registry, panel).run_once(site['id'])
     assert panel.calls == ['create', 'configure', 'certificate', 'verify']
+
+
+def test_only_active_verified_owned_job_can_run_production_renewal(tmp_path):
+    registry, site, panel = setup(tmp_path)
+    instance = worker(tmp_path, registry, panel)
+    instance.run_once(site['id'])
+
+    assert instance.renew_once(site['id']) == 'renewed'
+    assert panel.calls == ['create', 'configure', 'certificate', 'verify', 'renew']
+
+    panel.object['owner'] = 'c' * 32
+    with pytest.raises(ProvisioningError):
+        instance.renew_once(site['id'])
+    assert panel.calls.count('renew') == 1
+
+
+def test_production_renewal_requires_an_exact_boolean_proof(tmp_path):
+    registry, site, panel = setup(tmp_path)
+    instance = worker(tmp_path, registry, panel)
+    instance.run_once(site['id'])
+    panel.proof['unexpected'] = True
+
+    with pytest.raises(ProvisioningError, match='未全部验证'):
+        instance.renew_once(site['id'])
+
+
+def test_non_active_default_and_paused_sites_never_reach_renewal(tmp_path):
+    registry, site, panel = setup(tmp_path)
+    instance = worker(tmp_path, registry, panel)
+    assert instance.renew_once(site['id']) == 'skipped'
+    assert instance.renew_once('default') == 'skipped'
+    registry.control(site['id'], 'pause')
+    assert instance.renew_once(site['id']) == 'skipped'
+    assert panel.calls == []
 
 
 def test_existing_site_is_never_adopted_from_web_registry(tmp_path):

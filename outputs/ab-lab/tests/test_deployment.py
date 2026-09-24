@@ -58,11 +58,23 @@ def test_privileged_service_is_packaged_but_not_installed_or_enabled():
     assert 'ab-lab-provision.service' not in installer
     assert 'systemctl enable ab-lab-provision' not in installer
 
+    renew = (root / 'deploy' / 'ab-lab-renew.service').read_text()
+    timer = (root / 'deploy' / 'ab-lab-renew.timer').read_text()
+    assert 'Type=oneshot' in renew and 'User=root' in renew
+    assert '--service renew --private-config /etc/ab-lab/provision.json' in renew
+    assert 'StateDirectory=ab-lab-provision ab-lab-certificates' in renew
+    assert 'OnCalendar=daily' in timer and 'Persistent=true' in timer
+    assert 'RandomizedDelaySec=' in timer and 'Unit=ab-lab-renew.service' in timer
+    assert 'ab-lab-renew.service' not in installer
+    assert 'ab-lab-renew.timer' not in installer
+
 
 @pytest.mark.parametrize('arguments', [
     ['--service', 'provision'],
+    ['--service', 'renew'],
     ['--service', 'admin', '--private-config', 'private.json'],
     ['--service', 'provision', '--private-config', 'private.json', '--config', 'public.json'],
+    ['--service', 'renew', '--private-config', 'private.json', '--config', 'public.json'],
 ])
 def test_service_cli_rejects_missing_or_misplaced_private_config(arguments):
     root = Path(__file__).resolve().parents[1]

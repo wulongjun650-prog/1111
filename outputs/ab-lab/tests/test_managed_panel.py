@@ -251,6 +251,58 @@ def test_late_binding_rejects_missing_or_none_version_store(tmp_path):
             managed.attach_certificates(deployment, acceptance)
 
 
+def test_production_renewal_binds_once_to_the_existing_certificate_pipeline(tmp_path):
+    managed, _, _, _ = setup(tmp_path)
+    versions = object()
+    deployment = type('Deployment', (), {'versions': versions})()
+    acceptance = type('Acceptance', (), {'versions': versions})()
+    renewal = type('Renewal', (), {
+        'deployment': deployment, 'acceptance': acceptance,
+    })()
+    managed.attach_certificates(deployment, acceptance)
+    managed.attach_renewal(renewal)
+    assert managed.production_renewal is renewal
+    with pytest.raises(ValueError):
+        managed.attach_renewal(renewal)
+    with pytest.raises(AttributeError):
+        managed.production_renewal = object()
+
+
+def test_production_renewal_requires_exact_pipeline_and_live_ownership(tmp_path):
+    managed, api, _, _ = setup(tmp_path)
+    versions = object()
+    deployment = type('Deployment', (), {'versions': versions})()
+    acceptance = type('Acceptance', (), {'versions': versions})()
+
+    class Renewal:
+        def __init__(self):
+            self.deployment, self.acceptance = deployment, acceptance
+            self.authorization = None
+
+        def run(self, identity, panel_id, authorize):
+            self.authorization = authorize
+            assert authorize() is True
+            return {'https': True, 'route': True, 'renewal': True}
+
+    renewal = Renewal()
+    managed.attach_certificates(deployment, acceptance)
+    managed.attach_renewal(renewal)
+    managed.create(IDENTITY)
+    assert managed.renew(IDENTITY, 22, lambda: True)['renewal'] is True
+    api.object['owner'] = 'c' * 32
+    assert renewal.authorization() is False
+
+    other = type('Renewal', (), {
+        'deployment': object(), 'acceptance': acceptance,
+    })()
+    second_root = tmp_path / 'second'
+    second_root.mkdir()
+    second, _, _, _ = setup(second_root)
+    second.attach_certificates(deployment, acceptance)
+    with pytest.raises(ValueError):
+        second.attach_renewal(other)
+
+
 def test_default_disabled_api_cannot_create_local_directories(tmp_path):
     managed, api, roots, _ = setup(tmp_path, enabled=False)
     with pytest.raises(ProvisioningError):

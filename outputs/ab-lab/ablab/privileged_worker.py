@@ -17,6 +17,7 @@ from .nginx_tls import TlsEntry
 from .panel_sites import PanelSites
 from .provisioning import ProvisioningError, public_ipv4
 from .provisioning_jobs import ProvisioningWorker
+from .production_renewal import ProductionRenewal
 from .renewal_rehearsal import RenewalRehearsal
 from .sites import Registry
 
@@ -133,6 +134,7 @@ def assemble(settings):
 
     worker_root = _state_directory(WORKER_ROOT)
     renewal_root = _state_directory(worker_root / 'renewal')
+    production_renewal_root = _state_directory(worker_root / 'production-renewal')
     panel_api = PanelSites.from_local_config(
         settings.panel_address, settings.panel_config, writes_enabled=True)
     panel = ManagedPanel(panel_api, worker_root / 'nginx')
@@ -146,6 +148,8 @@ def assemble(settings):
     acceptance = CertificateAcceptance(
         versions, TlsRouteProbe(settings.server_ip), renewal=renewal)
     panel.attach_certificates(deployment, acceptance)
+    panel.attach_renewal(ProductionRenewal(
+        deployment, acceptance, production_renewal_root, writes_enabled=True))
     registry = Registry(settings.data_dir, registry_dir=settings.registry_dir)
     return ProvisioningWorker(
         registry, worker_root / 'jobs', settings.server_ip, panel)
@@ -166,3 +170,20 @@ def run_pending(worker):
         worker.run_once(site['id'])
         count += 1
     return count
+
+
+def run_renewals(worker):
+    """Try every active site once, then fail generically if any site failed."""
+    attempted = failures = 0
+    for site in worker.registry.list():
+        if site['id'] == 'default' or not site['enabled'] or site['stage'] != 'active':
+            continue
+        attempted += 1
+        try:
+            if worker.renew_once(site['id']) != 'renewed':
+                failures += 1
+        except Exception:
+            failures += 1
+    if failures:
+        raise ProvisioningError(f'{failures} 个站点的生产续期未完成；其余站点已继续检查')
+    return attempted

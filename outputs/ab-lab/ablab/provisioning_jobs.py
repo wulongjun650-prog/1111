@@ -120,6 +120,33 @@ class ProvisioningWorker:
                 self._stage(site, 'failed', detail='接入未完成：请核对站点归属、创建结果和证书状态；已有数据保留，不会盲目重建或重复申请证书', delay=3600)
             return self.registry.get(site_id)['stage']
 
+    def renew_once(self, site_id):
+        with worker_lock(self.lock_path) as acquired:
+            if not acquired:
+                return 'busy'
+            site = self.registry.get(site_id)
+            if site_id == 'default' or not site['enabled'] or site['stage'] != 'active':
+                return 'skipped'
+            if not re.fullmatch('[a-f0-9]{32}', site_id) or normalize_domain(site['domain']) != site['domain']:
+                raise ProvisioningError('续期站点身份记录无效')
+            job = self._load(site_id)
+            path = '/www/wwwroot/ab-lab-sites/' + site_id
+            if (job is None or job['phase'] != 'verified' or job['domain'] != site['domain']
+                    or job['path'] != path or type(job['panel_id']) is not int
+                    or job['panel_id'] <= 0 or site['panel_id'] != job['panel_id']
+                    or site['managed_path'] != path):
+                raise ProvisioningError('续期任务缺少已验收的建站记录')
+            identity = {key: job[key] for key in ('site_id', 'domain', 'path', 'owner')}
+            self._owned(identity, job['panel_id'])
+            proof = self.panel.renew(
+                identity, job['panel_id'], lambda: self._current(site))
+            if (not isinstance(proof, dict)
+                    or set(proof) != {'https', 'route', 'renewal'}
+                    or any(proof[key] is not True for key in proof)):
+                raise ProvisioningError('生产续期后的 HTTPS、入口路由或演练未全部验证')
+            self._owned(identity, job['panel_id'])
+            return 'renewed'
+
     def _process(self, site):
         job = self._load(site['id'])
         path = '/www/wwwroot/ab-lab-sites/' + site['id']

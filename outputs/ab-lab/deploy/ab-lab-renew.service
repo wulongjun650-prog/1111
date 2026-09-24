@@ -1,0 +1,22 @@
+[Unit]
+Description=AB Lab production certificate renewal (opt-in)
+After=network-online.target ab-lab-admin.service ab-lab-target.service
+Wants=network-online.target ab-lab-target.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/ab-lab
+ExecStart=/opt/ab-lab/.venv/bin/python /opt/ab-lab/run.py --service renew --private-config /etc/ab-lab/provision.json
+UMask=0077
+StateDirectory=ab-lab-provision ab-lab-certificates
+StateDirectoryMode=0700
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ab-lab /www/wwwroot /www/server/panel/vhost/nginx
+RestrictSUIDSGID=true

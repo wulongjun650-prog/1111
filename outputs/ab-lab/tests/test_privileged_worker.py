@@ -116,9 +116,13 @@ def test_assembly_wires_one_shared_version_store_and_separate_accounts(tmp_path,
             super().__init__('managed', api, state_dir, **kwargs)
             self.nginx = object()
             self.bound = None
+            self.renewal = None
 
         def attach_certificates(self, deployment, acceptance):
             self.bound = (deployment, acceptance)
+
+        def attach_renewal(self, renewal):
+            self.renewal = renewal
 
     class Command(Value):
         def __init__(self, environment, account_id):
@@ -144,6 +148,8 @@ def test_assembly_wires_one_shared_version_store_and_separate_accounts(tmp_path,
         'CertificateVerifier': lambda production, staging: Value('verifier', production, staging),
         'CertificateVersions': Versions, 'TlsEntry': lambda nginx, versions: Value('tls', nginx, versions),
         'CertificateDeployment': Deployment,
+        'ProductionRenewal': lambda deployment, acceptance, state, **kw:
+            Value('production-renewal', deployment, acceptance, state, **kw),
         'RenewalRehearsal': lambda command, state, **kw: Value('renewal', command, state, **kw),
         'TlsRouteProbe': lambda ip: Value('route', ip), 'CertificateAcceptance': Acceptance,
         'Registry': lambda data, **kw: Value('registry', data, **kw),
@@ -166,6 +172,8 @@ def test_assembly_wires_one_shared_version_store_and_separate_accounts(tmp_path,
     assert next(event for event in events if event[0] == 'panel')[2]['writes_enabled'] is True
     assert (tmp_path / 'worker-private').is_dir()
     assert (tmp_path / 'worker-private' / 'renewal').is_dir()
+    assert (tmp_path / 'worker-private' / 'production-renewal').is_dir()
+    assert managed.renewal.kind == 'production-renewal'
 
 
 def test_run_pending_uses_registry_snapshot_and_skips_legacy_site():
@@ -187,6 +195,53 @@ def test_run_pending_uses_registry_snapshot_and_skips_legacy_site():
     worker = Worker()
     assert run_pending(worker) == 2
     assert worker.calls == ['a' * 32, 'b' * 32]
+
+
+def test_run_renewals_only_processes_active_sites_and_finishes_the_snapshot():
+    from ablab.privileged_worker import run_renewals
+    from ablab.provisioning import ProvisioningError
+
+    class Registry:
+        def list(self):
+            return [
+                {'id': 'default', 'enabled': 1, 'stage': 'legacy'},
+                {'id': 'a' * 32, 'enabled': 1, 'stage': 'active'},
+                {'id': 'b' * 32, 'enabled': 1, 'stage': 'waiting_dns'},
+                {'id': 'c' * 32, 'enabled': 1, 'stage': 'active'},
+            ]
+
+    class Worker:
+        registry = Registry()
+
+        def __init__(self):
+            self.calls = []
+
+        def renew_once(self, site_id):
+            self.calls.append(site_id)
+            if site_id == 'a' * 32:
+                raise RuntimeError('secret renewal response')
+            return 'renewed'
+
+    worker = Worker()
+    with pytest.raises(ProvisioningError, match='1 个站点') as error:
+        run_renewals(worker)
+    assert 'secret renewal response' not in str(error.value)
+    assert worker.calls == ['a' * 32, 'c' * 32]
+
+
+def test_run_renewals_reports_busy_lock_as_incomplete():
+    from ablab.privileged_worker import run_renewals
+    from ablab.provisioning import ProvisioningError
+
+    class Worker:
+        registry = type('Registry', (), {'list': lambda self: [{
+            'id': 'a' * 32, 'enabled': 1, 'stage': 'active'}]})()
+
+        def renew_once(self, site_id):
+            return 'busy'
+
+    with pytest.raises(ProvisioningError, match='1 个站点'):
+        run_renewals(Worker())
 
 
 def test_load_worker_rejects_non_root_before_reading_config(tmp_path, monkeypatch):
