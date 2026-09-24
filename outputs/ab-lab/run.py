@@ -10,10 +10,22 @@ import time
 
 def main():
     parser = argparse.ArgumentParser(description='AB Lab local console')
-    parser.add_argument('--service', choices=['admin', 'target', 'dns'])
+    parser.add_argument('--service', choices=['admin', 'target', 'dns', 'provision'])
     parser.add_argument('--data', type=Path, default=Path(__file__).resolve().parent / 'data')
     parser.add_argument('--config', type=Path, help='Public deployment JSON; requires --service')
+    parser.add_argument('--private-config', type=Path, help='Root-only provisioning JSON')
     args = parser.parse_args()
+    if args.service == 'provision':
+        if args.config or not args.private_config:
+            parser.error('provision 只接受并且必须提供 --private-config')
+        from ablab.privileged_worker import load_worker, run_pending
+        worker = load_worker(args.private_config)
+        print('Privileged provisioning enabled by private configuration.', flush=True)
+        while True:
+            run_pending(worker)
+            time.sleep(60)
+    if args.private_config:
+        parser.error('--private-config 只能用于 --service provision')
     deployment = None
     config = {}
     if args.config:

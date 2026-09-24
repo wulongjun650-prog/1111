@@ -17,17 +17,17 @@
 
 - Create `ablab/privileged_worker.py`
 - Create `tests/test_privileged_worker.py`
-- [ ] 先写失败测试：固定 schema/字段、literal enable、账户、loopback 面板、绝对数据路径、私有文件权限与未知字段。
-- [ ] 装配 `PanelSites → ManagedPanel → CertificateVersions/TlsEntry → CertificateDeployment → CertificateAcceptance/RenewalRehearsal → ProvisioningWorker`。
-- [ ] 读取生产/staging 信任根时使用现有受限读取器。
+- [x] 先写失败测试：固定 schema/字段、literal enable、账户、loopback 面板、绝对数据路径、私有文件权限与未知字段。
+- [x] 装配 `PanelSites → ManagedPanel → CertificateVersions/TlsEntry → CertificateDeployment → CertificateAcceptance/RenewalRehearsal → ProvisioningWorker`。
+- [x] 读取生产/staging 信任根时使用现有受限读取器。
 
 ### Task 3: Disabled-by-default service entry
 
 - Modify `run.py`
 - Create `deploy/ab-lab-provision.service`
 - Modify deployment tests/progress
-- [ ] 新 service 必须显式私有配置且以 root 运行；现有 installer 不安装/启用它。
-- [ ] 聚焦、完整回归、独立审查后提交。
+- [x] 新 service 必须显式私有配置且以 root 运行；现有 installer 不安装/启用它。
+- [x] 聚焦、完整回归、独立审查后提交。
 
 ## Not Completed
 

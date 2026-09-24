@@ -213,6 +213,15 @@
 - 本地 TDD 先观察 16 项模块缺失失败，目录统一修复另观察 8 项失败；相关核心 71 项通过，较宽聚焦 198 项通过、7 项平台跳过。完整回归在最终提交前重新执行。
 - 本轮没有注册账户、接受 CA 条款、联系 staging/production CA、运行真实 dry-run、修改服务器或发布 ZIP。生产续期 timer、证书变化部署、服务装配和指定域名真实验收仍未完成；自动建站继续保持未完成状态。
 
+## 2026-09-24 特权 worker 装配（本地开发）
+
+- 新增严格的 root-only 私有 JSON 配置：字段集合与 schema 必须精确匹配，拒绝重复 JSON 键，`enabled` 只接受字面布尔值 `true`；面板地址只能是 `127.0.0.1` 根地址，生产/staging 使用不同的 32 位账户 ID，服务器 IP 必须是字符串形式的公网 IPv4，所有文件和数据路径必须是无 `..` 的绝对路径。
+- 私有配置、面板令牌文件和两套信任根复用现有受限读取器，拒绝符号链接、硬链接、非普通文件、超限内容以及 Linux 下非当前用户所有或组/其他用户可读写的文件。Web 与 DNS 服务既不接收私有配置参数，也不会读取面板令牌、账户 ID、信任根或私钥。
+- 装配顺序固定为 `PanelSites → ManagedPanel/NginxEntry → CertificateVerifier/CertificateVersions/TlsEntry → CertificateDeployment → RenewalRehearsal/CertificateAcceptance → ProvisioningWorker`。生产与 staging 账户分离，部署与线上验收共享同一个不可变版本存储；面板证书管线只允许绑定一次。
+- 新增独立 `--service provision --private-config ...` 入口与 root systemd unit。直接运行也会在读取私有配置前核对有效 UID。缺少私有配置、把私有配置传给 Web 服务或同时传入公共配置都会在启动前失败。unit 用 `StateDirectory` 以 0700 初始化 worker/证书根，等待 admin/target，并允许程序在宝塔既有 `/www/wwwroot` 下创建固定的受管子目录；现有安装脚本没有复制、安装、启用或启动它。
+- 聚焦测试先确认新模块、调度入口、服务文件和 CLI 门禁缺失，再实现。独立审查发现面板令牌文件读取不够严格、重复 JSON 键可覆盖门禁、整数 IP 被归一化、target 启动竞态和 clean-host 目录启动失败；均先用回归测试复现再修复。最终复审确认无剩余 Critical/Important；最终完整回归结果以下方提交前命令为准。
+- 本轮尚未创建真实私有配置、初始化 CA 账户、接受条款、联系 CA、安装/启用服务、重载 Nginx 或修改宝塔站点。独立生产续期 timer、真实 Linux 权限/客户端兼容验证与指定域名端到端验收仍未完成，自动建站尚未上线。
+
 ### 回归命令（本地开发）
 
 ```bash

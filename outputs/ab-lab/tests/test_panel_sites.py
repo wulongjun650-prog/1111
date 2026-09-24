@@ -1,6 +1,7 @@
 """aaPanel wire contracts; fake only external HTTP, retain real adapter checks."""
 import hashlib
 import json
+import os
 from urllib.parse import parse_qs
 
 import httpx
@@ -16,6 +17,21 @@ IDENTITY = {'site_id': 'a' * 32, 'domain': 'new.example.com',
 def adapter(handler, writes=False):
     from ablab.panel_sites import PanelSites
     return PanelSites('http://127.0.0.1:34734', 'example-key', httpx.MockTransport(handler), writes_enabled=writes)
+
+
+def test_writable_local_panel_rejects_hard_linked_token_file(tmp_path):
+    from ablab.panel_sites import PanelSites
+
+    source = tmp_path / 'source.json'
+    linked = tmp_path / 'api.json'
+    source.write_text(json.dumps({
+        'open': True, 'limit_addr': ['127.0.0.1'], 'token': 'a' * 32,
+    }), encoding='utf-8')
+    source.chmod(0o600)
+    os.link(source, linked)
+    with pytest.raises(ProvisioningError):
+        PanelSites.from_local_config(
+            'http://127.0.0.1:34734', linked, writes_enabled=True)
 
 
 def fixture(sites=(), domains=(), create=None, bindings=()):

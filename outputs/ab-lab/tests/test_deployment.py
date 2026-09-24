@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import subprocess
+import sys
 import pytest
 from deploy.configure import generate
 
@@ -39,3 +41,33 @@ def test_installer_provisions_readable_venv_before_service_user_runs():
     assert script.index('pip install') < script.index('chmod -R u=rwX,go=rX /opt/ab-lab') < script.index('runuser -u ab-lab --')
     assert 'nginx -s' not in script and 'systemctl restart nginx' not in script
     assert 'rm -rf' not in script
+
+
+def test_privileged_service_is_packaged_but_not_installed_or_enabled():
+    root = Path(__file__).resolve().parents[1]
+    unit = (root / 'deploy' / 'ab-lab-provision.service').read_text()
+    assert 'User=root' in unit and 'Group=root' in unit
+    assert 'After=network-online.target ab-lab-admin.service ab-lab-target.service' in unit
+    assert 'Wants=network-online.target ab-lab-target.service' in unit
+    assert '--service provision --private-config /etc/ab-lab/provision.json' in unit
+    assert 'UMask=0077' in unit and 'ProtectSystem=strict' in unit
+    assert 'StateDirectory=ab-lab-provision ab-lab-certificates' in unit
+    assert 'StateDirectoryMode=0700' in unit
+    assert 'ReadWritePaths=/var/lib/ab-lab /www/wwwroot ' in unit
+    installer = (root / 'deploy' / 'install.sh').read_text()
+    assert 'ab-lab-provision.service' not in installer
+    assert 'systemctl enable ab-lab-provision' not in installer
+
+
+@pytest.mark.parametrize('arguments', [
+    ['--service', 'provision'],
+    ['--service', 'admin', '--private-config', 'private.json'],
+    ['--service', 'provision', '--private-config', 'private.json', '--config', 'public.json'],
+])
+def test_service_cli_rejects_missing_or_misplaced_private_config(arguments):
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, str(root / 'run.py'), *arguments],
+        cwd=root, capture_output=True, text=True, timeout=10, check=False)
+    assert result.returncode == 2
+    assert 'private-config' in result.stderr or '不能' in result.stderr

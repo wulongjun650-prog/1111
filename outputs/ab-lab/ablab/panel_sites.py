@@ -27,6 +27,18 @@ class PanelSites(PanelPreflight):
         super().__init__(address, key, transport)
         self.writes_enabled = writes_enabled is True
 
+    @classmethod
+    def from_local_config(cls, address, path, transport=None, *, writes_enabled=False):
+        from .certificates import _read_archive
+
+        def private_reader(source, limit):
+            return _read_archive(source, limit, private=True)
+
+        instance = super().from_local_config(
+            address, path, transport, reader=private_reader)
+        instance.writes_enabled = writes_enabled is True
+        return instance
+
     def _require_writes(self):
         if not self.writes_enabled or urlsplit(self.address).hostname != '127.0.0.1':
             raise ProvisioningError('自动面板写入未启用或不是本机连接')

@@ -98,7 +98,8 @@ class PanelPreflight:
         self._key_digest = hashlib.md5(key.encode()).hexdigest()
 
     @classmethod
-    def from_local_config(cls, address, path=Path('/www/server/panel/config/api.json'), transport=None):
+    def from_local_config(cls, address, path=Path('/www/server/panel/config/api.json'), transport=None,
+                          *, reader=None):
         """Read the installed panel's internal digest, only for exact loopback.
 
         Never reset keys, change permissions or decrypt/export the UI key.
@@ -108,8 +109,11 @@ class PanelPreflight:
         if urlsplit(address).hostname != '127.0.0.1':
             raise ValueError('本机面板配置只能用于 127.0.0.1，不能发送到其他地址')
         try:
-            with Path(path).open('rb') as source:
-                content = source.read(128 * 1024 + 1)
+            if reader is None:
+                with Path(path).open('rb') as source:
+                    content = source.read(128 * 1024 + 1)
+            else:
+                content = reader(Path(path), 128 * 1024)
             if len(content) > 128 * 1024:
                 raise ValueError('oversized')
             config = json.loads(content)
