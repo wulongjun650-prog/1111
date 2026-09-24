@@ -42,7 +42,7 @@ def setup(tmp_path, *, enabled=True, existing=False, failures=None, after=None):
     if existing:
         lineage.write_text('managed staging lineage')
     state = tmp_path / 'private'
-    state.mkdir()
+    state.mkdir(mode=0o700)
     command = Command(lineage, failures=failures, after=after)
     audits = []
 
