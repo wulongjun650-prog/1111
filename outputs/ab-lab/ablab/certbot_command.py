@@ -11,7 +11,7 @@ import subprocess
 from .nginx_entry import no_symlinks
 from .certbot_config import audit_private_config
 from .panel_sites import validate_identity
-from .provisioning import ProvisioningError
+from .provisioning import ProvisioningError, ProvisioningNotStarted
 
 
 SYSTEM_CLI = Path('/etc/letsencrypt/cli.ini')
@@ -77,7 +77,7 @@ class CertbotCommand:
         outcomes must be reconciled, never retried automatically by the caller.
         """
         if enabled is not True:
-            raise ProvisioningError('独立证书执行未启用')
+            raise ProvisioningNotStarted('独立证书执行未启用')
         if operation == 'issue':
             args = self.issue(identity)
         elif operation in ('renew', 'dry-run'):
@@ -85,11 +85,14 @@ class CertbotCommand:
         else:
             raise ValueError('证书操作无效')
         root = '/var/lib/ab-lab-certificates/' + self.environment
-        check_default_configs(root)
-        audit_private_config(root, identity, self.account_id,
-                             args[args.index('--server') + 1], operation=operation)
+        try:
+            check_default_configs(root)
+            audit_private_config(root, identity, self.account_id,
+                                 args[args.index('--server') + 1], operation=operation)
+        except ProvisioningError as error:
+            raise ProvisioningNotStarted(str(error)) from None
         if authorize() is not True:
-            raise ProvisioningError('站点归属或暂停复核未通过，未执行证书操作')
+            raise ProvisioningNotStarted('站点归属或暂停复核未通过，未执行证书操作')
         try:
             result = runner(args, shell=False, timeout=180, check=False, umask=0o077,
                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,

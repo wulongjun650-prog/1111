@@ -5,7 +5,7 @@ import subprocess
 import pytest
 
 from test_panel_sites import IDENTITY
-from ablab.provisioning import ProvisioningError
+from ablab.provisioning import ProvisioningError, ProvisioningNotStarted
 
 
 @pytest.mark.parametrize('environment,server', [
@@ -80,7 +80,7 @@ def test_renew_is_scoped_and_dry_run_uses_staging_account_only():
 def test_disabled_execution_never_launches(enabled):
     from ablab.certbot_command import CertbotCommand
     calls = []
-    with pytest.raises(ProvisioningError):
+    with pytest.raises(ProvisioningNotStarted):
         CertbotCommand('staging', 'c' * 32).run(
             IDENTITY, operation='issue', enabled=enabled, authorize=lambda: True,
             runner=lambda *args, **kwargs: calls.append(args))
@@ -92,7 +92,7 @@ def test_ownership_and_pause_recheck_must_explicitly_authorize(authorized, monke
     from ablab.certbot_command import CertbotCommand
     monkeypatch.setattr('ablab.certbot_command.audit_private_config', lambda *a, **kw: None)
     calls = []
-    with pytest.raises(ProvisioningError):
+    with pytest.raises(ProvisioningNotStarted):
         CertbotCommand('staging', 'c' * 32).run(
             IDENTITY, operation='renew', enabled=True, authorize=lambda: authorized,
             runner=lambda *args, **kwargs: calls.append(args))
@@ -178,7 +178,7 @@ def test_existing_global_cli_blocks_launch_even_with_explicit_private_config(tmp
     global_cli.write_text('pre-hook = /some/global/hook\n')
     monkeypatch.setattr(module, 'SYSTEM_CLI', global_cli, raising=False)
     calls = []
-    with pytest.raises(ProvisioningError):
+    with pytest.raises(ProvisioningNotStarted):
         module.CertbotCommand('staging', 'c' * 32).run(
             IDENTITY, operation='renew', enabled=True, authorize=lambda: True,
             runner=lambda *args, **kwargs: (calls.append(args) or subprocess.CompletedProcess(args, 0)))

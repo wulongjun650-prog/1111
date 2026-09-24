@@ -13,7 +13,7 @@ import sqlite3
 import time
 import uuid
 
-from .provisioning import DNSChecker, ProvisioningError, public_ipv4
+from .provisioning import DNSChecker, ProvisioningError, ProvisioningNotStarted, public_ipv4
 from .sites import normalize_domain
 
 
@@ -169,12 +169,19 @@ class ProvisioningWorker:
                 job['phase'] = 'configured'
                 self._save(job)
                 return
-            self.panel.certificate(identity, job['panel_id'])
+            try:
+                self.panel.certificate(identity, job['panel_id'], lambda: self._current(site))
+            except ProvisioningNotStarted:
+                # The adapter guarantees no external request was launched, so
+                # this durable intent can safely be retried after the gate is fixed.
+                job['phase'] = 'configured'
+                self._save(job)
+                raise
 
         self._owned(identity, job['panel_id'])
         if not self._stage(site, 'verifying', panel_id=job['panel_id'], managed_path=path):
             return
-        proof = self.panel.verify(identity, job['panel_id'])
+        proof = self.panel.verify(identity, job['panel_id'], lambda: self._current(site))
         if not isinstance(proof, dict) or any(proof.get(key) is not True for key in ('https', 'route', 'renewal')):
             raise ProvisioningError('HTTPS、入口路由或续期未全部验证')
         self._owned(identity, job['panel_id'])

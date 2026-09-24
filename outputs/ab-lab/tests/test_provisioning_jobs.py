@@ -7,7 +7,7 @@ import threading
 
 import pytest
 
-from ablab.provisioning import ProvisioningError
+from ablab.provisioning import ProvisioningError, ProvisioningNotStarted
 from ablab.sites import Registry
 
 
@@ -30,6 +30,8 @@ class Panel:
         self.proof = {'https': True, 'route': True, 'renewal': True}
         self.create_error = False
         self.certificate_error = False
+        self.certificate_not_started = False
+        self.during_certificate = lambda: None
         self.foreign_directory = False
 
     def inspect(self, domain, path):
@@ -48,14 +50,21 @@ class Panel:
         assert panel_id == 22 and identity['owner'] == self.object['owner']
         self.calls.append('configure')
 
-    def certificate(self, identity, panel_id):
+    def certificate(self, identity, panel_id, authorize):
         assert panel_id == 22 and identity['owner'] == self.object['owner']
+        assert authorize() is True
+        if self.certificate_not_started:
+            raise ProvisioningNotStarted('not launched')
         self.calls.append('certificate')
+        self.during_certificate()
+        if authorize() is not True:
+            raise ProvisioningError('paused during certificate')
         if self.certificate_error:
             raise TimeoutError('secret-certificate-response')
 
-    def verify(self, identity, panel_id):
+    def verify(self, identity, panel_id, authorize):
         assert panel_id == 22
+        assert authorize() is True
         self.calls.append('verify')
         return self.proof
 
@@ -180,6 +189,31 @@ def test_certificate_timeout_does_not_resubmit_order(tmp_path):
     assert registry.get(site['id'])['stage'] == 'active'
     assert panel.calls.count('certificate') == 1
     assert 'secret-certificate-response' not in json.dumps(registry.events(site['id']))
+
+
+def test_known_prelaunch_denial_restores_configured_phase_for_safe_retry(tmp_path):
+    registry, site, panel = setup(tmp_path)
+    panel.certificate_not_started = True
+    worker(tmp_path, registry, panel).run_once(site['id'])
+    assert registry.get(site['id'])['stage'] == 'failed'
+    assert worker(tmp_path, registry, panel)._load(site['id'])['phase'] == 'configured'
+    panel.certificate_not_started = False
+    registry.control(site['id'], 'retry')
+    worker(tmp_path, registry, panel).run_once(site['id'])
+    assert registry.get(site['id'])['stage'] == 'active'
+    assert panel.calls.count('certificate') == 1
+
+
+def test_pause_during_certificate_is_observed_by_live_authorization_callback(tmp_path):
+    registry, site, panel = setup(tmp_path)
+    panel.during_certificate = lambda: registry.control(site['id'], 'pause')
+    worker(tmp_path, registry, panel).run_once(site['id'])
+    assert registry.get(site['id'])['stage'] == 'paused'
+    assert panel.calls == ['create', 'configure', 'certificate']
+    registry.control(site['id'], 'retry')
+    worker(tmp_path, registry, panel).run_once(site['id'])
+    assert registry.get(site['id'])['stage'] == 'active'
+    assert panel.calls.count('certificate') == 1
 
 
 def test_backoff_and_paused_default_sites_are_not_processed(tmp_path):

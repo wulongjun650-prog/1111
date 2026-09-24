@@ -20,6 +20,10 @@ class ProvisioningError(ValueError):
     """Only locally authored, non-sensitive user messages belong here."""
 
 
+class ProvisioningNotStarted(ProvisioningError):
+    """A guarded external mutation is known not to have been launched."""
+
+
 def public_ipv4(value):
     address = ipaddress.IPv4Address(value)
     if not address.is_global or address.is_multicast or address.is_reserved:

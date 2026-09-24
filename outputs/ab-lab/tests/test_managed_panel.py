@@ -7,7 +7,7 @@ from ablab.provisioning import ProvisioningError
 from test_panel_sites import IDENTITY
 
 
-def setup(tmp_path, enabled=True):
+def setup(tmp_path, enabled=True, certificate_deployment=None):
     from ablab.managed_panel import ManagedPanel
     configs = tmp_path / 'nginx'
     configs.mkdir()
@@ -18,9 +18,12 @@ def setup(tmp_path, enabled=True):
         writes_enabled = enabled
         object = None
         calls = 0
+        after_inspect = lambda self: None
 
         def inspect(self, domain, path):
-            return dict(self.object) if self.object else None
+            result = dict(self.object) if self.object else None
+            self.after_inspect()
+            return result
 
         def create_static(self, identity):
             self.calls += 1
@@ -32,7 +35,8 @@ def setup(tmp_path, enabled=True):
 
     api = API()
     runner = lambda args, **kwargs: subprocess.CompletedProcess(args, 0, '', '')
-    managed = ManagedPanel(api, tmp_path / 'private', entry_root=roots, config_dir=configs, runner=runner)
+    managed = ManagedPanel(api, tmp_path / 'private', entry_root=roots, config_dir=configs, runner=runner,
+                           certificate_deployment=certificate_deployment)
     return managed, api, roots, configs
 
 
@@ -95,10 +99,77 @@ def test_no_config_capture_after_addsite_timeout(tmp_path):
 def test_certificate_and_verification_remain_explicitly_unavailable(tmp_path):
     managed, api, _, _ = setup(tmp_path)
     with pytest.raises(ProvisioningError):
-        managed.certificate(IDENTITY, 22)
+        managed.certificate(IDENTITY, 22, lambda: True)
     with pytest.raises(ProvisioningError):
-        managed.verify(IDENTITY, 22)
+        managed.verify(IDENTITY, 22, lambda: True)
     assert api.calls == 0
+
+
+def test_certificate_combines_worker_authorization_with_exact_panel_ownership(tmp_path):
+    class Deployment:
+        calls = []
+
+        def issue(self, identity, panel_id, authorize):
+            self.calls.append((identity, panel_id, authorize))
+            assert authorize() is True
+            return 'd' * 64
+
+    deployment = Deployment()
+    managed, api, _, _ = setup(tmp_path, certificate_deployment=deployment)
+    managed.create(IDENTITY)
+    assert managed.certificate(IDENTITY, 22, lambda: True) == 'd' * 64
+    assert deployment.calls[0][:2] == (IDENTITY, 22)
+    api.object['owner'] = 'c' * 32
+    assert deployment.calls[0][2]() is False
+
+
+@pytest.mark.parametrize('authorization', [False, None, 0, 1, 'yes'])
+def test_certificate_requires_literal_worker_authorization(tmp_path, authorization):
+    class Deployment:
+        called = False
+
+        def issue(self, identity, panel_id, authorize):
+            self.called = True
+            assert authorize() is False
+
+    deployment = Deployment()
+    managed, _, _, _ = setup(tmp_path, certificate_deployment=deployment)
+    managed.certificate(IDENTITY, 22, lambda: authorization)
+    assert deployment.called
+
+
+def test_pause_during_panel_inspection_revokes_certificate_authorization(tmp_path):
+    class Deployment:
+        def issue(self, identity, panel_id, authorize):
+            assert authorize() is False
+
+    allowed = True
+    managed, api, _, _ = setup(tmp_path, certificate_deployment=Deployment())
+    managed.create(IDENTITY)
+
+    def pause():
+        nonlocal allowed
+        allowed = False
+
+    api.after_inspect = pause
+    managed.certificate(IDENTITY, 22, lambda: allowed)
+
+
+def test_verification_reconciles_existing_material_but_remains_fail_closed(tmp_path):
+    class Deployment:
+        calls = []
+
+        def deploy_existing(self, identity, panel_id, authorize):
+            self.calls.append((identity, panel_id))
+            assert authorize() is True
+            return 'd' * 64
+
+    deployment = Deployment()
+    managed, _, _, _ = setup(tmp_path, certificate_deployment=deployment)
+    managed.create(IDENTITY)
+    with pytest.raises(ProvisioningError, match='HTTPS'):
+        managed.verify(IDENTITY, 22, lambda: True)
+    assert deployment.calls == [(IDENTITY, 22)]
 
 
 def test_default_disabled_api_cannot_create_local_directories(tmp_path):

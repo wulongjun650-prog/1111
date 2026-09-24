@@ -182,6 +182,17 @@
 - 最终 `systemctl show`：certbot.service / certbot.timer 均 masked / inactive；ab-lab-admin.service / ab-lab-target.service 均 loaded / active。未重载 Nginx、改变现有网站、创建账户、接受条款或申请证书。
 - 尚未完成：实际生成续期配置与私有审计的 Linux 兼容验证、私有账户/目录初始化、worker certificate/verify 接入、独立续期任务和真实建站 HTTPS 验收。本轮仅更新部署记录，不改业务代码或发布 ZIP，不把旧回归结果当作本轮端到端验收。自动建站仍未完成，自动写入保持关闭。
 
+## 2026-09-24 证书部署编排与 worker 授权（本地开发）
+
+- 新增默认禁写的 `CertificateDeployment`，只组合已经独立测试过的 production Certbot 命令、受限 live/archive 读取、生产证书校验、不可变版本发布与 TLS 配置事务。构造时拒绝 staging 命令和 TLS/版本存储不一致。
+- `issue()` 只执行一次固定证书命令；命令超时、非零或结果不明确时不在同一次调用中读取结果或自动重试。`deploy_existing()` 只读取已有材料、发布版本并幂等配置 TLS，供持久化 `certificate_intent` 后的恢复路径使用。
+- `ManagedPanel` 默认仍没有证书部署对象；只有特权部署显式注入后才可进入证书流程。每个命令和写入边界同时复核 worker 的站点世代/暂停状态以及面板精确身份、路径、owner 和 panel_id。
+- worker 将动态授权回调传给申请与恢复。暂停会递增世代并使在途后续写入停止；`certificate_intent` 恢复只部署现有材料，不再次申请。恢复完成后 `verify()` 仍明确报 HTTPS、路由与续期验收未接入，因此真实 `ManagedPanel` 不能把站点标记 active。
+- 测试遵循红绿顺序：先观察新模块缺失和接口参数缺失失败，再实现。新增测试包含命令结果未知、边界间暂停、错误材料、默认/真值禁写、精确归属、恢复不重复申请，以及一条使用真实测试 CA、真实不可变版本和真实 TLS 文件事务的组合测试；未连接外部 CA。
+- 独立审查发现并复现两个重要边界：面板查询期间暂停可能使查询前授权过期；命令启动前明确拒绝仍会保留一次性意图。现在授权在查询前后各复核一次；新增 `ProvisioningNotStarted`，只有确认未启动的禁用、配置审计或授权拒绝才将任务恢复为 `configured`。命令已进入启动边界后的超时、非零和异常继续视为结果未知，不自动重试；Certbot 已返回后发生的部署暂停也会转换为未知部署结果，绝不恢复成可重新申请状态。修正后独立复审没有剩余 Critical 或 Important 问题。
+- 最新完整本地回归：**458 项 Python 通过、33 项平台跳过、2 项既有依赖弃用警告；8 项 JavaScript 通过；pip check 与 git diff --check 通过**。相关 certificate/Certbot/managed-panel/worker 聚焦测试 93 项通过。
+- 本轮尚未部署源码、创建证书账户、接受 CA 条款、申请真实证书、启用 timer、重载线上 Nginx 或更改现有宝塔站点。完整 HTTPS 握手、目标应用路由、续期演练和服务器端 worker 接入仍未完成，自动建站继续保持未完成状态。
+
 ### 回归命令（本地开发）
 
 ```bash
