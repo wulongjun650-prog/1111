@@ -95,7 +95,11 @@ class CertificateVerifier:
                 raise ValueError('key mismatch')
             chain = (PolicyBuilder().store(self._stores[environment]).time(now).max_chain_depth(5)
                      .build_server_verifier(x509.DNSName(identity['domain'])).verify(leaf, certs[1:]))
-            if certs != chain and certs != chain[:-1]:
+            alternate_anchor = (len(certs) == len(chain) and certs[:-1] == chain[:-1]
+                                and certs[-1].subject == chain[-1].subject
+                                and certs[-1].public_key().public_bytes(*format_args)
+                                == chain[-1].public_key().public_bytes(*format_args))
+            if certs != chain and certs != chain[:-1] and not alternate_anchor:
                 raise ValueError('unordered or unrelated certificates')
             return VerifiedCertificate(
                 domain=identity['domain'], environment=environment,

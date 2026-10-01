@@ -64,6 +64,23 @@ def test_idempotent_retry_never_overwrites_saved_original(tmp_path):
     assert backup['baseline'] == BASELINE.decode()
 
 
+def test_panel_stats_include_added_after_capture_does_not_block_owned_site(tmp_path):
+    entry, config, _, calls = setup(tmp_path)
+    original = ('server {\n    listen 80;\n    server_name new.example.com;\n'
+                '    root /www/wwwroot/ab-lab-sites/' + 'a' * 32 + ';\n}\n')
+    config.write_bytes(original.encode())
+    entry.capture_created(IDENTITY, 22)
+    stats_include = '    include ' + (config.parent / 'extension' / 'new.example.com' / '*.conf').as_posix() + ';\n'
+    config.write_bytes(original.replace('    root ' + IDENTITY['path'] + ';\n',
+                                        '    root ' + IDENTITY['path'] + ';\n' + stats_include).encode())
+
+    entry.configure(IDENTITY, 22)
+
+    assert 'proxy_pass http://127.0.0.1:8766;' in config.read_text()
+    assert calls[-1][-1] == 'reload'
+    assert json.loads((entry.root / (IDENTITY['site_id'] + '.json')).read_text())['baseline'] == original
+
+
 @pytest.mark.parametrize('content', [b'#' + b'\\' * 135193 + b'\n', b'#' + b'x' * (256 * 1024 - 2) + b'\n'],
                          ids=['escaped', 'at-limit'])
 def test_accepted_large_baseline_receipt_can_be_read_back(tmp_path, content):

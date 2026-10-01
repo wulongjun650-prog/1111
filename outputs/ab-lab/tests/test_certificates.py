@@ -85,6 +85,21 @@ def test_real_chain_key_and_metadata_are_verified_without_exposing_secrets(mater
     assert result.require_production() is None
 
 
+def test_cross_signed_copy_of_trusted_anchor_is_accepted_but_not_deployed(material):
+    signer_key = ec.generate_private_key(ec.SECP256R1())
+    signer = make_cert('Other Root', signer_key, ca=True)
+    cross_signed = make_cert('Test Root', material['root_key'],
+                             issuer=signer, issuer_key=signer_key, ca=True)
+    leaf = material['leaf']()
+    trusted_chain = leaf.public_bytes(PEM) + material['intermediate'].public_bytes(PEM)
+    supplied_chain = trusted_chain + cross_signed.public_bytes(PEM)
+
+    result = verifier(material).verify(
+        IDENTITY, 'production', supplied_chain, key_pem(material['key']), now=NOW)
+
+    assert result.fullchain == trusted_chain
+
+
 @pytest.mark.parametrize('changes', [
     {'sans': None}, {'sans': [x509.DNSName('wrong.example.com')]},
     {'sans': [x509.DNSName('new.example.com'), x509.DNSName('other.example.com')]},

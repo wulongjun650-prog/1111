@@ -213,7 +213,12 @@ class NginxEntry:
             raise ProvisioningError('创建备份缺失或不一致，停止配置') from None
         current = read_bounded(config)
         if current not in (baseline, desired):
-            raise ProvisioningError('站点配置已被修改，保留人工修改并停止接入')
+            root_line = f"    root {identity['path']};\n"
+            stats_line = (f"    include {self.config_dir.as_posix()}/extension/"
+                          f"{identity['domain']}/*.conf;\n")
+            if baseline.count(root_line) != 1 or current != baseline.replace(
+                    root_line, root_line + stats_line, 1):
+                raise ProvisioningError('站点配置已被修改，保留人工修改并停止接入')
         self._nginx('-t')
         self._owned(identity, panel_id)
         if read_bounded(config) != current:
@@ -226,7 +231,7 @@ class NginxEntry:
             # Do not clobber an operator edit or roll back unrelated sites.
             if current != desired and read_bounded(config) == desired:
                 self._owned(identity, panel_id)
-                guarded_config(config, baseline, desired, pending)
+                guarded_config(config, current, desired, pending)
             raise
         self._owned(identity, panel_id)
         if read_bounded(config) != desired:
