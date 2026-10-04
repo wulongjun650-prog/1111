@@ -142,6 +142,49 @@ def test_complex_expressions_stop_with_a_reviewable_error(tmp_path, source):
         redirects.scan_bundle(root,'original')
 
 
+def test_whatsapp_template_built_in_a_function_is_the_jump(tmp_path):
+    source = '''const CONFIG = { whatsappNumber: '85257980601' };
+function buildWhatsAppUrl(message){
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\\D/g,'');
+  const params = new URLSearchParams();
+  params.set('phone', phone);
+  params.set('text', message);
+  return `https://api.whatsapp.com/send?${params.toString()}`;
+}
+function goWhatsApp(){
+  const url = buildWhatsAppUrl('hello');
+  setTimeout(() => { window.location.assign(url); }, 180);
+}
+fetch(buildWhatsAppUrl('nope'));'''
+    root, pages = bundle(tmp_path, f'<script>{source}</script><img src="assets/banner.webp">')
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == ['https://api.whatsapp.com/send?']
+    assert not warnings
+    version, count = redirects.replace_bundle(root, 'original', [occurrences[0]['id']],
+                                              'https://new.example/landing', pages, 'changed.zip')
+    assert count == 1
+    rewritten = (pages / version['id'] / 'index.html').read_text(encoding='utf-8')
+    assert '85257980601' in rewritten
+    assert 'api.whatsapp.com' not in rewritten
+    rescanned, _ = redirects.scan_bundle(pages / version['id'], version['id'])
+    assert [item['url'] for item in rescanned] == ['https://new.example/landing']
+
+
+def test_dynamic_host_template_and_nested_function_stay_precise(tmp_path):
+    source = '''function build(){ return `https://api.whatsapp.com/send?${q}`; }
+function wrap(){
+  function build(){ return `https://${host}/hidden`; }
+  location.href = build();
+}
+function direct(){ location.href = `https://wa.me/${phone}`; }
+fetch(build());
+location.href = "https://real.example/";'''
+    root, _ = bundle(tmp_path, '<script src="app.js"></script>', source)
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert {item['url'] for item in occurrences} == {'https://wa.me/', 'https://real.example/'}
+    assert warnings
+
+
 def test_dom_anchor_href_and_setattribute_are_navigation(tmp_path):
     source = '''const destination="https://old.example/";
 document.querySelector("#destination").href=destination;

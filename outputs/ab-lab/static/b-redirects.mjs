@@ -127,7 +127,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       label.append(checkbox, info); occurrences.append(label);
     }
     for (const warning of value.warnings) warnings.append(element('p', 'subtle', warning));
-    warnings.append(element('small', '', '只换源码里写死的地址。运行时拼出来的，用编辑源码。'));
+    warnings.append(element('small', '', '每条单独勾选。没勾的保持原样，只换勾上的跳转。'));
     updateControls();
   }
 
