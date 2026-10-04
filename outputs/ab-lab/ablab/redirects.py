@@ -7,7 +7,7 @@ from html.parser import HTMLParser
 import json
 from pathlib import Path
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from .archives import MAX_TOTAL, read_source, source_files, validate_file, write_bundle
 
@@ -171,6 +171,59 @@ def _url(value):
         return False
 
 
+def _template_url(token):
+    """Static prefix of a template literal that already names a host."""
+    if token.kind != 'string' or len(token.value) < 2 or token.value[0] != '`' or '${' not in token.value:
+        return None
+    prefix = token.value[1:].split('${', 1)[0].replace('\\`', '`').replace('\\/', '/').replace('\\\\', '\\')
+    if not _url(prefix):
+        return None
+    try:
+        parts = urlsplit(prefix)
+    except ValueError:
+        return None
+    if parts.scheme.lower() not in ('http', 'https', 'whatsapp', 'bandapp') or not parts.netloc:
+        return None
+    return prefix
+
+
+def _template_pieces(body):
+    pieces, index = [], 0
+    while index < len(body):
+        mark = body.find('${', index)
+        if mark < 0:
+            pieces.append(('text', body[index:]))
+            break
+        if mark > index:
+            pieces.append(('text', body[index:mark]))
+        depth, cursor = 1, mark + 2
+        while cursor < len(body) and depth:
+            depth += (body[cursor] == '{') - (body[cursor] == '}')
+            cursor += 1
+        if depth:
+            return None
+        pieces.append(('expr', body[mark + 2:cursor - 1]))
+        index = cursor
+    return pieces
+
+
+TRACKER_HOSTS = ('googletagmanager.com', 'google-analytics.com', 'googleadservices.com', 'googlesyndication.com', 'doubleclick.net', 'googleapis.com', 'connect.facebook.net')
+
+
+def _tracker(url):
+    """Analytics and tag endpoints are not visitor jumps."""
+    try:
+        parts = urlsplit(url if '://' in url else '//' + url)
+    except ValueError:
+        return False
+    host = parts.netloc.lower().split('@')[-1].split(':')[0]
+    if host.startswith('www.'):
+        host = host[4:]
+    if host in TRACKER_HOSTS or any(host.endswith('.' + name) for name in TRACKER_HOSTS):
+        return True
+    return host == 'facebook.com' and parts.path.rstrip('/').endswith('/tr')
+
+
 def _decoded(raw):
     """Entity decoding with offsets back to the original attribute source."""
     text, starts, ends, cursor = [], [], [], 0
@@ -192,7 +245,7 @@ class Scanner:
         self.lines = [0] + [match.end() for match in re.finditer('\n', text)]
 
     def add(self, start, end, url, kind, mode='js', prefix='', suffix='', quote=True):
-        if not _url(url):
+        if not _url(url) or _tracker(url):
             return
         if len(self.spans) >= MAX_OCCURRENCES:
             raise ValueError('跳转位置超过 5000 处，请缩小源码包后重试')
@@ -266,6 +319,121 @@ class Scanner:
             if token.kind == 'identifier' and tokens[index + 1].value == '=' and (index == 0 or tokens[index-1].value not in ('.', ']')):
                 end = _expression_end(tokens, index + 2, text)
                 definitions[scopes[index]].setdefault(token.value, []).append(tokens[index + 2:end])
+        # Plain functions and arrows that build a URL and hand it to location.
+        # Only the returned expression is replaceable; the call itself is not.
+        function_bodies = {}
+        token_index = {id(token): index for index, token in enumerate(tokens)}
+
+        def store_function(scope, name, body):
+            bucket = function_bodies.setdefault(scope, {})
+            bucket[name] = None if name in bucket else body
+
+        def params_end(start):
+            if start >= len(tokens) or tokens[start].value != '(':
+                return None
+            depth, index = 1, start + 1
+            while index < len(tokens) and depth:
+                if index - start > MAX_EXPRESSION_TOKENS:
+                    return None
+                depth += (tokens[index].value == '(') - (tokens[index].value == ')')
+                index += 1
+            return index if not depth else None
+
+        def block_body(brace):
+            depth, index = 1, brace + 1
+            start = index
+            while index < len(tokens) and depth:
+                depth += (tokens[index].value == '{') - (tokens[index].value == '}')
+                index += 1
+            return None if depth else tokens[start:index - 1]
+
+        def find_arrow(start):
+            depth = 0
+            for index in range(start, min(len(tokens), start + MAX_EXPRESSION_TOKENS)):
+                value = tokens[index].value
+                if value in ('(', '[', '{'):
+                    depth += 1
+                elif value in (')', ']', '}'):
+                    depth -= 1
+                elif not depth and value == '=>':
+                    return index
+                elif not depth and value in (';', '{', '='):
+                    return None
+            return None
+
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            if token.value == 'function' and index + 1 < len(tokens) and tokens[index + 1].kind == 'identifier':
+                end = params_end(index + 2)
+                if end is not None and end < len(tokens) and tokens[end].value == '{':
+                    body = block_body(end)
+                    if body is not None:
+                        store_function(scopes[index], tokens[index + 1].value, ('block', body))
+            elif token.value in ('const', 'let', 'var') and index + 3 < len(tokens) and tokens[index + 1].kind == 'identifier' and tokens[index + 2].value == '=':
+                cursor = index + 3
+                if tokens[cursor].value == 'async' and cursor + 1 < len(tokens):
+                    cursor += 1
+                if tokens[cursor].value == 'function':
+                    params_at = cursor + 2 if cursor + 1 < len(tokens) and tokens[cursor + 1].kind == 'identifier' else cursor + 1
+                    end = params_end(params_at)
+                    if end is not None and end < len(tokens) and tokens[end].value == '{':
+                        body = block_body(end)
+                        if body is not None:
+                            store_function(scopes[index], tokens[index + 1].value, ('block', body))
+                else:
+                    arrow = find_arrow(cursor)
+                    if arrow is not None and arrow + 1 < len(tokens):
+                        if tokens[arrow + 1].value == '{':
+                            body = block_body(arrow + 1)
+                            if body is not None:
+                                store_function(scopes[index], tokens[index + 1].value, ('block', body))
+                        else:
+                            finish = _expression_end(tokens, arrow + 1, text)
+                            expression = tokens[arrow + 1:finish]
+                            if expression:
+                                store_function(scopes[index], tokens[index + 1].value, ('expr', expression))
+            index += 1
+
+        def lookup_function(name, scope):
+            while scope is not None:
+                bodies = function_bodies.get(scope, {})
+                if name in bodies:
+                    return bodies[name]
+                if name in bindings.get(scope, ()):
+                    return None
+                scope = parents[scope]
+            return None
+
+        def function_returns(body):
+            kind, nodes = body
+            if kind == 'expr':
+                yield nodes
+                return
+            nested, paren, pending, index = [], 0, False, 0
+            while index < len(nodes):
+                value = nodes[index].value
+                if value == '(':
+                    paren += 1
+                elif value == ')':
+                    paren -= 1
+                if value == 'return' and not paren and 'fn' not in nested:
+                    finish = _expression_end(nodes, index + 1, text)
+                    yield nodes[index + 1:finish]
+                    index = finish
+                    continue
+                if not paren and value in ('function', '=>'):
+                    pending = True
+                elif not paren and value == '{':
+                    nested.append('fn' if pending else 'block')
+                    pending = False
+                elif not paren and value == '}':
+                    if nested:
+                        nested.pop()
+                    pending = False
+                elif pending and not paren and value == ';':
+                    pending = False
+                index += 1
 
         visible_cache = {}
         def visible(scope):
@@ -301,10 +469,142 @@ class Scanner:
                 return False
             return True
 
-        def collect(expression, kind, constants):
+        def scope_of(expression, fallback):
+            if not expression:
+                return fallback
+            return scopes[token_index[id(expression[0])]]
+
+        def object_fields(expression):
+            expression = _unparen(expression)
+            if not expression or expression[0].value != '{' or expression[-1].value != '}':
+                return {}
+            body, fields, index = expression[1:-1], {}, 0
+            while index < len(body):
+                key_token = body[index]
+                key = key_token.value if key_token.kind == 'identifier' else _string(key_token.value) if key_token.kind == 'string' else None
+                if key is None or index + 1 >= len(body) or body[index + 1].value != ':':
+                    break
+                finish = _expression_end(body, index + 2, text)
+                fields[key] = body[index + 2:finish]
+                index = finish + 1 if finish < len(body) and body[finish].value == ',' else finish
+            return fields
+
+        def split_or(expression):
+            depth, start, parts = 0, 0, []
+            for index, token in enumerate(expression):
+                if token.value in ('(', '[', '{'):
+                    depth += 1
+                elif token.value in (')', ']', '}'):
+                    depth -= 1
+                elif not depth and token.value == '||':
+                    parts.append(expression[start:index])
+                    start = index + 1
+            if parts:
+                parts.append(expression[start:])
+            return parts
+
+        def call_end(expression):
+            if len(expression) < 3 or expression[1].value != '(':
+                return None
+            depth = 0
+            for index, token in enumerate(expression[1:], 1):
+                depth += (token.value == '(') - (token.value == ')')
+                if not depth:
+                    return index
+            return None
+
+        def static_eval(expression, scope, seen=()):
+            expression = _unparen(expression)
+            if not expression or len(seen) > 12:
+                return None
+            if expression[0].value == 'String' and call_end(expression) == len(expression) - 1:
+                return static_eval(expression[2:-1], scope, seen)
+            for index, token in enumerate(expression):
+                if token.value != '.' or index + 5 >= len(expression) or expression[index + 1].value != 'replace' or expression[index + 2].value != '(':
+                    continue
+                pattern = text[expression[index + 3].start:expression[index + 3].end]
+                if expression[index + 3].value != '<regex>' or pattern not in ('/\\D/g', '/\\D/gi', '/[^0-9]/g') or expression[index + 4].value != ',':
+                    continue
+                if expression[index + 5].kind != 'string' or _string(expression[index + 5].value) != '':
+                    continue
+                base = static_eval(expression[:index], scope, seen)
+                return None if base is None else re.sub(r'\D', '', base)
+            alternatives = split_or(expression)
+            if alternatives:
+                for part in alternatives:
+                    value = static_eval(part, scope, seen)
+                    if value:
+                        return value
+                return ''
+            constants, _shadows = visible(scope)
+            resolved = _resolve(expression, constants)
+            if isinstance(resolved, str):
+                return resolved
+            if len(expression) == 1 and expression[0].kind == 'identifier' and expression[0].value not in seen:
+                defined = constants.get(expression[0].value)
+                return static_eval(defined, scope_of(defined, scope), (*seen, expression[0].value)) if defined else None
+            member, end = _member(expression, 0)
+            if end == len(expression) and expression[0].kind == 'identifier' and member.count('.') == 1:
+                obj, field = member.split('.')
+                defined = None if obj in seen else constants.get(obj)
+                chosen = object_fields(defined).get(field) if defined else None
+                if chosen:
+                    return static_eval(chosen, scope_of(defined, scope), (*seen, obj))
+            return None
+
+        def is_url_params(expression):
+            expression = _unparen(expression or [])
+            return len(expression) >= 4 and expression[0].value == 'new' and expression[1].value == 'URLSearchParams' and expression[2].value == '(' and expression[-1].value == ')'
+
+        def expand_template(token, scope):
+            prefix = _template_url(token)
+            if not prefix:
+                return None
+            pieces = _template_pieces(token.value[1:-1])
+            expressions = [piece for kind, piece in pieces or [] if kind == 'expr']
+            if len(expressions) != 1 or not prefix.endswith('?'):
+                return prefix
+            parsed = _tokens(expressions[0].strip())
+            name = parsed[0].value if parsed and parsed[0].kind == 'identifier' and (len(parsed) == 1 or (len(parsed) >= 3 and parsed[1].value == '.' and parsed[2].value == 'toString')) else None
+            constants, _shadows = visible(scope)
+            if not name or not is_url_params(constants.get(name)):
+                return prefix
+            found, limit = {}, token_index[id(token)]
+            for index, item in enumerate(tokens):
+                if index >= limit or scopes[index] != scope or item.value != name:
+                    continue
+                if index + 6 >= len(tokens) or tokens[index + 1].value != '.' or tokens[index + 2].value != 'set' or tokens[index + 3].value != '(':
+                    continue
+                key_token = tokens[index + 4]
+                if key_token.kind != 'string' or tokens[index + 5].value != ',':
+                    continue
+                key = _string(key_token.value)
+                finish = _expression_end(tokens, index + 6, text)
+                if not key:
+                    continue
+                value = static_eval(tokens[index + 6:finish], scope)
+                if value is None:
+                    found.pop(key, None)
+                else:
+                    found[key] = value
+            query = urlencode(found)
+            return prefix + query if query else prefix
+
+        def call_name(expression):
+            expression = _unparen(expression)
+            if len(expression) < 3 or expression[0].kind != 'identifier' or expression[1].value != '(':
+                return None
+            depth = 0
+            for index, token in enumerate(expression):
+                depth += (token.value == '(') - (token.value == ')')
+                if index and not depth:
+                    return expression[0].value if index == len(expression) - 1 and token.value == ')' else None
+            return None
+
+        def collect(expression, kind, scope, seen=()):
             expression = _unparen(expression)
             if not expression:
-                return
+                return False
             # Preserve conditional branches and list each static alternative.
             depth, question, nested = 0, None, 0
             for index, token in enumerate(expression):
@@ -317,19 +617,38 @@ class Scanner:
                 elif not depth and value == ':' and question is not None:
                     if nested: nested -= 1
                     else:
-                        collect(expression[question+1:index], kind, constants)
-                        collect(expression[index+1:], kind, constants)
-                        return
+                        collect(expression[question+1:index], kind, scope, seen)
+                        collect(expression[index+1:], kind, scope, seen)
+                        return True
+            constants, _shadows = visible(scope)
             resolved = _resolve(expression, constants)
-            if not _url(resolved):
-                self.warnings.append(f'{self.path}:{bisect.bisect_right(self.lines, offset + expression[0].start)} 有无法静态解析的跳转，请在源码编辑器核对。')
-                return
-            start, end = expression[0].start, expression[-1].end
-            if mapping:
-                start, end = mapping[0][start], mapping[1][end-1]
-            self.add(offset + start, offset + end, resolved,
-                     'js_variable' if any(t.kind == 'identifier' for t in expression) else kind,
-                     mode='js_html' if mapping else 'js')
+            template = expand_template(expression[0], scope) if len(expression) == 1 else None
+            if not _url(resolved) and template:
+                resolved = template
+            if _url(resolved):
+                start, end = expression[0].start, expression[-1].end
+                if mapping:
+                    start, end = mapping[0][start], mapping[1][end-1]
+                dynamic = template or any(token.kind == 'identifier' for token in expression)
+                self.add(offset + start, offset + end, resolved,
+                         'js_variable' if dynamic else kind,
+                         mode='js_html' if mapping else 'js')
+                return True
+            if len(expression) == 1 and expression[0].kind == 'identifier' and expression[0].value not in seen:
+                defined = constants.get(expression[0].value)
+                if defined:
+                    return collect(defined, kind, scope_of(defined, scope), (*seen, expression[0].value))
+            name = call_name(expression)
+            if name and name not in seen and len(seen) < 8:
+                body = lookup_function(name, scope)
+                returns = list(function_returns(body)) if body else []
+                if returns:
+                    found = False
+                    for item in returns:
+                        found = collect(item, kind, scope_of(item, scope), (*seen, name)) or found
+                    return found
+            self.warnings.append(f'{self.path}:{bisect.bisect_right(self.lines, offset + expression[0].start)} 有无法静态解析的跳转，请在源码编辑器核对。')
+            return False
 
         for index, token in enumerate(tokens):
             if token.kind != 'identifier' or (index and tokens[index-1].value in ('.', '?')):
@@ -360,7 +679,8 @@ class Scanner:
                         continue
                     beginning += 2
                 finish = _expression_end(tokens, beginning, text)
-                collect(tokens[beginning:finish], 'js_location', constants)
+                argument = tokens[beginning:finish]
+                collect(argument, 'js_location', scope_of(argument, scopes[index]))
 
 
 class PageParser(HTMLParser):

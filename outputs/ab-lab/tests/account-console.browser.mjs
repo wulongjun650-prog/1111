@@ -88,6 +88,28 @@ test('empty agent starts with catalog only, can add a site, and clears lost-site
   });
 });
 
+test('clicking the managed domain copies it and leaves the site selected',async()=>{
+  await withConsole('admin',async(page,url,errors)=>{
+    await page.context().grantPermissions(['clipboard-read','clipboard-write'],{origin:new URL(url).origin});
+    await page.route('**/api/**',async route=>{
+      const pathname=new URL(route.request().url()).pathname;
+      if(pathname==='/api/sites') {await route.fulfill({json:{account:admin,sites:[site],google_reputation_configured:false,server_ip:'203.0.113.1'}});return;}
+      if(pathname===`/api/sites/${siteId}/state`) {await route.fulfill({json:siteState});return;}
+      if(pathname.endsWith('/analytics')) {await route.fulfill({json:analytics});return;}
+      throw new Error(`Unexpected endpoint ${pathname}`);
+    });
+    await page.goto(url);
+    const copy=page.locator('#copy-domain');
+    await page.waitForFunction(domain=>document.querySelector('#copy-domain').textContent===domain,'mine.example.com');
+    assert.equal(await copy.getAttribute('aria-label'),'复制域名 mine.example.com');
+    await copy.click();
+    await page.waitForFunction(()=>document.querySelector('.toast')?.textContent.includes('已复制 mine.example.com'));
+    assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),'mine.example.com');
+    assert.equal(await page.locator('#site-selector').inputValue(),siteId);
+    assert.deepEqual(errors,[]);
+  });
+});
+
 test('admin creates, disables, resets, and assigns an agent without displaying passwords',async()=>{
   await withConsole('admin',async(page,url,errors)=>{
     let items=[admin,agent];const writes=[];

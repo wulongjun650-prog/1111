@@ -88,7 +88,7 @@ html[data-theme="demon"] .routing-options button[aria-pressed="true"] { backgrou
 .hero-copy > p { font-size: 12px; font-weight: 400; }
 .hero-controls { flex-direction: column; align-items: stretch; gap: 15px; margin-top: 24px; }
 .hero-site { width: 100%; max-width: 360px; gap: 7px; }
-.hero-site select { height: 39px; font-size: 12px; background: var(--field); }
+.hero-site select { height: 39px; font-size: 12px; background-color: var(--field); }
 #hero-switch { gap: 10px; }
 #hero-switch legend { margin-bottom: 8px; font-weight: 550; }
 #hero-switch button, html[data-theme="demon"] #hero-switch button {

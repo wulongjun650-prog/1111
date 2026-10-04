@@ -820,7 +820,7 @@ async function loadDomains({refreshSelection = true} = {}) {
     const tab = button.dataset.tab || button.dataset.go;
     button.disabled = (!next && !['domains','accounts'].includes(tab)) || (tab === 'accounts' && !isAdmin(account));
   });
-  $('#site-selector').previousElementSibling.textContent = isAdmin(account) ? '当前管理站点' : '我的域名';
+  $('#site-selector-label').textContent = isAdmin(account) ? '当前管理站点' : '我的域名';
   $('#analytics-scope').querySelector('[value="all"]').textContent = isAdmin(account) ? '所有域名' : '我的域名';
   $('#google-reputation-notice').textContent = catalog.google_reputation_configured
     ? '自动检测已开启 · 本页停留时检查未检测或已过期的域名，结果直接显示在下方。'
@@ -831,6 +831,7 @@ async function loadDomains({refreshSelection = true} = {}) {
   }
   if (!next) { const option = element('option','','暂无域名'); option.value=''; selector.append(option); }
   selector.value = selectedSite;
+  syncCopyDomain();
   $('#dns-instructions').textContent = catalog.server_ip
     ? `解析类型：A ｜ 记录值：${catalog.server_ip} ｜ 主机记录：按你填写的完整域名，在域名服务商处选择对应子域名（根域名通常为 @）。`
     : '服务器公网 IP 尚未配置；现在可以登记域名和测试独立配置，但不能自动建站或申请证书。';
@@ -878,14 +879,43 @@ function clearCurrentSite(next) {
   updateConfigControls();
 }
 
+function currentDomain() {
+  const selector = $('#site-selector');
+  return catalog?.sites?.find(site => site.id === selector.value)?.domain || '';
+}
+
+function syncCopyDomain() {
+  const button = $('#copy-domain');
+  const domain = currentDomain();
+  const fallback = $('#site-selector').selectedOptions[0]?.textContent || '暂无域名';
+  button.textContent = domain || fallback;
+  button.disabled = !domain;
+  button.title = domain ? `点击复制 ${domain}` : '当前站点没有可复制的域名';
+  button.setAttribute('aria-label', domain ? `复制域名 ${domain}` : '当前站点没有可复制的域名');
+}
+
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(value); return; }
+    catch { /* Fall through when the page is not a secure context. */ }
+  }
+  const area = element('textarea');
+  area.value = value; area.setAttribute('readonly', '');
+  area.style.position = 'fixed'; area.style.left = '-9999px';
+  document.body.append(area); area.select();
+  const copied = document.execCommand('copy');
+  area.remove();
+  if (!copied) throw new Error('复制失败，请手动选择域名。');
+}
+
 async function switchSite(next) {
   if (next === selectedSite) return;
   if (!catalog?.sites.some(site=>site.id === next)) return;
-  if (configBusy || pendingActions > 1 || siteLoading) { $('#site-selector').value = selectedSite; return; }
+  if (configBusy || pendingActions > 1 || siteLoading) { $('#site-selector').value = selectedSite; syncCopyDomain(); return; }
   const hasDraft = dirty || sourceEditor.isDirty() || bRedirects.isDirty() || $('#links-form').elements.urls.value.trim() || $$('.upload-form input[type=file]').some(input => input.files.length);
-  if (hasDraft && !await confirmAction('切换站点将丢弃尚未保存的规则、源码、链接草稿和选中的上传文件，是否继续？')) { $('#site-selector').value = selectedSite; return; }
+  if (hasDraft && !await confirmAction('切换站点将丢弃尚未保存的规则、源码、链接草稿和选中的上传文件，是否继续？')) { $('#site-selector').value = selectedSite; syncCopyDomain(); return; }
   siteLoading = true; updateSiteLock();
-  clearCurrentSite(next); $('#site-selector').value = next;
+  clearCurrentSite(next); $('#site-selector').value = next; syncCopyDomain();
   try {
     await refreshState();
     if (activeTab === 'logs') await loadLogs();
@@ -898,6 +928,12 @@ async function switchSite(next) {
 }
 
 on($('#site-selector'), 'change', event => switchSite(event.target.value));
+on($('#copy-domain'), 'click', async () => {
+  const domain = currentDomain();
+  if (!domain) throw new Error('当前站点没有可复制的域名。');
+  await copyText(domain);
+  toast(`已复制 ${domain}`);
+});
 on($('#refresh-domains'), 'click', loadDomains);
 on($('#domain-search'), 'input', renderDomains);
 on($('#new-domain'), 'click', () => { $('#domain-add-panel').hidden=false; $('#domain-add-panel').scrollIntoView({behavior:'smooth',block:'nearest'}); $('#domain-form').elements.domain.focus(); });
