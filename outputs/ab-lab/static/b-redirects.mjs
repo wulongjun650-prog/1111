@@ -28,15 +28,29 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const add = element('button', 'button secondary', '保存预设链接'); add.id = 'b-redirect-add'; add.type = 'submit';
   form.append(urlsLabel, noteLabel, add);
   const poolHint = element('small', '', '保存后依次自动检测；使用链接前会再次检测。检测结果仅代表本次观察。');
+  const splitPanel = element('div', 'b-split'); splitPanel.id = 'b-redirect-split';
+  const splitTitle = element('div'); splitTitle.append(element('strong', '', '分流器'), element('span', 'b-split-status', '已关闭'));
+  const splitHelp = element('p', 'muted', '开启后，B 页里识别到的跳转位置会在页面发出前换成该访客的一条链接。同一个访客始终是同一条。关闭后恢复当前发布版本里的地址。点击后直接跳转，没有中转页。');
+  const splitControls = element('div', 'b-split-controls');
+  const splitToggle = element('button', 'button secondary small', '开启分流'); splitToggle.type = 'button'; splitToggle.id = 'b-split-toggle';
+  const splitModeLabel = element('label', '', '分配方式');
+  const splitMode = element('select'); splitMode.id = 'b-split-mode';
+  splitMode.append(element('option', '', '随机'), element('option', '', '按概率'));
+  splitMode.options[0].value = 'random'; splitMode.options[1].value = 'weighted';
+  splitModeLabel.append(splitMode);
+  const splitSave = element('button', 'button primary small', '保存分流设置'); splitSave.type = 'button'; splitSave.id = 'b-split-save';
+  splitControls.append(splitToggle, splitModeLabel, splitSave);
+  splitPanel.append(splitTitle, splitHelp, splitControls);
   const presets = element('div', 'b-redirect-presets'); presets.id = 'b-redirect-presets';
   const message = element('p', 'b-redirect-message'); message.id = 'b-redirect-message'; message.hidden = true;
   message.setAttribute('role', 'status');
-  root.append(header, current, description, toolbar, details, warnings, form, poolHint, presets, message);
+  root.append(header, current, description, toolbar, details, warnings, form, poolHint, splitPanel, presets, message);
 
   const isCurrent = value => Boolean(value && session === value && value.siteId === getSite()?.id);
   const selected = value => value.occurrences.filter(item => !value.excluded.has(item.key));
   const activePreset = value => (value.active && value.active.version_id === value.published) ? value.active.preset_id : null;
-  const isDirty = () => Boolean(urls.value.trim() || note.value.trim() || session?.selectionDirty);
+  const isDirty = () => Boolean(urls.value.trim() || note.value.trim() || session?.selectionDirty || session?.splitDirty);
+  const blankSplit = () => ({enabled:false, mode:'random', members:[]});
   const date = timestamp => timestamp ? new Date(Number(timestamp) * 1000).toLocaleString('zh-CN', {hour12:false}) : '尚未检测';
   const endpoint = value => `/api/b-redirects${value.versionId ? `?version_id=${encodeURIComponent(value.versionId)}` : ''}`;
   const kinds = {anchor:'页面链接', meta_refresh:'Meta 跳转', js_location:'JS 跳转', js_variable:'跳转变量'};
@@ -51,6 +65,8 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     version.disabled = busy || !value.versions.length;
     rescan.disabled = busy;
     urls.disabled = !value || value.busy; note.disabled = urls.disabled; add.disabled = urls.disabled;
+    splitToggle.disabled = !value || value.busy; splitMode.disabled = splitToggle.disabled; splitSave.disabled = splitToggle.disabled;
+    presets.querySelectorAll('.b-split-join input').forEach(input => { input.disabled = splitToggle.disabled; });
     root.setAttribute('aria-busy', String(Boolean(value?.loading || value?.busy)));
     occurrences.querySelectorAll('input').forEach(input => {input.disabled = busy;});
     for (const row of presets.querySelectorAll('[data-preset-id]')) {
@@ -98,6 +114,29 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     updateControls();
   }
 
+  function memberWeight(value, id) {
+    return value.split?.members.find(item => item.preset_id === id)?.weight || 1;
+  }
+
+  function rememberMember(value, id, checked, weight) {
+    value.splitDirty = true;
+    const members = (value.split.members || []).filter(item => item.preset_id !== id);
+    if (checked) members.push({preset_id: id, weight: Math.min(100, Math.max(1, Number(weight) || 1))});
+    value.split.members = members;
+    renderSplit(value);
+  }
+
+  function renderSplit(value) {
+    const split = value.split || blankSplit();
+    splitToggle.textContent = split.enabled ? '关闭分流' : '开启分流';
+    splitToggle.setAttribute('aria-pressed', String(Boolean(split.enabled)));
+    splitMode.value = split.mode === 'weighted' ? 'weighted' : 'random';
+    root.classList.toggle('split-weighted', splitMode.value === 'weighted');
+    const status = splitPanel.querySelector('.b-split-status');
+    const count = split.members.length;
+    status.textContent = split.enabled ? `已开启 · ${split.mode === 'weighted' ? '按概率' : '随机'} · ${count} 条` : '已关闭';
+  }
+
   function renderPresets(value) {
     presets.replaceChildren();
     if (!value.presets.length) presets.append(element('p', 'empty-state', '还没有预设链接。保存后可一键换入 B 页面。'));
@@ -107,6 +146,14 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       const inUse = item.id === activeId;
       const row = element('div', `b-redirect-preset${inUse ? ' active' : ''}`); row.dataset.presetId = item.id;
       const info = element('div', 'b-redirect-preset-info');
+      const participate = element('label', 'b-split-join');
+      const join = element('input'); join.type = 'checkbox'; join.checked = (value.split?.members || []).some(member => member.preset_id === item.id);
+      const weight = element('input', 'b-split-weight'); weight.type = 'number'; weight.min = '1'; weight.max = '100'; weight.value = String(memberWeight(value, item.id));
+      weight.setAttribute('aria-label', '比重');
+      participate.append(join, element('span', '', '参与分流'), weight);
+      join.addEventListener('change', () => { if (isCurrent(value)) rememberMember(value, item.id, join.checked, weight.value); });
+      weight.addEventListener('change', () => { if (isCurrent(value) && join.checked) rememberMember(value, item.id, true, weight.value); });
+      info.append(participate);
       if (inUse) info.append(element('span', 'b-redirect-active-badge', '当前使用中'));
       info.append(element('strong', 'b-redirect-url', item.url));
       if (item.note) info.append(element('p', 'subtle', item.note));
@@ -125,6 +172,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       }
       row.append(info, actions); presets.append(row);
     }
+    renderSplit(value);
     updateControls();
   }
 
@@ -138,6 +186,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       if (!isCurrent(value) || request !== value.request) return;
       if (presetsRevision === value.presetsRevision) value.presets = result.presets;
       value.active = result.active;
+      if (!value.splitDirty) value.split = result.split || blankSplit();
       if (!presetsOnly) {
         value.versionId = result.version?.id || null; value.expectedPublished = result.published_version;
         value.occurrences = result.occurrences; value.warnings = result.warnings;
@@ -233,6 +282,36 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       checkAdded(value, result.presets.filter(item => !oldIds.has(item.id)).map(item => item.id));
     } finally {if (isCurrent(value)) {value.busy = false; updateControls();}}
   });
+  on(splitToggle, 'click', () => {
+    const value = session;
+    if (!isCurrent(value) || value.busy) return;
+    value.splitDirty = true;
+    value.split = {...(value.split || blankSplit()), enabled: !value.split?.enabled};
+    renderSplit(value);
+  });
+  on(splitMode, 'change', () => {
+    const value = session;
+    if (!isCurrent(value) || value.busy) return;
+    value.splitDirty = true;
+    value.split = {...(value.split || blankSplit()), mode: splitMode.value};
+    renderSplit(value);
+  });
+  on(splitSave, 'click', async () => {
+    const value = session;
+    if (!isCurrent(value) || value.busy) return;
+    const split = value.split || blankSplit();
+    value.busy = true; updateControls();
+    try {
+      const result = await api('/api/b-redirects/split', {method:'PUT', body:{enabled:Boolean(split.enabled), mode:split.mode === 'weighted' ? 'weighted' : 'random', members:(split.members || []).map(item => ({preset_id:item.preset_id, weight:split.mode === 'weighted' ? item.weight : 1}))}});
+      if (!isCurrent(value)) return;
+      value.split = result.split; value.splitDirty = false; renderPresets(value);
+      showMessage(result.split.enabled ? '分流已开启。同一个访客会一直打开分到的那一条。' : '分流已关闭。B 页恢复当前发布版本里的地址。');
+    } catch (error) {
+      if (isCurrent(value) && !error.stale) showMessage(error.message, true);
+    } finally {
+      if (isCurrent(value)) {value.busy = false; updateControls();}
+    }
+  });
   on(version, 'change', () => selectVersion(version.value));
   on(rescan, 'click', () => {showMessage(); return session && scan(session);});
 
@@ -241,7 +320,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     let value = session;
     if (value?.siteId !== state.site.id) {
       clear();
-      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], warnings:[], presets:[], presetsRevision:0, active:null, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
+      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], warnings:[], presets:[], presetsRevision:0, active:null, split:blankSplit(), splitDirty:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
       session = value;
     }
     const changed = value.published !== state.slots.B;
@@ -270,6 +349,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   function clear() {
     ++queueGeneration; session = null;
     urls.value = ''; note.value = ''; version.replaceChildren(); current.replaceChildren(); occurrences.replaceChildren(); warnings.replaceChildren(); presets.replaceChildren();
+    renderSplit({split:blankSplit()});
     showMessage(); updateControls();
   }
 

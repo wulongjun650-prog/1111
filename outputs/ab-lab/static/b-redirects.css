@@ -13,6 +13,13 @@
 .b-redirect-occurrence small { margin-top: 3px; font-family: Consolas, monospace; }
 .b-redirect-warnings { display: grid; gap: 4px; margin-top: 8px; }
 .b-redirect-add-form { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(160px, .45fr) auto; align-items: end; gap: 14px; margin-top: 20px; margin-bottom: 8px; }
+.b-split { margin-top: 18px; padding: 14px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
+.b-split-status { margin-left: 10px; color: var(--muted); font-size: 12px; }
+.b-split-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-top: 10px; }
+.b-split-controls label { min-width: 160px; }
+.b-split-join { display: flex; flex-direction: row; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--ink-soft); }
+.b-split-weight { display: none; width: 72px; }
+.split-weighted .b-split-weight { display: inline-block; }
 .b-redirect-presets { margin-top: 16px; }
 .b-redirect-preset { display: flex; align-items: center; gap: 18px; padding: 15px 0; border-top: 1px solid var(--line); }
 .b-redirect-preset.active { background: color-mix(in srgb, var(--chart-allow) 7%, var(--surface)); border-top-color: color-mix(in srgb, var(--chart-allow) 35%, var(--line)); box-shadow: inset 3px 0 0 var(--chart-allow); padding-left: 12px; padding-right: 12px; }

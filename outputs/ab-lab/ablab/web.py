@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import threading
 import time
 from typing import Annotated, Literal
 from urllib.parse import quote
@@ -22,9 +23,9 @@ from pydantic import Field
 
 from .archives import EDITABLE_EXTENSIONS, MAX_FILE, MAX_ZIP, editable_file, import_content, read_source, resolve_file, source_files
 from .analytics import summarize
-from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, SourceEdit, StrictModel, VersionChoice, Visitor
+from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, VersionChoice, Visitor
 from .linkcheck import LinkChecker
-from .redirects import public_occurrences, scan_bundle
+from .redirects import public_occurrences, rewrite_text, scan_bundle
 from .rules import decide
 from .reputation import GoogleReputation
 from .store import Conflict, Store
@@ -33,6 +34,9 @@ from .sites import Registry
 
 ROOT = Path(__file__).resolve().parent.parent
 LOGGER = logging.getLogger('ablab')
+SPLIT_COOKIE = 'ab_split'
+_split_scans = {}
+_split_scan_lock = threading.Lock()
 Slot = Literal['A', 'B']
 VersionId = Annotated[str, PathParameter(pattern=r'^[a-f0-9]{32}$')]
 
@@ -513,7 +517,11 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             base = source_version(store, 'B', version_id)
             occurrences, warnings = scan_bundle(store.pages / version_id, version_id)
         return {'version':base, 'published_version':published, 'occurrences':public_occurrences(occurrences),
-                'warnings':warnings, 'presets':store.redirect_presets(), 'active':store.redirect_active()}
+                'warnings':warnings, 'presets':store.redirect_presets(), 'active':store.redirect_active(), 'split':store.redirect_split()}
+
+    @routes.put('/b-redirects/split')
+    def save_b_redirect_split(body: RedirectSplit, store=Depends(site_store)):
+        return {'split': store.save_redirect_split(body.enabled, body.mode, body.members)}
 
     @routes.post('/b-redirects/presets')
     def add_b_redirect_presets(body: RedirectPresetInput, store=Depends(site_store)):
@@ -625,7 +633,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if principal(request)['role'] != 'admin':
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted'}
+                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 
@@ -654,16 +662,63 @@ def directory_redirect(store, version_ids, path, request):
     return None
 
 
-def content_response(store, version_id, path, method='GET'):
+def cached_split_scan(root, version_id):
+    with _split_scan_lock:
+        cached = _split_scans.get(version_id)
+    if cached is not None:
+        return cached
+    try:
+        occurrences, _ = scan_bundle(root, version_id)
+    except ValueError:
+        occurrences = []
+    with _split_scan_lock:
+        if len(_split_scans) > 16:
+            _split_scans.clear()
+        _split_scans[version_id] = occurrences
+    return occurrences
+
+
+def prepare_split(store, request, version_id):
+    if not version_id or not store.redirect_split()['enabled']:
+        return None
+    token = request.cookies.get(SPLIT_COOKIE, '')
+    is_new = not re.fullmatch(r'[a-f0-9]{64}', token)
+    if is_new:
+        token = secrets.token_hex(32)
+    url = store.split_destination(hmac.new(store.secret, token.encode(), hashlib.sha256).hexdigest())
+    if not url:
+        return None
+    occurrences = cached_split_scan(store.pages / version_id, version_id)
+
+    def transform(data, relative):
+        positions = [item for item in occurrences if item['path'] == relative]
+        if not positions:
+            return data
+        try:
+            return rewrite_text(data, positions, url)
+        except ValueError:
+            return data
+
+    return {'transform': transform, 'is_new': is_new, 'token': token}
+
+
+def content_response(store, version_id, path, method='GET', transform=None):
     if not version_id:
         return HTMLResponse('<!doctype html><meta charset="utf-8"><h1>页面尚未发布</h1><p>请在管理后台为当前槽位导入并发布内容。</p>', status_code=503)
     try:
-        file = resolve_file(store.pages / version_id, path)
+        root = store.pages / version_id
+        file = resolve_file(root, path)
     except (ValueError, FileNotFoundError):
         raise HTTPException(404, '资源不存在') from None
     mime = {'.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml'}.get(file.suffix.lower()) or mimetypes.guess_type(str(file))[0] or 'application/octet-stream'
-    body = file.read_bytes() if method != 'HEAD' else b''
-    return Response(body, media_type=mime, headers={'Content-Length': str(file.stat().st_size)})
+    if transform:
+        data = transform(file.read_bytes(), file.resolve().relative_to(root.resolve()).as_posix())
+        payload = b'' if method == 'HEAD' else data
+        length = len(data)
+    else:
+        payload = file.read_bytes() if method != 'HEAD' else b''
+        length = file.stat().st_size if method == 'HEAD' else len(payload)
+    return Response(payload, media_type=mime, headers={'Content-Length': str(length)})
 
 
 def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
@@ -725,6 +780,11 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
             if link:
                 return RedirectResponse(link['url'], status_code=302)
             return HTMLResponse('<meta charset="utf-8"><h1>当前槽位尚未配置链接</h1>', status_code=503)
-        return content_response(store, store.slots()[slot], path, request.method)
+        version_id = store.slots()[slot]
+        prepared = prepare_split(store, request, version_id) if slot == 'B' else None
+        response = content_response(store, version_id, path, request.method, prepared['transform'] if prepared else None)
+        if prepared and prepared['is_new']:
+            response.set_cookie(SPLIT_COOKIE, prepared['token'], max_age=365 * 24 * 3600, secure=bool(deployment), httponly=True, samesite='lax', path='/')
+        return response
 
     return app

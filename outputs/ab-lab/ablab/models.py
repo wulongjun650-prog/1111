@@ -111,6 +111,24 @@ class RedirectPresetInput(StrictModel):
         return list(dict.fromkeys(normalize_http_url(value.strip()) for value in values))
 
 
+class RedirectSplitMember(StrictModel):
+    preset_id: int = Field(gt=0, strict=True)
+    weight: int = Field(default=1, ge=1, le=100, strict=True)
+
+
+class RedirectSplit(StrictModel):
+    enabled: bool
+    mode: Literal['random', 'weighted']
+    members: list[RedirectSplitMember] = Field(default_factory=list, max_length=30)
+
+    @field_validator('members')
+    @classmethod
+    def unique_members(cls, values):
+        if len({item.preset_id for item in values}) != len(values):
+            raise ValueError('分流链接重复')
+        return values
+
+
 class RedirectApply(StrictModel):
     version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
     preset_id: int = Field(gt=0, strict=True)

@@ -1,6 +1,8 @@
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 import pytest
+import ablab.store as store_module
 from ablab.store import Store
 
 
@@ -54,6 +56,32 @@ def test_delete_unpublished_b_version_removes_files_and_stale_active_link(tmp_pa
     assert store.version(live)['slot'] == 'B'
     assert store.version(other)['slot'] == 'A'
     assert any(item['action'] == 'b_version_deleted' for item in store.audit())
+
+
+def _member(preset, weight=1):
+    return SimpleNamespace(preset_id=preset['id'], weight=weight)
+
+
+def test_split_assignment_sticks_to_the_first_destination(tmp_path, monkeypatch):
+    store = Store(tmp_path)
+    first, second = store.add_redirect_presets(['https://one.example/a', 'https://two.example/b'], '')
+    chosen_urls = ['https://one.example/a', 'https://two.example/b']
+
+    def choose(members, mode):
+        url = chosen_urls.pop(0)
+        return next(item for item in members if item['url'] == url)
+
+    monkeypatch.setattr(store_module, 'choose_split_member', choose)
+    store.save_redirect_split(True, 'weighted', [_member(first, 70), _member(second, 30)])
+    assert store.split_destination('a' * 64) == 'https://one.example/a'
+    assert store.split_destination('a' * 64) == 'https://one.example/a'
+    assert store.split_destination('b' * 64) == 'https://two.example/b'
+    store.save_redirect_split(True, 'random', [_member(second)])
+    assert store.split_destination('a' * 64) == 'https://one.example/a'
+    store.save_redirect_split(False, 'random', [_member(second)])
+    assert store.split_destination('b' * 64) is None
+    with pytest.raises(ValueError, match='至少选择一条'):
+        store.save_redirect_split(True, 'random', [])
 
 
 def test_link_round_robin_and_equal_distribution(tmp_path):
