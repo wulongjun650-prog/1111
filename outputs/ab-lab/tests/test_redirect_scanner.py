@@ -158,7 +158,7 @@ function goWhatsApp(){
 fetch(buildWhatsAppUrl('nope'));'''
     root, pages = bundle(tmp_path, f'<script>{source}</script><img src="assets/banner.webp">')
     occurrences, warnings = redirects.scan_bundle(root, 'original')
-    assert [item['url'] for item in occurrences] == ['https://api.whatsapp.com/send?phone=85257980601']
+    assert [item['url'] for item in occurrences] == ['https://api.whatsapp.com/send?phone=85257980601&text=hello']
     assert not warnings
     version, count = redirects.replace_bundle(root, 'original', [occurrences[0]['id']],
                                               'https://new.example/landing', pages, 'changed.zip')
@@ -192,10 +192,55 @@ def test_landing_page_lists_visitor_jumps_and_skips_google_tags(tmp_path):
     root, _ = bundle(tmp_path, page)
     occurrences, warnings = redirects.scan_bundle(root, 'original')
     assert [item['url'] for item in occurrences] == [
-        'https://api.whatsapp.com/send?phone=85257980601&type=phone_number&app_absent=0',
+        'https://api.whatsapp.com/send?phone=85257980601&text=hi&type=phone_number&app_absent=0',
         'https://www.youtube.com/@EconManBlog/shorts']
     assert not warnings
     assert all('google' not in item['url'] and 'facebook' not in item['url'] for item in occurrences)
+
+
+def test_whatsapp_prefill_and_wa_me_number_are_listed(tmp_path):
+    source = r'''const CONFIG = { whatsappNumber: '852-5798-0601' };
+const VARIANTS = {
+  blackhorse: { message: '你好，黑马' },
+  picks: { message: '心水' }
+};
+function buildWhatsAppUrl(message){
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g,'');
+  const params = new URLSearchParams();
+  params.set('phone', phone);
+  params.set('text', encodeURIComponent(message));
+  return `https://api.whatsapp.com/send?${params.toString()}`;
+}
+function go(){
+  const data = VARIANTS[currentKey] || VARIANTS.blackhorse;
+  const extra = `\n${gateAnswers.interest}`;
+  window.location.assign(buildWhatsAppUrl(data.message + extra));
+}
+const direct = '85211112222';
+location.href = `https://wa.me/${direct}?text=${missing}`;
+location.href = 'https://wa.me/' + CONFIG.whatsappNumber;'''
+    root, _ = bundle(tmp_path, f'<script>{source}</script>')
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == [
+        'https://api.whatsapp.com/send?phone=85257980601&text=你好，黑马',
+        'https://wa.me/85211112222',
+        'https://wa.me/852-5798-0601']
+    assert not warnings
+    assert all('心水' not in item['url'] and 'gateAnswers' not in item['url'] for item in occurrences)
+
+
+def test_encoded_whatsapp_text_is_encoded_once(tmp_path):
+    source = '''function build(message){
+  const params = new URLSearchParams();
+  params.set('phone', '85257980601');
+  params.set('text', encodeURIComponent(message));
+  return `https://api.whatsapp.com/send?${params.toString()}`;
+}
+location.href = build('hello world');'''
+    root, _ = bundle(tmp_path, '<script src="app.js"></script>', source)
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == ['https://api.whatsapp.com/send?phone=85257980601&text=hello%20world']
+    assert not warnings
 
 
 def test_dynamic_host_template_and_nested_function_stay_precise(tmp_path):

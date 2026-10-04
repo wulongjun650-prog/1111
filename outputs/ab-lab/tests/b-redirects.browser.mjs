@@ -338,3 +338,19 @@ test('a late scan retains presets saved during scanning and their automatic chec
     assert.equal(fixture.presets.length,4);
   });
 });
+
+test('a WhatsApp jump is labeled WhatsApp beside the other page link', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [
+      {id:'yt-live-b', key:'index.html:0', path:'index.html', line:225, kind:'anchor', url:'https://www.youtube.com/@EconManBlog/shorts'},
+      {id:'wa-live-b', key:'index.html:1', path:'index.html', line:512, kind:'js_variable', url:'https://api.whatsapp.com/send?phone=85257980601&text=你好，黑马'}
+    ];
+    await openRedirects(page);
+    const text = await page.locator('#b-redirect-occurrences').innerText();
+    assert.match(text, /页面链接/);
+    assert.match(text, /WhatsApp/);
+    assert.match(text, /85257980601/);
+    assert.match(text, /你好，黑马/);
+    assert.doesNotMatch(text, /跳转变量/);
+  });
+});

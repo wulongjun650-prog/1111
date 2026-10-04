@@ -53,6 +53,13 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const date = timestamp => timestamp ? new Date(Number(timestamp) * 1000).toLocaleString('zh-CN', {hour12:false}) : '尚未检测';
   const endpoint = value => `/api/b-redirects${value.versionId ? `?version_id=${encodeURIComponent(value.versionId)}` : ''}`;
   const kinds = {anchor:'页面链接', meta_refresh:'Meta 跳转', js_location:'JS 跳转', js_variable:'跳转变量'};
+  const occurrenceLabel = item => {
+    let host = '';
+    try { host = new URL(item.url, 'https://local.invalid').hostname.toLowerCase().replace(/^www\./, ''); }
+    catch { host = ''; }
+    if (host === 'wa.me' || host === 'whatsapp.com' || host.endsWith('.whatsapp.com') || String(item.url).toLowerCase().startsWith('whatsapp:')) return 'WhatsApp';
+    return kinds[item.kind] || item.kind;
+  };
   const splitPayload = split => {
     const mode = split?.mode === 'weighted' ? 'weighted' : 'random';
     return {enabled:Boolean(split?.enabled), mode, members:(split?.members || []).map(item => ({preset_id:item.preset_id, weight:mode === 'weighted' ? Math.min(100, Math.max(1, Number(item.weight) || 1)) : 1}))};
@@ -118,7 +125,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       const label = element('label', 'b-redirect-occurrence');
       const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = !value.excluded.has(item.key);
       checkbox.dataset.key = item.key; checkbox.value = item.id;
-      const info = element('span'); info.append(element('strong', '', `${item.path}:${item.line} · ${kinds[item.kind] || item.kind}`), element('small', '', item.url));
+      const info = element('span'); info.append(element('strong', '', `${item.path}:${item.line} · ${occurrenceLabel(item)}`), element('small', '', item.url));
       checkbox.addEventListener('change', () => {
         if (!isCurrent(value)) return;
         if (checkbox.checked) value.excluded.delete(item.key); else value.excluded.add(item.key);
