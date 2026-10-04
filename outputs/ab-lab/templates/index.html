@@ -131,20 +131,19 @@
 
       <section id="panel-content" class="tab-panel" aria-label="A/B 内容" hidden>
         <article class="card allowed-content-card">
-          <div class="card-heading"><div><p class="eyebrow">AFTER RULES / CONTENT SWITCH</p><h2>规则放行后展示</h2></div><span id="allowed-slot-badge" class="badge indigo">正在读取</span></div>
-          <p class="muted">先检查访问规则：被拦截的访客始终展示 A；通过规则的访客，展示下面选择的内容。无需重新上传或发布。</p>
+          <div class="card-heading"><div><h2>放行后看哪边</h2></div><span id="allowed-slot-badge" class="badge indigo">正在读取</span></div>
+          <p class="muted">被拦截的人看 A。通过规则的人看你选的一边。已经打开的页面，刷新后才会变。</p>
           <fieldset id="allowed-content-controls" class="allowed-content-options" disabled><legend class="sr-only">选择规则放行后的内容</legend>
-            <button type="button" class="button secondary" data-allowed-slot="A" aria-pressed="false">放行后展示 A</button>
-            <button type="button" class="button secondary" data-allowed-slot="B" aria-pressed="false">放行后展示 B</button>
+            <button type="button" class="button secondary" data-allowed-slot="A" aria-pressed="false">看 A</button>
+            <button type="button" class="button secondary" data-allowed-slot="B" aria-pressed="false">看 B</button>
           </fieldset>
           <p id="allowed-content-status" role="status" class="subtle">正在读取配置…</p>
-          <p class="subtle">点击会切回“按规则分流”，保留已保存的规则与防护开关。对后续请求生效；已打开的访客页面需刷新。</p>
         </article>
-        <div class="card mode-bar"><div><h2>内容交付方式</h2><p class="muted">页面版本与链接分别保存，按当前模式提供访问。</p></div><fieldset id="content-controls" class="inline-controls" disabled><legend class="sr-only">交付设置</legend><label>内容模式<select id="content-mode"><option value="PAGE">页面内容</option><option value="LINK">链接跳转</option></select></label><label>链接分配<select id="distribution"><option value="random">随机分配</option><option value="round_robin">轮询分配</option><option value="equal">均衡分配</option></select></label></fieldset></div>
+        <div class="card mode-bar"><div><h2>访客看到什么</h2><p class="muted">整页内容，或一打开就跳转。</p></div><fieldset id="content-controls" class="inline-controls" disabled><legend class="sr-only">交付设置</legend><label>方式<select id="content-mode"><option value="PAGE">页面</option><option value="LINK">跳转链接</option></select></label><label id="distribution-field">怎么分<select id="distribution"><option value="random">随机</option><option value="round_robin">轮流</option><option value="equal">尽量均衡</option></select></label></fieldset></div>
+        <article class="card" id="links-card" hidden><div class="card-heading"><div><h2>链接管理</h2></div><span id="link-count" class="badge neutral">0 个链接</span></div><form id="links-form"><fieldset id="links-fields" class="link-entry" disabled><legend class="sr-only">批量添加链接</legend><label>给谁用<select name="slot"><option value="A">A</option><option value="B">B</option></select></label><label class="grow">链接<textarea name="urls" rows="3" placeholder="每行一个完整的 https:// 或 http:// 链接" required></textarea></label><button class="button primary" type="submit">添加链接</button></fieldset></form><div id="links-list" class="links-list"><p class="empty-state">还没有链接。每行一个，添加后就会开始分配。</p></div></article>
         <div class="slot-grid" id="slot-cards"></div>
-        <article id="b-redirects" class="card" aria-label="B 页快捷换链"></article>
-        <section id="preview-panel" class="card" hidden><div class="card-heading"><div><h2 id="preview-title">版本预览</h2><p class="muted">独立测试站点 · 沙箱预览</p></div><button id="close-preview" class="button secondary">关闭预览</button></div><div id="preview-frame"></div></section>
-        <article class="card"><div class="card-heading"><div><p class="eyebrow">LINK DESTINATIONS</p><h2>链接管理</h2></div><span id="link-count" class="badge neutral">0 个链接</span></div><form id="links-form"><fieldset id="links-fields" class="link-entry" disabled><legend class="sr-only">批量添加链接</legend><label>目标内容<select name="slot"><option value="A">A 内容</option><option value="B">B 内容</option></select></label><label class="grow">批量链接<textarea name="urls" rows="3" placeholder="每行一个完整的 https:// 或 http:// 链接" required></textarea></label><button class="button primary" type="submit">添加链接</button></fieldset></form><div id="links-list" class="links-list"><p class="empty-state">暂无链接。添加后，切换到「链接跳转」模式即可使用。</p></div></article>
+        <article id="b-redirects" class="card" aria-label="B 页换链"></article>
+        <section id="preview-panel" class="card" hidden><div class="card-heading"><div><h2 id="preview-title">版本预览</h2><p class="muted">只在这里看，不会发给访客</p></div><button id="close-preview" class="button secondary">关闭预览</button></div><div id="preview-frame"></div></section>
       </section>
 
       <section id="panel-rules" class="tab-panel" aria-label="访问规则" hidden>

@@ -61,7 +61,7 @@ const selections = Object.fromEntries(['countries','languages'].map(kind => [kin
 const labels = {
   domains: ['域名管理', '域名管理', '统一查看谷歌风险、接入状态、备注与访问状态。'],
   overview: ['流量总览', '流量总览', '查看访问数据、国家分布与各站点表现。'],
-  content: ['A/B 内容', 'A/B 内容', '上传、预览和发布当前站点的内容。'],
+  content: ['A/B 内容', 'A/B 内容', '先看现在用的那一版，再换链接或发布。'],
   rules: ['访问规则', '访问规则', '设置访问条件，保存后对当前站点生效。'],
   simulate: ['规则模拟', '规则模拟', '输入访问条件，检查已保存规则的判断结果。'],
   logs: ['访问日志', '访问日志', '查看文档请求、设备、国家与分流结果。'],
@@ -193,7 +193,16 @@ function fillRules() {
   setDirty(false);
 }
 
+function syncDeliveryPanels() {
+  const linkMode = state?.config?.content_mode === 'LINK';
+  const linksCard = $('#links-card');
+  const distributionField = $('#distribution-field');
+  if (linksCard) linksCard.hidden = !linkMode;
+  if (distributionField) distributionField.hidden = !linkMode;
+}
+
 function updateConfigControls() {
+  syncDeliveryPanels();
   $('#routing-controls').disabled = !state || configBusy;
   $('#allowed-content-controls').disabled = !state || configBusy;
   $('#content-controls').disabled = !state || configBusy;
@@ -311,14 +320,14 @@ function renderSlots() {
       card = element('article', 'card'); card.id = `slot-${slot}`;
       const heading = element('div', 'slot-heading');
       heading.append(element('span', `slot-letter slot-${slot.toLowerCase()}`, slot));
-      const title = element('div'); title.append(element('h2', '', `${slot} 内容`), element('small', '', slot === 'A' ? '拦截时展示；也可选为放行后的内容' : '放行后选择 B 时展示')); heading.append(title);
+      const title = element('div'); title.append(element('h2', '', `${slot} 内容`), element('small', '', slot === 'A' ? '拦截时看到的页面' : '放行后选 B 时看到的页面')); heading.append(title);
       const live = element('div', 'slot-live'); live.id = `slot-live-${slot}`;
       const form = element('form', 'upload-form');
       const label = element('label', '', '导入新版本');
       const input = element('input'); input.type = 'file'; input.accept = '.zip,.html,.htm'; input.required = true; input.name = 'file'; input.disabled = !state;
       label.append(input);
       const submit = element('button', 'button secondary small', '上传并创建版本'); submit.type = 'submit'; submit.disabled = !state;
-      form.append(label, element('small', '', 'ZIP / HTML · 最大 20 MiB · 上传后需手动发布'), submit);
+      form.append(label, element('small', '', 'ZIP 或 HTML，最大 20 MB。上传后要点下面的「用这一版」才会生效。'), submit);
       on(form, 'submit', async event => {
         event.preventDefault();
         await busy(submit, async () => {
@@ -339,17 +348,18 @@ function renderSlots() {
     if (state) card.querySelectorAll('.upload-form input, .upload-form button').forEach(control => { if (!control.hasAttribute('aria-busy')) control.disabled = false; });
     const current = state?.versions.find(version => version.id === state.slots[slot]);
     const live = $(`#slot-live-${slot}`);
-    live.replaceChildren(element('small', '', '当前发布'), element('strong', '', current?.name || (state?.slots[slot] ? '已发布版本' : '尚未发布内容')));
+    live.replaceChildren(element('span', 'badge green', '当前发布'));
     if (current) {
-      live.append(element('small', '', `${formatDate(current.created)} · ${number(current.files)} 个文件`));
+      live.append(element('strong', '', formatDate(current.created)));
+      live.append(element('small', '', `${current.name} · ${number(current.files)} 个文件`));
       live.append(actionButton('编辑源码', () => sourceEditor.open(current), 'button secondary small slot-source-edit'));
-    }
+    } else live.append(element('strong', '', state?.slots[slot] ? '已发布版本' : '尚未发布'));
     const versions = $(`#versions-${slot}`); versions.replaceChildren();
     const items = state?.versions.filter(version => version.slot === slot) || [];
     const extras = slot === 'B' ? items.filter(version => version.id !== state?.slots.B) : [];
     if (extras.length) {
       const cleanup = element('div', 'version-cleanup');
-      cleanup.append(element('small', '', state.slots.B ? `${extras.length} 个未发布版本可清理` : `当前没有发布版本，${extras.length} 个版本可清理`));
+      cleanup.append(element('small', '', state.slots.B ? `还有 ${extras.length} 个未发布版本` : `还没发布。这 ${extras.length} 个版本都可以清掉`));
       cleanup.append(actionButton('清理未发布版本', async () => {
         const message = state.slots.B
           ? `彻底删除 ${extras.length} 个未发布的 B 版本？只保留当前发布版本。源码和记录都会删除，无法恢复。`
@@ -358,32 +368,48 @@ function renderSlots() {
         const result = await api('/api/versions/B/cleanup', { method: 'POST', body: {} });
         toast(`已删除 ${result.deleted} 个未发布 B 版本。`);
         await refreshState();
-      }, 'button secondary small'));
+      }, 'button quiet small'));
       versions.append(cleanup);
     }
-    if (!items.length) versions.append(element('p', 'empty-state', state ? '还没有版本。导入一个站点，开始你的实验。' : '连接服务后，版本将显示在这里。'));
-    for (const version of items) {
-      const published = version.id === state.slots[slot];
+    if (!items.length) versions.append(element('p', 'empty-state', state ? '还没有版本。先导入一个页面。' : '连接服务后，版本会显示在这里。'));
+    const publishedId = state?.slots[slot];
+    const sorted = [...items].sort((a, b) => Number(b.created) - Number(a.created) || String(b.id).localeCompare(String(a.id)));
+    const published = sorted.find(version => version.id === publishedId) || null;
+    const newestOther = sorted.find(version => version !== published) || null;
+    const visible = [published, newestOther].filter(Boolean);
+    const visibleIds = new Set(visible.map(version => version.id));
+    const older = sorted.filter(version => !visibleIds.has(version.id));
+    const appendVersion = (version, parent) => {
+      const isPublished = version.id === publishedId;
       const row = element('div', 'version-row');
-      const name = element('div', 'version-name', version.name);
-      const meta = element('p', 'version-meta', `${formatDate(version.created)} · ${number(version.files)} 个文件 · ${bytes(version.bytes)}`);
+      row.append(element('div', 'version-name', formatDate(version.created)));
+      row.append(element('p', 'version-meta', `${version.name} · ${number(version.files)} 个文件 · ${bytes(version.bytes)}`));
       const actions = element('div', 'actions');
       actions.append(actionButton('预览', () => preview(version)));
       actions.append(actionButton('编辑源码', () => sourceEditor.open(version)));
-      if (published) actions.append(element('span', 'badge green', '当前发布'));
-      else actions.append(actionButton('发布此版本', async () => {
-        if (!await confirmAction(`将「${version.name}」发布至 ${slot}？将替换当前版本；旧版本仍可回退。`)) return;
-        await api(`/api/publish/${slot}`, { method: 'POST', body: { version_id: version.id } });
-        toast(`${slot} 内容已发布。`); await refreshState();
-      }, 'button primary small'));
-      if (slot === 'B' && !published) actions.append(actionButton('删除', async () => {
+      if (slot === 'B' && !isPublished) actions.append(actionButton('删除', async () => {
         if (!await confirmAction(`彻底删除「${version.name}」？源码和记录都会删除，无法恢复。当前发布版本不受影响。`)) return;
         await api(`/api/versions/B/${version.id}`, { method: 'DELETE' });
         toast('B 版本已删除。');
         await refreshState();
-      }, 'button secondary small'));
+      }, 'button quiet small'));
+      if (isPublished) actions.append(element('span', 'badge green', '当前发布'));
+      else actions.append(actionButton('用这一版', async () => {
+        if (!await confirmAction(`改用 ${formatDate(version.created)} 的「${version.name}」作为 ${slot}？当前这一版会留下来，随时可以换回去。`)) return;
+        await api(`/api/publish/${slot}`, { method: 'POST', body: { version_id: version.id } });
+        toast(`${slot} 已换成这一版。`); await refreshState();
+      }, 'button primary small'));
       const hash = element('details', 'version-hash'); hash.append(element('summary', '', '版本校验值'), element('span', '', version.sha256));
-      row.append(name, meta, actions, hash); versions.append(row);
+      row.append(actions, hash); parent.append(row);
+    };
+    for (const version of visible) appendVersion(version, versions);
+    if (older.length) {
+      const details = element('details', 'version-older');
+      details.open = versions.dataset.olderOpen === 'true';
+      details.append(element('summary', '', `更早的 ${older.length} 个版本`));
+      details.addEventListener('toggle', () => { versions.dataset.olderOpen = String(details.open); });
+      for (const version of older) appendVersion(version, details);
+      versions.append(details);
     }
   }
 }
@@ -412,7 +438,7 @@ function closePreview() {
 function renderLinks() {
   $('#link-count').textContent = `${number(state.links.length)} 个链接`;
   const root = $('#links-list'); root.replaceChildren();
-  if (!state.links.length) root.append(element('p', 'empty-state', '暂无链接。添加后，切换到「链接跳转」模式即可使用。'));
+  if (!state.links.length) root.append(element('p', 'empty-state', '还没有链接。每行一个，添加后就会开始分配。'));
   for (const link of state.links) {
     const row = element('div', 'link-row');
     row.append(element('span', `badge ${link.slot === 'A' ? 'amber' : 'indigo'}`, link.slot), element('span', 'link-url', link.url), element('span', 'link-hits', `${number(link.hits)} 次访问`));
