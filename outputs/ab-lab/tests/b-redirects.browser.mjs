@@ -136,6 +136,9 @@ test('B redirect selection applies the chosen version and preserves exclusions a
     assert.deepEqual(await page.locator('#b-redirect-occurrences input[type=checkbox]').evaluateAll(items=>items.map(item=>item.checked)),[true,false]);
     assert.match(await page.locator('#slot-live-B').innerText(),/saved-1/);
     assert.match(await page.locator('#b-redirect-current').innerText(),/safe\.example/);
+    await presetRow(page,1).locator('.b-redirect-active-badge').waitFor({state:'visible'});
+    assert.match(await presetRow(page,1).innerText(),/当前使用中/,'the live redirect preset is flagged after a successful swap');
+    assert.equal(await presetRow(page,2).locator('.b-redirect-active-badge').count(),0,'only the live redirect preset is flagged');
     await presetRow(page,1).getByRole('button',{name:'使用此链接',exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('#b-redirect-version').value==='saved-2' && document.querySelector('#b-redirect-occurrences input[type=checkbox]')?.value==='href-saved-2');
     assert.deepEqual(fixture.applies[1].body,{version_id:'saved-1',preset_id:1,occurrence_ids:['href-saved-1'],expected_published:'saved-1'});
