@@ -35,6 +35,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
 
   const isCurrent = value => Boolean(value && session === value && value.siteId === getSite()?.id);
   const selected = value => value.occurrences.filter(item => !value.excluded.has(item.key));
+  const activePreset = value => (value.active && value.active.version_id === value.published) ? value.active.preset_id : null;
   const isDirty = () => Boolean(urls.value.trim() || note.value.trim() || session?.selectionDirty);
   const date = timestamp => timestamp ? new Date(Number(timestamp) * 1000).toLocaleString('zh-CN', {hour12:false}) : '尚未检测';
   const endpoint = value => `/api/b-redirects${value.versionId ? `?version_id=${encodeURIComponent(value.versionId)}` : ''}`;
@@ -101,9 +102,12 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     presets.replaceChildren();
     if (!value.presets.length) presets.append(element('p', 'empty-state', '还没有预设链接。保存后可一键换入 B 页面。'));
     const statuses = {normal:'正常', abnormal:'不正常', unknown:'状态未知', unchecked:'未检测'};
+    const activeId = activePreset(value);
     for (const item of value.presets) {
-      const row = element('div', 'b-redirect-preset'); row.dataset.presetId = item.id;
+      const inUse = item.id === activeId;
+      const row = element('div', `b-redirect-preset${inUse ? ' active' : ''}`); row.dataset.presetId = item.id;
       const info = element('div', 'b-redirect-preset-info');
+      if (inUse) info.append(element('span', 'b-redirect-active-badge', '当前使用中'));
       info.append(element('strong', 'b-redirect-url', item.url));
       if (item.note) info.append(element('p', 'subtle', item.note));
       const check = item.check || {status:'unchecked'};
@@ -243,7 +247,8 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     const changed = value.published !== state.slots.B;
     value.versions = state.versions.filter(item => item.slot === 'B');
     value.published = state.slots.B;
-    if (changed) {++value.request; value.loading = false; value.versionId = value.published; value.scanned = false; value.occurrences = []; renderOccurrences(value);}
+    const missingSelection = value.versionId && !value.versions.some(item => item.id === value.versionId);
+    if (changed || missingSelection) {++value.request; value.loading = false; value.versionId = value.published; value.scanned = false; value.occurrences = []; renderOccurrences(value);}
     renderVersions(value); updateControls();
     if (active && !value.scanned && !value.loading) scan(value);
   }

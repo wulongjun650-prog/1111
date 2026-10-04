@@ -31,3 +31,5 @@
 .domain-error { color: #b54738; font-size: 13px; }
 #panel-domains > .card { margin-bottom: 24px; }
 @media (max-width: 800px) { .site-switcher, .domain-row, .domain-entry { align-items: stretch; flex-direction: column; } .site-switcher label { min-width: 0; } .domain-row .actions { justify-content: start; max-width: none; } }
+.version-cleanup { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
+.version-cleanup small { color: var(--muted); }

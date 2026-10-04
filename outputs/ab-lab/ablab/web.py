@@ -459,6 +459,15 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         store.publish(slot, body.version_id)
         return {'ok': True}
 
+    @routes.delete('/versions/B/{version_id}')
+    def delete_b_version(version_id: VersionId, store=Depends(site_store)):
+        store.delete_version(version_id)
+        return {'ok': True}
+
+    @routes.post('/versions/B/cleanup')
+    def cleanup_b_versions(store=Depends(site_store)):
+        return {'deleted': len(store.delete_unpublished_b_versions())}
+
     def source_version(store, slot, version_id):
         version = store.version(version_id)
         if not version or version['slot'] != slot:
@@ -616,7 +625,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if principal(request)['role'] != 'admin':
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted'}
+                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 

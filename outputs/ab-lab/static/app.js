@@ -346,6 +346,21 @@ function renderSlots() {
     }
     const versions = $(`#versions-${slot}`); versions.replaceChildren();
     const items = state?.versions.filter(version => version.slot === slot) || [];
+    const extras = slot === 'B' ? items.filter(version => version.id !== state?.slots.B) : [];
+    if (extras.length) {
+      const cleanup = element('div', 'version-cleanup');
+      cleanup.append(element('small', '', state.slots.B ? `${extras.length} 个未发布版本可清理` : `当前没有发布版本，${extras.length} 个版本可清理`));
+      cleanup.append(actionButton('清理未发布版本', async () => {
+        const message = state.slots.B
+          ? `彻底删除 ${extras.length} 个未发布的 B 版本？只保留当前发布版本。源码和记录都会删除，无法恢复。`
+          : `当前没有发布中的 B 版本。彻底删除全部 ${extras.length} 个 B 版本？源码和记录都会删除，无法恢复。`;
+        if (!await confirmAction(message)) return;
+        const result = await api('/api/versions/B/cleanup', { method: 'POST', body: {} });
+        toast(`已删除 ${result.deleted} 个未发布 B 版本。`);
+        await refreshState();
+      }, 'button secondary small'));
+      versions.append(cleanup);
+    }
     if (!items.length) versions.append(element('p', 'empty-state', state ? '还没有版本。导入一个站点，开始你的实验。' : '连接服务后，版本将显示在这里。'));
     for (const version of items) {
       const published = version.id === state.slots[slot];
@@ -361,6 +376,12 @@ function renderSlots() {
         await api(`/api/publish/${slot}`, { method: 'POST', body: { version_id: version.id } });
         toast(`${slot} 内容已发布。`); await refreshState();
       }, 'button primary small'));
+      if (slot === 'B' && !published) actions.append(actionButton('删除', async () => {
+        if (!await confirmAction(`彻底删除「${version.name}」？源码和记录都会删除，无法恢复。当前发布版本不受影响。`)) return;
+        await api(`/api/versions/B/${version.id}`, { method: 'DELETE' });
+        toast('B 版本已删除。');
+        await refreshState();
+      }, 'button secondary small'));
       const hash = element('details', 'version-hash'); hash.append(element('summary', '', '版本校验值'), element('span', '', version.sha256));
       row.append(name, meta, actions, hash); versions.append(row);
     }
