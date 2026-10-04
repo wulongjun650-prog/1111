@@ -31,5 +31,26 @@
 .domain-error { color: #b54738; font-size: 13px; }
 #panel-domains > .card { margin-bottom: 24px; }
 @media (max-width: 800px) { .site-switcher, .domain-row, .domain-entry { align-items: stretch; flex-direction: column; } .site-switcher label { min-width: 0; } .domain-row .actions { justify-content: start; max-width: none; } }
-.version-cleanup { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
+.version-cleanup { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
 .version-cleanup small { color: var(--muted); }
+.button.quiet { background: transparent; border-color: transparent; color: var(--ink-soft, #5d6680); box-shadow: none; }
+.button.quiet:hover { background: var(--surface-soft, #f3f5fb); color: var(--ink, #2c3548); }
+.slot-live { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; background: var(--surface-soft); }
+.slot-live strong { flex: 1; min-width: 148px; font-size: 14px; }
+.slot-live small { flex: 1 1 160px; margin: 0; }
+.slot-live .slot-source-edit { margin-left: auto; }
+.version-list { display: grid; gap: 8px; }
+.version-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.version-row:has(.badge.green) { background: color-mix(in srgb, var(--chart-allow) 9%, var(--surface)); border-color: color-mix(in srgb, var(--chart-allow) 30%, var(--line)); }
+.version-name { font-size: 13px; font-weight: 650; }
+.version-meta { margin: 0; font-size: 11px; color: var(--muted); }
+.version-row .actions { grid-column: 2; grid-row: 1 / span 2; }
+.version-hash { grid-column: 1 / -1; margin: 2px 0 0; }
+.version-older > summary { cursor: pointer; padding: 4px 2px 0; color: var(--muted); font-size: 12px; font-weight: 650; }
+.version-older .version-row { margin-top: 8px; }
+.allowed-content-options { margin-top: 16px; }
+.allowed-content-options .button { min-width: 112px; }
+@media (max-width: 760px) {
+  .version-row { grid-template-columns: 1fr; }
+  .version-row .actions { grid-column: 1; grid-row: auto; }
+}
