@@ -27,6 +27,8 @@ from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput,
 from .linkcheck import LinkChecker
 from .redirects import public_occurrences, rewrite_text, scan_bundle
 from .rules import decide
+from .cloudflare import Cloudflare
+from .provisioning import ProvisioningError
 from .reputation import GoogleReputation
 from .store import Conflict, Store
 from .auth import Auth, COOKIE, SESSION_SECONDS
@@ -272,7 +274,7 @@ def base_app():
     return app
 
 
-def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registry_dir=None, server_ip=''):
+def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registry_dir=None, server_ip='', cloudflare=None):
     if server_ip:
         from .provisioning import public_ipv4
         server_ip = public_ipv4(server_ip)
@@ -283,6 +285,9 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     app.state.registry = registry
     reputation = GoogleReputation(registry, os.environ.get('AB_GOOGLE_WEB_RISK_KEY', ''))
     app.state.reputation = reputation
+    if cloudflare is None:
+        cloudflare = Cloudflare(os.environ.get('AB_CLOUDFLARE_TOKEN', ''), os.environ.get('AB_CLOUDFLARE_TEMPLATE', ''), server_ip)
+    app.state.cloudflare = cloudflare
     accounts = Auth(store)
     app.state.auth = accounts
     auth = accounts if deployment else None
@@ -333,6 +338,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             for site in sites:
                 site['owner_username'] = names.get(site['owner_id'], account['username'] if site['owner_id'] == 'admin' else '账号不存在')
         return {'sites': sites, 'account': account, 'google_reputation_configured': reputation.configured,
+                'cloudflare_configured': cloudflare.configured, 'cloudflare_template': cloudflare.template_label,
                 'server_ip': server_ip, 'record_type': 'A', 'local_only': deployment is None}
 
     @app.get('/api/me')
@@ -374,11 +380,64 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         authorized_site(request, site_id)
         return {'result': reputation.check(site_id)}
 
+    def apply_cloudflare(site):
+        try:
+            attached = cloudflare.attach(site['domain'])
+        except ProvisioningError as error:
+            names = ','.join(getattr(error, 'nameservers', ()) or ())
+            zone_id = getattr(error, 'zone_id', '') or ''
+            detail = str(error)[:400]
+            updated = registry.set_cloudflare(site['id'], zone_id, names, 'failed', detail)
+            if zone_id:
+                registry.transition(updated['id'], updated['generation'], 'waiting_dns', detail)
+                updated = registry.get(site['id'])
+            return updated, {'ok': False, 'detail': detail, 'nameservers': names.split(',') if names else [], 'status': 'failed'}
+        names = ','.join(attached['nameservers'])
+        updated = registry.set_cloudflare(site['id'], attached['zone_id'], names, attached['status'], attached['detail'])
+        if attached['status'] == 'active' and registry.transition(updated['id'], updated['generation'], 'dns_verified', attached['detail']):
+            registry.transition(updated['id'], updated['generation'], 'unsupported', '解析条件已满足；面板自动写入适配尚未完成，未创建目录、站点或证书')
+        else:
+            registry.transition(updated['id'], updated['generation'], 'waiting_dns', attached['detail'])
+        return registry.get(site['id']), {
+            'ok': True, 'detail': attached['detail'], 'nameservers': attached['nameservers'], 'status': attached['status'],
+        }
+
     @app.post('/api/sites')
     def add_site(body: dict, request: Request):
-        if set(body) != {'domain'}:
-            raise ValueError('只需提交域名')
-        return {'site': registry.add(body['domain'], principal(request)['id']), 'server_ip': server_ip, 'record_type': 'A'}
+        if not isinstance(body, dict) or set(body) - {'domain', 'cloudflare'} or 'domain' not in body:
+            raise ValueError('只需提交域名，可另选是否套用 Cloudflare')
+        use_cloudflare = body.get('cloudflare', False)
+        if type(use_cloudflare) is not bool:
+            raise ValueError('Cloudflare 选项无效')
+        if use_cloudflare and not cloudflare.configured:
+            raise ValueError('服务器未配置 Cloudflare，请取消勾选，按原来的 A 记录接入')
+        if use_cloudflare and not cloudflare.origin_ip:
+            raise ValueError('服务器公网 IP 未配置，无法把 Cloudflare 回源到本机')
+        site = registry.add(body['domain'], principal(request)['id'])
+        result = {'site': site, 'server_ip': server_ip, 'record_type': 'A', 'cloudflare': None}
+        if use_cloudflare:
+            result['site'], result['cloudflare'] = apply_cloudflare(site)
+        return result
+
+    @app.post('/api/sites/{site_id}/cloudflare')
+    def retry_cloudflare(site_id: str, request: Request):
+        site = authorized_site(request, site_id)
+        if site['id'] == 'default' or not site['cf_status']:
+            raise ValueError('添加时未选择 Cloudflare，这条域名仍按原来的解析接入')
+        if not cloudflare.configured:
+            raise ValueError('服务器未配置 Cloudflare')
+        site, attached = apply_cloudflare(site)
+        return {'site': site, 'cloudflare': attached}
+
+    @app.post('/api/sites/{site_id}/cloudflare/purge')
+    def purge_cloudflare(site_id: str, request: Request):
+        site = authorized_site(request, site_id)
+        if not site['cf_zone_id']:
+            raise ValueError('这个域名没有接入 Cloudflare')
+        if not cloudflare.configured:
+            raise ValueError('服务器未配置 Cloudflare')
+        cloudflare.purge(site['cf_zone_id'], site['domain'])
+        return {'ok': True}
 
     @app.patch('/api/sites/{site_id}/metadata')
     def update_site_metadata(site_id: str, body: SiteMetadata, request: Request):

@@ -81,9 +81,13 @@
       {% endif %}
 
       <section id="panel-domains" class="tab-panel" aria-label="域名管理" hidden>
-        <article class="card" id="domain-add-panel" hidden><div class="card-heading"><div><p class="eyebrow">ADD DOMAIN</p><h2>添加域名</h2></div><button id="cancel-domain-add" class="button secondary small">收起</button></div><p class="muted">填写你拥有的完整域名，随后到域名服务商添加 A 记录。不修改已有宝塔站点。</p>
+        <article class="card" id="domain-add-panel" hidden><div class="card-heading"><div><p class="eyebrow">ADD DOMAIN</p><h2>添加域名</h2></div><button id="cancel-domain-add" class="button secondary small">收起</button></div><p class="muted">填写你拥有的完整域名。不修改已有宝塔站点。</p>
           <form id="domain-form" class="domain-entry"><label class="grow">完整域名<input name="domain" required maxlength="253" placeholder="例如 shop.example.com" autocomplete="off" spellcheck="false"></label><button class="button primary" type="submit">添加域名</button></form>
-          <p id="dns-instructions" class="notice">正在读取服务器解析目标…</p><p class="subtle">只接入这里登记的精确域名，不自动添加 www 或泛域名。解析到服务器不等于证书已签发。{% if account.role == 'admin' %}后台密钥只在服务器配置，不在网页填写。{% endif %}</p>
+          <label class="cf-choice" id="cf-choice" hidden><input id="use-cloudflare" type="checkbox"><span>套用 Cloudflare 优化规则</span></label>
+          <p id="cf-choice-note" class="subtle" hidden></p>
+          <p id="dns-instructions" class="notice">正在读取服务器解析目标…</p>
+          <p id="cf-result" class="notice" hidden></p>
+          <p class="subtle">只接入这里登记的精确域名，不自动添加 www 或泛域名。解析到服务器不等于证书已签发。{% if account.role == 'admin' %}后台密钥只在服务器配置，不在网页填写。{% endif %}</p>
         </article>
         <article class="card domains-card"><div class="card-heading"><div><h2>我的域名</h2><p class="card-caption">谷歌风险检测、备注与上线状态</p></div><div class="actions"><label class="domain-search"><span class="sr-only">搜索域名或备注</span><input id="domain-search" type="search" placeholder="搜索域名或备注" autocomplete="off"></label><button id="refresh-domains" class="button secondary small">刷新</button><button id="new-domain" class="button primary small" aria-controls="domain-add-panel">＋ 添加域名</button></div></div><div id="domains-summary" class="domains-summary"></div><p id="google-reputation-notice" class="subtle" role="status">正在读取谷歌检测状态…</p><div id="domain-list" class="domain-table-wrap"></div><p class="subtle">谷歌检测由 Google Web Risk 提供，查询 HTTP / HTTPS 首页的已知恶意软件、钓鱼欺诈及不受欢迎的软件风险。未检出不保证整个网站安全，也不代表搜索收录或广告审核结果。接入状态来自已有建站验收记录；添加日期为系统登记日期。</p></article>
         <article class="card" id="provision-events-panel" hidden><h2 id="provision-events-title">接入日志</h2><div id="provision-events"></div></article>

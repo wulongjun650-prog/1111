@@ -147,7 +147,35 @@ class PanelPreflight:
                 'detail': '只读静态能力检查通过；反代、配置检查与证书续期契约尚未验证，自动写入保持禁用'}
 
 
-def inspect_pending(registry, server_ip, checker=None):
+def _retry_delay(site):
+    return min(3600, 60 * 2 ** min(site['attempts'], 6))
+
+
+def _inspect_cloudflare(registry, site, cloudflare):
+    site_id, generation = site['id'], site['generation']
+    delay = _retry_delay(site)
+    if cloudflare is None or not cloudflare.configured:
+        registry.transition(site_id, generation, 'waiting_dns', '这个域名走 Cloudflare，当前检查进程没有 Cloudflare 配置', delay)
+        return
+    try:
+        state = cloudflare.confirm(site['cf_zone_id'], site['domain'])
+    except ProvisioningError as error:
+        registry.transition(site_id, generation, 'waiting_dns', str(error), delay)
+        return
+    nameservers = ','.join(state['nameservers'])
+    if state['active'] and site['cf_status'] == 'pending':
+        registry.set_cloudflare(site_id, site['cf_zone_id'], site['cf_nameservers'] or nameservers, 'active', site['cf_detail'] or 'Cloudflare 已生效，回源指向服务器')
+        site = registry.get(site_id)
+        generation = site['generation']
+    if state['active']:
+        if registry.transition(site_id, generation, 'dns_verified', 'Cloudflare 已生效，回源指向服务器'):
+            registry.transition(site_id, generation, 'unsupported', '解析条件已满足；面板自动写入适配尚未完成，未创建目录、站点或证书')
+        return
+    shown = '、'.join(state['nameservers']) or site['cf_nameservers'].replace(',', '、')
+    registry.transition(site_id, generation, 'waiting_dns', f'请把 NS 改为 {shown}', delay)
+
+
+def inspect_pending(registry, server_ip, checker=None, cloudflare=None):
     if server_ip:
         server_ip = public_ipv4(server_ip)
     checker = checker or DNSChecker()
@@ -155,13 +183,16 @@ def inspect_pending(registry, server_ip, checker=None):
         if site['id'] == 'default' or not site['enabled'] or site['stage'] in ('active', 'paused', 'unsupported') or site['next_attempt'] > time.time():
             continue
         site_id, generation = site['id'], site['generation']
+        if site.get('cf_zone_id'):
+            _inspect_cloudflare(registry, site, cloudflare)
+            continue
         if not server_ip:
             registry.transition(site_id, generation, 'unconfigured', '服务器公网 IP 未配置；未创建宝塔站点或证书', 300)
             continue
         try:
             checker.check(site['domain'], server_ip)
         except ProvisioningError as error:
-            registry.transition(site_id, generation, 'waiting_dns', str(error), min(3600, 60 * 2 ** min(site['attempts'], 6)))
+            registry.transition(site_id, generation, 'waiting_dns', str(error), _retry_delay(site))
             continue
         if registry.transition(site_id, generation, 'dns_verified', '公共 DNS 的 A 记录一致，未检测到 AAAA'):
             registry.transition(site_id, generation, 'unsupported', '解析条件已满足；面板自动写入适配尚未完成，未创建目录、站点或证书')

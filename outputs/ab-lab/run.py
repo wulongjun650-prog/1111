@@ -42,12 +42,14 @@ def main():
             parser.error('正式环境 data_dir 必须是绝对路径')
         os.environ['AB_GEOIP_PATH'] = config.get('geoip_path', '')
     if args.service == 'dns':
+        from ablab.cloudflare import Cloudflare
         from ablab.provisioning import inspect_pending
         from ablab.sites import Registry
         registry = Registry(args.data, deployment.host(False) if deployment else '', registry_dir=config.get('registry_dir'))
+        cloudflare = Cloudflare(os.environ.get('AB_CLOUDFLARE_TOKEN', ''), os.environ.get('AB_CLOUDFLARE_TEMPLATE', ''), config.get('server_ip', ''))
         print('DNS inspection only. Automatic panel writes are disabled.', flush=True)
         while True:
-            inspect_pending(registry, config.get('server_ip', ''))
+            inspect_pending(registry, config.get('server_ip', ''), cloudflare=cloudflare if cloudflare.configured else None)
             time.sleep(60)
     if args.service:
         import uvicorn

@@ -137,7 +137,7 @@ async function busy(button, action) {
   finally { if (button) { button.disabled = false; button.removeAttribute('aria-busy'); } }
 }
 
-async function api(path, { method = 'GET', body, raw = false } = {}) {
+async function api(path, { method = 'GET', body, raw = false, timeout } = {}) {
   const siteAtStart = selectedSite;
   const scopedPath = accountSitePath(path, siteAtStart);
   const siteScoped = scopedPath !== path || /^\/api\/sites\/(default|[a-f0-9]{32})\//.test(path);
@@ -146,7 +146,7 @@ async function api(path, { method = 'GET', body, raw = false } = {}) {
   if (body !== undefined) headers['Content-Type'] = raw ? 'application/octet-stream' : 'application/json';
   let response;
   try {
-    response = await fetch(scopedPath, { method, headers, credentials: 'same-origin', cache: 'no-store', body: body === undefined ? undefined : raw ? body : JSON.stringify(body), signal: AbortSignal.timeout(raw ? 120000 : 20000) });
+    response = await fetch(scopedPath, { method, headers, credentials: 'same-origin', cache: 'no-store', body: body === undefined ? undefined : raw ? body : JSON.stringify(body), signal: AbortSignal.timeout(timeout || (raw ? 120000 : 20000)) });
   } catch (error) {
     throw new Error(error.name === 'TimeoutError' ? '请求超时。操作可能已完成，请刷新状态确认后再试。' : '无法连接服务，请检查服务状态后重试。');
   }
@@ -758,6 +758,7 @@ function renderDomains() {
   for (const site of sites) {
     const row = element('tr'), name = element('td'), health = element('td'), validation = element('td'), created = element('td'), note = element('td'), availability = element('td'), actions = element('td');
     name.append(element('strong','domain-name',site.domain || '原有本地站点'), element('small','domain-detail',site.id === 'default' ? '原有站点' : '自带域名'));
+    if (site.cf_status) name.append(element('small','domain-detail',{active:'已套 Cloudflare',pending:'等待把 NS 改到 Cloudflare',failed:'Cloudflare 未完成'}[site.cf_status] || 'Cloudflare'));
     if (isAdmin(account)) {
       const owner = element('div','domain-owner');
       owner.append(element('small','domain-detail',`归属：${site.owner_username || '总管理员'}`),actionButton('分配',()=>assignOwner(site),'text-button small'));
@@ -773,6 +774,7 @@ function renderDomains() {
     if (site.error && site.stage !== 'active') { const error = element('small',`domain-detail${['failed','unsupported'].includes(site.stage)?' domain-error':''}`,site.error.length>52 ? site.error.slice(0,52)+'…' : site.error); error.title=site.error; validation.append(error); }
     const dnsPassed = ['active','dns_verified','creating','proxy','certificate','verifying'].includes(site.stage);
     validation.append(element('small','domain-detail',`${dnsPassed ? 'DNS 已验证' : 'DNS 未确认'} · ${site.stage === 'active' ? '证书已验收' : '证书未确认'}`));
+    if (site.cf_nameservers && site.cf_status === 'pending') validation.append(element('small','domain-detail',`NS：${site.cf_nameservers.split(',').join('、')}`));
     const date = site.created ? new Date(site.created*1000) : null;
     created.append(element('span','',date ? date.toLocaleDateString('zh-CN') : '—'));
     created.title = date ? formatDate(site.created) : '登记时间未知';
@@ -793,6 +795,15 @@ function renderDomains() {
     actions.append(actionButton('日志',()=>showSiteEvents(site),'text-button small'));
     if (site.id !== 'default' && site.enabled && !['active','legacy'].includes(site.stage)) actions.append(actionButton('重试',async()=>{
       await api(`/api/sites/${site.id}/provision/retry`,{method:'POST',body:{}}); await loadDomains();
+    },'text-button small'));
+    if (site.cf_zone_id) actions.append(actionButton('清除 CF 缓存',async()=>{
+      await api(`/api/sites/${site.id}/cloudflare/purge`,{method:'POST',body:{}});
+      toast(`已清除 ${site.domain} 的 Cloudflare 缓存。`);
+    },'button secondary small'));
+    if (site.cf_status === 'failed') actions.append(actionButton('重试 CF',async()=>{
+      const result = await api(`/api/sites/${site.id}/cloudflare`,{method:'POST',body:{},timeout:60000});
+      await loadDomains();
+      toast(result.cloudflare?.ok ? '已重新套用 Cloudflare 规则。' : (result.cloudflare?.detail || 'Cloudflare 未完成'), !result.cloudflare?.ok);
     },'text-button small'));
     row.append(name,health,validation,created,note,availability,actions); body.append(row);
   }
@@ -832,9 +843,13 @@ async function loadDomains({refreshSelection = true} = {}) {
   if (!next) { const option = element('option','','暂无域名'); option.value=''; selector.append(option); }
   selector.value = selectedSite;
   syncCopyDomain();
-  $('#dns-instructions').textContent = catalog.server_ip
-    ? `解析类型：A ｜ 记录值：${catalog.server_ip} ｜ 主机记录：按你填写的完整域名，在域名服务商处选择对应子域名（根域名通常为 @）。`
-    : '服务器公网 IP 尚未配置；现在可以登记域名和测试独立配置，但不能自动建站或申请证书。';
+  const cloudflareReady = Boolean(catalog.cloudflare_configured);
+  $('#cf-choice').hidden = !cloudflareReady;
+  $('#cf-choice-note').hidden = !cloudflareReady;
+  if (!cloudflareReady) $('#use-cloudflare').checked = false;
+  const templateName = catalog.cloudflare_template ? `「${catalog.cloudflare_template}」上的` : '已配置的';
+  $('#cf-choice-note').textContent = cloudflareReady ? `勾选后，新域名套用${templateName}缓存和优化规则，NS 改到 Cloudflare。不勾选则仍用 A 记录指向服务器。` : '';
+  syncDnsInstructions();
   renderDomains();
   const visible = new Set(catalog.sites.map(site=>site.id));
   if (siteEventsSite && !visible.has(siteEventsSite)) {
@@ -936,14 +951,38 @@ on($('#copy-domain'), 'click', async () => {
 });
 on($('#refresh-domains'), 'click', loadDomains);
 on($('#domain-search'), 'input', renderDomains);
+function syncDnsInstructions() {
+  const box = $('#use-cloudflare');
+  if (box && !box.closest('#cf-choice').hidden && box.checked) {
+    $('#dns-instructions').textContent = '添加后会在 Cloudflare 建这个域名，并套用现有优化规则。请把注册商 NS 改成页面给出的两条。';
+    return;
+  }
+  $('#dns-instructions').textContent = catalog?.server_ip
+    ? `解析类型：A ｜ 记录值：${catalog.server_ip} ｜ 主机记录：按你填写的完整域名，在域名服务商处选择对应子域名（根域名通常为 @）。`
+    : '服务器公网 IP 尚未配置；现在可以登记域名和测试独立配置，但不能自动建站或申请证书。';
+}
+
 on($('#new-domain'), 'click', () => { $('#domain-add-panel').hidden=false; $('#domain-add-panel').scrollIntoView({behavior:'smooth',block:'nearest'}); $('#domain-form').elements.domain.focus(); });
 on($('#empty-add-domain'), 'click', async () => { await selectTab('domains'); $('#new-domain').click(); });
 on($('#cancel-domain-add'), 'click', () => { $('#domain-add-panel').hidden=true; });
+on($('#use-cloudflare'), 'change', syncDnsInstructions);
 on($('#domain-form'), 'submit', async event => {
   event.preventDefault(); const form = event.currentTarget;
+  const useCloudflare = !$('#cf-choice').hidden && $('#use-cloudflare').checked;
   await busy(event.submitter, async () => {
-    await api('/api/sites', { method: 'POST', body: { domain: form.elements.domain.value.trim() } });
-    form.reset(); await loadDomains(); toast('域名已登记。请按页面提示设置 DNS 解析。');
+    const result = await api('/api/sites', { method: 'POST', body: useCloudflare ? { domain: form.elements.domain.value.trim(), cloudflare: true } : { domain: form.elements.domain.value.trim() }, timeout: 60000 });
+    form.reset(); $('#cf-result').hidden = true;
+    await loadDomains();
+    if (result.cloudflare?.ok) {
+      const servers = (result.cloudflare.nameservers || []).join('、');
+      $('#cf-result').hidden = false;
+      $('#cf-result').textContent = servers ? `${result.cloudflare.detail} NS：${servers}` : result.cloudflare.detail;
+      toast('已套用 Cloudflare 规则。请按提示修改 NS。');
+    } else if (result.cloudflare) {
+      $('#cf-result').hidden = false;
+      $('#cf-result').textContent = result.cloudflare.detail;
+      toast(result.cloudflare.detail, true);
+    } else toast('域名已登记。请按页面提示设置 DNS 解析。');
   });
 });
 

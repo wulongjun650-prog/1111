@@ -590,6 +590,8 @@ tbody tr:hover td { background: var(--surface-soft); }
 #panel-domains > .card { margin-bottom: 15px; }
 #panel-domains .domain-entry { margin: 16px 0; gap: 13px; }
 #panel-domains .domain-entry .button { min-height: 39px; }
+.cf-choice { display: flex; flex-direction: row; align-items: center; gap: 8px; width: fit-content; margin: 2px 0 8px; color: var(--ink); font-size: 13px; font-weight: 650; cursor: pointer; }
+.cf-choice input { width: 16px; height: 16px; flex: none; margin: 0; padding: 0; accent-color: var(--accent); }
 .domains-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 13px 0; }
 .domains-summary > span { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-soft); color: var(--ink-soft); font-size: 11px; }
 .domains-summary strong { color: var(--ink); font-variant-numeric: tabular-nums; }
