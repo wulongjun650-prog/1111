@@ -18,6 +18,7 @@ MAX_FILES = 500
 EXTENSIONS = {'.html', '.htm', '.css', '.js', '.mjs', '.json', '.txt', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.ico', '.woff', '.woff2', '.ttf', '.otf', '.mp4', '.webm', '.mp3', '.wav'}
 SCRIPT_PARTS = {'.php', '.phtml', '.php3', '.php4', '.php5', '.py', '.sh', '.exe', '.dll', '.asp', '.aspx', '.cgi', '.pl', '.shtml', '.bat', '.cmd', '.ps1'}
 TEXT_EXTENSIONS = {'.html', '.htm', '.css', '.js', '.mjs', '.json', '.txt', '.svg'}
+EDITABLE_EXTENSIONS = {'.html', '.htm', '.css', '.js', '.mjs'}
 
 
 def safe_parts(name):
@@ -104,6 +105,10 @@ def import_content(data: bytes, filename: str, pages: Path):
         parts = safe_parts(name)
         if any('/'.join(parts[:i]).casefold() in canonical_files for i in range(1, len(parts))):
             raise ValueError('文件与目录路径冲突')
+    return write_bundle(files, filename, pages, hashlib.sha256(data).hexdigest())
+
+
+def write_bundle(files, filename, pages, digest):
     version_id = uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix='.staging-', dir=pages) as staging:
         content = Path(staging) / 'content'
@@ -113,7 +118,81 @@ def import_content(data: bytes, filename: str, pages: Path):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
         os.replace(content, pages / version_id)
-    return {'id': version_id, 'name': Path(filename.replace('\\', '/')).name[:160], 'created': time.time(), 'files': len(files), 'bytes': sum(len(payload) for _, payload in files), 'sha256': hashlib.sha256(data).hexdigest()}
+    return {'id': version_id, 'name': Path(filename.replace('\\', '/')).name[:160], 'created': time.time(), 'files': len(files), 'bytes': sum(len(payload) for _, payload in files), 'sha256': digest}
+
+
+def source_files(root):
+    """Inspect an immutable bundle without following links or Windows junctions."""
+    def checked_stat(path):
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise ValueError('源码目录不允许链接或重解析点')
+        return info
+
+    if not stat.S_ISDIR(checked_stat(root).st_mode) or not stat.S_ISDIR(checked_stat(root.parent).st_mode):
+        raise ValueError('源码目录无效')
+    files, seen, total, entries = {}, set(), 0, 0
+    def unreadable_directory(error):
+        raise ValueError('源码目录读取失败，未创建新版本') from error
+
+    for directory, dirs, names in os.walk(root, followlinks=False, onerror=unreadable_directory):
+        for name in dirs + names:
+            candidate = Path(directory) / name
+            relative = candidate.relative_to(root).as_posix()
+            safe_parts(relative)
+            info = checked_stat(candidate)
+            entries += 1
+            canonical = unicodedata.normalize('NFC', relative).casefold()
+            # Imported paths can create implicit directories absent from ZIP entries.
+            if canonical in seen or entries > MAX_FILES * 240:
+                raise ValueError('源码目录含冲突路径或条目过多')
+            seen.add(canonical)
+            if stat.S_ISDIR(info.st_mode):
+                continue
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError('源码目录不允许特殊文件')
+            validate_file(relative, b'')
+            total += info.st_size
+            if info.st_size > MAX_FILE or total > MAX_TOTAL or len(files) >= MAX_FILES:
+                raise ValueError('源码目录超过文件大小或数量限制')
+            files[relative] = (candidate, info.st_size)
+    if 'index.html' not in files:
+        raise ValueError('需要根目录 index.html')
+    return files
+
+
+def editable_file(files, path):
+    safe_parts(path)
+    if Path(path).suffix.lower() not in EDITABLE_EXTENSIONS:
+        raise ValueError('仅支持编辑 HTML、CSS 和 JavaScript 文件')
+    if path not in files:
+        raise FileNotFoundError(path)
+    return files[path][0]
+
+
+def read_source(file, path):
+    with file.open('rb') as stream:
+        payload = stream.read(MAX_FILE + 1)
+    validate_file(path, payload)
+    return payload
+
+
+def edit_content(root, path, content, pages, filename):
+    files = source_files(root)
+    original = read_source(editable_file(files, path), path)
+    payload = content.encode('utf-8')
+    if original.startswith(b'\xef\xbb\xbf') and not payload.startswith(b'\xef\xbb\xbf'):
+        payload = b'\xef\xbb\xbf' + payload
+    validate_file(path, payload)
+    edited, total, digest = [], 0, hashlib.sha256()
+    for name, (file, _) in sorted(files.items()):
+        data = payload if name == path else read_source(file, name)
+        total += len(data)
+        if total > MAX_TOTAL:
+            raise ValueError('源码目录超过总大小限制')
+        edited.append((name, data))
+        digest.update(name.encode('utf-8') + b'\x00' + str(len(data)).encode() + b'\x00' + data)
+    return write_bundle(edited, filename, pages, digest.hexdigest())
 
 
 def resolve_file(root: Path, path: str):

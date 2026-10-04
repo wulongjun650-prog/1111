@@ -10,18 +10,23 @@ from pathlib import Path
 import re
 import secrets
 import time
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path as PathParameter, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import maxminddb
+from pydantic import Field
 
-from .archives import MAX_ZIP, import_content, resolve_file
-from .models import ConfigUpdate, LinkInput, VersionChoice, Visitor
+from .archives import EDITABLE_EXTENSIONS, MAX_FILE, MAX_ZIP, editable_file, import_content, read_source, resolve_file, source_files
+from .analytics import summarize
+from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, SourceEdit, StrictModel, VersionChoice, Visitor
+from .linkcheck import LinkChecker
+from .redirects import public_occurrences, scan_bundle
 from .rules import decide
+from .reputation import GoogleReputation
 from .store import Conflict, Store
 from .auth import Auth, COOKIE, SESSION_SECONDS
 from .sites import Registry
@@ -29,6 +34,43 @@ from .sites import Registry
 ROOT = Path(__file__).resolve().parent.parent
 LOGGER = logging.getLogger('ablab')
 Slot = Literal['A', 'B']
+VersionId = Annotated[str, PathParameter(pattern=r'^[a-f0-9]{32}$')]
+
+
+class SiteMetadata(StrictModel):
+    note: str = Field(max_length=200, strict=True)
+
+
+class AccountCreate(StrictModel):
+    username: str = Field(min_length=1, max_length=64, strict=True)
+    password: str = Field(min_length=12, max_length=256, strict=True)
+
+
+class AccountEnabled(StrictModel):
+    enabled: bool = Field(strict=True)
+
+
+class AccountPassword(StrictModel):
+    password: str = Field(min_length=12, max_length=256, strict=True)
+
+
+class SiteOwner(StrictModel):
+    owner_id: str = Field(min_length=1, max_length=64, strict=True)
+
+
+def preview_signature(store, account_store, site, expiry, version_id, issuer, local_only):
+    # Account revocation and ownership transfers also revoke private drafts.
+    # Target reads identity only; it must not initialize or migrate Auth tables.
+    if issuer == 'local' and local_only:
+        epoch = 0
+    else:
+        with account_store.connect() as db:
+            account = db.execute('SELECT role,enabled,auth_epoch FROM accounts WHERE id=?', (issuer,)).fetchone()
+        if not account or not account['enabled'] or (account['role'] != 'admin' and site['owner_id'] != issuer):
+            return None
+        epoch = account['auth_epoch']
+    material = f"{expiry}:{version_id}:{site['id']}:{site['owner_id']}:{site['owner_epoch']}:{issuer}:{epoch}"
+    return hmac.new(store.secret, material.encode(), hashlib.sha256).hexdigest()
 
 
 class LocalBoundary:
@@ -106,6 +148,18 @@ class LocalBoundary:
             if session and not public:
                 csrf = session['csrf']
                 state['username'] = session['username']
+                state['account_id'] = session['account_id']
+                state['role'] = session['role']
+                # Reject before reading uploads or invoking route dependencies.
+                match = re.match(r'^/api/sites/([^/]+)(?:/|$)', scope['path'])
+                if match:
+                    try:
+                        owned = self.registry.get(match.group(1))
+                        if session['role'] != 'admin' and owned['owner_id'] != session['account_id']:
+                            raise KeyError(match.group(1))
+                    except KeyError:
+                        await JSONResponse({'detail': '站点不存在'}, status_code=404)(scope, receive, send)
+                        return
         state['csrf'] = csrf
         if self.admin and scope['method'] not in ('GET', 'HEAD'):
             if origin != expected_origin.encode() or not secrets.compare_digest(headers.get(b'x-csrf-token', b''), csrf.encode()):
@@ -113,6 +167,11 @@ class LocalBoundary:
                 return
         is_upload = re.fullmatch(r'/api/(?:sites/[a-f0-9]{32}/|sites/default/)?upload/[AB]', scope['path'])
         limit = MAX_ZIP if self.admin and is_upload else 256 * 1024
+        if self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/(?:sites/(?:[a-f0-9]{32}|default)/)?b-redirects/apply', scope['path']):
+            limit = 512 * 1024  # Up to 5,000 selected SHA-256 occurrence IDs.
+        if self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/(?:sites/(?:[a-f0-9]{32}|default)/)?source/[AB]/[a-f0-9]{32}', scope['path']):
+            # JSON can escape each UTF-8 byte as six ASCII characters.
+            limit = MAX_FILE * 6 + 4096
         chunks, size = [], 0
         while True:
             message = await receive()
@@ -218,16 +277,42 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     app.state.store = store
     registry = Registry(data_dir, deployment.host(False) if deployment else '', [deployment.host(True)] if deployment else [], registry_dir)
     app.state.registry = registry
-    auth = Auth(store) if deployment else None
+    reputation = GoogleReputation(registry, os.environ.get('AB_GOOGLE_WEB_RISK_KEY', ''))
+    app.state.reputation = reputation
+    accounts = Auth(store)
+    app.state.auth = accounts
+    auth = accounts if deployment else None
     if auth and not auth.ready():
         raise ValueError('公网模式需要先在服务器终端设置管理员账号密码')
     target_url = deployment.target_origin if deployment else f'http://127.0.0.1:{target_port}'
-    app.add_middleware(LocalBoundary, port=port, admin=True, csrf=app.state.csrf, target_port=target_port, deployment=deployment, auth=auth)
+    app.add_middleware(LocalBoundary, port=port, admin=True, csrf=app.state.csrf, target_port=target_port, deployment=deployment, auth=auth, registry=registry)
     templates = Jinja2Templates(directory=str(ROOT / 'templates'))
     app.mount('/static', StaticFiles(directory=str(ROOT / 'static'), check_dir=False), name='static')
 
+    def principal(request):
+        if auth:
+            return accounts.get_account(request.state.account_id)
+        return accounts.admin_account() or {'id': 'admin', 'username': '本地管理员', 'role': 'admin', 'enabled': True, 'created': 0}
+
+    def require_admin(request):
+        account = principal(request)
+        if account['role'] != 'admin':
+            raise HTTPException(403, '需要总管理员权限')
+        return account
+
+    def authorized_site(request, site_id):
+        site = registry.get(site_id)
+        account = principal(request)
+        if account['role'] != 'admin' and site['owner_id'] != account['id']:
+            raise HTTPException(404, '站点不存在')
+        return site
+
     def site_store(request: Request):
-        return registry.store(request.path_params.get('site_id', 'default'))
+        if 'site_id' not in request.path_params and principal(request)['role'] != 'admin':
+            raise HTTPException(404, '请使用当前域名的操作入口')
+        site_id = request.path_params.get('site_id', 'default')
+        authorized_site(request, site_id)
+        return registry.store(site_id)
 
     def state(store, site_id):
         config, revision = store.config()
@@ -236,28 +321,87 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return {'config': config.model_dump(), 'revision': revision, 'versions': store.versions(), 'slots': store.slots(), 'links': store.links(), 'stats': store.stats(), 'health': {'geoip': geo_ready(), 'geoip_detail': geo_status(), 'local_only': deployment is None}, 'site': site, 'target_url': visit_url, 'preview_origin': target_url}
 
     @app.get('/api/sites')
-    def list_sites():
-        return {'sites': registry.list(), 'server_ip': server_ip, 'record_type': 'A', 'local_only': deployment is None}
+    def list_sites(request: Request):
+        account = principal(request)
+        sites = reputation.catalog(registry.list(None if account['role'] == 'admin' else account['id']))
+        if account['role'] == 'admin':
+            names = {row['id']: row['username'] for row in accounts.list_accounts()}
+            for site in sites:
+                site['owner_username'] = names.get(site['owner_id'], account['username'] if site['owner_id'] == 'admin' else '账号不存在')
+        return {'sites': sites, 'account': account, 'google_reputation_configured': reputation.configured,
+                'server_ip': server_ip, 'record_type': 'A', 'local_only': deployment is None}
+
+    @app.get('/api/me')
+    def whoami(request: Request):
+        return {'account': principal(request)}
+
+    @app.get('/api/accounts')
+    def list_accounts(request: Request):
+        require_admin(request)
+        counts = {}
+        for site in registry.list():
+            counts[site['owner_id']] = counts.get(site['owner_id'], 0) + 1
+        return {'items': [account | {'domain_count': counts.get(account['id'], 0)} for account in accounts.list_accounts()]}
+
+    @app.post('/api/accounts')
+    def create_account(request: Request, body: AccountCreate):
+        require_admin(request)
+        return {'account': accounts.create_agent(body.username, body.password)}
+
+    @app.patch('/api/accounts/{account_id}')
+    def enable_account(account_id: str, request: Request, body: AccountEnabled):
+        require_admin(request)
+        return {'account': accounts.set_enabled(account_id, body.enabled)}
+
+    @app.post('/api/accounts/{account_id}/password')
+    def reset_account_password(account_id: str, request: Request, body: AccountPassword):
+        require_admin(request)
+        accounts.reset_agent_password(account_id, body.password)
+        return {'ok': True}
+
+    @app.put('/api/sites/{site_id}/owner')
+    def assign_site_owner(site_id: str, request: Request, body: SiteOwner):
+        require_admin(request)
+        accounts.get_account(body.owner_id)
+        return {'site': registry.assign_owner(site_id, body.owner_id)}
+
+    @app.post('/api/sites/{site_id}/reputation/check')
+    def check_site_reputation(site_id: str, request: Request):
+        authorized_site(request, site_id)
+        return {'result': reputation.check(site_id)}
 
     @app.post('/api/sites')
-    def add_site(body: dict):
+    def add_site(body: dict, request: Request):
         if set(body) != {'domain'}:
             raise ValueError('只需提交域名')
-        return {'site': registry.add(body['domain']), 'server_ip': server_ip, 'record_type': 'A'}
+        return {'site': registry.add(body['domain'], principal(request)['id']), 'server_ip': server_ip, 'record_type': 'A'}
+
+    @app.patch('/api/sites/{site_id}/metadata')
+    def update_site_metadata(site_id: str, body: SiteMetadata, request: Request):
+        authorized_site(request, site_id)
+        return {'site': registry.set_note(site_id, body.note)}
+
+    @app.post('/api/sites/{site_id}/availability/{action}')
+    def update_site_availability(site_id: str, action: Literal['online', 'offline'], request: Request):
+        authorized_site(request, site_id)
+        return {'site': registry.set_availability(site_id, action)}
 
     @app.post('/api/sites/{site_id}/provision/{action}')
-    def provision_control(site_id: str, action: Literal['pause', 'retry']):
+    def provision_control(site_id: str, action: Literal['pause', 'retry'], request: Request):
+        authorized_site(request, site_id)
         return {'site': registry.control(site_id, action)}
 
     @app.get('/api/sites/{site_id}/provision/events')
-    def provision_events(site_id: str):
+    def provision_events(site_id: str, request: Request):
+        authorized_site(request, site_id)
         return {'items': registry.events(site_id)}
 
     routes = APIRouter()
 
     @app.get('/', response_class=HTMLResponse)
     def index(request: Request):
-        return templates.TemplateResponse(request=request, name='index.html', context={'csrf_token': request.state.csrf, 'target_url': target_url, 'deployment': bool(deployment), 'username': getattr(request.state, 'username', '')})
+        account = principal(request)
+        return templates.TemplateResponse(request=request, name='index.html', context={'csrf_token': request.state.csrf, 'target_url': target_url, 'deployment': bool(deployment), 'username': account['username'], 'account': account})
 
     if auth:
         @app.get('/login', response_class=HTMLResponse)
@@ -284,6 +428,18 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def get_state(request: Request, store=Depends(site_store)):
         return state(store, request.path_params.get('site_id', 'default'))
 
+    @routes.get('/analytics')
+    def analytics(request: Request, period: Literal['today', 'yesterday', '7d', '30d'] = '7d',
+                  scope: Literal['current', 'all'] = 'current',
+                  tz_offset: int = Query(default=480, ge=-840, le=840)):
+        site_id = request.path_params.get('site_id', 'default')
+        account = principal(request)
+        if scope != 'all' and 'site_id' not in request.path_params and account['role'] != 'admin':
+            raise HTTPException(404, '请使用当前域名的操作入口')
+        if scope != 'all' or 'site_id' in request.path_params:
+            authorized_site(request, site_id)
+        return summarize(registry, site_id, period, scope, tz_offset, time.time(), None if account['role'] == 'admin' else account['id'])
+
     @routes.put('/config')
     def update_config(body: ConfigUpdate, request: Request, store=Depends(site_store)):
         store.save_config(body.config, body.revision)
@@ -303,16 +459,120 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         store.publish(slot, body.version_id)
         return {'ok': True}
 
+    def source_version(store, slot, version_id):
+        version = store.version(version_id)
+        if not version or version['slot'] != slot:
+            raise HTTPException(404, '版本不存在或槽位不符')
+        return version
+
+    app.state.link_checker = LinkChecker()
+
+    def redirect_commit_guard(request, store):
+        site_id = request.path_params.get('site_id', 'default')
+        expected_site = authorized_site(request, site_id)
+        account_id = principal(request)['id']
+        token = request.cookies.get(COOKIE)
+
+        def guard(db):
+            # Lock identity and ownership with the business commit. A check can
+            # take seconds; transfers or revoked sessions must win immediately.
+            db.execute('ATTACH DATABASE ? AS redirect_registry', (str(registry.path),))
+            identity = 'main'
+            if auth and accounts.store.path != store.path:
+                db.execute('ATTACH DATABASE ? AS redirect_identity', (str(accounts.store.path),))
+                identity = 'redirect_identity'
+            db.execute('BEGIN IMMEDIATE')
+            if auth:
+                session = db.execute(f'''SELECT a.id,a.role FROM {identity}.account_sessions s JOIN {identity}.accounts a
+                    ON a.id=s.account_id WHERE s.token_hash=? AND s.expires>? AND a.enabled=1''', (auth.key(token or ''), time.time())).fetchone()
+                if not session or session['id'] != account_id:
+                    raise HTTPException(401, '登录已失效，请重新登录')
+                role = session['role']
+            else:
+                role = 'admin'
+            current = db.execute('SELECT owner_id,owner_epoch FROM redirect_registry.sites WHERE id=?', (site_id,)).fetchone()
+            if not current or current['owner_epoch'] != expected_site['owner_epoch'] or (role != 'admin' and current['owner_id'] != account_id):
+                raise HTTPException(404, '站点归属已改变，请刷新域名列表')
+        return guard
+
+    @routes.get('/b-redirects')
+    def get_b_redirects(version_id: str | None = Query(default=None, pattern=r'^[a-f0-9]{32}$'), store=Depends(site_store)):
+        published = store.slots()['B']
+        version_id = version_id or published
+        base, occurrences, warnings = None, [], []
+        if version_id:
+            base = source_version(store, 'B', version_id)
+            occurrences, warnings = scan_bundle(store.pages / version_id, version_id)
+        return {'version':base, 'published_version':published, 'occurrences':public_occurrences(occurrences),
+                'warnings':warnings, 'presets':store.redirect_presets(), 'active':store.redirect_active()}
+
+    @routes.post('/b-redirects/presets')
+    def add_b_redirect_presets(body: RedirectPresetInput, store=Depends(site_store)):
+        return {'presets':store.add_redirect_presets(body.urls, body.note)}
+
+    @routes.delete('/b-redirects/presets/{preset_id}')
+    def delete_b_redirect_preset(preset_id: int, store=Depends(site_store)):
+        store.delete_redirect_preset(preset_id)
+        return {'ok':True}
+
+    @routes.post('/b-redirects/presets/{preset_id}/check')
+    def check_b_redirect_preset(preset_id: int, request: Request, store=Depends(site_store)):
+        guard = redirect_commit_guard(request, store)
+        preset = store.redirect_preset(preset_id)
+        result = app.state.link_checker.check(preset['url'])
+        return {'preset':store.save_redirect_check(preset, result, guard)}
+
+    @routes.post('/b-redirects/apply')
+    def apply_b_redirects(body: RedirectApply, request: Request, store=Depends(site_store)):
+        guard = redirect_commit_guard(request, store)
+        base = source_version(store, 'B', body.version_id)
+        if store.slots()['B'] != body.expected_published:
+            raise Conflict('当前 B 发布版本已变化，请重新扫描后再换链')
+        occurrences, _ = scan_bundle(store.pages / base['id'], base['id'])
+        if not set(body.occurrence_ids).issubset({item['id'] for item in occurrences}):
+            raise Conflict('源码或跳转位置已变化，请重新扫描后再换链')
+        preset = store.redirect_preset(body.preset_id)
+        result = app.state.link_checker.check(preset['url'])
+        store.save_redirect_check(preset, result, guard)
+        if result['status'] == 'abnormal':
+            raise ValueError('此链接不正常：' + result['detail'])
+        version, changed = store.apply_redirects(base, preset, body.occurrence_ids, body.expected_published, guard)
+        return {'version':version, 'check':result, 'changed':changed}
+
+    @routes.get('/source/{slot}/{version_id}')
+    def get_source(slot: Slot, version_id: VersionId, path: str | None = None, store=Depends(site_store)):
+        source_version(store, slot, version_id)
+        try:
+            files = source_files(store.pages / version_id)
+            if path is not None:
+                data = {'path': path, 'content': read_source(editable_file(files, path), path).decode('utf-8-sig')}
+            else:
+                data = {'files': [{'path': name, 'bytes': size} for name, (_, size) in sorted(files.items()) if Path(name).suffix.lower() in EDITABLE_EXTENSIONS]}
+        except FileNotFoundError:
+            raise HTTPException(404, '源码文件不存在') from None
+        return data | {'published_version': store.slots()[slot]}
+
+    @routes.post('/source/{slot}/{version_id}')
+    def save_source(slot: Slot, version_id: VersionId, body: SourceEdit, store=Depends(site_store)):
+        base = source_version(store, slot, version_id)
+        try:
+            version = store.save_source(slot, base, body.path, body.content, body.expected_published)
+        except FileNotFoundError:
+            raise HTTPException(404, '源码文件不存在') from None
+        return {'version': version, 'published_version': version['id']}
+
     @routes.post('/preview')
     def preview(body: VersionChoice, request: Request, store=Depends(site_store)):
         if not store.version(body.version_id):
             raise HTTPException(404, '版本不存在')
         expiry = int(time.time()) + 300
-        material = f'{expiry}:{body.version_id}'
-        signature = hmac.new(store.secret, material.encode(), hashlib.sha256).hexdigest()
         site_id = request.path_params.get('site_id', 'default')
+        issuer = principal(request)['id'] if auth else 'local'
+        signature = preview_signature(store, accounts.store, registry.get(site_id), expiry, body.version_id, issuer, not deployment)
+        if signature is None:
+            raise HTTPException(404, '预览不存在或已过期')
         prefix = '' if site_id == 'default' else f'/_sites/{site_id}'
-        return {'url': f'{target_url}{prefix}/_preview/{expiry}/{body.version_id}/{signature}/index.html'}
+        return {'url': f'{target_url}{prefix}/_preview/{expiry}/{body.version_id}/{issuer}/{signature}/index.html'}
 
     @routes.post('/links')
     def add_links(body: LinkInput, store=Depends(site_store)):
@@ -352,8 +612,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return Response('\ufeff' + stream.getvalue(), media_type='text/csv; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="ab-lab-visits.csv"'})
 
     @routes.get('/audit')
-    def audit(store=Depends(site_store)):
-        return {'items': store.audit()}
+    def audit(request: Request, store=Depends(site_store)):
+        items = store.audit()
+        if principal(request)['role'] != 'admin':
+            site_actions = {'config_updated', 'content_imported', 'version_published',
+                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted'}
+            items = [item for item in items if item['action'] in site_actions]
+        return {'items': items}
 
     app.include_router(routes, prefix='/api/sites/{site_id}')
     app.include_router(routes, prefix='/api')
@@ -394,6 +659,7 @@ def content_response(store, version_id, path, method='GET'):
 
 def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
     app, store = base_app(), Store(data_dir)
+    account_store = store
     registry = Registry(data_dir, deployment.host(False) if deployment else '', registry_dir=registry_dir)
     app.add_middleware(LocalBoundary, port=port, deployment=deployment, registry=registry)
 
@@ -408,11 +674,10 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
         site = registry.get(site_id)
         return {'schema': 1, 'site_id': site_id, 'domain': site['domain']}
 
-    @app.api_route('/_preview/{expiry}/{version_id}/{signature}/{path:path}', methods=['GET', 'HEAD'])
-    def preview(expiry: int, version_id: str, signature: str, path: str, request: Request, store=Depends(site_store)):
-        material = f'{expiry}:{version_id}'
-        expected = hmac.new(store.secret, material.encode(), hashlib.sha256).hexdigest()
-        if expiry < time.time() or expiry > time.time() + 301 or not secrets.compare_digest(signature, expected) or not store.version(version_id):
+    @app.api_route('/_preview/{expiry}/{version_id}/{issuer}/{signature}/{path:path}', methods=['GET', 'HEAD'])
+    def preview(expiry: int, version_id: str, issuer: str, signature: str, path: str, request: Request, store=Depends(site_store)):
+        expected = preview_signature(store, account_store, registry.get(request.state.site_id), expiry, version_id, issuer, not deployment)
+        if expiry < time.time() or expiry > time.time() + 301 or expected is None or not secrets.compare_digest(signature, expected) or not store.version(version_id):
             raise HTTPException(404, '预览不存在或已过期')
         redirect = directory_redirect(store, [version_id], path, request)
         if redirect is not None:

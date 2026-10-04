@@ -1,0 +1,160 @@
+"""Navigation scanners must leave inert source and unrelated JavaScript alone."""
+import pytest
+
+from ablab import redirects
+from ablab.store import Conflict
+
+
+def bundle(tmp_path, html, javascript=None):
+    pages = tmp_path / 'pages'
+    root = pages / 'original'
+    root.mkdir(parents=True)
+    (root / 'index.html').write_text(html, encoding='utf-8')
+    if javascript is not None:
+        (root / 'app.js').write_text(javascript, encoding='utf-8')
+    return root, pages
+
+
+@pytest.mark.parametrize('element', ['textarea', 'title'])
+def test_rcdata_markup_is_not_navigation(tmp_path, element):
+    inert = f'<{element}><a href="https://example.com/documentation">sample</a></{element}>'
+    root, pages = bundle(tmp_path, inert + '<a href="https://real.example/">go</a>')
+    occurrences, _ = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == ['https://real.example/']
+    version, count = redirects.replace_bundle(root, 'original', [occurrences[0]['id']],
+                                              'https://new.example/', pages, 'changed.zip')
+    assert count == 1
+    assert (pages / version['id'] / 'index.html').read_text(encoding='utf-8') == (
+        inert + '<a href="https://new.example/">go</a>')
+
+
+@pytest.mark.parametrize('attribute', [
+    'javascript:location.href=\'https://old.example/\'',
+    'javascript:window.open(&quot;https://old.example/&quot;)',
+])
+def test_javascript_anchor_is_scanned_and_replaced(tmp_path, attribute):
+    root, pages = bundle(tmp_path, f'<a href="{attribute}">go</a>')
+    occurrences, _ = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == ['https://old.example/']
+    version, count = redirects.replace_bundle(root, 'original', [occurrences[0]['id']],
+                                              'https://new.example/?x=1&y=2', pages, 'changed.zip')
+    assert count == 1
+    replaced, _ = redirects.scan_bundle(pages / version['id'], version['id'])
+    assert [item['url'] for item in replaced] == ['https://new.example/?x=1&y=2']
+    assert (root / 'index.html').read_text(encoding='utf-8') == f'<a href="{attribute}">go</a>'
+
+
+def test_script_with_valueless_type_is_default_javascript(tmp_path):
+    root, _ = bundle(tmp_path, '<script type>location.href="https://old.example/";</script>')
+    occurrences, _ = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == ['https://old.example/']
+
+
+@pytest.mark.parametrize('control', ['if (condition)', 'while (condition)', 'for (; condition; )'])
+def test_regex_after_control_parenthesis_is_inert(tmp_path, control):
+    source = control + r' /location.href="https:\/\/api.example\/resource";/.test(input);'
+    source += '\nwindow.location.href="https://real.example/";'
+    root, _ = bundle(tmp_path, '<script src="app.js"></script>', source)
+    occurrences, _ = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == ['https://real.example/']
+
+
+def test_function_local_constant_cannot_resolve_global_navigation(tmp_path):
+    source = ('function unused(){const target="https://unrelated.example/";} '
+              'location.href=target; window.location.href="https://real.example/";')
+    root, _ = bundle(tmp_path, '<script src="app.js"></script>', source)
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == ['https://real.example/']
+    assert warnings
+
+
+@pytest.mark.parametrize('local_source', [
+    'function render(location){location.href="https://api.example/resource";}',
+    'function render(window){window.location.href="https://api.example/resource";}',
+    'function open(url){return fetch(url)};open("https://api.example/resource");',
+])
+def test_shadowed_navigation_globals_are_not_navigation(tmp_path, local_source):
+    # The first two bind only inside their functions; the last shadows bare open globally.
+    source = local_source + '\nwindow.location.href="https://real.example/";'
+    root, _ = bundle(tmp_path, '<script src="app.js"></script>', source)
+    occurrences, _ = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == ['https://real.example/']
+
+
+def test_repetitive_assignment_respects_scan_token_budget(tmp_path, monkeypatch):
+    monkeypatch.setattr(redirects, 'MAX_SCAN_TOKENS', 50, raising=False)
+    source = 'x=' * 200 + '"https://unused.example/";location.href="https://real.example/";'
+    root, _ = bundle(tmp_path, '<script src="app.js"></script>', source)
+    with pytest.raises(ValueError):
+        redirects.scan_bundle(root, 'original')
+
+
+def test_replacement_uses_the_exact_bytes_that_were_scanned(tmp_path, monkeypatch):
+    original = '<a href="https://old.example/">go</a>'
+    root, pages = bundle(tmp_path, original)
+    occurrences, _ = redirects.scan_bundle(root, 'original')
+    before = {path.name for path in pages.iterdir()}
+    actual_read, reads = redirects.read_source, 0
+
+    def mutate_before_second_read(file, path):
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            file.write_text('<p>changed after span validation</p>', encoding='utf-8')
+        return actual_read(file, path)
+
+    monkeypatch.setattr(redirects, 'read_source', mutate_before_second_read)
+    try:
+        version, count = redirects.replace_bundle(root, 'original', [occurrences[0]['id']],
+                                                  'https://new.example/', pages, 'changed.zip')
+    except (Conflict, ValueError):
+        assert {path.name for path in pages.iterdir()} == before
+    else:
+        assert count == 1
+        assert (pages / version['id'] / 'index.html').read_text(encoding='utf-8') == (
+            '<a href="https://new.example/">go</a>')
+
+
+def test_relative_destinations_brackets_concat_and_conditional(tmp_path):
+    source = '''const base="https://old.example/"; const suffix="join";
+window["location"]["href"]=base+suffix;
+location.replace(condition ? "https://old.example/a" : "https://old.example/b");
+function go(){const local="https://local.example/";window.open(local);}
+const run=(window)=>window.location.href="https://unrelated.example/";
+location.href="/relative";'''
+    root, pages = bundle(tmp_path, '<a href="next.html">go</a><a href="#same">same</a><a href="mailto:x@y.test">email</a>', source)
+    occurrences, _ = redirects.scan_bundle(root, 'original')
+    assert {item['url'] for item in occurrences} == {'next.html', '/relative', 'https://old.example/join',
+                                                    'https://old.example/a','https://old.example/b','https://local.example/'}
+    version, changed = redirects.replace_bundle(root, 'original', [item['id'] for item in occurrences],
+                                                "https://new.example/?s='quote'&x=2", pages, 'changed.zip')
+    assert changed == 6
+    after, _ = redirects.scan_bundle(pages/version['id'],version['id'])
+    assert {item['url'] for item in after} == {"https://new.example/?s='quote'&x=2"}
+    assert 'https://unrelated.example/' in (pages/version['id']/'app.js').read_text(encoding='utf-8')
+
+
+@pytest.mark.parametrize('source', ['x' + '.a'*70 + '=1;location.href="https://actual.example/";',
+                                  'x='*200 + '"https://unused.example/";location.href="https://actual.example/";'])
+def test_complex_expressions_stop_with_a_reviewable_error(tmp_path, source):
+    root, _ = bundle(tmp_path, '<script src="app.js"></script>', source)
+    with pytest.raises(ValueError, match='复杂'):
+        redirects.scan_bundle(root,'original')
+
+
+def test_dom_anchor_href_and_setattribute_are_navigation(tmp_path):
+    source = '''const destination="https://old.example/";
+document.querySelector("#destination").href=destination;
+const button=document.getElementById("go");button.href="https://old.example/button";
+document.createElement("a").setAttribute("href","https://old.example/attribute");
+document.querySelector("link.stylesheet").href="https://api.example/style.css";
+const stylesheet=document.createElement("link");stylesheet.href="https://api.example/other.css";'''
+    root,pages=bundle(tmp_path,'<a id="destination" href="https://old.example/index">go</a>',source)
+    occurrences,_=redirects.scan_bundle(root,'original')
+    assert len(occurrences)==4 and all('api.example' not in item['url'] for item in occurrences)
+    version,count=redirects.replace_bundle(root,'original',[item['id'] for item in occurrences],
+                                          'https://new.example/',pages,'changed.zip')
+    assert count==4
+    rescanned,_=redirects.scan_bundle(pages/version['id'],version['id'])
+    assert {item['url'] for item in rescanned}=={'https://new.example/'}
+    assert 'https://api.example/style.css' in (pages/version['id']/'app.js').read_text(encoding='utf-8')

@@ -73,6 +73,12 @@ class VersionChoice(StrictModel):
     version_id: str = Field(pattern=r'^[a-f0-9]{32}$')
 
 
+class SourceEdit(StrictModel):
+    path: str = Field(min_length=1, max_length=240, strict=True)
+    content: str = Field(strict=True)
+    expected_published: str | None = Field(pattern=r'^[a-f0-9]{32}$')
+
+
 class LinkInput(StrictModel):
     slot: Literal['A', 'B']
     urls: list[str] = Field(min_length=1, max_length=100)
@@ -92,6 +98,31 @@ class LinkInput(StrictModel):
             _ = url.port
             result.append(value)
         return list(dict.fromkeys(result))
+
+
+class RedirectPresetInput(StrictModel):
+    urls: list[str] = Field(min_length=1, max_length=30)
+    note: str = Field(default='', max_length=300, strict=True)
+
+    @field_validator('urls')
+    @classmethod
+    def public_urls(cls, values):
+        from .linkcheck import normalize_http_url
+        return list(dict.fromkeys(normalize_http_url(value.strip()) for value in values))
+
+
+class RedirectApply(StrictModel):
+    version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
+    preset_id: int = Field(gt=0, strict=True)
+    occurrence_ids: list[str] = Field(min_length=1, max_length=5000)
+    expected_published: str | None = Field(pattern=r'^[a-f0-9]{32}$')
+
+    @field_validator('occurrence_ids')
+    @classmethod
+    def span_ids(cls, values):
+        if any(not re.fullmatch(r'[a-f0-9]{64}', value) for value in values) or len(set(values)) != len(values):
+            raise ValueError('跳转位置标识无效或重复，请重新扫描')
+        return values
 
 
 class Visitor(StrictModel):

@@ -42,7 +42,8 @@ class Registry:
                     id TEXT PRIMARY KEY, domain TEXT UNIQUE NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
                     stage TEXT NOT NULL, error TEXT NOT NULL DEFAULT '', created REAL NOT NULL,
                     next_attempt REAL NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
-                    panel_id INTEGER, managed_path TEXT NOT NULL DEFAULT '', generation INTEGER NOT NULL DEFAULT 0);
+                    panel_id INTEGER, managed_path TEXT NOT NULL DEFAULT '', generation INTEGER NOT NULL DEFAULT 0,
+                    note TEXT NOT NULL DEFAULT '');
                 CREATE TABLE IF NOT EXISTS site_events(
                     id INTEGER PRIMARY KEY, site_id TEXT NOT NULL, created REAL NOT NULL,
                     stage TEXT NOT NULL, detail TEXT NOT NULL);
@@ -50,6 +51,12 @@ class Registry:
             # Serialize migration across admin and target startup. SQLite backup
             # includes WAL; only a complete backup is installed at the final path.
             db.execute('BEGIN IMMEDIATE')
+            if 'note' not in {row['name'] for row in db.execute('PRAGMA table_info(sites)')}:
+                db.execute("ALTER TABLE sites ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+            if 'owner_id' not in {row['name'] for row in db.execute('PRAGMA table_info(sites)')}:
+                db.execute("ALTER TABLE sites ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'admin'")
+            if 'owner_epoch' not in {row['name'] for row in db.execute('PRAGMA table_info(sites)')}:
+                db.execute('ALTER TABLE sites ADD COLUMN owner_epoch INTEGER NOT NULL DEFAULT 0')
             if not db.execute("SELECT 1 FROM sites WHERE id='default'").fetchone() and (self.root / 'app.db').exists():
                 backup = self.root / 'backups' / 'pre-multidomain.db'
                 backup.parent.mkdir(exist_ok=True)
@@ -77,9 +84,9 @@ class Registry:
         finally:
             db.close()
 
-    def list(self):
+    def list(self, owner_id=None):
         with self.connect() as db:
-            return [dict(row) for row in db.execute("SELECT * FROM sites ORDER BY CASE id WHEN 'default' THEN 0 ELSE 1 END,created")]
+            return [dict(row) for row in db.execute("SELECT * FROM sites WHERE (? IS NULL OR owner_id=?) ORDER BY CASE id WHEN 'default' THEN 0 ELSE 1 END,created", (owner_id, owner_id))]
 
     def get(self, site_id):
         with self.connect() as db:
@@ -97,7 +104,7 @@ class Registry:
             row = db.execute('SELECT * FROM sites WHERE domain=? AND enabled=1', (domain,)).fetchone()
         return dict(row) if row else None
 
-    def add(self, domain):
+    def add(self, domain, owner_id='admin'):
         domain = normalize_domain(domain)
         if domain in self.reserved:
             raise ValueError('不能将后台管理域名登记为访客站点')
@@ -107,10 +114,23 @@ class Registry:
             if db.execute('SELECT count(*) FROM sites').fetchone()[0] >= 200:
                 raise ValueError('最多登记200个站点')
             try:
-                db.execute('INSERT INTO sites(id,domain,stage,created) VALUES(?,?,?,?)', (site_id, domain, 'unconfigured', time.time()))
+                db.execute('INSERT INTO sites(id,domain,stage,created,owner_id) VALUES(?,?,?,?,?)', (site_id, domain, 'unconfigured', time.time(), owner_id))
             except sqlite3.IntegrityError:
                 raise Conflict('域名已经登记') from None
             self._event(db, site_id, 'unconfigured', '域名已登记；等待服务器配置接入服务')
+        return self.get(site_id)
+
+    def assign_owner(self, site_id, owner_id):
+        if not isinstance(owner_id, str) or not re.fullmatch(r'admin|[a-f0-9]{32}', owner_id):
+            raise ValueError('账号ID格式错误')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            site = db.execute('SELECT owner_id,stage FROM sites WHERE id=?', (site_id,)).fetchone()
+            if site is None:
+                raise KeyError(site_id)
+            if site['owner_id'] != owner_id:
+                db.execute('UPDATE sites SET owner_id=?,owner_epoch=owner_epoch+1 WHERE id=?', (owner_id, site_id))
+                self._event(db, site_id, site['stage'], '管理员调整域名归属')
         return self.get(site_id)
 
     def store(self, site_id):
@@ -132,6 +152,40 @@ class Registry:
         self.get(site_id)
         with self.connect() as db:
             return [dict(row) for row in db.execute('SELECT created,stage,detail FROM site_events WHERE site_id=? ORDER BY id DESC LIMIT 100', (site_id,))]
+
+    def set_note(self, site_id, note):
+        if not isinstance(note, str) or len(note) > 200:
+            raise ValueError('备注须为不超过200字的文本')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            site = db.execute('SELECT note,stage FROM sites WHERE id=?', (site_id,)).fetchone()
+            if site is None:
+                raise KeyError(site_id)
+            if site['note'] != note:
+                db.execute('UPDATE sites SET note=? WHERE id=?', (note, site_id))
+                self._event(db, site_id, site['stage'], '备注已更新')
+        return self.get(site_id)
+
+    def set_availability(self, site_id, action):
+        if action not in ('online', 'offline'):
+            raise ValueError('站点状态无效')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            site = db.execute('SELECT enabled,stage,next_attempt FROM sites WHERE id=?', (site_id,)).fetchone()
+            if site is None:
+                raise KeyError(site_id)
+            if action == 'offline':
+                if site['enabled']:
+                    db.execute('UPDATE sites SET enabled=0,generation=generation+1 WHERE id=?', (site_id,))
+                    self._event(db, site_id, site['stage'], '用户下线')
+            elif site['stage'] in ('active', 'legacy'):
+                if not site['enabled']:
+                    db.execute('UPDATE sites SET enabled=1,generation=generation+1 WHERE id=?', (site_id,))
+                    self._event(db, site_id, site['stage'], '用户上线')
+            elif not site['enabled'] or site['stage'] != 'waiting_dns' or site['next_attempt']:
+                db.execute("UPDATE sites SET enabled=1,stage='waiting_dns',next_attempt=0,generation=generation+1 WHERE id=?", (site_id,))
+                self._event(db, site_id, 'waiting_dns', '用户开启接入')
+        return self.get(site_id)
 
     def control(self, site_id, action):
         self.get(site_id)

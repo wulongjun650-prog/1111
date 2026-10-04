@@ -40,6 +40,11 @@ def test_auth_secure_cookie_and_logout_revoke(prod):
     assert 'autocomplete="current-password"' in client.get('/login').text
     assert client.get('/static/login.js').status_code == 200
     assert client.get('/static/app.js').status_code == 401
+    assert client.get('/static/angel-v2.png').status_code == 401
+    assert client.get('/static/demon-v2.png').status_code == 401
+    assert client.get('/static/demon-rest-v2.png').status_code == 401
+    assert client.get('/static/theme.mjs').status_code == 401
+    assert client.get('/static/dashboard.css').status_code == 401
     response = login(client)
     cookie = response.headers['set-cookie']
     assert '__Host-ab_session=' in cookie and 'Secure' in cookie and 'HttpOnly' in cookie and 'SameSite=strict' in cookie
@@ -47,7 +52,8 @@ def test_auth_secure_cookie_and_logout_revoke(prod):
     assert client.get('/api/state').status_code == 200
     assert client.get('/api/state').json()['health']['local_only'] is False
     page = client.get('/')
-    assert 'SERVER WORKSPACE' in page.text and 'id="logout"' in page.text
+    assert '双子星' in page.text and 'id="logout"' in page.text
+    assert '自有服务器 / 数据自主保存' in page.text
     assert '本地运行 / 数据留在本机' not in page.text
     assert client.headers['X-CSRF-Token'] in page.text
     token = client.cookies.get('__Host-ab_session')
@@ -106,7 +112,7 @@ def test_password_never_stored_and_sessions_expire(prod):
     with auth.store.connect() as db:
         password = db.execute('SELECT password_hash FROM admin_account').fetchone()[0]
         assert 'a-long-test-password' not in password
-        stored = db.execute('SELECT token_hash FROM admin_sessions').fetchone()[0]
+        stored = db.execute('SELECT token_hash FROM account_sessions').fetchone()[0]
         assert stored != token
-        db.execute('UPDATE admin_sessions SET expires=0')
+        db.execute('UPDATE account_sessions SET expires=0')
     assert client.get('/api/state').status_code == 401

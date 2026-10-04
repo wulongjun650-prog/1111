@@ -1,55 +1,116 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="loading">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token | e }}">
   <meta name="target-url" content="{{ target_url | e }}">
-  <title>AB Lab · 访问控制台</title>
+  <title>双子星 · 访问控制台</title>
   <link rel="stylesheet" href="/static/app.css">
-  <link rel="stylesheet" href="/static/inferno.css">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/console-v02.css">
+  <link rel="stylesheet" href="/static/charts-v02.css">
+  <link rel="stylesheet" href="/static/source-editor.css">
+  <link rel="stylesheet" href="/static/b-redirects.css">
   <script type="module" src="/static/app.js"></script>
 </head>
-<body>
+<body data-account-role="{{ account.role | e }}">
   <a class="skip-link" href="#main">跳到主要内容</a>
   <aside class="sidebar">
-    <a class="brand" href="#overview" aria-label="AB Lab 概览"><span class="brand-mark inferno-mark" aria-hidden="true">Ѱ</span><span>AB Lab<small>INFERNO / CONTROL</small></span></a>
-    <div class="workspace-label">工作空间 <span>{{ 'SERVER' if deployment else 'LOCAL' }}</span></div>
+    <a class="brand" href="#overview" aria-label="双子星 概览"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40" width="35" height="35" fill="none"><path d="M20 3 24 16 37 20 24 24 20 37 16 24 3 20 16 16Z" fill="currentColor"/><circle cx="30" cy="9" r="3" fill="currentColor"/><path d="M5 29 8 32 5 35 2 32Z" fill="currentColor"/></svg></span><span>双子星<small>GEMINI · TRAFFIC</small></span></a>
+    <div class="workspace-label">控制中心 <span>WORKSPACE</span></div>
     <nav aria-label="主导航">
-      <button class="nav-item active" data-tab="overview" aria-current="page"><span aria-hidden="true">◫</span>概览<span class="nav-arrow" aria-hidden="true">›</span></button>
+      <button class="nav-item active" data-tab="overview" aria-current="page"><span aria-hidden="true">◫</span>流量总览<span class="nav-arrow" aria-hidden="true">›</span></button>
       <button class="nav-item" data-tab="content"><span aria-hidden="true">▧</span>A/B 内容</button>
       <button class="nav-item" data-tab="rules"><span aria-hidden="true">≋</span>访问规则</button>
       <button class="nav-item" data-tab="simulate"><span aria-hidden="true">⌘</span>规则模拟</button>
       <button class="nav-item" data-tab="logs"><span aria-hidden="true">≡</span>访问日志</button>
       <button class="nav-item" data-tab="domains"><span aria-hidden="true">◎</span>域名管理</button>
+      {% if account.role == 'admin' %}<button class="nav-item" data-tab="accounts"><span aria-hidden="true">◎</span>账号管理</button>{% endif %}
     </nav>
-    <div class="sidebar-note"><span class="status-dot"></span> {{ '自用服务器环境' if deployment else '本地实验环境' }}<p>规则可解释，版本可回退。<br>每一次分流，都有迹可循。</p></div>
-    <div class="sidebar-footer"><span class="avatar">AB</span><div>{{ username if deployment else '本地控制台' }}<small>{{ 'HTTPS · 单管理员' if deployment else '仅限本机访问' }}</small></div><span class="lock" aria-hidden="true">◇</span></div>
+    <div class="sidebar-note"><span class="status-dot"></span> {{ '自用服务器环境' if deployment else '本地实验环境' }}<p><span id="sidebar-theme">正在读取主题</span><br>仅管理后台可见</p></div>
+    <div class="sidebar-footer"><span class="avatar">AB</span><div>{{ username }}<small>{{ '总管理员' if account.role == 'admin' else '代理账号' }} · {{ 'HTTPS' if deployment else '仅限本机访问' }}</small></div><span class="lock" aria-hidden="true">◇</span></div>
   </aside>
   <div class="workspace">
-    <header class="topbar"><div class="breadcrumb">工作空间 <span>/</span> <strong id="breadcrumb-current">概览</strong></div><div class="topbar-right"><span id="connection" class="badge neutral" role="status">正在连接</span><span class="local-label">{{ 'SERVER WORKSPACE' if deployment else 'LOCAL WORKSPACE' }}</span>{% if deployment %}<button id="logout" class="text-button">退出</button>{% endif %}</div></header>
+    <header class="topbar">
+      <div class="breadcrumb">控制中心 <span>/</span> <strong id="breadcrumb-current">流量总览</strong></div>
+      <div class="topbar-right"><span id="connection" class="badge neutral" role="status">正在连接</span>{% if deployment %}<button id="logout" class="text-button">退出登录</button>{% endif %}</div>
+    </header>
     <main id="main" tabindex="-1">
-      <div class="site-switcher card"><label for="site-selector">当前管理的站点<select id="site-selector" disabled><option value="default">原有站点</option></select></label><p id="site-context" class="subtle">正在加载站点列表…</p><button class="button secondary" data-go="domains">管理域名</button></div>
-      <div class="page-heading"><div><p class="eyebrow">AB LAB / CONTROL CENTER</p><h1 id="page-title">一切，尽在掌握。</h1><p id="page-subtitle">管理内容、配置规则，了解每一次访问的去向。</p></div><div class="actions"><button id="refresh-state" class="button secondary">↻ 刷新状态</button><a id="open-target" class="button primary" href="{{ target_url | e }}" target="_blank" rel="noopener noreferrer">打开测试站点 <span aria-hidden="true">↗</span></a></div></div>
+      <div class="page-heading"><div><p class="eyebrow" id="page-eyebrow">OVERVIEW</p><h1 id="page-title">流量总览</h1><p id="page-subtitle">查看访问数据、国家分布与各站点表现。</p></div>
+        <div class="actions"><button id="refresh-state" class="button secondary">刷新状态</button><a id="open-target" class="button primary" href="{{ target_url | e }}" target="_blank" rel="noopener noreferrer">访问当前站点 ↗</a></div>
+      </div>
+      <section class="theme-hero" aria-label="当前站点与放行内容">
+        <div class="hero-copy"><div class="hero-kicker"><span class="live-dot"></span><span id="hero-mode">正在读取站点配置</span></div>
+          <h2 id="hero-title">访问控制</h2><p id="hero-description">正在加载当前站点。</p>
+          <div class="hero-controls"><label class="hero-site" for="site-selector"><span>当前管理站点</span><select id="site-selector" disabled><option value="default">加载中…</option></select></label>
+            <fieldset id="hero-switch" disabled><legend>放行内容 · 仅当前站点</legend><button type="button" data-allowed-slot="A" aria-pressed="false"><span class="switch-letter">A</span><span class="switch-label">展示 A<small data-slot-caption>切换内容</small></span></button><button type="button" data-allowed-slot="B" aria-pressed="false"><span class="switch-letter">B</span><span class="switch-label">展示 B<small data-slot-caption>切换内容</small></span></button></fieldset>
+          </div><p id="site-context" class="hero-context">正在加载站点列表…</p>
+        </div><div class="hero-art" aria-hidden="true">
+          <div id="theme-transition">
+            <img class="transition-from" alt="">
+            <svg class="transition-sleep" viewBox="0 0 1696 1312" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <radialGradient id="eyelid-edge"><stop offset="78%" stop-color="white"/><stop offset="100%" stop-color="black"/></radialGradient>
+                <mask id="closed-left"><ellipse cx="819" cy="414" rx="45" ry="24" fill="url(#eyelid-edge)"/></mask>
+                <mask id="closed-right"><ellipse cx="926" cy="414" rx="45" ry="24" fill="url(#eyelid-edge)"/></mask>
+                <clipPath id="awakening-eyes"><ellipse class="eye-aperture" cx="819" cy="414" rx="36" ry="0"/><ellipse class="eye-aperture" cx="926" cy="414" rx="36" ry="0"/></clipPath>
+              </defs>
+              <image href="/static/demon-v02.png" width="1696" height="1312"/>
+              <g class="closed-eyelids">
+                <g mask="url(#closed-left)"><image href="/static/demon-rest-v02.png" x="13" y="-8" width="1696" height="1312" preserveAspectRatio="none"/></g>
+                <g mask="url(#closed-right)"><image href="/static/demon-rest-v02.png" x="4" y="-8" width="1696" height="1312" preserveAspectRatio="none"/></g>
+              </g>
+              <image class="transition-eyes" href="/static/demon-v02.png" width="1696" height="1312" clip-path="url(#awakening-eyes)"/>
+            </svg>
+            <img class="transition-art" alt="">
+          </div>
+        </div><span class="hero-edition" aria-hidden="true">GEMINI / CONTROL CENTER · 02</span>
+      </section>
       <div id="load-error" class="notice error" hidden>无法读取控制台状态。请确认服务已启动，然后点击「刷新状态」重试。</div>
-      <div id="geoip-warning" class="notice error" hidden>国家数据库不可用：请检查安装包 resources/country.mmdb 或配置的 geoip_path。未识别国家的请求不会被伪造为已知国家。</div>
+      <div id="geoip-warning" class="notice error" hidden>{% if account.role == 'admin' %}国家数据库不可用：请检查安装包 resources/country.mmdb 或配置的 geoip_path。未识别国家的请求不会被伪造为已知国家。{% else %}国家识别暂不可用，请联系管理员。{% endif %}</div>
+      <div id="no-sites" class="notice" hidden><p>还没有可管理的域名。添加域名后即可配置内容、访问规则和查看流量。</p><button id="empty-add-domain" class="button primary small">＋ 添加域名</button></div>
+
+      {% if account.role == 'admin' %}
+      <section id="panel-accounts" class="tab-panel" aria-label="账号管理" hidden>
+        <article class="card"><div class="card-heading"><div><p class="eyebrow">AGENT ACCOUNTS</p><h2>创建代理账号</h2></div></div><p class="muted">代理只能管理分配给自己的域名，也可以添加自己的域名。账号密码由你交给代理。</p>
+          <form id="account-form" class="account-entry"><label>用户名<input name="username" required maxlength="64" pattern="[A-Za-z0-9_.@\-]+" title="使用字母、数字或 _ . @ -，最多 64 位" autocomplete="off" spellcheck="false"></label><label>初始密码<input name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><button class="button primary" type="submit">创建代理账号</button></form><p class="subtle">密码为 12–256 位，创建成功后不再显示。停用账号会立即退出该代理的现有会话。</p>
+        </article>
+        <article class="card"><div class="card-heading"><div><h2>账号列表</h2><p class="card-caption">管理代理的访问权限与密码</p></div><button id="refresh-accounts" class="button secondary small">刷新</button></div><div id="account-list" class="table-scroll"><p class="empty-state">正在读取账号…</p></div></article>
+      </section>
+      {% endif %}
 
       <section id="panel-domains" class="tab-panel" aria-label="域名管理" hidden>
-        <article class="card"><div class="card-heading"><div><p class="eyebrow">DOMAINS / INDEPENDENT SITES</p><h2>添加域名</h2></div><span class="badge indigo">一域名，一套配置</span></div><p class="muted">填写你拥有的完整域名，随后到域名服务商添加 A 记录。不修改已有宝塔站点。</p>
+        <article class="card" id="domain-add-panel" hidden><div class="card-heading"><div><p class="eyebrow">ADD DOMAIN</p><h2>添加域名</h2></div><button id="cancel-domain-add" class="button secondary small">收起</button></div><p class="muted">填写你拥有的完整域名，随后到域名服务商添加 A 记录。不修改已有宝塔站点。</p>
           <form id="domain-form" class="domain-entry"><label class="grow">完整域名<input name="domain" required maxlength="253" placeholder="例如 shop.example.com" autocomplete="off" spellcheck="false"></label><button class="button primary" type="submit">添加域名</button></form>
-          <p id="dns-instructions" class="notice">正在读取服务器解析目标…</p><p class="subtle">只接入这里登记的精确域名，不自动添加 www 或泛域名。解析到服务器不等于证书已签发。后台密钥只在服务器配置，不在网页填写。</p>
+          <p id="dns-instructions" class="notice">正在读取服务器解析目标…</p><p class="subtle">只接入这里登记的精确域名，不自动添加 www 或泛域名。解析到服务器不等于证书已签发。{% if account.role == 'admin' %}后台密钥只在服务器配置，不在网页填写。{% endif %}</p>
         </article>
-        <article class="card"><div class="card-heading"><h2>域名与接入状态</h2><button id="refresh-domains" class="button secondary small">刷新域名状态</button></div><div id="domain-list" class="domain-list"></div></article>
+        <article class="card domains-card"><div class="card-heading"><div><h2>我的域名</h2><p class="card-caption">谷歌风险检测、备注与上线状态</p></div><div class="actions"><label class="domain-search"><span class="sr-only">搜索域名或备注</span><input id="domain-search" type="search" placeholder="搜索域名或备注" autocomplete="off"></label><button id="refresh-domains" class="button secondary small">刷新</button><button id="new-domain" class="button primary small" aria-controls="domain-add-panel">＋ 添加域名</button></div></div><div id="domains-summary" class="domains-summary"></div><p id="google-reputation-notice" class="subtle" role="status">正在读取谷歌检测状态…</p><div id="domain-list" class="domain-table-wrap"></div><p class="subtle">谷歌检测由 Google Web Risk 提供，查询 HTTP / HTTPS 首页的已知恶意软件、钓鱼欺诈及不受欢迎的软件风险。未检出不保证整个网站安全，也不代表搜索收录或广告审核结果。接入状态来自已有建站验收记录；添加日期为系统登记日期。</p></article>
         <article class="card" id="provision-events-panel" hidden><h2 id="provision-events-title">接入日志</h2><div id="provision-events"></div></article>
       </section>
 
       <section id="panel-overview" class="tab-panel" aria-label="概览">
-        <div class="stats-grid">
-          <article class="stat-card"><div class="stat-label">保留期内文档访问 <span class="stat-icon indigo" aria-hidden="true">↗</span></div><strong id="stat-total">—</strong><p>最近30天 · 最多10000条</p></article>
-          <article class="stat-card"><div class="stat-label">展示 B 内容 <span class="stat-icon green" aria-hidden="true">✓</span></div><strong id="stat-allowed">—</strong><p>按实际展示内容统计</p></article>
-          <article class="stat-card"><div class="stat-label">展示 A 内容 <span class="stat-icon amber" aria-hidden="true">↪</span></div><strong id="stat-blocked">—</strong><p>含拦截与放行后选择 A</p></article>
-          <article class="stat-card"><div class="stat-label">今日访问 <span class="stat-icon blue" aria-hidden="true">◷</span></div><strong id="stat-today">—</strong><p>今日文档请求累计</p></article>
+        <div class="analytics-toolbar"><div><h2>访问流量</h2><p id="analytics-status" role="status">正在连接统计服务…</p></div><div class="analytics-filters">
+          <label class="sr-only" for="analytics-scope">统计域名范围</label><select id="analytics-scope"><option value="all">所有域名</option><option value="current">当前域名</option></select>
+          <label class="sr-only" for="analytics-period">统计时间范围</label><select id="analytics-period"><option value="today" selected>今日</option><option value="yesterday">昨日</option><option value="7d">近 7 天</option><option value="30d">近 30 天</option></select><button class="button secondary" id="refresh-analytics">刷新数据</button>
+        </div></div>
+        <div id="analytics-content" aria-busy="true">
+          <div class="metric-grid">
+            <article class="metric-card"><div><span>总访问量</span><span class="metric-symbol">↗</span></div><strong id="metric-total">—</strong><p><span data-period-label>今日</span> · 文档请求</p></article>
+            <article class="metric-card"><div><span>已放行</span><span class="metric-symbol allow">✓</span></div><strong id="metric-allowed">—</strong><p>规则通过与防护关闭的访问</p></article>
+            <article class="metric-card"><div><span>已拦截</span><span class="metric-symbol block">⊘</span></div><strong id="metric-blocked">—</strong><p>命中访问限制的请求</p></article>
+            <article class="metric-card"><div><span>放行率</span><span class="metric-symbol">%</span></div><strong id="metric-rate">—</strong><p>已放行 / 总访问量</p></article>
+          </div>
+          <div class="dashboard-grid">
+            <article class="card trend-card"><div class="card-heading"><div><h2>访问趋势</h2><p class="card-caption">每一次访问，都有迹可循</p></div><div class="chart-legend"><span class="legend-total">总访问</span><span class="legend-allow">放行</span><span class="legend-block">拦截</span></div></div><div id="traffic-trend" class="chart-container"></div></article>
+            <article class="card"><div class="card-heading"><div><h2>访客来自哪里</h2><p class="card-caption">国家与地区 · 按访问量</p></div><span class="tiny-label">WORLDWIDE</span></div><div id="traffic-countries" class="chart-container"></div></article>
+            <article class="card"><div class="card-heading"><div><h2>域名流量</h2><p class="card-caption">访问量最多的 8 个域名</p></div><div class="chart-legend"><span class="legend-allow">放行</span><span class="legend-block">拦截</span><span class="legend-other">其他</span></div></div><div id="traffic-domains" class="chart-container domain-chart"></div></article>
+            <article class="card"><div class="card-heading"><div><h2>拦截原因</h2><p class="card-caption">了解访问被拦截的原因</p></div><span class="tiny-label">TOP 6</span></div><div id="traffic-reasons" class="chart-container"></div></article>
+          </div>
+          <article class="card recent-card"><div class="card-heading"><div><h2>最近访问</h2><p class="card-caption">设备、国家与访问结果，一眼可见</p></div><button class="text-button" data-go="logs">当前站点全部日志 ↗</button></div><div class="table-scroll"><table><thead><tr><th>访问时间</th><th>访问域名</th><th>设备</th><th>国家 / 地区</th><th>访问结果</th></tr></thead><tbody id="recent-visits"></tbody></table></div><p id="analytics-extra" class="analytics-extra"></p></article>
+          <p id="analytics-retention" class="analytics-footnote"></p>
         </div>
+        <details class="advanced-panel"><summary><span>高级分流与系统状态</span><small>规则防护、全局强制、环境诊断</small></summary>
         <div class="overview-grid">
           <article class="card routing-card"><div class="card-heading"><div><p class="eyebrow">TRAFFIC ROUTING</p><h2>访问分流</h2></div><span class="badge indigo">实时配置</span></div><p class="muted">选择访客访问时使用的内容。切换后立即生效。</p>
             <fieldset id="routing-controls" class="routing-options" disabled><legend class="sr-only">路由模式</legend>
@@ -64,6 +125,7 @@
           <article class="card tip-card"><span class="tip-symbol" aria-hidden="true">⌘</span><h2>先模拟，再验证。</h2><p>输入一组访问条件，查看分流结果与逐条判断过程，不产生真实访问记录。</p><button class="text-button" data-go="simulate">开始规则模拟 <span aria-hidden="true">→</span></button></article></div>
         </div>
         <div class="notice"><span aria-hidden="true">ⓘ</span><p>统计仅计算文档访问。全局强制路由跳过规则；规则模式下，拦截展示 A，放行后展示你选择的 A 或 B。防护关闭则所有访客跟随放行后选择。</p><button id="reset-counters" class="text-button danger" disabled>重置计数</button></div>
+        </details>
         <details id="audit-details" class="card audit-card"><summary>操作审计 <span class="muted">查看最近配置与发布记录</span></summary><div id="audit-list" class="audit-list"><p class="empty-state">展开后加载操作记录。</p></div><button id="refresh-audit" class="button secondary small">刷新记录</button></details>
       </section>
 
@@ -80,6 +142,7 @@
         </article>
         <div class="card mode-bar"><div><h2>内容交付方式</h2><p class="muted">页面版本与链接分别保存，按当前模式提供访问。</p></div><fieldset id="content-controls" class="inline-controls" disabled><legend class="sr-only">交付设置</legend><label>内容模式<select id="content-mode"><option value="PAGE">页面内容</option><option value="LINK">链接跳转</option></select></label><label>链接分配<select id="distribution"><option value="random">随机分配</option><option value="round_robin">轮询分配</option><option value="equal">均衡分配</option></select></label></fieldset></div>
         <div class="slot-grid" id="slot-cards"></div>
+        <article id="b-redirects" class="card" aria-label="B 页快捷换链"></article>
         <section id="preview-panel" class="card" hidden><div class="card-heading"><div><h2 id="preview-title">版本预览</h2><p class="muted">独立测试站点 · 沙箱预览</p></div><button id="close-preview" class="button secondary">关闭预览</button></div><div id="preview-frame"></div></section>
         <article class="card"><div class="card-heading"><div><p class="eyebrow">LINK DESTINATIONS</p><h2>链接管理</h2></div><span id="link-count" class="badge neutral">0 个链接</span></div><form id="links-form"><fieldset id="links-fields" class="link-entry" disabled><legend class="sr-only">批量添加链接</legend><label>目标内容<select name="slot"><option value="A">A 内容</option><option value="B">B 内容</option></select></label><label class="grow">批量链接<textarea name="urls" rows="3" placeholder="每行一个完整的 https:// 或 http:// 链接" required></textarea></label><button class="button primary" type="submit">添加链接</button></fieldset></form><div id="links-list" class="links-list"><p class="empty-state">暂无链接。添加后，切换到「链接跳转」模式即可使用。</p></div></article>
       </section>
@@ -97,10 +160,10 @@
       <section id="panel-simulate" class="tab-panel" aria-label="规则模拟" hidden><div class="simulation-grid"><article class="card"><p class="eyebrow">RULE PLAYGROUND</p><h2>构造一次访问</h2><p class="muted">以下为模拟条件，并非当前浏览器真实身份。使用已保存的规则，不写入日志或计数。</p><form id="simulate-form"><fieldset id="simulate-fields" class="stack-form" disabled><legend class="sr-only">模拟访问条件</legend><div class="form-grid"><label>IP 地址<input name="ip" value="203.0.113.7" required></label><label>国家 / 地区<input name="country" placeholder="HK；留空表示未知" maxlength="2" pattern="[a-zA-Z]{2}"></label></div><label>User-Agent<textarea name="ua" rows="4" placeholder="Mozilla/5.0 …">Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) Mobile</textarea></label><div class="form-grid"><label>语言<input name="language" value="zh-CN"></label><label>窗口内访问次数<input name="visits" type="number" min="1" step="1" value="1" required></label></div><button type="submit" class="button primary">运行规则模拟 <span aria-hidden="true">→</span></button></fieldset></form></article><article class="card simulation-result"><div class="card-heading"><h2>判断结果</h2><span class="badge neutral">无副作用</span></div><div id="simulation-output" aria-live="polite"><div class="empty-state large"><span class="empty-symbol" aria-hidden="true">⌘</span><h3>每条规则，都可以解释</h3><p>运行模拟后，这里将展示目标内容<br>与完整判断过程。</p></div></div></article></div></section>
 
       <section id="panel-logs" class="tab-panel" aria-label="访问日志" hidden><article class="card logs-card"><div class="card-heading"><div><p class="eyebrow">VISIT HISTORY</p><h2>访问记录</h2></div><a id="export-logs" class="button secondary" href="/api/logs.csv?days=7&amp;slot=">↓ 导出 CSV</a></div><form id="log-filters" class="filter-bar"><label>时间范围<select name="days"><option value="1">最近 1 天</option><option value="7" selected>最近 7 天</option><option value="30">最近 30 天</option></select></label><label>分流结果<select name="slot"><option value="">全部内容</option><option value="A">A 内容</option><option value="B">B 内容</option></select></label><button class="button secondary" type="submit">查询</button></form><div class="table-scroll"><table><caption class="sr-only">文档访问日志（不展示查询参数）</caption><thead><tr><th>访问时间</th><th>IP / 地区</th><th>设备</th><th>分流</th><th>判断原因</th><th>访问路径</th><th>模式</th></tr></thead><tbody id="logs-body"><tr><td colspan="7" class="empty-state">进入此页后加载访问记录。</td></tr></tbody></table></div><div class="pagination"><span id="logs-summary" role="status">每页 25 条 · 仅文档访问</span><div class="actions"><button id="logs-prev" class="button secondary small" disabled>上一页</button><span id="logs-page">1 / 1</span><button id="logs-next" class="button secondary small" disabled>下一页</button></div></div></article><p class="subtle">日志界面仅展示路径，不展示 URL 查询参数。CSV 按当前筛选条件导出。</p></section>
-      <footer class="main-footer"><span>AB Lab / INFERNO <span class="footer-dot">·</span> <a href="https://db-ip.com" target="_blank" rel="noopener noreferrer">IP Geolocation by DB-IP</a></span><span>{{ '自有服务器 / 数据自主保存' if deployment else '本地运行 / 数据留在本机' }}</span></footer>
+      <footer class="main-footer"><span>双子星 / GEMINI · TRAFFIC <span class="footer-dot">·</span> <a href="https://db-ip.com" target="_blank" rel="noopener noreferrer">IP Geolocation by DB-IP</a></span><span>{{ '自有服务器 / 数据自主保存' if deployment else '本地运行 / 数据留在本机' }}</span></footer>
     </main>
   </div>
   <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
-  <noscript><div class="noscript">请启用 JavaScript 以使用 AB Lab 控制台。</div></noscript>
+  <noscript><div class="noscript">请启用 JavaScript 以使用 双子星 控制台。</div></noscript>
 </body>
 </html>

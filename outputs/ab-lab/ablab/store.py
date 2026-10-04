@@ -6,10 +6,12 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 import secrets
+import shutil
 import sqlite3
 import time
 
 from .models import Config
+from .archives import edit_content
 
 
 class Conflict(ValueError):
@@ -32,6 +34,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS counters(ip_key TEXT PRIMARY KEY, started REAL NOT NULL, count INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS links(id INTEGER PRIMARY KEY, slot TEXT NOT NULL, url TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 0, UNIQUE(slot,url));
                 CREATE TABLE IF NOT EXISTS rotation(slot TEXT PRIMARY KEY, last_id INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS redirect_presets(id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, note TEXT NOT NULL, created REAL NOT NULL, check_result TEXT);
+                CREATE TABLE IF NOT EXISTS redirect_active(id INTEGER PRIMARY KEY CHECK(id=1), url TEXT NOT NULL, preset_id INTEGER REFERENCES redirect_presets(id) ON DELETE SET NULL, version_id TEXT NOT NULL REFERENCES versions(id), updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, created REAL NOT NULL, ip TEXT NOT NULL, country TEXT, device TEXT NOT NULL, slot TEXT NOT NULL, reason TEXT NOT NULL, path TEXT NOT NULL, mode TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS events_created ON events(created);
                 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, created REAL NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL);
@@ -101,6 +105,23 @@ class Store:
             db.execute('UPDATE slots SET version_id=? WHERE slot=?', (version_id, slot))
             self._audit(db, 'version_published', {'slot': slot, 'before': old, 'after': version_id})
 
+    def save_source(self, slot, base, path, content, expected_published):
+        version = edit_content(self.pages / base['id'], path, content, self.pages, base['name'])
+        try:
+            with self.connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                current = db.execute('SELECT version_id FROM slots WHERE slot=?', (slot,)).fetchone()[0]
+                if current != expected_published:
+                    raise Conflict('当前发布版本已改变，请重新加载后再保存')
+                db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], slot, version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
+                db.execute('UPDATE slots SET version_id=? WHERE slot=?', (version['id'], slot))
+                self._audit(db, 'content_imported', {'slot': slot, 'version': version['id'], 'files': version['files'], 'source_version': base['id'], 'path': path})
+                self._audit(db, 'version_published', {'slot': slot, 'before': current, 'after': version['id']})
+        except Exception:
+            shutil.rmtree(self.pages / version['id'])
+            raise
+        return version | {'slot': slot}
+
     def count(self, ip, hours, increment, now=None):
         now = time.time() if now is None else now
         normalized = str(ipaddress.ip_address(ip))
@@ -117,6 +138,78 @@ class Store:
                 db.execute('INSERT INTO counters VALUES(?,?,?) ON CONFLICT(ip_key) DO UPDATE SET started=excluded.started,count=excluded.count', (key, started, count))
                 db.execute('DELETE FROM counters WHERE started<?', (now - 720 * 3600,))
             return count
+
+    @staticmethod
+    def _redirect_preset(row):
+        if row is None:
+            raise KeyError('备用链接不存在')
+        value = dict(row)
+        value['check'] = json.loads(value.pop('check_result')) if row['check_result'] else {'status':'unchecked', 'platform':'网站', 'detail':'', 'checked_at':None, 'http_status':None, 'final_url':None}
+        return value
+
+    def redirect_presets(self):
+        with self.connect() as db:
+            return [self._redirect_preset(row) for row in db.execute('SELECT * FROM redirect_presets ORDER BY id')]
+
+    def redirect_preset(self, preset_id):
+        with self.connect() as db:
+            return self._redirect_preset(db.execute('SELECT * FROM redirect_presets WHERE id=?', (preset_id,)).fetchone())
+
+    def add_redirect_presets(self, urls, note):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            existing = {row['url'] for row in db.execute('SELECT url FROM redirect_presets')}
+            if len(existing | set(urls)) > 100:
+                raise ValueError('每个域名最多保存 100 条备用链接，请先删除不用的链接')
+            db.executemany('INSERT OR IGNORE INTO redirect_presets(url,note,created) VALUES(?,?,?)', [(url, note, time.time()) for url in urls])
+            self._audit(db, 'b_redirect_presets_added', {'count':len(urls)})
+            return [self._redirect_preset(db.execute('SELECT * FROM redirect_presets WHERE url=?', (url,)).fetchone()) for url in urls]
+
+    def delete_redirect_preset(self, preset_id):
+        with self.connect() as db:
+            if not db.execute('DELETE FROM redirect_presets WHERE id=?', (preset_id,)).rowcount:
+                raise KeyError('备用链接不存在')
+            self._audit(db, 'b_redirect_preset_deleted', {'id':preset_id})
+
+    def save_redirect_check(self, preset, result, commit_guard=None):
+        with self.connect() as db:
+            if commit_guard:
+                commit_guard(db)
+            if not db.execute('UPDATE redirect_presets SET check_result=? WHERE id=? AND url=?', (json.dumps(result, ensure_ascii=False), preset['id'], preset['url'])).rowcount:
+                raise KeyError('备用链接已删除或变更')
+            return self._redirect_preset(db.execute('SELECT * FROM redirect_presets WHERE id=?', (preset['id'],)).fetchone())
+
+    def redirect_active(self):
+        with self.connect() as db:
+            row = db.execute('SELECT url,preset_id,version_id,updated FROM redirect_active WHERE id=1').fetchone()
+            return dict(row) if row else None
+
+    def apply_redirects(self, base, preset, occurrence_ids, expected_published, commit_guard=None):
+        from .redirects import replace_bundle
+        if base['slot'] != 'B':
+            raise KeyError('B 版本不存在')
+        version, changed = replace_bundle(self.pages / base['id'], base['id'], occurrence_ids, preset['url'], self.pages, base['name'])
+        try:
+            with self.connect() as db:
+                if commit_guard:
+                    commit_guard(db)
+                else:
+                    db.execute('BEGIN IMMEDIATE')
+                current = db.execute("SELECT version_id FROM slots WHERE slot='B'").fetchone()[0]
+                if current != expected_published:
+                    raise Conflict('当前 B 发布版本已变化，请重新扫描后再换链')
+                saved = db.execute('SELECT url FROM redirect_presets WHERE id=?', (preset['id'],)).fetchone()
+                if not saved or saved['url'] != preset['url']:
+                    raise KeyError('备用链接已删除或变更')
+                db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], 'B', version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
+                db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
+                db.execute('INSERT INTO redirect_active VALUES(1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET url=excluded.url,preset_id=excluded.preset_id,version_id=excluded.version_id,updated=excluded.updated', (preset['url'], preset['id'], version['id'], time.time()))
+                self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed})
+                self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
+        except Exception:
+            shutil.rmtree(self.pages / version['id'])
+            raise
+        return version | {'slot':'B'}, changed
 
     def reset_counts(self):
         with self.connect() as db:

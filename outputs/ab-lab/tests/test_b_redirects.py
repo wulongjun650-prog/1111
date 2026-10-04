@@ -1,0 +1,253 @@
+import io
+import zipfile
+from concurrent.futures import ThreadPoolExecutor
+
+import pytest
+from fastapi.testclient import TestClient
+
+from ablab.web import create_admin
+from test_agent_access import accounts, add
+
+
+@pytest.fixture
+def console(tmp_path):
+    app = create_admin(tmp_path)
+    client = TestClient(app, base_url='http://127.0.0.1:8765', client=('127.0.0.1', 5000))
+    client.headers.update({'Origin': 'http://127.0.0.1:8765', 'X-CSRF-Token': app.state.csrf})
+    return client, app
+
+
+def upload(client, prefix='/api', slot='B', publish=True):
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, 'w') as bundle:
+        bundle.writestr('index.html', '''<!doctype html>
+<a href="https://old.test/a?x=1&amp;y=2">go</a>
+<a href='https://old.test/a'>go2</a><img src="https://old.test/p.png">
+<meta http-equiv="refresh" content="0; url=https://old.test/refresh">
+<button onclick="window.open(&quot;https://old.test/inline&quot;)">go</button>
+<script>location.href = "https://old.test/script";</script>
+<!-- <a href="https://old.test/comment">no</a> -->
+<script src="app.js"></script>''')
+        bundle.writestr('app.js', '\ufeffconst target = "https://old.test/variable";\nfetch(target);\nlocation.assign(target);\nwindow.open("https://old.test/open");\n// location.href="https://old.test/comment";\nconst image="https://old.test/image";')
+        bundle.writestr('more.htm', '<a href="https://old.test/other">other</a>')
+        bundle.writestr('style.css', 'body{color:red}')
+    result = client.post(prefix+'/upload/'+slot+'?name=links.zip', content=archive.getvalue())
+    assert result.status_code == 200, result.text
+    version = result.json()['version']['id']
+    if publish:
+        assert client.post(prefix+'/publish/'+slot, json={'version_id':version}).status_code == 200
+    return version
+
+
+class Checker:
+    def __init__(self, status='normal', callback=None):
+        self.calls, self.status, self.callback = [], status, callback
+
+    def check(self, url):
+        self.calls.append(url)
+        if self.callback:
+            self.callback()
+        return {'status':self.status, 'platform':'网站', 'detail':'检测结果', 'checked_at':123.5,
+                'http_status':404 if self.status == 'abnormal' else 200, 'final_url':url}
+
+
+def preset(client, prefix='/api', url='https://example.com/new?x=1&y=2'):
+    result = client.post(prefix+'/b-redirects/presets', json={'urls':[url], 'note':'备用一'})
+    assert result.status_code == 200, result.text
+    return result.json()['presets'][0]
+
+
+def apply(client, scan, link, prefix='/api', ids=None):
+    return client.post(prefix+'/b-redirects/apply', json={
+        'version_id':scan['version']['id'], 'preset_id':link['id'],
+        'occurrence_ids': ids if ids is not None else [o['id'] for o in scan['occurrences']],
+        'expected_published':scan['published_version']})
+
+
+def test_scans_all_static_navigation_and_apply_keeps_a_assets_history(console):
+    client, app = console
+    original_a, original_b = upload(client, slot='A'), upload(client)
+    store = app.state.store
+    app.state.link_checker = checker = Checker()
+    root = store.pages/original_b
+    before = {p.relative_to(root).as_posix():p.read_bytes() for p in root.rglob('*') if p.is_file()}
+    response = client.get('/api/b-redirects')
+    assert response.status_code == 200, response.text
+    scan = response.json()
+    assert len(scan['occurrences']) == 8
+    assert len({o['id'] for o in scan['occurrences']}) == 8
+    assert len({o['key'] for o in scan['occurrences']}) == 8
+    assert all(o['line'] > 0 and 'comment' not in o['url'] for o in scan['occurrences'])
+    link = preset(client)
+    assert checker.calls == []
+    result = apply(client, scan, link)
+    assert result.status_code == 200, result.text
+    new = result.json()['version']
+    assert new['slot'] == 'B' and new['id'] != original_b and result.json()['changed'] == 8
+    assert store.slots() == {'A':original_a, 'B':new['id']}
+    assert {p.relative_to(root).as_posix():p.read_bytes() for p in root.rglob('*') if p.is_file()} == before
+    updated = store.pages/new['id']
+    assert (updated/'style.css').read_bytes() == before['style.css']
+    text = (updated/'app.js').read_text(encoding='utf-8-sig')
+    assert 'fetch(target)' in text and 'const target = "https://old.test/variable"' in text
+    assert (updated/'app.js').read_bytes().startswith(b'\xef\xbb\xbf')
+    rescanned = client.get('/api/b-redirects').json()
+    assert {o['url'] for o in rescanned['occurrences']} == {link['url']}
+    assert [o['key'] for o in rescanned['occurrences']] == [o['key'] for o in scan['occurrences']]
+    assert rescanned['active']['version_id'] == new['id'] and rescanned['active']['preset_id'] == link['id']
+    assert checker.calls == [link['url']]
+
+
+def test_selection_only_and_repeated_replacement(console):
+    client, app = console
+    upload(client)
+    app.state.link_checker = Checker('unknown')
+    first = client.get('/api/b-redirects').json()
+    link = preset(client)
+    response = apply(client, first, link, ids=[first['occurrences'][0]['id']])
+    assert response.status_code == 200 and response.json()['check']['status'] == 'unknown'
+    second = client.get('/api/b-redirects').json()
+    assert len([o for o in second['occurrences'] if o['url'] == link['url']]) == 1
+    next_link = preset(client, url='https://example.org/different')
+    assert apply(client, second, next_link).status_code == 200
+    assert {o['url'] for o in client.get('/api/b-redirects').json()['occurrences']} == {next_link['url']}
+
+
+def test_abnormal_does_not_publish_and_delete_active_does_not_change_code(console):
+    client, app = console
+    base = upload(client)
+    app.state.link_checker = checker = Checker('abnormal')
+    scan = client.get('/api/b-redirects').json()
+    link = preset(client)
+    denied = apply(client, scan, link)
+    assert denied.status_code == 400 and '此链接不正常' in denied.json()['detail']
+    assert app.state.store.slots()['B'] == base and len(app.state.store.versions()) == 1
+    assert client.get('/api/b-redirects').json()['presets'][0]['check']['status'] == 'abnormal'
+    checker.status = 'normal'
+    assert apply(client, scan, link).status_code == 200
+    current = app.state.store.slots()['B']
+    assert client.delete('/api/b-redirects/presets/'+str(link['id'])).status_code == 200
+    state = client.get('/api/b-redirects').json()
+    assert state['presets'] == [] and state['active']['preset_id'] is None
+    assert state['active']['url'] == link['url'] and app.state.store.slots()['B'] == current
+    assert client.post('/api/b-redirects/presets/'+str(link['id'])+'/check',json={}).status_code == 404
+
+
+def test_stale_and_invalid_occurrences_rejected_before_network(console):
+    client, app = console
+    upload(client)
+    app.state.link_checker = checker = Checker()
+    scan = client.get('/api/b-redirects').json()
+    link = preset(client)
+    assert apply(client, scan, link, ids=['0'*64]).status_code == 409
+    assert apply(client, scan, link, ids=[]).status_code == 422
+    upload(client)
+    assert apply(client, scan, link).status_code == 409
+    assert checker.calls == []
+
+
+def test_concurrent_apply_has_one_winner_no_orphans(console):
+    client, app = console
+    base = upload(client)
+    app.state.link_checker = Checker()
+    scan, link = client.get('/api/b-redirects').json(), preset(client)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _:apply(client, scan, link),range(2)))
+    assert sorted(r.status_code for r in results) == [200,409]
+    versions = {v['id'] for v in app.state.store.versions()}
+    assert len(versions) == 2 and base in versions
+    assert {p.name for p in app.state.store.pages.iterdir()} == versions
+
+
+@pytest.mark.parametrize('mutation', ['delete', 'publish'])
+def test_changes_during_network_check_do_not_publish(console, mutation):
+    client, app = console
+    upload(client)
+    scan, link = client.get('/api/b-redirects').json(), preset(client)
+    def change():
+        if mutation == 'delete':
+            app.state.store.delete_redirect_preset(link['id'])
+        else:
+            upload(client)
+    app.state.link_checker = Checker(callback=change)
+    response = apply(client, scan, link)
+    assert response.status_code in (404,409)
+    assert len(app.state.store.versions()) == (1 if mutation == 'delete' else 2)
+
+
+def test_unpublished_empty_wrong_slot_and_strict_bodies(console):
+    client, app = console
+    assert client.get('/api/b-redirects').json()['version'] is None
+    b = upload(client, publish=False)
+    a = upload(client, slot='A')
+    assert client.get('/api/b-redirects',params={'version_id':b}).json()['version']['id'] == b
+    for version in (a,'0'*32):
+        assert client.get('/api/b-redirects',params={'version_id':version}).status_code == 404
+    assert client.get('/api/b-redirects',params={'version_id':'../x'}).status_code == 422
+    for body in ({'urls':['https://example.org'],'note':'','slot':'A'}, {'urls':['http://127.0.0.1/'],'note':''},
+                 {'urls':['https://example.org'],'note':'x'*301}, {'urls':[],'note':''}):
+        assert client.post('/api/b-redirects/presets',json=body).status_code in (400,422)
+    original = preset(client)
+    assert preset(client)['id'] == original['id']
+    assert len(client.get('/api/b-redirects').json()['presets']) == 1
+
+
+def test_agent_all_new_routes_isolated_and_owner_change_during_check(accounts):
+    app, auth, owner, a, b, one, two = accounts
+    owned, other = add(a,'one.test'),add(b,'two.test')
+    prefix = f"/api/sites/{owned['id']}"
+    upload(a,prefix)
+    link = preset(a,prefix)
+    scan = a.get(prefix+'/b-redirects').json()
+    app.state.link_checker = checker = Checker()
+    for bad_prefix in ('/api',f"/api/sites/{other['id']}"):
+        assert a.get(bad_prefix+'/b-redirects').status_code == 404
+        assert a.post(bad_prefix+'/b-redirects/presets',json={'urls':['https://example.org'],'note':''}).status_code == 404
+        assert a.post(bad_prefix+f"/b-redirects/presets/{link['id']}/check",json={}).status_code == 404
+        assert a.delete(bad_prefix+f"/b-redirects/presets/{link['id']}").status_code == 404
+        assert apply(a,scan,link,bad_prefix).status_code == 404
+    assert checker.calls == [] and b.get(f"/api/sites/{other['id']}/b-redirects").json()['presets'] == []
+    def transfer():
+        assert owner.put(prefix+'/owner',json={'owner_id':two['id']}).status_code == 200
+    app.state.link_checker = Checker(callback=transfer)
+    assert apply(a,scan,link,prefix).status_code == 404
+    assert app.state.registry.store(owned['id']).slots()['B'] == scan['version']['id']
+
+
+def test_disabled_agent_during_check_cannot_publish(accounts):
+    app, auth, owner, a, b, one, two = accounts
+    owned = add(a, 'one.test')
+    prefix = f"/api/sites/{owned['id']}"
+    base = upload(a, prefix)
+    link, scan = preset(a, prefix), a.get(prefix + '/b-redirects').json()
+    store = app.state.registry.store(owned['id'])
+    app.state.link_checker = Checker(callback=lambda: auth.set_enabled(one['id'], False))
+    response = apply(a, scan, link, prefix)
+    assert response.status_code == 401, response.text
+    assert store.slots()['B'] == base
+    assert [version['id'] for version in store.versions()] == [base]
+    assert {path.name for path in store.pages.iterdir()} == {base}
+
+
+def test_owner_transfer_during_bundle_creation_cannot_publish(accounts, monkeypatch):
+    from ablab import redirects
+
+    app, auth, owner, a, b, one, two = accounts
+    owned = add(a, 'one.test')
+    prefix = f"/api/sites/{owned['id']}"
+    base = upload(a, prefix)
+    link, scan = preset(a, prefix), a.get(prefix + '/b-redirects').json()
+    store = app.state.registry.store(owned['id'])
+    actual_replace = redirects.replace_bundle
+
+    def transfer_during_bundle(*args, **kwargs):
+        app.state.registry.assign_owner(owned['id'], two['id'])
+        return actual_replace(*args, **kwargs)
+
+    monkeypatch.setattr(redirects, 'replace_bundle', transfer_during_bundle)
+    app.state.link_checker = Checker()
+    response = apply(a, scan, link, prefix)
+    assert response.status_code == 404, response.text
+    assert store.slots()['B'] == base
+    assert [version['id'] for version in store.versions()] == [base]
+    assert {path.name for path in store.pages.iterdir()} == {base}

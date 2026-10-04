@@ -1,13 +1,21 @@
+import { createDashboard } from './dashboard.mjs';
+import { applyTheme } from './theme.mjs';
+import { themeFor, countryBadge, deviceBadge, icon, reputationView } from './presentation.mjs';
+import { createReputationAutoCheck } from './reputation.mjs';
 import { patchConfig, rulesConfig, parseLinks, previewURL, logPath, validateUpload, sitePath } from './helpers.mjs';
 import { countryLabel } from './locale.mjs';
 import { createSelection } from './selection.mjs';
+import { isAdmin, chooseSite, accountSitePath } from './account-ui.mjs';
+import { createSourceEditor } from './source-editor.mjs';
+import { createBRedirects } from './b-redirects.mjs';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const csrf = $('meta[name="csrf-token"]').content;
 const target = $('meta[name="target-url"]').content;
 let state = null;
-let selectedSite = 'default';
+let selectedSite = null;
+let account = {role: document.body.dataset.accountRole};
 let pendingActions = 0;
 let siteLoading = true;
 let catalog = null;
@@ -16,18 +24,48 @@ let editing = 0;
 let configBusy = false;
 let stateRequest = 0;
 let logsRequest = 0;
+let domainsRequest = 0;
+let siteEventsRequest = 0;
+let siteEventsSite = null;
 let logPage = 1;
 let logPages = 1;
 let activeTab = 'overview';
+const dashboard = createDashboard(api, () => isAdmin(account) ? '所有域名' : '我的域名');
+const sourceEditor = createSourceEditor({api, on, element, confirmAction, getSite:() => state?.site,
+  onSaved:async result => {toast(`${result.version.slot} 源码已保存并发布，旧版本已保留。`); await refreshState();},
+});
+const bRedirects = createBRedirects({api, on, element, confirmAction, getSite:() => state?.site,
+  onApplied:async result => {toast(result.check.status === 'unknown' ? 'B 页已换链并发布；此链接状态未知，请确认目标页面。' : 'B 页已换链并发布，旧版本已保留。'); await refreshState();},
+});
+const reputationChecking = new Set();
+const latestReputation = new Map();
+const reputationAutoCheck = createReputationAutoCheck({
+  check:async id=>(await api(`/api/sites/${id}/reputation/check`,{method:'POST',body:{}})).result,
+  isActive:()=>activeTab === 'domains' && !document.hidden && Boolean(catalog?.google_reputation_configured),
+  onUpdate:(id,update)=>{
+    if (update.checking === true) reputationChecking.add(id);
+    if (update.checking === false) reputationChecking.delete(id);
+    if (update.result) {
+      latestReputation.set(id,update.result);
+      const site = catalog?.sites.find(item=>item.id === id);
+      if (site) site.google_reputation = update.result;
+    }
+    const site = catalog?.sites.find(item=>item.id === id);
+    const cell = $$('[data-reputation-site]').find(item=>item.dataset.reputationSite === id);
+    if (site && cell) renderReputation(site,cell);
+  },
+});
 const rulesForm = $('#rules-form');
+$$('[data-tab]').forEach(button => button.querySelector('span').replaceChildren(icon(button.dataset.tab === 'accounts' ? 'logs' : button.dataset.tab)));
 const selections = Object.fromEntries(['countries','languages'].map(kind => [kind,createSelection(rulesForm.elements.namedItem(kind),kind)]));
 const labels = {
-  domains: ['域名管理', '每个域名，各自独立。', '登记域名、查看解析信息与接入进度，在同一后台管理各站点。'],
-  overview: ['概览', '一切，尽在掌握。', '管理内容、配置规则，了解每一次访问的去向。'],
-  content: ['A/B 内容', '两种内容，自由掌控。', '导入、预览与发布，每个版本都可随时回退。'],
-  rules: ['访问规则', '让访问，按你的规则进行。', '用清晰的条件定义分流，让每次判断都有依据。'],
-  simulate: ['规则模拟', '在上线之前，验证想法。', '模拟访问条件，逐条查看已保存规则的判断过程。'],
-  logs: ['访问日志', '每一次访问，都有迹可循。', '查看真实文档请求，追踪分流结果与判断原因。'],
+  domains: ['域名管理', '域名管理', '统一查看谷歌风险、接入状态、备注与访问状态。'],
+  overview: ['流量总览', '流量总览', '查看访问数据、国家分布与各站点表现。'],
+  content: ['A/B 内容', 'A/B 内容', '上传、预览和发布当前站点的内容。'],
+  rules: ['访问规则', '访问规则', '设置访问条件，保存后对当前站点生效。'],
+  simulate: ['规则模拟', '规则模拟', '输入访问条件，检查已保存规则的判断结果。'],
+  logs: ['访问日志', '访问日志', '查看文档请求、设备、国家与分流结果。'],
+  accounts: ['账号管理', '账号管理', '创建代理账号，管理访问权限与域名归属。'],
 };
 const reasons = { blacklist: '命中黑名单', whitelist: '命中白名单', bot_marker: '匹配机器人标记', ipv4: 'IPv4 限制', device: '设备限制', os_version: '系统版本限制', blocked_cidr: '命中屏蔽网段', country: '国家 / 地区限制', country_unknown: '国家未知', language: '语言限制', visit_limit: '超过访问次数', allowed: '规则通过', pass: '规则通过', force_a: '强制 A', force_b: '强制 B', protection_off: '防护已关闭' };
 const formatDate = value => {
@@ -89,7 +127,7 @@ function on(node, event, handler) {
 }
 
 function updateSiteLock() {
-  $('#site-selector').disabled = siteLoading || pendingActions > 0 || configBusy;
+  $('#site-selector').disabled = !selectedSite || siteLoading || pendingActions > 0 || configBusy;
 }
 
 async function busy(button, action) {
@@ -101,7 +139,8 @@ async function busy(button, action) {
 
 async function api(path, { method = 'GET', body, raw = false } = {}) {
   const siteAtStart = selectedSite;
-  const scopedPath = sitePath(path, siteAtStart);
+  const scopedPath = accountSitePath(path, siteAtStart);
+  const siteScoped = scopedPath !== path || /^\/api\/sites\/(default|[a-f0-9]{32})\//.test(path);
   const headers = {};
   if (method !== 'GET') headers['X-CSRF-Token'] = csrf;
   if (body !== undefined) headers['Content-Type'] = raw ? 'application/octet-stream' : 'application/json';
@@ -113,7 +152,7 @@ async function api(path, { method = 'GET', body, raw = false } = {}) {
   }
   let data;
   try { data = await response.json(); } catch { throw new Error('服务返回了无法读取的数据，请刷新后重试。'); }
-  if (scopedPath !== path && selectedSite !== siteAtStart) {
+  if (siteScoped && selectedSite !== siteAtStart) {
     const error = new Error('站点已切换，忽略旧响应'); error.stale = true; throw error;
   }
   if (!response.ok) {
@@ -121,6 +160,10 @@ async function api(path, { method = 'GET', body, raw = false } = {}) {
     const messages = { 400: '提交内容有误，请检查输入。', 403: '安全校验失败，请重新加载页面后重试。', 404: '内容已不存在，请刷新状态。', 409: '配置已被其他操作更新，已重新同步。你的规则草稿仍保留，请检查后再次保存。', 413: '文件过大，上传上限为 20 MiB。', 422: '输入未通过校验，请检查 IP、CIDR、网址或数值。', 429: '操作过于频繁，请稍后重试。' };
     const error = new Error(messages[response.status] || '服务暂时无法完成操作，请稍后重试。');
     error.status = response.status;
+    if (response.status === 404 && siteScoped) {
+      await loadDomains();
+      if (selectedSite !== siteAtStart) error.stale = true;
+    }
     if ([400, 422].includes(response.status) && typeof data.detail === 'string') error.message += ` ${data.detail}`;
     throw error;
   }
@@ -155,15 +198,25 @@ function updateConfigControls() {
   $('#allowed-content-controls').disabled = !state || configBusy;
   $('#content-controls').disabled = !state || configBusy;
   $('#protection-toggle').disabled = !state || configBusy;
+  $('#hero-switch').disabled = !state || configBusy;
+  applyTheme(themeFor(state?.config));
   if (!state) return;
+  const angel = themeFor(state.config) === 'angel';
+  const forced = state.config.routing !== 'RULES';
+  $('#hero-title').textContent = `放行配置 · 内容 ${angel ? 'A' : 'B'}`;
+  $('#hero-description').textContent = !state.site.enabled ? '此域名已下线，配置保留，上线后恢复访问。' : forced ? '全局强制模式：所有访问固定展示此内容。' : !state.config.protection ? '规则防护已关闭：所有访客展示此内容。' : '通过规则的访问，将展示此内容。';
+  $('#hero-mode').textContent = !state.site.enabled ? '域名已下线' : forced ? `全局强制 · 全部展示 ${state.config.routing.slice(-1)}` : `规则模式 · 放行后展示 ${state.config.allowed_slot}`;
+  $('#sidebar-theme').textContent = `当前展示内容 ${angel ? 'A' : 'B'}`;
   $$('[data-routing]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.routing === state.config.routing)));
   const slot = state.config.allowed_slot;
   const active = state.config.routing === 'RULES';
   $$('[data-allowed-slot]').forEach(button => {
-    const selected = button.dataset.allowedSlot === slot;
+    const selected = button.dataset.allowedSlot === (button.closest('#hero-switch') ? (angel ? 'A' : 'B') : slot);
     button.setAttribute('aria-pressed', String(selected));
     button.classList.toggle('primary', selected);
     button.classList.toggle('secondary', !selected);
+    const caption = button.querySelector('[data-slot-caption]');
+    if (caption) caption.textContent = selected ? active ? '当前启用' : '强制展示' : '切换内容';
   });
   $('#allowed-slot-badge').textContent = `已选择 ${slot}${active ? '' : ' · 暂未生效'}`;
   $('#overview-allowed-status').textContent = `放行后展示 ${slot}${active ? '' : '（全局强制模式下暂不生效）'}`;
@@ -183,8 +236,9 @@ function updateConfigControls() {
 function renderState() {
   $$('.tab-panel').forEach(panel => { panel.inert = false; });
   $('#open-target').href = state.target_url;
-  $('#site-context').textContent = `${state.site.domain || '原有本地站点'} · 当前页面的规则、内容、计数和日志仅属于这个站点`;
-  for (const key of ['total', 'allowed', 'blocked', 'today']) $(`#stat-${key}`).textContent = number(state.stats[key]);
+  $('#open-target').hidden = false;
+  $('#site-context').textContent = `仅修改 ${state.site.domain || '当前站点'} 的配置 · 图表范围可独立选择`;
+  if (activeTab === 'overview') dashboard.refresh();
   const geo = state.health.geoip_detail;
   $('#geoip-status').textContent = state.health.geoip ? `已就绪 · ${geo?.built_at ? new Date(geo.built_at * 1000).toLocaleDateString('zh-CN') : '本地数据库'}` : '国家库不可用 · 请检查安装';
   $('#geoip-warning').hidden = Boolean(state.health.geoip);
@@ -198,10 +252,12 @@ function renderState() {
   updateConfigControls();
   if (!dirty) fillRules();
   renderSlots();
+  bRedirects.update(state);
   renderLinks();
 }
 
 async function refreshState() {
+  if (!selectedSite) return;
   const request = ++stateRequest;
   try {
     const result = await api('/api/state');
@@ -269,10 +325,11 @@ function renderSlots() {
           const file = input.files[0]; validateUpload(file);
           input.disabled = true;
           try {
-            await api(`/api/upload/${slot}?name=${encodeURIComponent(file.name)}`, { method: 'POST', raw: true, body: file });
+            const uploaded = await api(`/api/upload/${slot}?name=${encodeURIComponent(file.name)}`, { method: 'POST', raw: true, body: file });
             input.value = '';
             toast(`${slot} 版本已导入，尚未发布。`);
             await refreshState();
+            if (slot === 'B') await bRedirects.selectVersion(uploaded.version.id);
           } finally { input.disabled = false; }
         });
       });
@@ -283,7 +340,10 @@ function renderSlots() {
     const current = state?.versions.find(version => version.id === state.slots[slot]);
     const live = $(`#slot-live-${slot}`);
     live.replaceChildren(element('small', '', '当前发布'), element('strong', '', current?.name || (state?.slots[slot] ? '已发布版本' : '尚未发布内容')));
-    if (current) live.append(element('small', '', `${formatDate(current.created)} · ${number(current.files)} 个文件`));
+    if (current) {
+      live.append(element('small', '', `${formatDate(current.created)} · ${number(current.files)} 个文件`));
+      live.append(actionButton('编辑源码', () => sourceEditor.open(current), 'button secondary small slot-source-edit'));
+    }
     const versions = $(`#versions-${slot}`); versions.replaceChildren();
     const items = state?.versions.filter(version => version.slot === slot) || [];
     if (!items.length) versions.append(element('p', 'empty-state', state ? '还没有版本。导入一个站点，开始你的实验。' : '连接服务后，版本将显示在这里。'));
@@ -294,6 +354,7 @@ function renderSlots() {
       const meta = element('p', 'version-meta', `${formatDate(version.created)} · ${number(version.files)} 个文件 · ${bytes(version.bytes)}`);
       const actions = element('div', 'actions');
       actions.append(actionButton('预览', () => preview(version)));
+      actions.append(actionButton('编辑源码', () => sourceEditor.open(version)));
       if (published) actions.append(element('span', 'badge green', '当前发布'));
       else actions.append(actionButton('发布此版本', async () => {
         if (!await confirmAction(`将「${version.name}」发布至 ${slot}？将替换当前版本；旧版本仍可回退。`)) return;
@@ -344,7 +405,10 @@ function renderLinks() {
 }
 
 async function loadAudit() {
+  if (!selectedSite || !state) return;
+  const request = stateRequest;
   const data = await api('/api/audit');
+  if (request !== stateRequest) return;
   const root = $('#audit-list'); root.replaceChildren();
   if (!data.items.length) root.append(element('p', 'empty-state', '暂无操作记录。配置、上传与发布后可在这里查看。'));
   for (const item of data.items) {
@@ -359,6 +423,7 @@ function logParams() {
 }
 
 async function loadLogs(page = 1) {
+  if (!selectedSite || !state) return;
   const request = ++logsRequest;
   const params = logParams();
   $('#export-logs').href = sitePath(`/api/logs.csv?${params}`, selectedSite);
@@ -376,9 +441,9 @@ async function loadLogs(page = 1) {
     for (const item of data.items) {
       const row = element('tr');
       row.append(element('td', '', formatDate(item.created)));
-      const ip = element('td', '', item.ip); ip.append(element('small', 'country-name', countryLabel(item.country))); row.append(ip);
+      const ip = element('td', '', item.ip); const country = element('small', 'country-name'); country.append(countryBadge(item.country)); ip.append(country); row.append(ip);
       const details = item.device_details;
-      const device = element('td', 'device-cell', details?.device || ({ mobile: '移动设备', desktop: '桌面设备', unknown: '未知设备' }[item.device] || item.device));
+      const device = element('td', 'device-cell'); device.append(deviceBadge(item));
       device.append(element('small', '', details ? `${details.os} · ${details.browser}` : '旧记录未采集设备详情'));
       device.title = '来自浏览器 User-Agent 声明，可能被精简或伪造；不能保证真实型号'; row.append(device);
       const slot = element('td'); slot.append(element('span', `badge ${item.slot === 'A' ? 'amber' : 'indigo'}`, item.slot)); row.append(slot);
@@ -396,25 +461,33 @@ async function loadLogs(page = 1) {
   }
 }
 
-async function selectTab(name) {
+async function selectTab(name, {load = true} = {}) {
   if (!labels[name]) name = 'overview';
+  if (name === 'accounts' && !isAdmin(account)) name = 'domains';
+  if (!selectedSite && !['domains','accounts'].includes(name)) name = 'domains';
   activeTab = name;
+  document.body.dataset.tab = name;
   $$('.tab-panel').forEach(panel => { panel.hidden = panel.id !== `panel-${name}`; });
   $$('[data-tab]').forEach(button => {
     const active = button.dataset.tab === name; button.classList.toggle('active', active);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
   $('#breadcrumb-current').textContent = labels[name][0];
+  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',accounts:'ACCOUNTS'}[name];
   $('#page-title').textContent = labels[name][1]; $('#page-subtitle').textContent = labels[name][2];
   if (name !== 'content') closePreview();
+  await bRedirects.setActive(name === 'content');
   if (name === 'logs') await loadLogs();
-  if (name === 'domains') await loadDomains();
+  if (name === 'domains' && load) await loadDomains();
+  if (name === 'accounts') await loadAccounts();
+  if (name === 'overview' && state) dashboard.refresh();
 }
 
 $$('[data-tab]').forEach(button => on(button, 'click', () => selectTab(button.dataset.tab)));
 $$('[data-go]').forEach(button => on(button, 'click', () => selectTab(button.dataset.go)));
 on($('.brand'), 'click', event => { event.preventDefault(); return selectTab('overview'); });
 on($('#refresh-state'), 'click', event => busy(event.currentTarget, async () => {
+  await loadDomains();
   await refreshState();
   if (activeTab === 'logs') await loadLogs(logPage);
   if ($('#audit-details').open) await loadAudit();
@@ -479,77 +552,310 @@ on($('#log-filters'), 'submit', event => { event.preventDefault(); return loadLo
 on($('#log-filters'), 'change', () => loadLogs());
 on($('#logs-prev'), 'click', () => loadLogs(logPage - 1));
 on($('#logs-next'), 'click', () => loadLogs(logPage + 1));
-window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
+window.addEventListener('beforeunload', event => { if (dirty || sourceEditor.isDirty() || bRedirects.isDirty()) { event.preventDefault(); event.returnValue = ''; } });
 
 const stages = { legacy: '原有站点（保留）', unconfigured: '接入服务未配置', waiting_dns: '等待 DNS 解析', dns_verified: '解析已验证', creating: '正在创建站点', proxy: '配置入口', certificate: '配置证书', verifying: '验收中', active: '已接入', failed: '失败待处理', paused: '已暂停', unsupported: '面板接口待验证' };
 
-async function loadDomains() {
-  catalog = await api('/api/sites');
+async function loadAccounts() {
+  if (!isAdmin(account)) return;
+  const {items} = await api('/api/accounts');
+  const table = element('table','account-table'), head = element('thead'), headings = element('tr'), body = element('tbody');
+  for (const label of ['用户名','角色','域名数','状态','操作']) headings.append(element('th','',label));
+  head.append(headings); table.append(head,body);
+  for (const item of items) {
+    const row = element('tr'), status = element('td'), actions = element('td','account-actions');
+    const count = item.domain_count ?? catalog?.sites.filter(site=>site.owner_id === item.id).length ?? '—';
+    status.append(element('span',`badge ${item.enabled ? 'green' : 'neutral'}`,item.enabled ? '已启用' : '已停用'));
+    if (item.role === 'agent') {
+      actions.append(actionButton(item.enabled ? '停用' : '启用', async () => {
+        if (!await confirmAction(`${item.enabled ? '停用' : '启用'}代理账号 ${item.username}？${item.enabled ? '该代理的现有会话会立即退出，域名与数据继续保留。' : '代理可再次登录并管理自己的域名。'}`)) return;
+        await api(`/api/accounts/${encodeURIComponent(item.id)}`,{method:'PATCH',body:{enabled:!item.enabled}});
+        await loadAccounts(); toast(item.enabled ? '代理账号已停用。' : '代理账号已启用。');
+      },'button secondary small'),actionButton('重设密码',()=>resetAccountPassword(item),'text-button small'));
+    } else actions.append(element('span','subtle','总管理员'));
+    row.append(element('td','',item.username),element('td','',item.role === 'admin' ? '总管理员' : '代理'),element('td','',count),status,actions); body.append(row);
+  }
+  $('#account-list').replaceChildren(table);
+}
+
+function resetAccountPassword(item) {
+  return new Promise(resolve => {
+    const dialog = element('dialog','confirm-dialog account-dialog'), heading = element('h2','','重设代理密码');
+    heading.id='password-dialog-title'; dialog.setAttribute('aria-labelledby',heading.id);
+    const form = element('form'), label = element('label','','新密码'), input = element('input');
+    input.type='password'; input.name='password'; input.required=true; input.minLength=12; input.maxLength=256; input.autocomplete='new-password'; label.append(input);
+    const actions=element('div','actions'), cancel=element('button','button secondary','取消'), save=element('button','button primary','重设密码');
+    cancel.type='button'; save.type='submit';
+    const finish=()=>{input.value=''; dialog.close(); dialog.remove(); resolve();};
+    cancel.addEventListener('click',finish); dialog.addEventListener('cancel',event=>{event.preventDefault();finish();});
+    on(form,'submit',async event=>{
+      event.preventDefault();
+      await busy(save,async()=>{
+        await api(`/api/accounts/${encodeURIComponent(item.id)}/password`,{method:'POST',body:{password:input.value}});
+        finish(); toast('密码已重设，该代理的现有会话已退出。');
+      });
+    });
+    actions.append(cancel,save); form.append(label,element('p','subtle','12–256 位。成功后请将新密码交给代理。'),actions);
+    dialog.append(heading,element('p','muted',item.username),form); document.body.append(dialog); dialog.showModal(); input.focus();
+  });
+}
+
+async function assignOwner(site) {
+  if (!isAdmin(account)) return;
+  const {items} = await api('/api/accounts');
+  return new Promise(resolve=>{
+    const dialog=element('dialog','confirm-dialog account-dialog'), heading=element('h2','','分配域名归属');
+    heading.id='owner-dialog-title'; dialog.setAttribute('aria-labelledby',heading.id);
+    const form=element('form'), label=element('label','','归属账号'), select=element('select');
+    select.name='owner_id'; select.required=true;
+    for (const item of items) {const option=element('option','',`${item.username} · ${item.role === 'admin' ? '总管理员' : '代理'}${item.enabled ? '' : '（已停用）'}`); option.value=item.id; select.append(option);}
+    select.value=site.owner_id; label.append(select);
+    const actions=element('div','actions'), cancel=element('button','button secondary','取消'), save=element('button','button primary','保存归属');
+    cancel.type='button'; save.type='submit';
+    const finish=()=>{dialog.close();dialog.remove();resolve();};
+    cancel.addEventListener('click',finish); dialog.addEventListener('cancel',event=>{event.preventDefault();finish();});
+    on(form,'submit',async event=>{
+      event.preventDefault();
+      await busy(save,async()=>{
+        await api(`/api/sites/${site.id}/owner`,{method:'PUT',body:{owner_id:select.value}});
+        finish();
+        if (site.id === selectedSite) clearCurrentSite(selectedSite);
+        await loadDomains();
+        if (site.id === selectedSite) await refreshState();
+        toast('域名归属已更新，新归属立即生效。');
+      });
+    });
+    actions.append(cancel,save); form.append(label,element('p','subtle','转移后原代理无法继续访问此域名及相关数据；页面、规则和记录继续保留。'),actions);
+    dialog.append(heading,element('p','muted',site.domain || '原有站点'),form); document.body.append(dialog); dialog.showModal(); select.focus();
+  });
+}
+
+if ($('#account-form')) {
+  on($('#refresh-accounts'),'click',loadAccounts);
+  on($('#account-form'),'submit',async event=>{
+    event.preventDefault(); if (!isAdmin(account)) return;
+    const form=event.currentTarget;
+    await busy(event.submitter,async()=>{
+      await api('/api/accounts',{method:'POST',body:{username:form.elements.username.value.trim(),password:form.elements.password.value}});
+      form.reset(); form.elements.password.value=''; await loadAccounts(); toast('代理账号已创建。');
+    });
+  });
+}
+
+function editSiteNote(site) {
+  return new Promise(resolve => {
+    const dialog = element('dialog', 'confirm-dialog note-dialog');
+    const heading = element('h2', '', '编辑备注'); heading.id = 'note-dialog-title';
+    dialog.setAttribute('aria-labelledby', heading.id);
+    const form = element('form'), label = element('label', '', '备注');
+    const input = element('textarea'); input.name = 'note'; input.rows = 3; input.maxLength = 200; input.value = site.note || '';
+    input.placeholder = '例如：韩国手机流量 / 第 2 组测试';
+    label.append(input);
+    const actions = element('div', 'actions');
+    const cancel = element('button', 'button secondary', '取消'); cancel.type = 'button';
+    const save = element('button', 'button primary', '保存备注'); save.type = 'submit';
+    const finish = () => { dialog.close(); dialog.remove(); resolve(); };
+    cancel.addEventListener('click', finish);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); finish(); });
+    on(form, 'submit', async event => {
+      event.preventDefault();
+      await busy(save, async () => {
+        await api(`/api/sites/${site.id}/metadata`, {method:'PATCH',body:{note:input.value}});
+        finish(); await loadDomains(); toast('备注已保存。');
+      });
+    });
+    actions.append(cancel, save); form.append(label, element('p', 'subtle', '最多 200 字，仅管理后台可见。'), actions);
+    dialog.append(heading, element('p', 'muted', site.domain || '原有本地站点'), form);
+    document.body.append(dialog); dialog.showModal(); input.focus();
+  });
+}
+
+async function showSiteEvents(site) {
+  const request = ++siteEventsRequest;
+  siteEventsSite = site.id;
+  const data = await api(`/api/sites/${site.id}/provision/events`);
+  if (request !== siteEventsRequest) return;
+  $('#provision-events-title').textContent = `${site.domain || '原有站点'} · 操作日志`;
+  $('#provision-events').replaceChildren(...(data.items.length
+    ? data.items.map(item => element('p', 'subtle', `${formatDate(item.created)} · ${stages[item.stage] || item.stage} · ${item.detail}`))
+    : [element('p', 'subtle', '暂无操作记录。')]));
+  $('#provision-events-panel').hidden = false;
+  $('#provision-events-panel').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function renderReputation(site, cell) {
+  const reputation = site.google_reputation;
+  const display = reputationChecking.has(site.id) ? {label:'检测中…',tone:'neutral'} : reputationView(reputation);
+  const badge = element('span',`domain-health badge ${display.tone}`,display.label);
+  badge.title = reputation?.detail || '尚无谷歌检测结果';
+  cell.replaceChildren(badge);
+  if (display.tone === 'red') cell.append(element('small','domain-detail',(reputation.threats || []).map(kind=>({MALWARE:'恶意软件',SOCIAL_ENGINEERING:'钓鱼欺诈',UNWANTED_SOFTWARE:'不受欢迎的软件'})[kind] || kind).join(' · ')));
+  if (reputation?.checked_at) cell.append(element('small','domain-detail',formatDate(reputation.checked_at)));
+  else cell.append(element('small','domain-detail',reputation?.status === 'unconfigured' ? isAdmin(account) ? '等待 API 配置' : '检测未启用 · 联系管理员' : reputationChecking.has(site.id) ? '正在查询谷歌' : '自动检测'));
+}
+
+function renderDomains() {
+  if (!catalog) return;
+  const all = catalog.sites;
+  const online = all.filter(site => site.enabled && ['active','legacy'].includes(site.stage)).length;
+  const offline = all.filter(site => !site.enabled).length;
+  $('#domains-summary').replaceChildren(...[
+    [isAdmin(account) ? '全部域名' : '我的域名',all.length],['已上线',online],['待接入',all.length-online-offline],['已下线',offline],
+  ].map(([label,count]) => {const item = element('span'); item.append(element('strong','',count),document.createTextNode(` ${label}`)); return item;}));
+  const query = $('#domain-search').value.trim().toLowerCase();
+  const sites = all.filter(site => `${site.domain} ${site.note || ''}`.toLowerCase().includes(query));
+  const table = element('table','domain-table');
+  const head = element('thead'), headings = element('tr'), body = element('tbody');
+  for (const name of ['域名','谷歌安全检测','接入状态','添加日期','备注','状态','操作']) headings.append(element('th','',name));
+  head.append(headings); table.append(head,body);
+  for (const site of sites) {
+    const row = element('tr'), name = element('td'), health = element('td'), validation = element('td'), created = element('td'), note = element('td'), availability = element('td'), actions = element('td');
+    name.append(element('strong','domain-name',site.domain || '原有本地站点'), element('small','domain-detail',site.id === 'default' ? '原有站点' : '自带域名'));
+    if (isAdmin(account)) {
+      const owner = element('div','domain-owner');
+      owner.append(element('small','domain-detail',`归属：${site.owner_username || '总管理员'}`),actionButton('分配',()=>assignOwner(site),'text-button small'));
+      name.append(owner);
+    }
+    health.dataset.reputationSite = site.id;
+    renderReputation(site,health);
+    const healthText = site.stage === 'active' ? '已验收' : ['failed','unsupported'].includes(site.stage) ? '需处理' : site.stage === 'legacy' ? '待核验' : '接入中';
+    const healthColor = site.stage === 'active' ? 'green' : ['failed','unsupported'].includes(site.stage) ? 'red' : 'neutral';
+    validation.append(element('span',`domain-health badge ${healthColor}`,healthText));
+    const detail = element('small','domain-detail',stages[site.stage] || site.stage);
+    detail.title = (site.error || '基于已有接入记录，非实时探测') + (site.enabled && site.next_attempt && site.stage!=='active' ? `；下次检查：${formatDate(site.next_attempt)}` : ''); validation.append(detail);
+    if (site.error && site.stage !== 'active') { const error = element('small',`domain-detail${['failed','unsupported'].includes(site.stage)?' domain-error':''}`,site.error.length>52 ? site.error.slice(0,52)+'…' : site.error); error.title=site.error; validation.append(error); }
+    const dnsPassed = ['active','dns_verified','creating','proxy','certificate','verifying'].includes(site.stage);
+    validation.append(element('small','domain-detail',`${dnsPassed ? 'DNS 已验证' : 'DNS 未确认'} · ${site.stage === 'active' ? '证书已验收' : '证书未确认'}`));
+    const date = site.created ? new Date(site.created*1000) : null;
+    created.append(element('span','',date ? date.toLocaleDateString('zh-CN') : '—'));
+    created.title = date ? formatDate(site.created) : '登记时间未知';
+    const memo = element('span','domain-note',site.note || '—'); memo.title = site.note || '暂无备注';
+    note.append(memo,actionButton('编辑',()=>editSiteNote(site),'text-button small'));
+    const live = site.enabled && ['active','legacy'].includes(site.stage);
+    availability.append(element('span',`domain-status ${!site.enabled?'offline':live?'online':'pending'}`,!site.enabled?'已下线':live?'已上线':'待接入'));
+    actions.className='domain-actions';
+    actions.append(actionButton(site.id===selectedSite?'当前站点':'管理',()=>switchSite(site.id),'button secondary small'));
+    actions.append(actionButton(site.enabled?'下线':'上线',async()=>{
+      const action = site.enabled ? 'offline' : 'online';
+      if (site.enabled && !await confirmAction(`下线 ${site.domain || '原有站点'}？访客将无法继续访问；页面、规则和历史数据都会保留。`)) return;
+      await api(`/api/sites/${site.id}/availability/${action}`,{method:'POST',body:{}});
+      await loadDomains();
+      if (site.id === selectedSite) await refreshState();
+      toast(site.enabled ? '域名已下线。' : ['active','legacy'].includes(site.stage) ? '域名已上线。' : '已启用域名并重试接入，DNS 与证书仍待验收。');
+    },`button ${site.enabled?'secondary':'primary'} small`));
+    actions.append(actionButton('日志',()=>showSiteEvents(site),'text-button small'));
+    if (site.id !== 'default' && site.enabled && !['active','legacy'].includes(site.stage)) actions.append(actionButton('重试',async()=>{
+      await api(`/api/sites/${site.id}/provision/retry`,{method:'POST',body:{}}); await loadDomains();
+    },'text-button small'));
+    row.append(name,health,validation,created,note,availability,actions); body.append(row);
+  }
+  if (!sites.length) { const row=element('tr'), cell=element('td','empty-state',all.length ? '没有匹配的域名或备注' : '暂无域名，点击「添加域名」开始接入。'); cell.colSpan=7; row.append(cell); body.append(row); }
+  $('#domain-list').replaceChildren(table);
+}
+
+async function loadDomains({refreshSelection = true} = {}) {
+  const request = ++domainsRequest;
+  const result = await api('/api/sites');
+  if (request !== domainsRequest) return;
+  if (result.google_reputation_configured) for (const site of result.sites) {
+    const recent = latestReputation.get(site.id);
+    if (recent?.checked_at > (site.google_reputation?.checked_at || 0)) site.google_reputation = recent;
+  }
+  catalog = result;
+  account = result.account;
+  const next = chooseSite(selectedSite, catalog.sites);
+  const changed = next !== selectedSite;
+  if (changed || !next) clearCurrentSite(next);
+  $('#no-sites').hidden = Boolean(next);
+  if (!next) { $('#connection').textContent='服务已连接'; $('#connection').className='badge green'; }
+  $('#refresh-state').disabled = !next;
+  $$('[data-tab], [data-go]').forEach(button => {
+    const tab = button.dataset.tab || button.dataset.go;
+    button.disabled = (!next && !['domains','accounts'].includes(tab)) || (tab === 'accounts' && !isAdmin(account));
+  });
+  $('#site-selector').previousElementSibling.textContent = isAdmin(account) ? '当前管理站点' : '我的域名';
+  $('#analytics-scope').querySelector('[value="all"]').textContent = isAdmin(account) ? '所有域名' : '我的域名';
+  $('#google-reputation-notice').textContent = catalog.google_reputation_configured
+    ? '自动检测已开启 · 本页停留时检查未检测或已过期的域名，结果直接显示在下方。'
+    : isAdmin(account) ? '自动检测待启用：请先配置 Google Web Risk API 密钥，完成后本页自动显示结果。' : '检测未启用，请联系管理员。';
   const selector = $('#site-selector'); selector.replaceChildren();
   for (const site of catalog.sites) {
     const option = element('option', '', site.domain || '原有本地站点'); option.value = site.id; selector.append(option);
   }
+  if (!next) { const option = element('option','','暂无域名'); option.value=''; selector.append(option); }
   selector.value = selectedSite;
   $('#dns-instructions').textContent = catalog.server_ip
     ? `解析类型：A ｜ 记录值：${catalog.server_ip} ｜ 主机记录：按你填写的完整域名，在域名服务商处选择对应子域名（根域名通常为 @）。`
     : '服务器公网 IP 尚未配置；现在可以登记域名和测试独立配置，但不能自动建站或申请证书。';
-  const root = $('#domain-list'); root.replaceChildren();
-  for (const site of catalog.sites) {
-    const row = element('div', 'domain-row');
-    const text = element('div', 'grow');
-    text.append(element('h3', '', site.domain || '原有本地站点'), element('p', 'subtle', `${stages[site.stage] || site.stage} · ${site.enabled ? '启用' : '暂停'}${site.id === 'default' ? '' : ' · 证书：' + (site.stage === 'active' ? '验收通过' : '未确认')}`));
-    if (site.error) text.append(element('p', 'domain-error', site.error));
-    if (site.next_attempt && site.stage !== 'active') text.append(element('small', '', `下次检查：${formatDate(site.next_attempt)}`));
-    const actions = element('div', 'actions');
-    actions.append(actionButton(site.id === selectedSite ? '当前站点' : '管理此站', () => switchSite(site.id)));
-    if (site.id !== 'default') {
-      actions.append(actionButton('接入日志', async () => {
-        const data = await api(`/api/sites/${site.id}/provision/events`);
-        $('#provision-events-title').textContent = `${site.domain} · 接入日志`;
-        $('#provision-events').replaceChildren(...data.items.map(item => element('p', 'subtle', `${formatDate(item.created)} · ${stages[item.stage] || item.stage} · ${item.detail}`)));
-        $('#provision-events-panel').hidden = false;
-      }));
-      actions.append(actionButton('重试接入', async () => {
-        await api(`/api/sites/${site.id}/provision/retry`, { method: 'POST', body: {} }); await loadDomains();
-      }));
-      if (site.enabled) actions.append(actionButton('暂停', async () => {
-        if (!await confirmAction(`暂停 ${site.domain} 的接入和访问？不会删除任何页面或宝塔站点。`)) return;
-        await api(`/api/sites/${site.id}/provision/pause`, { method: 'POST', body: {} }); await loadDomains();
-      }));
-    }
-    row.append(text, actions); root.append(row);
+  renderDomains();
+  const visible = new Set(catalog.sites.map(site=>site.id));
+  if (siteEventsSite && !visible.has(siteEventsSite)) {
+    ++siteEventsRequest; siteEventsSite=null;
+    $('#provision-events').replaceChildren(); $('#provision-events-panel').hidden=true;
   }
+  for (const id of latestReputation.keys()) if (!visible.has(id)) latestReputation.delete(id);
+  for (const id of reputationChecking) if (!visible.has(id)) reputationChecking.delete(id);
+  reputationAutoCheck.refresh(catalog).catch(()=>{});
+  updateSiteLock();
+  if (!next && !['domains','accounts'].includes(activeTab)) await selectTab('domains',{load:false});
+  if (changed && next && refreshSelection) {
+    await refreshState();
+    if (activeTab === 'logs') await loadLogs();
+  }
+}
+
+function clearCurrentSite(next) {
+  sourceEditor.clear();
+  bRedirects.clear();
+  selectedSite = next;
+  ++stateRequest; ++logsRequest; ++siteEventsRequest; closePreview(); dashboard.invalidate();
+  siteEventsSite=null;
+  state = null; setDirty(false); editing++;
+  rulesForm.reset(); Object.values(selections).forEach(selection=>selection.set([]));
+  $('#links-form').reset(); $('#simulate-form').reset(); $('#log-filters').reset();
+  for (const id of ['rules-fields','links-fields','simulate-fields','reset-counters']) $(`#${id}`).disabled=true;
+  for (const id of ['slot-cards','links-list','audit-list','logs-body','provision-events']) $(`#${id}`).replaceChildren();
+  $('#audit-details').open=false; $('#provision-events-panel').hidden=true;
+  $('#export-logs').removeAttribute('href'); $('#open-target').removeAttribute('href');
+  $('#open-target').hidden=true;
+  $('#link-count').textContent='0 个链接'; $('#logs-summary').textContent=''; $('#logs-page').textContent='—';
+  $('#logs-prev').disabled=true; $('#logs-next').disabled=true;
+  $('#simulation-output').replaceChildren(element('p','empty-state','请为当前站点重新运行模拟。'));
+  $('#analytics-retention').textContent=''; $('#geoip-warning').hidden=true; $('#load-error').hidden=true;
+  for (const id of ['geoip-status','current-mode','published-count','last-sync','allowed-slot-badge','allowed-content-status','overview-allowed-status']) $(`#${id}`).textContent='—';
+  $('#hero-mode').textContent=next ? '正在读取当前站点…' : '暂无域名';
+  $('#hero-title').textContent=next ? '正在切换站点' : '添加你的第一个域名';
+  $('#hero-description').textContent=''; $('#sidebar-theme').textContent=next ? '主题加载中' : '等待添加域名';
+  $('#site-context').textContent=next ? '正在加载独立配置…' : '添加域名后即可管理内容与访问规则。';
+  $$('.tab-panel').forEach(panel=>{panel.inert=!['panel-domains','panel-accounts'].includes(panel.id);});
+  updateConfigControls();
 }
 
 async function switchSite(next) {
   if (next === selectedSite) return;
+  if (!catalog?.sites.some(site=>site.id === next)) return;
   if (configBusy || pendingActions > 1 || siteLoading) { $('#site-selector').value = selectedSite; return; }
-  const hasDraft = dirty || $('#links-form').elements.urls.value.trim() || $$('.upload-form input[type=file]').some(input => input.files.length);
-  if (hasDraft && !await confirmAction('切换站点将丢弃尚未保存的规则、链接草稿和选中的上传文件，是否继续？')) { $('#site-selector').value = selectedSite; return; }
+  const hasDraft = dirty || sourceEditor.isDirty() || bRedirects.isDirty() || $('#links-form').elements.urls.value.trim() || $$('.upload-form input[type=file]').some(input => input.files.length);
+  if (hasDraft && !await confirmAction('切换站点将丢弃尚未保存的规则、源码、链接草稿和选中的上传文件，是否继续？')) { $('#site-selector').value = selectedSite; return; }
   siteLoading = true; updateSiteLock();
-  $('#site-context').textContent = '正在切换站点并加载独立配置…';
-  $('#open-target').removeAttribute('href');
-  $$('.tab-panel').forEach(panel => { panel.inert = true; });
-  selectedSite = next; $('#site-selector').value = next;
-  ++stateRequest; ++logsRequest; closePreview();
-  setDirty(false); editing++; state = null;
-  $('#slot-cards').replaceChildren(); $('#links-form').reset();
-  $('#simulation-output').replaceChildren(element('p', 'empty-state', '请为当前站点重新运行模拟。'));
-  $('#audit-list').replaceChildren(); $('#logs-body').replaceChildren();
-  $('#export-logs').href = sitePath(`/api/logs.csv?${logParams()}`, selectedSite);
+  clearCurrentSite(next); $('#site-selector').value = next;
   try {
     await refreshState();
     if (activeTab === 'logs') await loadLogs();
     if ($('#audit-details').open) await loadAudit();
   } finally {
     siteLoading = false; updateSiteLock();
-    $$('.tab-panel').forEach(panel => { panel.inert = !state && panel.id !== 'panel-domains'; });
-    if (!state) { $('#open-target').removeAttribute('href'); $('#site-context').textContent = '当前站点加载失败，请刷新状态或切换其他站点。'; }
+    $$('.tab-panel').forEach(panel => { panel.inert = !state && !['panel-domains','panel-accounts'].includes(panel.id); });
+    if (!state && selectedSite) { $('#open-target').removeAttribute('href'); $('#site-context').textContent = '当前站点加载失败，请刷新状态或切换其他站点。'; }
   }
 }
 
 on($('#site-selector'), 'change', event => switchSite(event.target.value));
 on($('#refresh-domains'), 'click', loadDomains);
+on($('#domain-search'), 'input', renderDomains);
+on($('#new-domain'), 'click', () => { $('#domain-add-panel').hidden=false; $('#domain-add-panel').scrollIntoView({behavior:'smooth',block:'nearest'}); $('#domain-form').elements.domain.focus(); });
+on($('#empty-add-domain'), 'click', async () => { await selectTab('domains'); $('#new-domain').click(); });
+on($('#cancel-domain-add'), 'click', () => { $('#domain-add-panel').hidden=true; });
 on($('#domain-form'), 'submit', async event => {
   event.preventDefault(); const form = event.currentTarget;
   await busy(event.submitter, async () => {
@@ -558,6 +864,8 @@ on($('#domain-form'), 'submit', async event => {
   });
 });
 
+document.body.dataset.tab = 'overview';
 renderSlots();
-Promise.all([loadDomains(), refreshState()]).catch(error => toast(error.message, true)).finally(() => { siteLoading = false; updateSiteLock(); });
-window.setInterval(() => { if (activeTab === 'domains' && !document.hidden && !pendingActions) loadDomains().catch(() => {}); }, 15000);
+loadDomains({refreshSelection:false}).then(() => refreshState()).catch(error => toast(error.message, true)).finally(() => { siteLoading = false; updateSiteLock(); });
+window.setInterval(() => { if (!document.hidden && !pendingActions) loadDomains().catch(() => {}); }, 15000);
+document.addEventListener('visibilitychange',()=>{ if (!document.hidden) loadDomains().catch(()=>{}); });

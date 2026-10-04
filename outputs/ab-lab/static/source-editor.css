@@ -1,0 +1,47 @@
+.source-editor {
+  width: min(1440px, calc(100vw - 64px));
+  height: min(940px, calc(100dvh - 64px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 24px 90px #0006;
+}
+.source-editor[open] { display: flex; flex-direction: column; }
+.source-editor::backdrop { background: #0b1222a6; backdrop-filter: blur(5px); }
+.source-editor-header { padding: 20px 24px 14px; border-bottom: 1px solid var(--line); }
+.source-editor-header h2 { font-size: 21px; margin-bottom: 4px; }
+.source-editor-header p { overflow-wrap: anywhere; }
+.source-editor-base { color: var(--muted); font-size: 11px; margin-top: 4px; }
+.source-editor-toolbar { display: flex; gap: 24px; align-items: flex-end; padding: 14px 24px; }
+.source-editor-toolbar label { width: min(420px, 50%); flex-shrink: 0; }
+.source-editor-path { color: var(--muted); font-family: Consolas, "SFMono-Regular", monospace; font-size: 12px; overflow-wrap: anywhere; padding-bottom: 9px; }
+.source-editor #source-editor-content {
+  flex: 1;
+  min-height: 0;
+  width: calc(100% - 48px);
+  margin: 0 24px;
+  padding: 18px 20px;
+  resize: none;
+  font-family: Consolas, "SFMono-Regular", "Liberation Mono", monospace;
+  font-size: 14px;
+  line-height: 1.65;
+  tab-size: 2;
+  color: var(--ink);
+  background: var(--field);
+  border: 1px solid var(--line);
+}
+.source-editor-error { margin: 12px 24px 0; color: var(--ink); padding: 10px 12px; border-left: 3px solid #cc7e87; background: var(--surface-soft); overflow-wrap: anywhere; }
+.source-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 24px; }
+#source-editor-status { font-weight: 600; font-size: 13px; }
+.source-editor-footer small { margin-top: 3px; }
+.slot-source-edit { margin-top: 10px; }
+@media (max-width: 720px) {
+  .source-editor { width: calc(100vw - 20px); height: calc(100dvh - 20px); }
+  .source-editor-toolbar, .source-editor-footer { flex-wrap: wrap; gap: 10px; }
+  .source-editor-toolbar label { width: 100%; }
+  .source-editor-path { padding: 0; }
+}
