@@ -19,6 +19,18 @@ class Conflict(ValueError):
     pass
 
 
+def choose_split_member(members, mode):
+    if mode == 'weighted':
+        total = sum(item['weight'] for item in members)
+        draw = secrets.randbelow(total)
+        covered = 0
+        for item in members:
+            covered += item['weight']
+            if draw < covered:
+                return item
+    return secrets.choice(members)
+
+
 class Store:
     def __init__(self, directory):
         self.directory = Path(directory).resolve()
@@ -37,6 +49,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS rotation(slot TEXT PRIMARY KEY, last_id INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_presets(id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, note TEXT NOT NULL, created REAL NOT NULL, check_result TEXT);
                 CREATE TABLE IF NOT EXISTS redirect_active(id INTEGER PRIMARY KEY CHECK(id=1), url TEXT NOT NULL, preset_id INTEGER REFERENCES redirect_presets(id) ON DELETE SET NULL, version_id TEXT NOT NULL REFERENCES versions(id), updated REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS redirect_split(id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL, mode TEXT NOT NULL, members TEXT NOT NULL, updated REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS redirect_split_assign(visitor_hash TEXT PRIMARY KEY, preset_id INTEGER, url TEXT NOT NULL, created REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, created REAL NOT NULL, ip TEXT NOT NULL, country TEXT, device TEXT NOT NULL, slot TEXT NOT NULL, reason TEXT NOT NULL, path TEXT NOT NULL, mode TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS events_created ON events(created);
                 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, created REAL NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL);
@@ -228,6 +242,54 @@ class Store:
         with self.connect() as db:
             row = db.execute('SELECT url,preset_id,version_id,updated FROM redirect_active WHERE id=1').fetchone()
             return dict(row) if row else None
+
+    def redirect_split(self):
+        with self.connect() as db:
+            row = db.execute('SELECT enabled,mode,members,updated FROM redirect_split WHERE id=1').fetchone()
+            presets = {item['id']: item['url'] for item in db.execute('SELECT id,url FROM redirect_presets')}
+        if not row:
+            return {'enabled': False, 'mode': 'random', 'members': [], 'updated': None}
+        members = []
+        for item in json.loads(row['members']):
+            url = presets.get(item['preset_id'])
+            if url:
+                members.append({'preset_id': item['preset_id'], 'weight': item['weight'], 'url': url})
+        return {'enabled': bool(row['enabled']), 'mode': row['mode'], 'members': members, 'updated': row['updated']}
+
+    def save_redirect_split(self, enabled, mode, members):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            found = {row['id'] for row in db.execute('SELECT id FROM redirect_presets')}
+            if any(item.preset_id not in found for item in members):
+                raise ValueError('分流链接不在预设池中，请刷新后再保存')
+            if enabled and not members:
+                raise ValueError('开启分流时至少选择一条预设链接')
+            payload = json.dumps([{'preset_id': item.preset_id, 'weight': item.weight} for item in members], ensure_ascii=False)
+            db.execute('''INSERT INTO redirect_split VALUES(1,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled, mode=excluded.mode, members=excluded.members, updated=excluded.updated''',
+                (int(enabled), mode, payload, time.time()))
+            self._audit(db, 'b_redirect_split_updated', {'enabled': enabled, 'mode': mode, 'count': len(members)})
+        return self.redirect_split()
+
+    def split_destination(self, visitor_hash):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            split = db.execute('SELECT enabled,mode,members FROM redirect_split WHERE id=1').fetchone()
+            if not split or not split['enabled']:
+                return None
+            existing = db.execute('SELECT url FROM redirect_split_assign WHERE visitor_hash=?', (visitor_hash,)).fetchone()
+            if existing:
+                return existing['url']
+            chosen = []
+            for item in json.loads(split['members']):
+                preset = db.execute('SELECT id,url FROM redirect_presets WHERE id=?', (item['preset_id'],)).fetchone()
+                if preset:
+                    chosen.append({'preset_id': preset['id'], 'url': preset['url'], 'weight': item['weight']})
+            if not chosen:
+                return None
+            pick = choose_split_member(chosen, split['mode'])
+            db.execute('INSERT OR IGNORE INTO redirect_split_assign(visitor_hash,preset_id,url,created) VALUES(?,?,?,?)', (visitor_hash, pick['preset_id'], pick['url'], time.time()))
+            return db.execute('SELECT url FROM redirect_split_assign WHERE visitor_hash=?', (visitor_hash,)).fetchone()['url']
 
     def apply_redirects(self, base, preset, occurrence_ids, expected_published, commit_guard=None):
         from .redirects import replace_bundle

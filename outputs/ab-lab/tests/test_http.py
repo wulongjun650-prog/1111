@@ -69,6 +69,28 @@ def test_b_version_delete_and_cleanup_keep_the_published_page(apps, tmp_path):
     assert any(item['action'] == 'b_version_deleted' for item in admin.get('/api/audit').json()['items'])
 
 
+def test_b_split_rewrites_the_page_before_it_is_sent(apps):
+    admin, target = apps
+    upload(admin, 'B', '<a href="https://old.example/landing">go</a>')
+    preset = admin.post('/api/b-redirects/presets', json={'urls': ['https://split.example/landing'], 'note': ''})
+    assert preset.status_code == 200, preset.text
+    saved = admin.put('/api/b-redirects/split', json={'enabled': True, 'mode': 'random', 'members': [{'preset_id': preset.json()['presets'][0]['id'], 'weight': 1}]})
+    assert saved.status_code == 200, saved.text
+    first = target.get('/')
+    assert first.status_code == 200
+    assert 'https://split.example/landing' in first.text
+    assert 'old.example' not in first.text
+    assert first.cookies.get('ab_split')
+    assert target.get('/').text == first.text
+    admin.put('/api/b-redirects/split', json={'enabled': False, 'mode': 'random', 'members': [{'preset_id': preset.json()['presets'][0]['id'], 'weight': 1}]})
+    assert 'old.example' in target.get('/').text
+    configure(admin, routing='FORCE_A')
+    upload(admin, 'A', '<a href="https://old.example/landing">go</a>')
+    admin.put('/api/b-redirects/split', json={'enabled': True, 'mode': 'weighted', 'members': [{'preset_id': preset.json()['presets'][0]['id'], 'weight': 80}]})
+    assert 'old.example' in target.get('/').text
+    assert 'split.example' not in target.get('/').text
+
+
 def test_missing_selected_version_never_falls_back(apps):
     admin, target = apps
     upload(admin, 'A', 'Alpha')

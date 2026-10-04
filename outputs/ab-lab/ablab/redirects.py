@@ -451,6 +451,24 @@ def public_occurrences(occurrences):
     return [{key:value for key, value in item.items() if not key.startswith('_')} for item in occurrences]
 
 
+def rewrite_text(data, positions, url):
+    """Replace already-scanned spans in one file. The bytes stay on disk."""
+    if not positions:
+        return data
+    text = data.decode('utf-8-sig')
+    for item in sorted(positions, key=lambda span: span['_start'], reverse=True):
+        if item['_mode'] == 'html':
+            replacement = html.escape(item['_prefix'] + url + item['_suffix'], quote=True)
+            if not item['_quote']:
+                replacement = '"' + replacement + '"'
+        else:
+            replacement = json.dumps(url, ensure_ascii=True).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+            if item['_mode'] == 'js_html':
+                replacement = html.escape(replacement, quote=True)
+        text = text[:item['_start']] + replacement + text[item['_end']:]
+    return (b'\xef\xbb\xbf' if data.startswith(b'\xef\xbb\xbf') else b'') + text.encode('utf-8')
+
+
 def replace_bundle(root, version_id, occurrence_ids, url, pages, filename):
     # Scan again so changes while checking a link cannot publish stale offsets.
     snapshots = {}
@@ -465,18 +483,7 @@ def replace_bundle(root, version_id, occurrence_ids, url, pages, filename):
         data = snapshots[path] if path in snapshots else read_source(file, path)
         positions = [item for item in selected if item['path'] == path]
         if positions:
-            text = data.decode('utf-8-sig')
-            for item in sorted(positions, key=lambda span:span['_start'], reverse=True):
-                if item['_mode'] == 'html':
-                    replacement = html.escape(item['_prefix'] + url + item['_suffix'], quote=True)
-                    if not item['_quote']:
-                        replacement = '"' + replacement + '"'
-                else:
-                    replacement = json.dumps(url, ensure_ascii=True).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
-                    if item['_mode'] == 'js_html':
-                        replacement = html.escape(replacement, quote=True)
-                text = text[:item['_start']] + replacement + text[item['_end']:]
-            data = (b'\xef\xbb\xbf' if data.startswith(b'\xef\xbb\xbf') else b'') + text.encode('utf-8')
+            data = rewrite_text(data, positions, url)
         validate_file(path, data)
         total += len(data)
         if total > MAX_TOTAL:
