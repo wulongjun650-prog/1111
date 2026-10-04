@@ -243,7 +243,8 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     const changed = value.published !== state.slots.B;
     value.versions = state.versions.filter(item => item.slot === 'B');
     value.published = state.slots.B;
-    if (changed) {++value.request; value.loading = false; value.versionId = value.published; value.scanned = false; value.occurrences = []; renderOccurrences(value);}
+    const missingSelection = value.versionId && !value.versions.some(item => item.id === value.versionId);
+    if (changed || missingSelection) {++value.request; value.loading = false; value.versionId = value.published; value.scanned = false; value.occurrences = []; renderOccurrences(value);}
     renderVersions(value); updateControls();
     if (active && !value.scanned && !value.loading) scan(value);
   }

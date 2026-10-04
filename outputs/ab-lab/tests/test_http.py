@@ -44,6 +44,31 @@ def test_upload_publish_modes_and_restart_persist(apps, tmp_path):
     assert 'Alpha' in restarted.get('/').text
 
 
+def test_b_version_delete_and_cleanup_keep_the_published_page(apps, tmp_path):
+    admin, target = apps
+    live = upload(admin, 'B', '<h1>Live</h1>')
+    extra = admin.post('/api/upload/B?name=old.html', content=b'<h1>Old</h1>')
+    assert extra.status_code == 200, extra.text
+    extra_id = extra.json()['version']['id']
+    alpha = upload(admin, 'A', '<h1>Alpha</h1>')
+    refused = admin.delete(f'/api/versions/B/{live}')
+    assert refused.status_code == 400
+    assert '当前发布' in refused.json()['detail']
+    assert admin.delete(f'/api/versions/B/{alpha}').status_code == 400
+    assert admin.delete(f'/api/versions/B/{extra_id}').status_code == 200
+    assert not (tmp_path / 'pages' / extra_id).exists()
+    admin.post('/api/upload/B?name=old-2.html', content=b'<h1>Old 2</h1>')
+    admin.post('/api/upload/B?name=old-3.html', content=b'<h1>Old 3</h1>')
+    cleaned = admin.post('/api/versions/B/cleanup')
+    assert cleaned.status_code == 200, cleaned.text
+    assert cleaned.json() == {'deleted': 2}
+    state = admin.get('/api/state').json()
+    assert [item['id'] for item in state['versions'] if item['slot'] == 'B'] == [live]
+    assert any(item['id'] == alpha for item in state['versions'] if item['slot'] == 'A')
+    assert 'Live' in target.get('/').text
+    assert any(item['action'] == 'b_version_deleted' for item in admin.get('/api/audit').json()['items'])
+
+
 def test_missing_selected_version_never_falls_back(apps):
     admin, target = apps
     upload(admin, 'A', 'Alpha')
