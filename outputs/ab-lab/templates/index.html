@@ -43,7 +43,7 @@
       <section class="theme-hero" aria-label="当前站点与放行内容">
         <div class="hero-copy"><div class="hero-kicker"><span class="live-dot"></span><span id="hero-mode">正在读取站点配置</span></div>
           <h2 id="hero-title">访问控制</h2><p id="hero-description">正在加载当前站点。</p>
-          <div class="hero-controls"><label class="hero-site" for="site-selector"><span>当前管理站点</span><select id="site-selector" disabled><option value="default">加载中…</option></select></label>
+          <div class="hero-controls"><label class="hero-site" for="site-selector"><span id="site-selector-label">当前管理站点</span><span class="hero-site-field"><select id="site-selector" disabled><option value="default">加载中…</option></select><button type="button" id="copy-domain" disabled>加载中…</button></span></label>
             <fieldset id="hero-switch" disabled><legend>放行内容 · 仅当前站点</legend><button type="button" data-allowed-slot="A" aria-pressed="false"><span class="switch-letter">A</span><span class="switch-label">展示 A<small data-slot-caption>切换内容</small></span></button><button type="button" data-allowed-slot="B" aria-pressed="false"><span class="switch-letter">B</span><span class="switch-label">展示 B<small data-slot-caption>切换内容</small></span></button></fieldset>
           </div><p id="site-context" class="hero-context">正在加载站点列表…</p>
         </div><div class="hero-art" aria-hidden="true">

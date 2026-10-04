@@ -312,6 +312,27 @@ html[data-theme="demon"] .hero-copy h2 { text-shadow: 0 0 23px #f600545e; }
 .hero-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 15px; margin-top: 16px; }
 .hero-site { width: min(220px, 100%); gap: 4px; color: var(--hero-sub); font-size: 10px; }
 .hero-site select { height: 34px; padding: 5px 9px; font-size: 12px; font-weight: 650; }
+.hero-site-field { position: relative; display: block; min-width: 0; }
+.hero-site-field select {
+  color: transparent;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%), linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position: calc(100% - 18px) center, calc(100% - 12px) center;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+.hero-site-field select option { color: var(--ink); }
+.hero-site-field select:disabled {
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+}
+#copy-domain {
+  position: absolute; z-index: 1; top: 1px; bottom: 1px; left: 1px; right: 34px;
+  margin: 0; padding: 0 11px; border: 0; border-radius: 8px 0 0 8px;
+  background: var(--field); color: var(--ink); font-size: 12px; font-weight: 650;
+  text-align: left; cursor: copy; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hero-site-field:has(select:disabled) #copy-domain { background: var(--surface-soft); }
+#copy-domain:disabled { cursor: default; opacity: 1; }
 #hero-switch { display: flex; gap: 8px; min-width: 0; }
 #hero-switch legend { margin-bottom: 5px; color: var(--hero-sub); font-size: 10px; font-weight: 700; }
 #hero-switch button {
