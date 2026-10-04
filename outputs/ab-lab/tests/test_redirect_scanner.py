@@ -158,7 +158,7 @@ function goWhatsApp(){
 fetch(buildWhatsAppUrl('nope'));'''
     root, pages = bundle(tmp_path, f'<script>{source}</script><img src="assets/banner.webp">')
     occurrences, warnings = redirects.scan_bundle(root, 'original')
-    assert [item['url'] for item in occurrences] == ['https://api.whatsapp.com/send?']
+    assert [item['url'] for item in occurrences] == ['https://api.whatsapp.com/send?phone=85257980601']
     assert not warnings
     version, count = redirects.replace_bundle(root, 'original', [occurrences[0]['id']],
                                               'https://new.example/landing', pages, 'changed.zip')
@@ -168,6 +168,34 @@ fetch(buildWhatsAppUrl('nope'));'''
     assert 'api.whatsapp.com' not in rewritten
     rescanned, _ = redirects.scan_bundle(pages / version['id'], version['id'])
     assert [item['url'] for item in rescanned] == ['https://new.example/landing']
+
+
+def test_landing_page_lists_visitor_jumps_and_skips_google_tags(tmp_path):
+    page = '''<script async src="https://www.googletagmanager.com/gtag/js?id=AW-1"></script>
+<script>
+  gtag('config', 'AW-1');
+  gtag('config', 'G-1');
+  const CONFIG = { whatsappNumber: '85257980601', googleSendTo: 'AW-1/abc' };
+  function buildWhatsAppUrl(message){
+    const phone = String(CONFIG.whatsappNumber || '').replace(/\\D/g,'');
+    const params = new URLSearchParams();
+    params.set('phone', phone);
+    params.set('text', message);
+    params.set('type', 'phone_number');
+    params.set('app_absent', '0');
+    return `https://api.whatsapp.com/send?${params.toString()}`;
+  }
+  function go(){ const url = buildWhatsAppUrl('hi'); window.location.assign(url); }
+</script>
+<script src="https://connect.facebook.net/en_US/fbevents.js"></script>
+<a href="https://www.youtube.com/@EconManBlog/shorts">YouTube</a>'''
+    root, _ = bundle(tmp_path, page)
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == [
+        'https://api.whatsapp.com/send?phone=85257980601&type=phone_number&app_absent=0',
+        'https://www.youtube.com/@EconManBlog/shorts']
+    assert not warnings
+    assert all('google' not in item['url'] and 'facebook' not in item['url'] for item in occurrences)
 
 
 def test_dynamic_host_template_and_nested_function_stay_precise(tmp_path):
