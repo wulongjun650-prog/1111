@@ -10,6 +10,7 @@ import { isAdmin, chooseSite, accountSitePath } from './account-ui.mjs';
 import { createSourceEditor } from './source-editor.mjs';
 import { createBRedirects } from './b-redirects.mjs';
 import { createTracking } from './tracking.mjs';
+import { createVisitWatch } from './visit-watch.mjs';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -37,6 +38,7 @@ const sourceEditor = createSourceEditor({api, on, element, confirmAction, getSit
   onSaved:async result => {toast(`${result.version.slot} 源码已保存并发布，旧版本已保留。`); await refreshState();},
 });
 const tracking = createTracking({api, on, element, confirmAction, toast, getState:() => state, refresh: () => refreshState()});
+const visitWatch = createVisitWatch({api, getSite: () => selectedSite, getDomain: () => currentDomain(), isLogsOpen: () => activeTab === 'logs', reloadLogs: () => loadLogs(logPage, {quiet: true})});
 const bRedirects = createBRedirects({api, on, element, confirmAction, getSite:() => state?.site,
   onApplied:async result => {
     if (!result.check) toast(result.cloudflare?.ok ? 'WhatsApp 号码已更换并发布，Cloudflare 缓存已清除。' : result.cloudflare ? 'WhatsApp 号码已更换。Cloudflare 缓存没清掉，请稍后再试。' : 'WhatsApp 号码已更换并发布。进线语未改。', Boolean(result.cloudflare && !result.cloudflare.ok));
@@ -515,7 +517,7 @@ function visitDeviceLine(details) {
   return `${os} · ${browser}`;
 }
 
-async function loadLogs(page = 1) {
+async function loadLogs(page = 1, {quiet = false} = {}) {
   if (!selectedSite || !state) return;
   const request = ++logsRequest;
   const domain = currentDomain() || '当前域名';
@@ -523,8 +525,10 @@ async function loadLogs(page = 1) {
   const params = logParams();
   $('#export-logs').href = sitePath(`/api/logs.csv?${params}`, selectedSite);
   params.set('page', String(page));
-  $('#logs-summary').textContent = `正在加载 ${domain} 的访问记录…`;
-  $('#logs-prev').disabled = true; $('#logs-next').disabled = true;
+  if (!quiet) {
+    $('#logs-summary').textContent = `正在加载 ${domain} 的访问记录…`;
+    $('#logs-prev').disabled = true; $('#logs-next').disabled = true;
+  }
   try {
     const data = await api(`/api/logs?${params}`);
     if (request !== logsRequest) return;
@@ -1020,6 +1024,7 @@ async function switchSite(next) {
   try {
     await refreshState();
     if (activeTab === 'logs') await loadLogs();
+    visitWatch.checkRate();
     if ($('#audit-details').open) await loadAudit();
   } finally {
     siteLoading = false; updateSiteLock();
@@ -1074,6 +1079,6 @@ on($('#domain-form'), 'submit', async event => {
 
 document.body.dataset.tab = 'overview';
 renderSlots();
-loadDomains({refreshSelection:false}).then(() => refreshState()).catch(error => toast(error.message, true)).finally(() => { siteLoading = false; updateSiteLock(); });
+loadDomains({refreshSelection:false}).then(async () => { await refreshState(); visitWatch.checkRate(); }).catch(error => toast(error.message, true)).finally(() => { siteLoading = false; updateSiteLock(); });
 window.setInterval(() => { if (!document.hidden && !pendingActions) loadDomains().catch(() => {}); }, 15000);
 document.addEventListener('visibilitychange',()=>{ if (!document.hidden) loadDomains().catch(()=>{}); });

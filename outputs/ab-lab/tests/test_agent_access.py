@@ -55,7 +55,7 @@ def test_agent_catalog_and_new_domain_owner_are_isolated(accounts):
 
 @pytest.mark.parametrize('method,suffix,body', [
     ('GET', 'state', None), ('GET', 'analytics?scope=all', None),
-    ('GET', 'logs', None), ('GET', 'logs.csv', None), ('GET', 'audit', None),
+    ('GET', 'logs', None), ('GET', 'logs.csv', None), ('GET', 'logs/rate', None), ('GET', 'audit', None),
     ('GET', 'provision/events', None), ('POST', 'reputation/check', {}),
     ('PATCH', 'metadata', {'note': 'bad'}), ('POST', 'availability/offline', {}),
     ('POST', 'provision/retry', {}), ('PUT', 'config', {}),
