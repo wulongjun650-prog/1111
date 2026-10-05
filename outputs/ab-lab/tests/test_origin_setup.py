@@ -182,6 +182,51 @@ def test_origin_pass_builds_a_direct_domain_without_the_dns_service(tmp_path):
     assert other.read_bytes() == before
 
 
+def test_origin_pass_forces_cloudflare_https_without_building_the_site(tmp_path):
+    setup, registry, site, config, _other, _calls = world(tmp_path, advance=False)
+    registry.set_cloudflare(site['id'], 'c' * 32, 'ada.ns.cloudflare.com', 'pending', '等待 NS')
+
+    class Guard:
+        token = 'present'
+
+        def __init__(self):
+            self.calls = []
+
+        def ensure_strict_ssl(self, zone_id, domain):
+            self.calls.append((zone_id, domain))
+
+    guard = Guard()
+    setup.cloudflare = guard
+    before = config.read_text(encoding='utf-8')
+    setup.run_pending()
+    assert guard.calls == [('c' * 32, DOMAIN)]
+    assert setup.panel.created == []
+    assert config.read_text(encoding='utf-8') == before
+    assert registry.get(site['id'])['stage'] == 'unconfigured'
+
+
+def test_https_redirect_waits_until_cloudflare_uses_https(tmp_path):
+    setup, registry, site, config, _other, _calls = world(tmp_path)
+    registry.set_cloudflare(site['id'], 'c' * 32, 'ada.ns.cloudflare.com', 'active', '已套用')
+    current = registry.get(site['id'])
+    assert registry.transition(site['id'], current['generation'], 'certificate', '证书已有')
+    site = registry.get(site['id'])
+    setup._cloudflare_https_ready(site)
+    saved = registry.get(site['id'])
+    assert saved['stage'] == 'certificate'
+    assert '强制跳转' in saved['error']
+    assert 'listen 443' not in config.read_text(encoding='utf-8')
+
+    class Guard:
+        token = 'present'
+
+        def ensure_strict_ssl(self, zone_id, domain):
+            assert zone_id == 'c' * 32 and domain == DOMAIN
+
+    setup.cloudflare = Guard()
+    assert setup._cloudflare_https_ready(registry.get(site['id'])) is True
+
+
 def test_origin_pass_leaves_cloudflare_domains_untouched(tmp_path):
     setup, registry, site, config, _other, _calls = world(tmp_path, advance=False)
     registry.set_cloudflare(site['id'], 'c' * 32, 'ada.ns.cloudflare.com', 'pending', '等待 NS')

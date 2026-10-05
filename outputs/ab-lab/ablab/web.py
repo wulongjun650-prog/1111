@@ -287,6 +287,16 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     app.state.reputation = reputation
     if cloudflare is None:
         cloudflare = Cloudflare(os.environ.get('AB_CLOUDFLARE_TOKEN', ''), os.environ.get('AB_CLOUDFLARE_TEMPLATE', ''), server_ip)
+        if cloudflare.token:
+            def watch_cloudflare_https():
+                from .cloudflare import repair_strict_ssl
+                while True:
+                    try:
+                        repair_strict_ssl(registry, cloudflare)
+                    except Exception as error:
+                        LOGGER.error('Cloudflare HTTPS repair failed (%s)', type(error).__name__)
+                    time.sleep(60)
+            threading.Thread(target=watch_cloudflare_https, name='cloudflare-https', daemon=True).start()
     app.state.cloudflare = cloudflare
     accounts = Auth(store)
     app.state.auth = accounts

@@ -49,8 +49,10 @@ def main():
         from ablab.sites import Registry
         registry = Registry(args.data, deployment.host(False) if deployment else '', registry_dir=config.get('registry_dir'))
         cloudflare = Cloudflare(os.environ.get('AB_CLOUDFLARE_TOKEN', ''), os.environ.get('AB_CLOUDFLARE_TEMPLATE', ''), config.get('server_ip', ''))
+        from ablab.cloudflare import repair_strict_ssl
         print('DNS inspection only. Site creation runs in the origin service.', flush=True)
         while True:
+            repair_strict_ssl(registry, cloudflare if cloudflare.token else None)
             inspect_pending(registry, config.get('server_ip', ''), cloudflare=cloudflare if cloudflare.configured else None)
             time.sleep(60)
     if args.service == 'origin':

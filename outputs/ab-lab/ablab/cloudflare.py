@@ -69,8 +69,11 @@ class Cloudflare:
                 raise CloudflareError('这条域名就是规则模板，不用再套一次')
             zone = self._ensure_zone(client, domain, template['account_id'])
             try:
+                # Flexible SSL plus the origin's HTTP-to-HTTPS redirect loops forever.
+                self._ensure_strict_ssl(client, zone['id'])
                 self._ensure_record(client, zone['id'], domain)
                 copied, skipped = self._copy(client, template, zone['id'], domain)
+                self._ensure_strict_ssl(client, zone['id'])
             except CloudflareError as error:
                 error.zone_id = error.zone_id or zone['id']
                 error.nameservers = error.nameservers or zone['name_servers']
@@ -89,6 +92,7 @@ class Cloudflare:
             zone = _zone_view(self._call(client, 'GET', '/zones/' + _zone_id(zone_id)))
             if zone['name'] != domain:
                 raise CloudflareError('Cloudflare 站点与登记域名不一致')
+            self._ensure_strict_ssl(client, zone['id'])
             record = self._exact_record(client, zone['id'], domain)
             if record is None or record.get('content') != self.origin_ip or record.get('proxied') is not True:
                 raise CloudflareError('Cloudflare 回源记录还没有指向这台服务器')
@@ -213,6 +217,27 @@ class Cloudflare:
         if len(matches) > 1:
             raise CloudflareError('Cloudflare 上这个域名有多条 A 记录，请先留一条再套用')
         return matches[0] if matches else None
+
+    def ensure_strict_ssl(self, zone_id, domain):
+        """Make Cloudflare connect to this server over HTTPS with a real certificate."""
+        domain = normalize_domain(domain)
+        zone_id = _zone_id(zone_id)
+        if not self.token:
+            raise CloudflareError('服务器未配置 Cloudflare')
+        with self._client() as client:
+            zone = _zone_view(self._call(client, 'GET', '/zones/' + zone_id))
+            if zone['name'] != domain:
+                raise CloudflareError('Cloudflare 站点与登记域名不一致')
+            self._ensure_strict_ssl(client, zone_id)
+        return {'ssl': 'strict'}
+
+    def _ensure_strict_ssl(self, client, zone_id):
+        current = self._call(client, 'GET', f'/zones/{zone_id}/settings/ssl')
+        if isinstance(current, dict) and current.get('value') == 'strict':
+            return
+        updated = self._call(client, 'PATCH', f'/zones/{zone_id}/settings/ssl', payload={'value': 'strict'})
+        if not isinstance(updated, dict) or updated.get('value') != 'strict':
+            raise CloudflareError('Cloudflare 没有改成加密回源，已停止，避免网站无限跳转')
 
     def _ensure_record(self, client, zone_id, domain):
         current = self._exact_record(client, zone_id, domain)
@@ -339,6 +364,23 @@ def _rule(rule):
         raise CloudflareError('优化规则缺少匹配条件或动作')
     kept = {key: rule[key] for key in RULE_KEYS if key in rule}
     return kept
+
+
+def repair_strict_ssl(registry, cloudflare):
+    """Keep every managed zone off Flexible SSL. One zone failing does not stop the others."""
+    if cloudflare is None or not cloudflare.token:
+        return 0
+    repaired = 0
+    for site in registry.list():
+        zone_id = site.get('cf_zone_id') or ''
+        if site['id'] == 'default' or not zone_id:
+            continue
+        try:
+            cloudflare.ensure_strict_ssl(zone_id, site['domain'])
+        except CloudflareError:
+            continue
+        repaired += 1
+    return repaired
 
 
 def _summary(copied, skipped, nameservers, active):
