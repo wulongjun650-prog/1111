@@ -67,11 +67,19 @@ def test_privileged_service_is_packaged_but_not_installed_or_enabled():
     assert 'RandomizedDelaySec=' in timer and 'Unit=ab-lab-renew.service' in timer
     assert 'ab-lab-renew.service' not in installer
     assert 'ab-lab-renew.timer' not in installer
+    origin = (root / 'deploy' / 'ab-lab-origin.service').read_text()
+    assert 'User=root' in origin and '--service origin --config /etc/ab-lab/config.json' in origin
+    assert 'ReadWritePaths=/var/lib/ab-lab /var/lib/ab-lab-origin /var/lib/ab-lab-certificates ' in origin
+    assert 'ab-lab-origin.service' not in installer
+    assert 'systemctl enable ab-lab-origin' not in installer
 
 
 @pytest.mark.parametrize('arguments', [
     ['--service', 'provision'],
     ['--service', 'renew'],
+    ['--service', 'origin'],
+    ['--service', 'origin', '--private-config', 'private.json'],
+    ['--service', 'origin', '--config', 'public.json', '--private-config', 'private.json'],
     ['--service', 'admin', '--private-config', 'private.json'],
     ['--service', 'provision', '--private-config', 'private.json', '--config', 'public.json'],
     ['--service', 'renew', '--private-config', 'private.json', '--config', 'public.json'],

@@ -10,11 +10,13 @@ import time
 
 def main():
     parser = argparse.ArgumentParser(description='AB Lab local console')
-    parser.add_argument('--service', choices=['admin', 'target', 'dns', 'provision', 'renew'])
+    parser.add_argument('--service', choices=['admin', 'target', 'dns', 'origin', 'provision', 'renew'])
     parser.add_argument('--data', type=Path, default=Path(__file__).resolve().parent / 'data')
     parser.add_argument('--config', type=Path, help='Public deployment JSON; requires --service')
     parser.add_argument('--private-config', type=Path, help='Root-only provisioning JSON')
     args = parser.parse_args()
+    if args.service == 'origin' and (args.private_config or not args.config):
+        parser.error('origin 必须提供 --config，不能使用 --private-config')
     if args.service in ('provision', 'renew'):
         if args.config or not args.private_config:
             parser.error('provision/renew 只接受并且必须提供 --private-config')
@@ -42,13 +44,19 @@ def main():
             parser.error('正式环境 data_dir 必须是绝对路径')
         os.environ['AB_GEOIP_PATH'] = config.get('geoip_path', '')
     if args.service == 'dns':
+        from ablab.cloudflare import Cloudflare
         from ablab.provisioning import inspect_pending
         from ablab.sites import Registry
         registry = Registry(args.data, deployment.host(False) if deployment else '', registry_dir=config.get('registry_dir'))
-        print('DNS inspection only. Automatic panel writes are disabled.', flush=True)
+        cloudflare = Cloudflare(os.environ.get('AB_CLOUDFLARE_TOKEN', ''), os.environ.get('AB_CLOUDFLARE_TEMPLATE', ''), config.get('server_ip', ''))
+        print('DNS inspection only. Site creation runs in the origin service.', flush=True)
         while True:
-            inspect_pending(registry, config.get('server_ip', ''))
+            inspect_pending(registry, config.get('server_ip', ''), cloudflare=cloudflare if cloudflare.configured else None)
             time.sleep(60)
+    if args.service == 'origin':
+        from ablab.origin_setup import serve_origin
+        serve_origin(args.data, config.get('server_ip', ''))
+        return
     if args.service:
         import uvicorn
         from ablab.web import create_admin, create_target

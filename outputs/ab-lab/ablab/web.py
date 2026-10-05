@@ -23,10 +23,12 @@ from pydantic import Field
 
 from .archives import EDITABLE_EXTENSIONS, MAX_FILE, MAX_ZIP, editable_file, import_content, read_source, resolve_file, source_files
 from .analytics import summarize
-from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, VersionChoice, Visitor
+from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput
 from .linkcheck import LinkChecker
 from .redirects import public_occurrences, rewrite_text, scan_bundle
 from .rules import decide
+from .cloudflare import Cloudflare
+from .provisioning import ProvisioningError
 from .reputation import GoogleReputation
 from .store import Conflict, Store
 from .auth import Auth, COOKIE, SESSION_SECONDS
@@ -171,7 +173,7 @@ class LocalBoundary:
                 return
         is_upload = re.fullmatch(r'/api/(?:sites/[a-f0-9]{32}/|sites/default/)?upload/[AB]', scope['path'])
         limit = MAX_ZIP if self.admin and is_upload else 256 * 1024
-        if self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/(?:sites/(?:[a-f0-9]{32}|default)/)?b-redirects/apply', scope['path']):
+        if self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/(?:sites/(?:[a-f0-9]{32}|default)/)?b-redirects/(?:apply|numbers/apply)', scope['path']):
             limit = 512 * 1024  # Up to 5,000 selected SHA-256 occurrence IDs.
         if self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/(?:sites/(?:[a-f0-9]{32}|default)/)?source/[AB]/[a-f0-9]{32}', scope['path']):
             # JSON can escape each UTF-8 byte as six ASCII characters.
@@ -272,7 +274,7 @@ def base_app():
     return app
 
 
-def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registry_dir=None, server_ip=''):
+def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registry_dir=None, server_ip='', cloudflare=None):
     if server_ip:
         from .provisioning import public_ipv4
         server_ip = public_ipv4(server_ip)
@@ -283,6 +285,9 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     app.state.registry = registry
     reputation = GoogleReputation(registry, os.environ.get('AB_GOOGLE_WEB_RISK_KEY', ''))
     app.state.reputation = reputation
+    if cloudflare is None:
+        cloudflare = Cloudflare(os.environ.get('AB_CLOUDFLARE_TOKEN', ''), os.environ.get('AB_CLOUDFLARE_TEMPLATE', ''), server_ip)
+    app.state.cloudflare = cloudflare
     accounts = Auth(store)
     app.state.auth = accounts
     auth = accounts if deployment else None
@@ -333,6 +338,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             for site in sites:
                 site['owner_username'] = names.get(site['owner_id'], account['username'] if site['owner_id'] == 'admin' else '账号不存在')
         return {'sites': sites, 'account': account, 'google_reputation_configured': reputation.configured,
+                'cloudflare_configured': cloudflare.configured, 'cloudflare_template': cloudflare.template_label,
                 'server_ip': server_ip, 'record_type': 'A', 'local_only': deployment is None}
 
     @app.get('/api/me')
@@ -374,11 +380,97 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         authorized_site(request, site_id)
         return {'result': reputation.check(site_id)}
 
+    def apply_cloudflare(site):
+        try:
+            attached = cloudflare.attach(site['domain'])
+        except ProvisioningError as error:
+            names = ','.join(getattr(error, 'nameservers', ()) or ())
+            zone_id = getattr(error, 'zone_id', '') or ''
+            detail = str(error)[:400]
+            updated = registry.set_cloudflare(site['id'], zone_id, names, 'failed', detail)
+            if zone_id and site['stage'] != 'active':
+                registry.transition(updated['id'], updated['generation'], 'waiting_dns', detail)
+                updated = registry.get(site['id'])
+            return updated, {'ok': False, 'detail': detail, 'nameservers': names.split(',') if names else [], 'status': 'failed'}
+        names = ','.join(attached['nameservers'])
+        updated = registry.set_cloudflare(site['id'], attached['zone_id'], names, attached['status'], attached['detail'])
+        if site['stage'] != 'active':
+            if attached['status'] == 'active' and registry.transition(updated['id'], updated['generation'], 'dns_verified', attached['detail']):
+                registry.transition(updated['id'], updated['generation'], 'unsupported', '解析条件已满足；面板自动写入适配尚未完成，未创建目录、站点或证书')
+            else:
+                registry.transition(updated['id'], updated['generation'], 'waiting_dns', attached['detail'])
+        return registry.get(site['id']), {
+            'ok': True, 'detail': attached['detail'], 'nameservers': attached['nameservers'], 'status': attached['status'],
+        }
+
     @app.post('/api/sites')
     def add_site(body: dict, request: Request):
-        if set(body) != {'domain'}:
-            raise ValueError('只需提交域名')
-        return {'site': registry.add(body['domain'], principal(request)['id']), 'server_ip': server_ip, 'record_type': 'A'}
+        if not isinstance(body, dict) or set(body) - {'domain', 'cloudflare'} or 'domain' not in body:
+            raise ValueError('只需提交域名，可另选是否套用 Cloudflare')
+        use_cloudflare = body.get('cloudflare', False)
+        if type(use_cloudflare) is not bool:
+            raise ValueError('Cloudflare 选项无效')
+        if use_cloudflare and not cloudflare.configured:
+            raise ValueError('服务器未配置 Cloudflare，请取消勾选，按原来的 A 记录接入')
+        if use_cloudflare and not cloudflare.origin_ip:
+            raise ValueError('服务器公网 IP 未配置，无法把 Cloudflare 回源到本机')
+        site = registry.add(body['domain'], principal(request)['id'])
+        result = {'site': site, 'server_ip': server_ip, 'record_type': 'A', 'cloudflare': None}
+        if use_cloudflare:
+            result['site'], result['cloudflare'] = apply_cloudflare(site)
+        return result
+
+    @app.post('/api/sites/{site_id}/cloudflare')
+    def retry_cloudflare(site_id: str, request: Request):
+        site = authorized_site(request, site_id)
+        if site['id'] == 'default':
+            raise ValueError('原有站点不在这里套用 Cloudflare')
+        if not cloudflare.configured:
+            raise ValueError('服务器未配置 Cloudflare')
+        if not cloudflare.origin_ip:
+            raise ValueError('服务器公网 IP 未配置，无法把 Cloudflare 回源到本机')
+        if not site['cf_status'] and site['stage'] != 'active':
+            raise ValueError('请先等本机证书接入完成，再套用 Cloudflare')
+        site, attached = apply_cloudflare(site)
+        return {'site': site, 'cloudflare': attached}
+
+    @app.post('/api/sites/{site_id}/cloudflare/status')
+    def cloudflare_status(site_id: str, request: Request):
+        site = authorized_site(request, site_id)
+        if not site['cf_zone_id']:
+            raise ValueError('这个域名没有接入 Cloudflare')
+        if not cloudflare.configured:
+            raise ValueError('服务器未配置 Cloudflare')
+        try:
+            state = cloudflare.confirm(site['cf_zone_id'], site['domain'])
+        except ProvisioningError as error:
+            detail = str(error)[:400]
+            names = [part for part in site['cf_nameservers'].split(',') if part]
+            return {'site': site, 'cloudflare': {'ok': False, 'status': site['cf_status'] or 'pending', 'active': False, 'nameservers': names, 'detail': detail}}
+        status = 'active' if state['active'] else 'pending'
+        names = ','.join(state['nameservers']) or site['cf_nameservers']
+        if status == 'active':
+            detail = 'Cloudflare 已生效，回源指向服务器'
+        else:
+            shown = '、'.join(state['nameservers']) or site['cf_nameservers'].replace(',', '、')
+            detail = f'NS 尚未生效，正在自动检查。请到注册商改为：{shown}'[:400]
+        if (site['cf_status'], site['cf_nameservers'], site['cf_detail']) != (status, names, detail):
+            site = registry.set_cloudflare(site['id'], site['cf_zone_id'], names, status, detail)
+        if status == 'active' and site['stage'] == 'waiting_dns':
+            if registry.transition(site['id'], site['generation'], 'dns_verified', detail):
+                registry.transition(site['id'], site['generation'], 'unsupported', '解析条件已满足；面板自动写入适配尚未完成，未创建目录、站点或证书')
+            site = registry.get(site['id'])
+        return {'site': site, 'cloudflare': {'ok': True, 'status': status, 'active': status == 'active', 'nameservers': [part for part in names.split(',') if part], 'detail': detail}}
+
+    @app.post('/api/sites/{site_id}/cloudflare/purge')
+    def purge_cloudflare(site_id: str, request: Request):
+        site = authorized_site(request, site_id)
+        if not site['cf_zone_id']:
+            raise ValueError('这个域名没有接入 Cloudflare')
+        if not cloudflare.configured:
+            raise ValueError('服务器未配置 Cloudflare')
+        cloudflare.purge(site['cf_zone_id'], site['domain'])
+        return {'ok': True}
 
     @app.patch('/api/sites/{site_id}/metadata')
     def update_site_metadata(site_id: str, body: SiteMetadata, request: Request):
@@ -517,7 +609,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             base = source_version(store, 'B', version_id)
             occurrences, warnings = scan_bundle(store.pages / version_id, version_id)
         return {'version':base, 'published_version':published, 'occurrences':public_occurrences(occurrences),
-                'warnings':warnings, 'presets':store.redirect_presets(), 'active':store.redirect_active(), 'split':store.redirect_split()}
+                'warnings':warnings, 'presets':store.redirect_presets(), 'numbers':store.whatsapp_numbers(),
+                'active':store.redirect_active(), 'split':store.redirect_split()}
 
     @routes.put('/b-redirects/split')
     def save_b_redirect_split(body: RedirectSplit, store=Depends(site_store)):
@@ -546,8 +639,11 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if store.slots()['B'] != body.expected_published:
             raise Conflict('当前 B 发布版本已变化，请重新扫描后再换链')
         occurrences, _ = scan_bundle(store.pages / base['id'], base['id'])
-        if not set(body.occurrence_ids).issubset({item['id'] for item in occurrences}):
+        chosen = [item for item in occurrences if item['id'] in set(body.occurrence_ids)]
+        if len(chosen) != len(body.occurrence_ids):
             raise Conflict('源码或跳转位置已变化，请重新扫描后再换链')
+        if any(item['kind'] == 'whatsapp_number' for item in chosen):
+            raise ValueError('WhatsApp 号码请用号码预设更换')
         preset = store.redirect_preset(body.preset_id)
         result = app.state.link_checker.check(preset['url'])
         store.save_redirect_check(preset, result, guard)
@@ -555,6 +651,39 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             raise ValueError('此链接不正常：' + result['detail'])
         version, changed = store.apply_redirects(base, preset, body.occurrence_ids, body.expected_published, guard)
         return {'version':version, 'check':result, 'changed':changed}
+
+    @routes.post('/b-redirects/numbers')
+    def add_whatsapp_numbers(body: WhatsAppNumberInput, store=Depends(site_store)):
+        return {'numbers':store.add_whatsapp_numbers(body.phones, body.note)}
+
+    @routes.delete('/b-redirects/numbers/{number_id}')
+    def delete_whatsapp_number(number_id: int, store=Depends(site_store)):
+        store.delete_whatsapp_number(number_id)
+        return {'ok':True}
+
+    @routes.post('/b-redirects/numbers/apply')
+    def apply_whatsapp_numbers(body: WhatsAppNumberApply, request: Request, store=Depends(site_store)):
+        guard = redirect_commit_guard(request, store)
+        base = source_version(store, 'B', body.version_id)
+        if store.slots()['B'] != body.expected_published:
+            raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
+        occurrences, _ = scan_bundle(store.pages / base['id'], base['id'])
+        chosen = [item for item in occurrences if item['id'] in set(body.occurrence_ids)]
+        if len(chosen) != len(body.occurrence_ids):
+            raise Conflict('源码或跳转位置已变化，请重新扫描后再换号')
+        if any(item['kind'] != 'whatsapp_number' for item in chosen):
+            raise ValueError('号码预设只能更换 WhatsApp 号码')
+        number = store.whatsapp_number(body.number_id)
+        version, changed = store.apply_whatsapp_number(base, number, body.occurrence_ids, body.expected_published, guard)
+        site = registry.get(request.path_params.get('site_id', 'default'))
+        purged = None
+        if site.get('cf_zone_id') and cloudflare.configured:
+            try:
+                cloudflare.purge(site['cf_zone_id'], site['domain'])
+                purged = {'ok': True}
+            except ProvisioningError as error:
+                purged = {'ok': False, 'detail': str(error)[:180]}
+        return {'version':version, 'changed':changed, 'cloudflare':purged}
 
     @routes.get('/source/{slot}/{version_id}')
     def get_source(slot: Slot, version_id: VersionId, path: str | None = None, store=Depends(site_store)):
@@ -633,7 +762,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if principal(request)['role'] != 'admin':
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated'}
+                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 

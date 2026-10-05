@@ -53,6 +53,7 @@ test('empty agent starts with catalog only, can add a site, and clears lost-site
       await route.fulfill({json:response});
     });
     await page.goto(url);await page.locator('#no-sites').waitFor({state:'visible'});
+    assert.equal(await page.locator('#cf-choice').isHidden(),true);
     assert.deepEqual(requests,['/api/sites']);
     assert.equal(await page.locator('[data-tab="accounts"]').count(),0);
     assert.equal(await page.locator('[data-tab="rules"]').isDisabled(),true);
@@ -207,5 +208,91 @@ test('catalog loss also clears open provision logs for a different domain',async
     assert.equal(await page.locator('#provision-events-panel').isVisible(),false);
     assert.equal(await page.locator('#provision-events').innerHTML(),'');
     assert.deepEqual(errors,[]);
+  });
+});
+
+test('cloudflare stays unchecked unless the operator opts in',async()=>{
+  await withConsole('agent',async(page,url,errors)=>{
+    const bodies=[];
+    let sites=[];
+    await page.route('**/api/**',async route=>{
+      const request=route.request(),pathname=new URL(request.url()).pathname;
+      if(pathname==='/api/sites' && request.method()==='GET') {
+        await route.fulfill({json:{account:agent,sites,google_reputation_configured:false,cloudflare_configured:true,cloudflare_template:'rules.example.com',server_ip:'8.8.8.8'}});
+        return;
+      }
+      if(pathname==='/api/sites' && request.method()==='POST') {
+        bodies.push(request.postDataJSON());
+        sites=[site];
+        await route.fulfill({json:{account:agent,sites,server_ip:'8.8.8.8',cloudflare:null,site}});
+        return;
+      }
+      if(pathname===`/api/sites/${siteId}/cloudflare/status` && request.method()==='POST') {
+        await route.fulfill({json:{site,cloudflare:{ok:true,status:site.cf_status || 'pending',active:false,nameservers:(site.cf_nameservers || '').split(',').filter(Boolean),detail:'NS 尚未生效'}}});
+        return;
+      }
+      if(pathname===`/api/sites/${siteId}/state`) {await route.fulfill({json:siteState});return;}
+      if(pathname.endsWith('/analytics')) {await route.fulfill({json:analytics});return;}
+      throw new Error(`Unexpected endpoint ${pathname}`);
+    });
+    await page.goto(url);
+    await page.locator('#empty-add-domain').click();
+    await page.locator('#cf-choice').waitFor({state:'visible'});
+    assert.match(await page.locator('#cf-choice-note').innerText(),/rules\.example\.com/);
+    assert.equal(await page.locator('#use-cloudflare').isChecked(),false);
+    await page.locator('#domain-form input').fill('mine.example.com');
+    await page.screenshot({path:'/tmp/cf-choice.png'});
+    await page.locator('#domain-form button').click();
+    await page.waitForFunction(()=>document.querySelector('#no-sites').hidden);
+    assert.deepEqual(bodies,[{domain:'mine.example.com'}]);
+    await page.locator('#new-domain').click();
+    await page.locator('#use-cloudflare').check();
+    await page.screenshot({path:'/tmp/cf-choice-on.png'});
+    assert.match(await page.locator('#dns-instructions').innerText(),/NS/);
+    await page.locator('#domain-form input').fill('cf.example.com');
+    await page.locator('#domain-form button').click();
+    for (let i = 0; i < 40 && bodies.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.deepEqual(bodies[1],{domain:'cf.example.com',cloudflare:true});
+    Object.assign(site,{cf_zone_id:'c'.repeat(32),cf_status:'pending',cf_nameservers:'ada.ns.cloudflare.com,bob.ns.cloudflare.com'});
+    await page.locator('#refresh-domains').click();
+    await page.getByRole('button',{name:'清除 CF 缓存'}).waitFor();
+    await page.getByText('Cloudflare 待处理').waitFor();
+    assert.match(await page.locator('.domain-table').innerText(),/ada\.ns\.cloudflare\.com/);
+    assert.deepEqual(errors,[]);
+  });
+});
+
+test('a site with its own certificate can attach Cloudflare afterwards', async () => {
+  await withConsole('agent', async (page, url, errors) => {
+    const readyId = 'b'.repeat(32);
+    let ready = {id: readyId, domain: 'ready.example.com', owner_id: agent.id, enabled: true, stage: 'active', cf_status: '', cf_zone_id: '', cf_nameservers: '', error: '本机 HTTPS 已接入', note: ''};
+    const posts = [];
+    await page.route('**/api/**', async route => {
+      const request = route.request(), pathname = new URL(request.url()).pathname;
+      if (pathname === '/api/sites' && request.method() === 'GET') {
+        await route.fulfill({json: {account: agent, sites: [ready], google_reputation_configured: false, cloudflare_configured: true, cloudflare_template: 'rules.example.com', server_ip: '8.8.8.8'}});
+        return;
+      }
+      if (pathname === `/api/sites/${readyId}/cloudflare` && request.method() === 'POST') {
+        posts.push(request.postDataJSON());
+        ready = {...ready, cf_zone_id: 'c'.repeat(32), cf_status: 'pending', cf_nameservers: 'ada.ns.cloudflare.com,bob.ns.cloudflare.com'};
+        await route.fulfill({json: {site: ready, cloudflare: {ok: true, status: 'pending', nameservers: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'], detail: '等待 NS'}}});
+        return;
+      }
+      if (pathname === `/api/sites/${readyId}/cloudflare/status`) {
+        await route.fulfill({json: {site: ready, cloudflare: {ok: true, status: ready.cf_status || 'pending', active: false, nameservers: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'], detail: 'NS'}}});
+        return;
+      }
+      if (pathname === `/api/sites/${readyId}/state`) { await route.fulfill({json: {...siteState, site: ready}}); return; }
+      if (pathname.endsWith('/analytics')) { await route.fulfill({json: analytics}); return; }
+      throw new Error(`Unexpected endpoint ${pathname}`);
+    });
+    await page.goto(url);
+    await page.locator('[data-tab="domains"]').click();
+    await page.getByRole('button', {name: '套用 Cloudflare'}).click();
+    await page.getByText('NS：ada.ns.cloudflare.com').waitFor();
+    assert.deepEqual(posts, [{}]);
+    assert.match(await page.locator('.domain-table').innerText(), /Cloudflare 待处理/);
+    assert.deepEqual(errors, []);
   });
 });

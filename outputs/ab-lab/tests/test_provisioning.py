@@ -128,10 +128,16 @@ def test_dns_worker_persists_retry_and_does_not_fake_creation(tmp_path):
     registry.control(site['id'], 'retry')
     inspect_pending(registry, '8.8.8.8', DNSChecker(dns_transport(['8.8.8.8'])))
     checked = registry.get(site['id'])
-    assert checked['stage'] == 'unsupported'
+    assert checked['stage'] == 'dns_verified'
+    assert '自动建站' in checked['error']
     assert checked['panel_id'] is None
     assert checked['managed_path'] == ''
+    attempts = checked['attempts']
+    inspect_pending(registry, '8.8.8.8', DNSChecker(dns_transport(['8.8.8.8'])))
+    assert registry.get(site['id'])['stage'] == 'dns_verified'
+    assert registry.get(site['id'])['attempts'] == attempts
     assert any(item['stage'] == 'dns_verified' for item in registry.events(site['id']))
+    assert all(item['stage'] != 'unsupported' for item in registry.events(site['id']))
     registry.control(site['id'], 'pause')
     inspect_pending(registry, '8.8.8.8', DNSChecker(dns_transport(['8.8.8.8'])))
     assert registry.get(site['id'])['stage'] == 'paused'

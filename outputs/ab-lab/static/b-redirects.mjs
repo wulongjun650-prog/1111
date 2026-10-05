@@ -8,7 +8,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const count = element('span', 'badge neutral', '尚未扫描'); count.id = 'b-redirect-count';
   header.append(title, count);
   const current = element('div', 'b-now'); current.id = 'b-redirect-current';
-  const description = element('p', 'muted', '勾选要换的位置，再点「换成这条」。');
+  const description = element('p', 'muted', '勾选要换的位置。普通链接点「换成这条」。WhatsApp 号码在下面的号码池里换，进线语不动。');
   const message = element('p', 'b-redirect-message'); message.id = 'b-redirect-message'; message.hidden = true;
   message.setAttribute('role', 'status');
   const splitPanel = element('div', 'b-split'); splitPanel.id = 'b-redirect-split';
@@ -32,7 +32,20 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const note = element('input'); note.id = 'b-redirect-note'; note.maxLength = 300; note.placeholder = '可选'; noteLabel.append(note);
   const add = element('button', 'button secondary', '添加链接'); add.id = 'b-redirect-add'; add.type = 'submit';
   form.append(urlsLabel, noteLabel, add);
-  const poolHint = element('small', 'b-redirect-hint', '添加后会自动检测。检测只代表这一次看到的结果。');
+  const poolHint = element('small', 'b-redirect-hint', '添加后会自动检测。检测只代表这一次看到的结果。分流只用这些链接。');
+  const waBox = element('section', 'b-wa'); waBox.id = 'b-wa';
+  const waHead = element('div', 'b-wa-head');
+  waHead.append(element('strong', '', 'WS 号码'), element('p', 'b-wa-status', '只换号码。进线语、按钮和链接结构保持不动。'));
+  const waList = element('div', 'b-wa-list'); waList.id = 'b-redirect-numbers';
+  const waForm = element('form', 'b-redirect-add-form');
+  const waLabel = element('label', 'grow', '添加号码');
+  const waNumbers = element('textarea'); waNumbers.id = 'b-wa-numbers'; waNumbers.rows = 2; waNumbers.required = true;
+  waNumbers.placeholder = '每行一个号码，例如 85264150954'; waLabel.append(waNumbers);
+  const waNoteLabel = element('label', '', '备注');
+  const waNote = element('input'); waNote.id = 'b-wa-note'; waNote.maxLength = 300; waNote.placeholder = '可选'; waNoteLabel.append(waNote);
+  const waAdd = element('button', 'button secondary', '添加号码'); waAdd.id = 'b-wa-add'; waAdd.type = 'submit';
+  waForm.append(waLabel, waNoteLabel, waAdd);
+  waBox.append(waHead, waList, waForm);
   const toolbar = element('div', 'b-redirect-toolbar');
   const versionLabel = element('label', '', '从这一版换');
   const version = element('select'); version.id = 'b-redirect-version'; versionLabel.append(version);
@@ -43,16 +56,26 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const occurrences = element('div', 'b-redirect-occurrences'); occurrences.id = 'b-redirect-occurrences';
   details.append(summary, occurrences);
   const warnings = element('div', 'b-redirect-warnings');
-  root.append(header, current, description, message, splitPanel, presets, form, poolHint, toolbar, details, warnings);
+  root.append(header, current, description, message, splitPanel, presets, form, poolHint, waBox, toolbar, details, warnings);
 
   const isCurrent = value => Boolean(value && session === value && value.siteId === getSite()?.id);
   const selected = value => value.occurrences.filter(item => !value.excluded.has(item.key));
+  const linkSelected = value => selected(value).filter(item => item.kind !== 'whatsapp_number');
+  const numberSelected = value => selected(value).filter(item => item.kind === 'whatsapp_number');
   const activePreset = value => (value.active && value.active.version_id === value.published) ? value.active.preset_id : null;
-  const isDirty = () => Boolean(urls.value.trim() || note.value.trim() || session?.selectionDirty || session?.splitDirty);
+  const isDirty = () => Boolean(urls.value.trim() || note.value.trim() || waNumbers.value.trim() || waNote.value.trim() || session?.selectionDirty || session?.splitDirty);
   const blankSplit = () => ({enabled:false, mode:'random', members:[]});
   const date = timestamp => timestamp ? new Date(Number(timestamp) * 1000).toLocaleString('zh-CN', {hour12:false}) : '尚未检测';
   const endpoint = value => `/api/b-redirects${value.versionId ? `?version_id=${encodeURIComponent(value.versionId)}` : ''}`;
-  const kinds = {anchor:'页面链接', meta_refresh:'Meta 跳转', js_location:'JS 跳转', js_variable:'跳转变量'};
+  const kinds = {anchor:'页面链接', meta_refresh:'Meta 跳转', js_location:'JS 跳转', js_variable:'跳转变量', whatsapp_number:'WhatsApp 号码'};
+  const occurrenceLabel = item => {
+    if (item.kind === 'whatsapp_number') return 'WhatsApp 号码';
+    let host = '';
+    try { host = new URL(item.url, 'https://local.invalid').hostname.toLowerCase().replace(/^www\./, ''); }
+    catch { host = ''; }
+    if (host === 'wa.me' || host === 'whatsapp.com' || host.endsWith('.whatsapp.com') || String(item.url).toLowerCase().startsWith('whatsapp:')) return 'WhatsApp';
+    return kinds[item.kind] || item.kind;
+  };
   const splitPayload = split => {
     const mode = split?.mode === 'weighted' ? 'weighted' : 'random';
     return {enabled:Boolean(split?.enabled), mode, members:(split?.members || []).map(item => ({preset_id:item.preset_id, weight:mode === 'weighted' ? Math.min(100, Math.max(1, Number(item.weight) || 1)) : 1}))};
@@ -69,6 +92,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     version.disabled = busy || !value?.versions.length;
     rescan.disabled = busy;
     urls.disabled = !value || value.busy; note.disabled = urls.disabled; add.disabled = urls.disabled;
+    waNumbers.disabled = urls.disabled; waNote.disabled = urls.disabled; waAdd.disabled = urls.disabled;
     splitToggle.disabled = !value || value.busy; splitMode.disabled = splitToggle.disabled || splitModeLabel.hidden;
     presets.querySelectorAll('.b-split-join input').forEach(input => { input.disabled = splitToggle.disabled; });
     root.setAttribute('aria-busy', String(Boolean(value?.loading || value?.busy)));
@@ -76,7 +100,12 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     for (const row of presets.querySelectorAll('[data-preset-id]')) {
       const checking = value?.checking.has(Number(row.dataset.presetId));
       row.querySelectorAll('button').forEach(button => {
-        button.disabled = busy || checking || (button.dataset.action === 'apply' && (!value.versionId || !selected(value).length));
+        button.disabled = busy || checking || (button.dataset.action === 'apply' && (!value.versionId || !linkSelected(value).length));
+      });
+    }
+    for (const row of waList.querySelectorAll('[data-number-id]')) {
+      row.querySelectorAll('button').forEach(button => {
+        button.disabled = busy || (button.dataset.action === 'apply-number' && (!value?.versionId || !numberSelected(value).length));
       });
     }
     if (!value) {count.textContent = '尚未扫描'; return;}
@@ -118,7 +147,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       const label = element('label', 'b-redirect-occurrence');
       const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = !value.excluded.has(item.key);
       checkbox.dataset.key = item.key; checkbox.value = item.id;
-      const info = element('span'); info.append(element('strong', '', `${item.path}:${item.line} · ${kinds[item.kind] || item.kind}`), element('small', '', item.url));
+      const info = element('span'); info.append(element('strong', '', `${item.path}:${item.line} · ${occurrenceLabel(item)}`), element('small', '', item.url));
       checkbox.addEventListener('change', () => {
         if (!isCurrent(value)) return;
         if (checkbox.checked) value.excluded.delete(item.key); else value.excluded.add(item.key);
@@ -127,7 +156,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       label.append(checkbox, info); occurrences.append(label);
     }
     for (const warning of value.warnings) warnings.append(element('p', 'subtle', warning));
-    warnings.append(element('small', '', '每条单独勾选。没勾的保持原样，只换勾上的跳转。'));
+    warnings.append(element('small', '', '每条单独勾选。没勾的保持原样。WhatsApp 号码只换号码本身。'));
     updateControls();
   }
 
@@ -254,11 +283,13 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     if (!isCurrent(value)) return;
     const request = ++value.request;
     const presetsRevision = value.presetsRevision;
+    const numbersRevision = value.numbersRevision;
     if (!presetsOnly) {value.loading = true; updateControls();}
     try {
       const result = await api(endpoint(value));
       if (!isCurrent(value) || request !== value.request) return;
       if (presetsRevision === value.presetsRevision) value.presets = result.presets;
+      if (numbersRevision === value.numbersRevision) value.numbers = result.numbers || [];
       value.active = result.active;
       if (!value.splitDirty) {value.split = result.split || blankSplit(); value.savedSplit = value.split;}
       if (!presetsOnly) {
@@ -267,7 +298,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
         value.scanned = true;
         renderVersions(value); renderOccurrences(value);
       }
-      renderPresets(value);
+      renderPresets(value); renderNumbers(value);
     } catch (error) {
       if (isCurrent(value) && request === value.request && !error.stale) showMessage(`扫描失败，当前选择仍保留。${error.message}`, true);
     } finally {
@@ -297,11 +328,53 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     }
   }
 
+  function liveNumbers(value) {
+    if (!value || value.versionId !== value.published) return new Set();
+    return new Set(value.occurrences.filter(item => item.kind === 'whatsapp_number').map(item => item.url));
+  }
+
+  function renderNumbers(value) {
+    waList.replaceChildren();
+    const saved = value?.numbers || [];
+    if (!saved.length) waList.append(element('p', 'empty-state', '还没有号码。每行一个，只填数字。'));
+    const current = liveNumbers(value);
+    for (const item of saved) {
+      const inUse = current.has(item.phone);
+      const row = element('div', `b-wa-row${inUse ? ' active' : ''}`); row.dataset.numberId = item.id;
+      const info = element('div', 'b-redirect-preset-info');
+      const titleLine = element('div', 'b-redirect-title-line');
+      titleLine.append(element('strong', 'b-redirect-url', item.phone));
+      if (inUse) titleLine.append(element('span', 'b-redirect-active-badge', '当前号码'));
+      info.append(titleLine);
+      if (item.note) info.append(element('p', 'subtle', item.note));
+      const actions = element('div', 'actions');
+      for (const [action, text, className] of [['delete','删除','button quiet small'],['apply-number','换成这个号码','button primary small']]) {
+        const button = element('button', className, text);
+        button.type = 'button'; button.dataset.action = action;
+        on(button, 'click', () => action === 'apply-number' ? applyNumber(value, item) : deleteNumber(value, item));
+        actions.append(button);
+      }
+      row.append(info, actions); waList.append(row);
+    }
+    updateControls();
+  }
+
+  function parseNumbers(text) {
+    const lines = String(text).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (!lines.length) throw new Error('请至少填写一个 WhatsApp 号码。');
+    const phones = lines.map((line, index) => {
+      const digits = line.replace(/\D/g, '');
+      if (!/^\d{8,15}$/.test(digits)) throw new Error(`第 ${index + 1} 行需为 8 到 15 位数字。`);
+      return digits;
+    });
+    return [...new Set(phones)];
+  }
+
   async function apply(value, preset) {
-    if (!isCurrent(value) || value.busy || value.loading || value.checking.has(preset.id) || !value.versionId || !selected(value).length) return;
+    if (!isCurrent(value) || value.busy || value.loading || value.checking.has(preset.id) || !value.versionId || !linkSelected(value).length) return;
     value.busy = true; updateControls(); showMessage('正在检测，并换进 B 页…');
     try {
-      const result = await api('/api/b-redirects/apply', {method:'POST', body:{version_id:value.versionId, preset_id:preset.id, occurrence_ids:selected(value).map(item => item.id), expected_published:value.expectedPublished}});
+      const result = await api('/api/b-redirects/apply', {method:'POST', body:{version_id:value.versionId, preset_id:preset.id, occurrence_ids:linkSelected(value).map(item => item.id), expected_published:value.expectedPublished}});
       if (!isCurrent(value)) return;
       value.versionId = result.version.id; value.published = result.version.id;
       value.expectedPublished = result.version.id; value.selectionDirty = false;
@@ -326,6 +399,46 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     } finally {
       if (isCurrent(value)) {value.busy = false; updateControls();}
     }
+  }
+
+  async function applyNumber(value, item) {
+    if (!isCurrent(value) || value.busy || value.loading || !value.versionId || !numberSelected(value).length) return;
+    value.busy = true; updateControls(); showMessage('正在更换 WhatsApp 号码…');
+    try {
+      const result = await api('/api/b-redirects/numbers/apply', {method:'POST', body:{version_id:value.versionId, number_id:item.id, occurrence_ids:numberSelected(value).map(row => row.id), expected_published:value.expectedPublished}});
+      if (!isCurrent(value)) return;
+      value.versionId = result.version.id; value.published = result.version.id;
+      value.expectedPublished = result.version.id; value.selectionDirty = false;
+      if (!value.versions.some(saved => saved.id === result.version.id)) value.versions.push(result.version);
+      value.occurrences = []; renderVersions(value); renderOccurrences(value);
+      let refreshFailed = false;
+      try {await onApplied(result);}
+      catch (error) {if (!isCurrent(value) || error.stale) return; refreshFailed = true;}
+      if (!isCurrent(value)) return;
+      await scan(value);
+      const cacheNote = result.cloudflare?.ok ? ' Cloudflare 缓存已清除。' : result.cloudflare ? ' 号码已换，但 Cloudflare 缓存没清掉。' : '';
+      if (isCurrent(value)) showMessage(refreshFailed
+        ? '号码已更换并发布 B，但状态刷新失败。请刷新状态确认当前版本。进线语未改。' + cacheNote
+        : `已更换 ${result.changed} 处号码并发布 B。进线语未改。` + cacheNote, refreshFailed || Boolean(result.cloudflare && !result.cloudflare.ok));
+    } catch (error) {
+      if (!isCurrent(value) || error.stale) return;
+      if (error.status === 400) await scan(value);
+      if (isCurrent(value)) showMessage(error.status === 409
+        ? '当前 B 发布版本已变化，号码选择仍保留。请刷新状态后再换。'
+        : error.message, true);
+    } finally {
+      if (isCurrent(value)) {value.busy = false; updateControls();}
+    }
+  }
+
+  async function deleteNumber(value, item) {
+    if (!isCurrent(value) || value.busy) return;
+    if (!await confirmAction('从号码池删掉这个？已经发布的 B 页不会变。') || !isCurrent(value)) return;
+    value.busy = true; updateControls();
+    try {
+      await api(`/api/b-redirects/numbers/${item.id}`, {method:'DELETE'});
+      if (isCurrent(value)) {value.numbersRevision += 1; value.numbers = value.numbers.filter(saved => saved.id !== item.id); renderNumbers(value); showMessage('已从号码池删除。发布中的 B 页还是原号码。');}
+    } finally {if (isCurrent(value)) {value.busy = false; updateControls();}}
   }
 
   async function deletePreset(value, preset) {
@@ -356,6 +469,21 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       checkAdded(value, result.presets.filter(item => !oldIds.has(item.id)).map(item => item.id));
     } finally {if (isCurrent(value)) {value.busy = false; updateControls();}}
   });
+  on(waForm, 'submit', async event => {
+    event.preventDefault(); const value = session;
+    if (!isCurrent(value) || value.busy) return;
+    const phones = parseNumbers(waNumbers.value);
+    if (phones.length > 30) throw new Error('每次最多保存 30 个号码。');
+    value.busy = true; updateControls(); showMessage();
+    try {
+      const result = await api('/api/b-redirects/numbers', {method:'POST', body:{phones, note:waNote.value.trim()}});
+      if (!isCurrent(value)) return;
+      value.numbersRevision += 1;
+      value.numbers = [...value.numbers.filter(item => !result.numbers.some(saved => saved.id === item.id)), ...result.numbers];
+      waNumbers.value = ''; waNote.value = ''; renderNumbers(value);
+      showMessage(`已添加 ${result.numbers.length} 个号码。勾选 WhatsApp 号码后点「换成这个号码」。`);
+    } finally {if (isCurrent(value)) {value.busy = false; updateControls();}}
+  });
   on(splitToggle, 'click', () => {
     const value = session;
     if (!isCurrent(value) || value.busy) return;
@@ -382,7 +510,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     let value = session;
     if (value?.siteId !== state.site.id) {
       clear();
-      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], warnings:[], presets:[], presetsRevision:0, active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
+      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], warnings:[], presets:[], numbers:[], presetsRevision:0, numbersRevision:0, active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
       session = value;
     }
     const changed = value.published !== state.slots.B;
@@ -410,11 +538,11 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
 
   function clear() {
     clearTimeout(splitTimer); splitTimer = 0; ++splitEpoch; ++queueGeneration; session = null;
-    urls.value = ''; note.value = ''; version.replaceChildren(); occurrences.replaceChildren(); warnings.replaceChildren(); presets.replaceChildren();
-    renderSplit(null);
+    urls.value = ''; note.value = ''; waNumbers.value = ''; waNote.value = ''; version.replaceChildren(); occurrences.replaceChildren(); warnings.replaceChildren(); presets.replaceChildren();
+    renderNumbers(null); renderSplit(null);
     showMessage(); updateControls();
   }
 
-  updateControls();
+  renderNumbers(null);
   return {update, clear, selectVersion, setActive, isDirty};
 }

@@ -143,6 +143,37 @@ class RedirectApply(StrictModel):
         return values
 
 
+def normalize_whatsapp_phone(value):
+    digits = re.sub(r'\D', '', str(value).strip())
+    if not re.fullmatch(r'\d{8,15}', digits):
+        raise ValueError('WhatsApp 号码需为 8 到 15 位数字')
+    return digits
+
+
+class WhatsAppNumberInput(StrictModel):
+    phones: list[str] = Field(min_length=1, max_length=30)
+    note: str = Field(default='', max_length=300, strict=True)
+
+    @field_validator('phones')
+    @classmethod
+    def public_phones(cls, values):
+        return list(dict.fromkeys(normalize_whatsapp_phone(value) for value in values))
+
+
+class WhatsAppNumberApply(StrictModel):
+    version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
+    number_id: int = Field(gt=0, strict=True)
+    occurrence_ids: list[str] = Field(min_length=1, max_length=5000)
+    expected_published: str | None = Field(pattern=r'^[a-f0-9]{32}$')
+
+    @field_validator('occurrence_ids')
+    @classmethod
+    def span_ids(cls, values):
+        if any(not re.fullmatch(r'[a-f0-9]{64}', value) for value in values) or len(set(values)) != len(values):
+            raise ValueError('跳转位置标识无效或重复，请重新扫描')
+        return values
+
+
 class Visitor(StrictModel):
     ip: str = Field(max_length=64)
     country: str | None = Field(default=None, pattern=r'^[A-Z]{2}$')

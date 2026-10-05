@@ -48,6 +48,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS links(id INTEGER PRIMARY KEY, slot TEXT NOT NULL, url TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 0, UNIQUE(slot,url));
                 CREATE TABLE IF NOT EXISTS rotation(slot TEXT PRIMARY KEY, last_id INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_presets(id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, note TEXT NOT NULL, created REAL NOT NULL, check_result TEXT);
+                CREATE TABLE IF NOT EXISTS whatsapp_numbers(id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL UNIQUE, note TEXT NOT NULL, created REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_active(id INTEGER PRIMARY KEY CHECK(id=1), url TEXT NOT NULL, preset_id INTEGER REFERENCES redirect_presets(id) ON DELETE SET NULL, version_id TEXT NOT NULL REFERENCES versions(id), updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_split(id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL, mode TEXT NOT NULL, members TEXT NOT NULL, updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_split_assign(visitor_hash TEXT PRIMARY KEY, preset_id INTEGER, url TEXT NOT NULL, created REAL NOT NULL);
@@ -312,6 +313,62 @@ class Store:
                 db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
                 db.execute('INSERT INTO redirect_active VALUES(1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET url=excluded.url,preset_id=excluded.preset_id,version_id=excluded.version_id,updated=excluded.updated', (preset['url'], preset['id'], version['id'], time.time()))
                 self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed})
+                self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
+        except Exception:
+            shutil.rmtree(self.pages / version['id'])
+            raise
+        return version | {'slot':'B'}, changed
+
+    @staticmethod
+    def _whatsapp_number(row):
+        if row is None:
+            raise KeyError('WhatsApp 号码不存在')
+        return dict(row)
+
+    def whatsapp_numbers(self):
+        with self.connect() as db:
+            return [self._whatsapp_number(row) for row in db.execute('SELECT * FROM whatsapp_numbers ORDER BY id')]
+
+    def whatsapp_number(self, number_id):
+        with self.connect() as db:
+            return self._whatsapp_number(db.execute('SELECT * FROM whatsapp_numbers WHERE id=?', (number_id,)).fetchone())
+
+    def add_whatsapp_numbers(self, phones, note):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            existing = {row['phone'] for row in db.execute('SELECT phone FROM whatsapp_numbers')}
+            if len(existing | set(phones)) > 100:
+                raise ValueError('每个域名最多保存 100 个 WhatsApp 号码，请先删除不用的号码')
+            db.executemany('INSERT OR IGNORE INTO whatsapp_numbers(phone,note,created) VALUES(?,?,?)', [(phone, note, time.time()) for phone in phones])
+            self._audit(db, 'whatsapp_numbers_added', {'count':len(phones)})
+            return [self._whatsapp_number(db.execute('SELECT * FROM whatsapp_numbers WHERE phone=?', (phone,)).fetchone()) for phone in phones]
+
+    def delete_whatsapp_number(self, number_id):
+        with self.connect() as db:
+            if not db.execute('DELETE FROM whatsapp_numbers WHERE id=?', (number_id,)).rowcount:
+                raise KeyError('WhatsApp 号码不存在')
+            self._audit(db, 'whatsapp_number_deleted', {'id':number_id})
+
+    def apply_whatsapp_number(self, base, number, occurrence_ids, expected_published, commit_guard=None):
+        from .redirects import replace_bundle
+        if base['slot'] != 'B':
+            raise KeyError('B 版本不存在')
+        version, changed = replace_bundle(self.pages / base['id'], base['id'], occurrence_ids, number['phone'], self.pages, base['name'])
+        try:
+            with self.connect() as db:
+                if commit_guard:
+                    commit_guard(db)
+                else:
+                    db.execute('BEGIN IMMEDIATE')
+                current = db.execute("SELECT version_id FROM slots WHERE slot='B'").fetchone()[0]
+                if current != expected_published:
+                    raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
+                saved = db.execute('SELECT phone FROM whatsapp_numbers WHERE id=?', (number['id'],)).fetchone()
+                if not saved or saved['phone'] != number['phone']:
+                    raise KeyError('WhatsApp 号码已删除或变更')
+                db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], 'B', version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
+                db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
+                self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed, 'whatsapp_number':number['phone']})
                 self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
         except Exception:
             shutil.rmtree(self.pages / version['id'])

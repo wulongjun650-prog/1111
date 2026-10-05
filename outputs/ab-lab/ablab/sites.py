@@ -57,6 +57,15 @@ class Registry:
                 db.execute("ALTER TABLE sites ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'admin'")
             if 'owner_epoch' not in {row['name'] for row in db.execute('PRAGMA table_info(sites)')}:
                 db.execute('ALTER TABLE sites ADD COLUMN owner_epoch INTEGER NOT NULL DEFAULT 0')
+            columns = {row['name'] for row in db.execute('PRAGMA table_info(sites)')}
+            for name, definition in (
+                ('cf_zone_id', "TEXT NOT NULL DEFAULT ''"),
+                ('cf_nameservers', "TEXT NOT NULL DEFAULT ''"),
+                ('cf_status', "TEXT NOT NULL DEFAULT ''"),
+                ('cf_detail', "TEXT NOT NULL DEFAULT ''"),
+            ):
+                if name not in columns:
+                    db.execute(f'ALTER TABLE sites ADD COLUMN {name} {definition}')
             if not db.execute("SELECT 1 FROM sites WHERE id='default'").fetchone() and (self.root / 'app.db').exists():
                 backup = self.root / 'backups' / 'pre-multidomain.db'
                 backup.parent.mkdir(exist_ok=True)
@@ -152,6 +161,27 @@ class Registry:
         self.get(site_id)
         with self.connect() as db:
             return [dict(row) for row in db.execute('SELECT created,stage,detail FROM site_events WHERE site_id=? ORDER BY id DESC LIMIT 100', (site_id,))]
+
+    def set_cloudflare(self, site_id, zone_id, nameservers, status, detail):
+        if not isinstance(zone_id, str) or (zone_id and not re.fullmatch(r'[a-f0-9]{32}', zone_id)):
+            raise ValueError('Cloudflare 站点记录无效')
+        if not isinstance(nameservers, str) or len(nameservers) > 300:
+            raise ValueError('Cloudflare NS 记录无效')
+        if nameservers and any(not re.fullmatch(r'[a-z0-9.-]{1,253}', part) for part in nameservers.split(',')):
+            raise ValueError('Cloudflare NS 记录无效')
+        if status not in ('', 'pending', 'active', 'failed'):
+            raise ValueError('Cloudflare 状态无效')
+        if not isinstance(detail, str) or len(detail) > 400:
+            raise ValueError('Cloudflare 说明过长')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            site = db.execute('SELECT stage,cf_zone_id,cf_nameservers,cf_status,cf_detail FROM sites WHERE id=?', (site_id,)).fetchone()
+            if site is None:
+                raise KeyError(site_id)
+            if (site['cf_zone_id'], site['cf_nameservers'], site['cf_status'], site['cf_detail']) != (zone_id, nameservers, status, detail):
+                db.execute('UPDATE sites SET cf_zone_id=?,cf_nameservers=?,cf_status=?,cf_detail=? WHERE id=?', (zone_id, nameservers, status, detail, site_id))
+                self._event(db, site_id, site['stage'], (detail or 'Cloudflare 记录已更新')[:180])
+        return self.get(site_id)
 
     def set_note(self, site_id, note):
         if not isinstance(note, str) or len(note) > 200:
