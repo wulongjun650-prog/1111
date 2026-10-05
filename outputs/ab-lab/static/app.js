@@ -2,6 +2,7 @@ import { createDashboard } from './dashboard.mjs';
 import { applyTheme } from './theme.mjs';
 import { themeFor, countryBadge, deviceBadge, icon, reputationView } from './presentation.mjs';
 import { createReputationAutoCheck } from './reputation.mjs';
+import { createCloudflareAutoCheck } from './cloudflare-status.mjs';
 import { patchConfig, rulesConfig, parseLinks, previewURL, logPath, validateUpload, sitePath } from './helpers.mjs';
 import { countryLabel } from './locale.mjs';
 import { createSelection } from './selection.mjs';
@@ -42,6 +43,7 @@ const bRedirects = createBRedirects({api, on, element, confirmAction, getSite:()
   },
 });
 const reputationChecking = new Set();
+const cloudflareChecking = new Set();
 const latestReputation = new Map();
 const reputationAutoCheck = createReputationAutoCheck({
   check:async id=>(await api(`/api/sites/${id}/reputation/check`,{method:'POST',body:{}})).result,
@@ -57,6 +59,21 @@ const reputationAutoCheck = createReputationAutoCheck({
     const site = catalog?.sites.find(item=>item.id === id);
     const cell = $$('[data-reputation-site]').find(item=>item.dataset.reputationSite === id);
     if (site && cell) renderReputation(site,cell);
+  },
+});
+const cloudflareAutoCheck = createCloudflareAutoCheck({
+  check:async id=>(await api(`/api/sites/${id}/cloudflare/status`,{method:'POST',body:{}})),
+  isActive:()=>activeTab === 'domains' && !document.hidden && Boolean(catalog?.cloudflare_configured),
+  onUpdate:(id,update)=>{
+    if (update.checking === true) cloudflareChecking.add(id);
+    if (update.checking === false) cloudflareChecking.delete(id);
+    const site = catalog?.sites.find(item=>item.id === id);
+    if (update.result?.site && site) {
+      const becameActive = site.cf_status !== 'active' && update.result.site.cf_status === 'active';
+      Object.assign(site, update.result.site);
+      if (becameActive) toast(`${site.domain} 的 Cloudflare 已生效。`);
+    }
+    if (catalog) renderDomains();
   },
 });
 const rulesForm = $('#rules-form');
@@ -762,7 +779,13 @@ function renderDomains() {
   for (const site of sites) {
     const row = element('tr'), name = element('td'), health = element('td'), validation = element('td'), created = element('td'), note = element('td'), availability = element('td'), actions = element('td');
     name.append(element('strong','domain-name',site.domain || '原有本地站点'), element('small','domain-detail',site.id === 'default' ? '原有站点' : '自带域名'));
-    if (site.cf_status) name.append(element('small','domain-detail',{active:'已套 Cloudflare',pending:'等待把 NS 改到 Cloudflare',failed:'Cloudflare 未完成'}[site.cf_status] || 'Cloudflare'));
+    if (site.cf_status) {
+      const checking = cloudflareChecking.has(site.id);
+      const [label, tone] = checking ? ['检查中', 'neutral'] : {active:['有效','green'], pending:['待处理','neutral'], failed:['未完成','red']}[site.cf_status] || ['Cloudflare','neutral'];
+      const badge = element('span', `domain-health badge ${tone}`, `Cloudflare ${label}`);
+      badge.dataset.cfSite = site.id;
+      name.append(badge);
+    }
     if (isAdmin(account)) {
       const owner = element('div','domain-owner');
       owner.append(element('small','domain-detail',`归属：${site.owner_username || '总管理员'}`),actionButton('分配',()=>assignOwner(site),'text-button small'));
@@ -778,7 +801,7 @@ function renderDomains() {
     if (site.error && site.stage !== 'active') { const error = element('small',`domain-detail${['failed','unsupported'].includes(site.stage)?' domain-error':''}`,site.error.length>52 ? site.error.slice(0,52)+'…' : site.error); error.title=site.error; validation.append(error); }
     const dnsPassed = ['active','dns_verified','creating','proxy','certificate','verifying'].includes(site.stage);
     validation.append(element('small','domain-detail',`${dnsPassed ? 'DNS 已验证' : 'DNS 未确认'} · ${site.stage === 'active' ? '证书已验收' : '证书未确认'}`));
-    if (site.cf_nameservers && site.cf_status === 'pending') validation.append(element('small','domain-detail',`NS：${site.cf_nameservers.split(',').join('、')}`));
+    if (site.cf_nameservers && site.cf_status === 'pending') validation.append(element('small','domain-detail',`NS：${site.cf_nameservers.split(',').join('、')} · 本页会自动检查，生效后变为「有效」`));
     const date = site.created ? new Date(site.created*1000) : null;
     created.append(element('span','',date ? date.toLocaleDateString('zh-CN') : '—'));
     created.title = date ? formatDate(site.created) : '登记时间未知';
@@ -862,7 +885,9 @@ async function loadDomains({refreshSelection = true} = {}) {
   }
   for (const id of latestReputation.keys()) if (!visible.has(id)) latestReputation.delete(id);
   for (const id of reputationChecking) if (!visible.has(id)) reputationChecking.delete(id);
+  for (const id of cloudflareChecking) if (!visible.has(id)) cloudflareChecking.delete(id);
   reputationAutoCheck.refresh(catalog).catch(()=>{});
+  cloudflareAutoCheck.refresh(catalog).catch(()=>{});
   updateSiteLock();
   if (!next && !['domains','accounts'].includes(activeTab)) await selectTab('domains',{load:false});
   if (changed && next && refreshSelection) {

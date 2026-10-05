@@ -1,4 +1,5 @@
 import json
+import time
 
 import httpx
 import pytest
@@ -194,6 +195,20 @@ def test_cloudflare_domain_skips_public_a_check(tmp_path):
     assert '没有 Cloudflare 配置' in registry.get(site['id'])['error']
 
 
+def test_pending_zone_stays_on_a_one_minute_check(tmp_path):
+    registry = Registry(tmp_path)
+    site = registry.add('new.example.com')
+    registry.set_cloudflare(site['id'], ZONE, ','.join(SERVERS), 'pending', '等待 NS')
+    api = Api(zones={'new.example.com': [zone('new.example.com', status='pending')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'new.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    inspect_pending(registry, ORIGIN, cloudflare=client(api))
+    saved = registry.get(site['id'])
+    assert saved['stage'] == 'waiting_dns'
+    assert saved['cf_status'] == 'pending'
+    assert 0 < saved['next_attempt'] - time.time() <= 60
+
+
 def session(tmp_path, cloudflare=None, server_ip=ORIGIN):
     app = create_admin(tmp_path, server_ip=server_ip, cloudflare=cloudflare)
     http = TestClient(app, base_url='http://127.0.0.1:8765', client=('127.0.0.1', 10000))
@@ -224,6 +239,49 @@ def test_unchecked_add_keeps_the_old_path_and_checked_is_optional(tmp_path):
     purged = http.post(f"/api/sites/{body['site']['id']}/cloudflare/purge", json={})
     assert purged.status_code == 200
     assert any(path.endswith('/purge_cache') for _, path in api.calls)
+
+
+def test_open_page_checks_pending_nameservers_until_the_zone_is_active(tmp_path):
+    api = Api(zones={'new.example.com': [zone('new.example.com', status='pending')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'new.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    http = session(tmp_path, client(api))
+    added = http.post('/api/sites', json={'domain': 'new.example.com', 'cloudflare': True})
+    site_id = added.json()['site']['id']
+    waiting = http.post(f'/api/sites/{site_id}/cloudflare/status', json={})
+    assert waiting.status_code == 200, waiting.text
+    assert waiting.json()['cloudflare']['status'] == 'pending'
+    assert waiting.json()['site']['cf_status'] == 'pending'
+    assert '正在自动检查' in waiting.json()['cloudflare']['detail']
+    api.zones['new.example.com'][0]['status'] = 'active'
+    ready = http.post(f'/api/sites/{site_id}/cloudflare/status', json={})
+    assert ready.status_code == 200, ready.text
+    assert ready.json()['cloudflare'] == {
+        'ok': True, 'status': 'active', 'active': True, 'nameservers': SERVERS,
+        'detail': 'Cloudflare 已生效，回源指向服务器',
+    }
+    assert ready.json()['site']['cf_status'] == 'active'
+    assert ready.json()['site']['stage'] == 'unsupported'
+    plain = http.post('/api/sites', json={'domain': 'other.example.com'})
+    assert plain.status_code == 200
+    missing = http.post(f"/api/sites/{plain.json()['site']['id']}/cloudflare/status", json={})
+    assert missing.status_code == 400
+
+
+def test_status_check_keeps_pending_when_cloudflare_cannot_confirm(tmp_path):
+    api = Api(zones={'new.example.com': [zone('new.example.com', status='pending')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'new.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    http = session(tmp_path, client(api))
+    added = http.post('/api/sites', json={'domain': 'new.example.com', 'cloudflare': True})
+    site_id = added.json()['site']['id']
+    api.records[ZONE][0]['content'] = '198.51.100.9'
+    checked = http.post(f'/api/sites/{site_id}/cloudflare/status', json={})
+    assert checked.status_code == 200, checked.text
+    body = checked.json()
+    assert body['cloudflare']['ok'] is False
+    assert body['site']['cf_status'] == 'pending'
+    assert TOKEN not in checked.text
 
 
 def test_failed_attach_keeps_the_domain_and_hides_the_token(tmp_path):

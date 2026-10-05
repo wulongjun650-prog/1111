@@ -227,6 +227,10 @@ test('cloudflare stays unchecked unless the operator opts in',async()=>{
         await route.fulfill({json:{account:agent,sites,server_ip:'8.8.8.8',cloudflare:null,site}});
         return;
       }
+      if(pathname===`/api/sites/${siteId}/cloudflare/status` && request.method()==='POST') {
+        await route.fulfill({json:{site,cloudflare:{ok:true,status:site.cf_status || 'pending',active:false,nameservers:(site.cf_nameservers || '').split(',').filter(Boolean),detail:'NS 尚未生效'}}});
+        return;
+      }
       if(pathname===`/api/sites/${siteId}/state`) {await route.fulfill({json:siteState});return;}
       if(pathname.endsWith('/analytics')) {await route.fulfill({json:analytics});return;}
       throw new Error(`Unexpected endpoint ${pathname}`);
@@ -252,6 +256,7 @@ test('cloudflare stays unchecked unless the operator opts in',async()=>{
     Object.assign(site,{cf_zone_id:'c'.repeat(32),cf_status:'pending',cf_nameservers:'ada.ns.cloudflare.com,bob.ns.cloudflare.com'});
     await page.locator('#refresh-domains').click();
     await page.getByRole('button',{name:'清除 CF 缓存'}).waitFor();
+    await page.getByText('Cloudflare 待处理').waitFor();
     assert.match(await page.locator('.domain-table').innerText(),/ada\.ns\.cloudflare\.com/);
     assert.deepEqual(errors,[]);
   });

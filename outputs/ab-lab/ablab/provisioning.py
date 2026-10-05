@@ -172,7 +172,7 @@ def _inspect_cloudflare(registry, site, cloudflare):
             registry.transition(site_id, generation, 'unsupported', '解析条件已满足；面板自动写入适配尚未完成，未创建目录、站点或证书')
         return
     shown = '、'.join(state['nameservers']) or site['cf_nameservers'].replace(',', '、')
-    registry.transition(site_id, generation, 'waiting_dns', f'请把 NS 改为 {shown}', delay)
+    registry.transition(site_id, generation, 'waiting_dns', f'请把 NS 改为 {shown}', 60)
 
 
 def inspect_pending(registry, server_ip, checker=None, cloudflare=None):

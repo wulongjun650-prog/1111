@@ -429,6 +429,34 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         site, attached = apply_cloudflare(site)
         return {'site': site, 'cloudflare': attached}
 
+    @app.post('/api/sites/{site_id}/cloudflare/status')
+    def cloudflare_status(site_id: str, request: Request):
+        site = authorized_site(request, site_id)
+        if not site['cf_zone_id']:
+            raise ValueError('这个域名没有接入 Cloudflare')
+        if not cloudflare.configured:
+            raise ValueError('服务器未配置 Cloudflare')
+        try:
+            state = cloudflare.confirm(site['cf_zone_id'], site['domain'])
+        except ProvisioningError as error:
+            detail = str(error)[:400]
+            names = [part for part in site['cf_nameservers'].split(',') if part]
+            return {'site': site, 'cloudflare': {'ok': False, 'status': site['cf_status'] or 'pending', 'active': False, 'nameservers': names, 'detail': detail}}
+        status = 'active' if state['active'] else 'pending'
+        names = ','.join(state['nameservers']) or site['cf_nameservers']
+        if status == 'active':
+            detail = 'Cloudflare 已生效，回源指向服务器'
+        else:
+            shown = '、'.join(state['nameservers']) or site['cf_nameservers'].replace(',', '、')
+            detail = f'NS 尚未生效，正在自动检查。请到注册商改为：{shown}'[:400]
+        if (site['cf_status'], site['cf_nameservers'], site['cf_detail']) != (status, names, detail):
+            site = registry.set_cloudflare(site['id'], site['cf_zone_id'], names, status, detail)
+        if status == 'active' and site['stage'] == 'waiting_dns':
+            if registry.transition(site['id'], site['generation'], 'dns_verified', detail):
+                registry.transition(site['id'], site['generation'], 'unsupported', '解析条件已满足；面板自动写入适配尚未完成，未创建目录、站点或证书')
+            site = registry.get(site['id'])
+        return {'site': site, 'cloudflare': {'ok': True, 'status': status, 'active': status == 'active', 'nameservers': [part for part in names.split(',') if part], 'detail': detail}}
+
     @app.post('/api/sites/{site_id}/cloudflare/purge')
     def purge_cloudflare(site_id: str, request: Request):
         site = authorized_site(request, site_id)
