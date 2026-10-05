@@ -802,6 +802,7 @@ function renderDomains() {
     const dnsPassed = ['active','dns_verified','creating','proxy','certificate','verifying'].includes(site.stage);
     validation.append(element('small','domain-detail',`${dnsPassed ? 'DNS 已验证' : 'DNS 未确认'} · ${site.stage === 'active' ? '证书已验收' : '证书未确认'}`));
     if (site.cf_nameservers && site.cf_status === 'pending') validation.append(element('small','domain-detail',`NS：${site.cf_nameservers.split(',').join('、')} · 本页会自动检查，生效后变为「有效」`));
+    if ((site.cf_zone_id || site.cf_status) && site.id !== 'default' && !['active','legacy'].includes(site.stage)) validation.append(element('small','domain-detail','要走宝塔自动建站：点「关闭 Cloudflare」，再把 A 记录指到本机。'));
     if (catalog.cloudflare_configured && site.stage === 'active' && !site.cf_status && site.id !== 'default') validation.append(element('small','domain-detail','证书已接入。确认网站能打开后，点「套用 Cloudflare」，再把注册商 NS 改成页面给出的两条。'));
     const date = site.created ? new Date(site.created*1000) : null;
     created.append(element('span','',date ? date.toLocaleDateString('zh-CN') : '—'));
@@ -827,6 +828,20 @@ function renderDomains() {
     if (site.cf_zone_id) actions.append(actionButton('清除 CF 缓存',async()=>{
       await api(`/api/sites/${site.id}/cloudflare/purge`,{method:'POST',body:{}});
       toast(`已清除 ${site.domain} 的 Cloudflare 缓存。`);
+    },'button secondary small'));
+    if ((site.cf_zone_id || site.cf_status) && site.id !== 'default') actions.append(actionButton('关闭 Cloudflare',async()=>{
+      const ip = catalog.server_ip || '本机公网 IP';
+      const message = ['active','legacy'].includes(site.stage)
+        ? `关闭 ${site.domain} 的 Cloudflare 橙色云？访客会直接走到现在的 A 记录，本机站点和证书保持不变。`
+        : `关闭 ${site.domain} 的 Cloudflare 橙色云？关掉后请把 A 记录指到 ${ip}。注册商 NS 如果仍是 Cloudflare 的两条，改 Cloudflare 里的 A 记录；改回注册商 NS 后，再在注册商把 A 记录指到 ${ip}。指向本机后会自动在宝塔建站并申请证书。`;
+      if (!await confirmAction(message)) return;
+      const result = await api(`/api/sites/${site.id}/cloudflare/disable`,{method:'POST',body:{},timeout:60000});
+      await loadDomains();
+      const address = result.record_address || '';
+      let note = result.cloudflare?.detail || '已关闭 Cloudflare 代理。';
+      if (address && ip && address === catalog.server_ip) note += ` Cloudflare 里的 A 记录已经是 ${address}，橙色云关掉后公共解析会指向本机。`;
+      else if (address && catalog.server_ip) note += ` Cloudflare 里的 A 记录仍是 ${address}，请改成 ${catalog.server_ip}。`;
+      toast(note);
     },'button secondary small'));
     if (catalog.cloudflare_configured && site.stage === 'active' && !site.cf_status && site.id !== 'default') actions.append(actionButton('套用 Cloudflare',async()=>{
       const result = await api(`/api/sites/${site.id}/cloudflare`,{method:'POST',body:{},timeout:60000});

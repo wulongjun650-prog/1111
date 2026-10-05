@@ -78,8 +78,14 @@ class Api:
             return envelope(saved)
         if rest.startswith('dns_records/') and request.method == 'PUT':
             body = json.loads(request.content)
-            assert body['proxied'] is True and body['content'] == ORIGIN
-            saved = body | {'id': RECORD}
+            assert body['type'] == 'A' and body['ttl'] == 1 and isinstance(body.get('proxied'), bool)
+            record_id = rest.removeprefix('dns_records/')
+            current = next((item for item in self.records.get(zone_id, []) if item.get('id') == record_id), {})
+            if body['proxied'] is True:
+                assert body['content'] == ORIGIN
+            else:
+                assert body['content'] == current.get('content')
+            saved = current | body | {'id': record_id}
             self.records[zone_id] = [saved]
             return envelope(saved)
         if rest == 'settings' and request.method == 'GET':
@@ -372,6 +378,99 @@ def test_failed_attach_keeps_the_domain_and_hides_the_token(tmp_path):
     assert TOKEN not in response.text
     assert body['site']['cf_status'] == 'failed'
     assert body['site']['cf_zone_id'] == ''
+
+
+def test_disable_turns_the_apex_grey_and_keeps_its_address():
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': '198.51.100.8', 'proxied': True}],
+    })
+    turned = client(api).disable(ZONE, 'shop.example.com')
+    assert turned == {'proxied': False, 'address': '198.51.100.8'}
+    assert api.records[ZONE][0]['content'] == '198.51.100.8'
+    assert api.records[ZONE][0]['proxied'] is False
+    assert not any(method == 'DELETE' for method, _path in api.calls)
+    again = client(api).disable(ZONE, 'shop.example.com')
+    assert again == {'proxied': False, 'address': '198.51.100.8'}
+    puts = [path for method, path in api.calls if method == 'PUT' and path.endswith('/dns_records/' + RECORD)]
+    assert len(puts) == 1
+
+
+def test_disable_without_an_apex_record_leaves_the_zone():
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]})
+    turned = client(api).disable(ZONE, 'shop.example.com')
+    assert turned == {'proxied': False, 'address': ''}
+    assert not any(method in ('PUT', 'POST', 'DELETE') and 'dns_records' in path for method, path in api.calls)
+
+
+def test_closing_cloudflare_returns_an_unfinished_site_to_direct_dns(tmp_path):
+    api = Api(zones={'new.example.com': [zone('new.example.com', status='pending')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'new.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    http = session(tmp_path, client(api))
+    added = http.post('/api/sites', json={'domain': 'new.example.com', 'cloudflare': True})
+    site_id = added.json()['site']['id']
+    api.zones['new.example.com'][0]['status'] = 'active'
+    ready = http.post(f'/api/sites/{site_id}/cloudflare/status', json={})
+    assert ready.json()['site']['stage'] == 'unsupported'
+    closed = http.post(f'/api/sites/{site_id}/cloudflare/disable', json={})
+    assert closed.status_code == 200, closed.text
+    body = closed.json()
+    assert body['cloudflare']['ok'] is True
+    assert body['cloudflare']['proxied'] is False
+    assert body['record_address'] == ORIGIN
+    assert body['server_ip'] == ORIGIN
+    assert body['site']['stage'] == 'waiting_dns'
+    assert body['site']['cf_zone_id'] == ''
+    assert body['site']['cf_status'] == ''
+    assert body['site']['cf_nameservers'] == ''
+    assert '请把 A 记录指到 8.8.8.8' in body['site']['error']
+    assert api.records[ZONE][0]['proxied'] is False
+    assert api.records[ZONE][0]['content'] == ORIGIN
+    assert TOKEN not in closed.text
+    missing = http.post('/api/sites/default/cloudflare/disable', json={})
+    assert missing.status_code == 400
+    plain = http.post('/api/sites', json={'domain': 'plain.example.com'})
+    assert http.post(f"/api/sites/{plain.json()['site']['id']}/cloudflare/disable", json={}).status_code == 400
+
+
+def test_closing_cloudflare_keeps_a_finished_site_and_a_failed_call_keeps_state(tmp_path):
+    api = Api(zones={'ready.example.com': [zone('ready.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'ready.example.com', 'content': '198.51.100.20', 'proxied': True}],
+    })
+    http = session(tmp_path, client(api))
+    added = http.post('/api/sites', json={'domain': 'ready.example.com'})
+    site_id = added.json()['site']['id']
+    site = Registry(tmp_path).get(site_id)
+    assert Registry(tmp_path).transition(site_id, site['generation'], 'active', '本机 HTTPS 已接入')
+    attached = http.post(f'/api/sites/{site_id}/cloudflare', json={})
+    assert attached.status_code == 200, attached.text
+    api.records[ZONE] = [{'id': RECORD, 'type': 'A', 'name': 'ready.example.com', 'content': '198.51.100.20', 'proxied': True}]
+    closed = http.post(f'/api/sites/{site_id}/cloudflare/disable', json={})
+    assert closed.status_code == 200, closed.text
+    body = closed.json()
+    assert body['site']['stage'] == 'active'
+    assert body['site']['cf_status'] == ''
+    assert body['record_address'] == '198.51.100.20'
+    assert '本机站点保持不变' in body['cloudflare']['detail']
+    assert api.records[ZONE][0]['proxied'] is False
+    assert api.records[ZONE][0]['content'] == '198.51.100.20'
+
+    api.records[ZONE] = [{'id': RECORD, 'type': 'A', 'name': 'ready.example.com', 'content': '198.51.100.20', 'proxied': True}]
+    Registry(tmp_path).set_cloudflare(site_id, ZONE, ','.join(SERVERS), 'active', 'Cloudflare 已生效')
+
+    def refuse(request):
+        if request.method == 'PUT':
+            return failure(9109, 'token ' + TOKEN, 403)
+        return api.respond(request)
+    broken = Cloudflare(TOKEN, 'rules.example.com', ORIGIN, httpx.MockTransport(refuse))
+    http = session(tmp_path, broken)
+    refused = http.post(f'/api/sites/{site_id}/cloudflare/disable', json={})
+    assert refused.status_code == 400
+    assert TOKEN not in refused.text
+    kept = Registry(tmp_path).get(site_id)
+    assert kept['stage'] == 'active'
+    assert kept['cf_zone_id'] == ZONE
+    assert kept['cf_status'] == 'active'
 
 
 def test_missing_cloudflare_config_rejects_the_option_without_saving(tmp_path, monkeypatch):

@@ -462,6 +462,30 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             site = registry.get(site['id'])
         return {'site': site, 'cloudflare': {'ok': True, 'status': status, 'active': status == 'active', 'nameservers': [part for part in names.split(',') if part], 'detail': detail}}
 
+    @app.post('/api/sites/{site_id}/cloudflare/disable')
+    def disable_cloudflare(site_id: str, request: Request):
+        site = authorized_site(request, site_id)
+        if site['id'] == 'default':
+            raise ValueError('原有站点不在这里关闭 Cloudflare')
+        if not site['cf_zone_id'] and not site['cf_status']:
+            raise ValueError('这个域名没有接入 Cloudflare')
+        record_address = ''
+        if site['cf_zone_id']:
+            if not cloudflare.configured:
+                raise ValueError('服务器未配置 Cloudflare')
+            turned = cloudflare.disable(site['cf_zone_id'], site['domain'])
+            record_address = turned['address']
+        if site['stage'] in ('active', 'legacy', 'paused'):
+            detail = '已关闭 Cloudflare 代理。访客将直接访问 A 记录。本机站点保持不变。'
+        else:
+            target = server_ip or '本机公网 IP'
+            detail = f'已关闭 Cloudflare 代理。请把 A 记录指到 {target}，指向本机后会自动建站并申请证书。'
+        updated = registry.clear_cloudflare(site['id'], detail)
+        return {
+            'site': updated, 'server_ip': server_ip, 'record_address': record_address,
+            'cloudflare': {'ok': True, 'proxied': False, 'detail': detail},
+        }
+
     @app.post('/api/sites/{site_id}/cloudflare/purge')
     def purge_cloudflare(site_id: str, request: Request):
         site = authorized_site(request, site_id)

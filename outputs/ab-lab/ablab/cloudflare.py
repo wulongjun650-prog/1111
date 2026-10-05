@@ -4,6 +4,7 @@ Unchecked domains keep the existing A-record path. A checked domain is created
 in the same account as the template zone, proxied back to this server, and
 receives that zone's cache and speed rules.
 """
+import ipaddress
 import json
 import re
 
@@ -101,6 +102,34 @@ class Cloudflare:
             if zone['name'] != domain:
                 raise CloudflareError('Cloudflare 站点与登记域名不一致')
             self._call(client, 'POST', f'/zones/{zone_id}/purge_cache', payload={'purge_everything': True})
+
+    def disable(self, zone_id, domain):
+        """Turn the apex A record grey. The zone and its address stay in place."""
+        domain = normalize_domain(domain)
+        zone_id = _zone_id(zone_id)
+        if not self.configured:
+            raise CloudflareError('服务器未配置 Cloudflare')
+        with self._client() as client:
+            zone = _zone_view(self._call(client, 'GET', '/zones/' + zone_id))
+            if zone['name'] != domain:
+                raise CloudflareError('Cloudflare 站点与登记域名不一致')
+            record = self._exact_record(client, zone_id, domain)
+            if record is None:
+                return {'proxied': False, 'address': ''}
+            address = record.get('content')
+            try:
+                address = str(ipaddress.IPv4Address(address))
+            except (ipaddress.AddressValueError, ValueError):
+                raise CloudflareError('Cloudflare 上的 A 记录无法关闭代理') from None
+            if record.get('proxied') is not True:
+                return {'proxied': False, 'address': address}
+            record_id = record.get('id')
+            if not isinstance(record_id, str) or not re.fullmatch(r'[a-f0-9]{32}', record_id):
+                raise CloudflareError('Cloudflare 解析记录无法更新')
+            self._call(client, 'PUT', f'/zones/{zone_id}/dns_records/{record_id}', payload={
+                'type': 'A', 'name': domain, 'content': address, 'proxied': False, 'ttl': 1,
+            })
+        return {'proxied': False, 'address': address}
 
     def _client(self):
         return httpx.Client(transport=self.transport, timeout=10, follow_redirects=False, trust_env=False)

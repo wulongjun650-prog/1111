@@ -183,6 +183,27 @@ class Registry:
                 self._event(db, site_id, site['stage'], (detail or 'Cloudflare 记录已更新')[:180])
         return self.get(site_id)
 
+    def clear_cloudflare(self, site_id, detail):
+        if not isinstance(detail, str) or not detail.strip() or len(detail) > 400:
+            raise ValueError('Cloudflare 说明无效')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            site = db.execute('SELECT stage FROM sites WHERE id=?', (site_id,)).fetchone()
+            if site is None:
+                raise KeyError(site_id)
+            if site['stage'] in ('active', 'legacy', 'paused'):
+                stage = site['stage']
+                db.execute(
+                    "UPDATE sites SET cf_zone_id='',cf_nameservers='',cf_status='',cf_detail='',generation=generation+1 WHERE id=?",
+                    (site_id,))
+            else:
+                stage = 'waiting_dns'
+                db.execute(
+                    "UPDATE sites SET cf_zone_id='',cf_nameservers='',cf_status='',cf_detail='',stage='waiting_dns',next_attempt=0,error=?,generation=generation+1 WHERE id=?",
+                    (detail, site_id))
+            self._event(db, site_id, stage, detail[:180])
+        return self.get(site_id)
+
     def set_note(self, site_id, note):
         if not isinstance(note, str) or len(note) > 200:
             raise ValueError('备注须为不超过200字的文本')
