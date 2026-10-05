@@ -3,7 +3,7 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
-from ablab.tracking import normalize_conversion, normalize_ga4, rewrite_pages
+from ablab.tracking import normalize_conversion, normalize_ga4, read_pages, rewrite_pages
 from ablab.web import create_admin
 
 
@@ -71,6 +71,19 @@ def test_snippets_keep_one_id_and_reject_fragments():
     raise AssertionError('conversion without send_to')
 
 
+def test_read_pages_returns_the_full_blocks():
+    found = read_pages([('index.html', OLD_PAGE.encode())])
+    assert found['ga4'] == 'G-OLDOLDOLD1'
+    assert 'googletagmanager.com/gtag/js?id=G-OLDOLDOLD1' in found['ga4_body']
+    assert "gtag('config', 'G-OLDOLDOLD1')" in found['ga4_body']
+    assert 'function gtag_report_conversion' in found['conversion_body']
+    assert 'AW-10000000000/oldlabelxx' in found['conversion_body']
+    bare = read_pages([('index.html', '<script>gtag(\'config\', \'G-BAREBAREBA1\');</script>'.encode())])
+    assert bare['ga4'] == 'G-BAREBAREBA1'
+    assert 'gtag/js?id=G-BAREBAREBA1' in bare['ga4_body']
+    assert bare['conversion_body'] == ''
+
+
 def test_existing_blocks_are_replaced_and_missing_blocks_are_inserted():
     replaced, changed = rewrite_pages([('index.html', OLD_PAGE.encode()), ('more.htm', '<p>不动</p>'.encode())], GA4, CONVERSION)
     page = dict(replaced)['index.html'].decode()
@@ -126,7 +139,9 @@ def test_saved_codes_are_shared_and_written_into_the_published_page(tmp_path):
     assert applied.status_code == 200, applied.text
     current = applied.json()['published']
     assert current['A']['ga4'] == 'G-GVPNN75RYK'
+    assert 'gtag/js?id=G-GVPNN75RYK' in current['A']['ga4_body']
     assert current['A']['conversion'] == 'AW-10000000000/oldlabelxx'
+    assert 'function gtag_report_conversion' in current['A']['conversion_body']
     assert current['B']['ga4'] == ''
     both = http.post('/api/tracking/apply', json={'slot': 'A', 'conversion_id': conversion_id, 'expected_published': current['A']['version_id']})
     assert both.status_code == 200, both.text

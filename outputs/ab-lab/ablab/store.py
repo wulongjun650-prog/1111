@@ -382,7 +382,7 @@ class Store:
         slots = self.slots()
         for slot in ('A', 'B'):
             version_id = slots.get(slot)
-            info = {'version_id': version_id, 'ga4': '', 'conversion': ''}
+            info = {'version_id': version_id, 'ga4': '', 'conversion': '', 'ga4_body': '', 'conversion_body': ''}
             if version_id:
                 try:
                     files = source_files(self.pages / version_id)

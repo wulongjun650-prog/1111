@@ -25,7 +25,13 @@ export function createTracking({api, on, element, confirmAction, toast, getState
     }
     for (const node of document.querySelectorAll('[data-tracking-slot]')) {
       const info = data?.published?.[node.dataset.trackingSlot];
-      node.textContent = data && info?.version_id === node.dataset.trackingVersion ? describe(info) : '';
+      const matched = Boolean(data && info?.version_id === node.dataset.trackingVersion);
+      const text = matched ? describe(info) : '';
+      const label = node.querySelector('.version-codes-text');
+      if (label) label.textContent = text;
+      node.hidden = !text;
+      const button = node.querySelector('.version-full');
+      if (button) button.hidden = !matched || !(info.ga4_body || info.conversion_body);
     }
     for (const kind of ['ga4', 'conversion']) {
       const root = lists[kind];
@@ -99,8 +105,49 @@ export function createTracking({api, on, element, confirmAction, toast, getState
     });
   }
 
+  function showFull(slot, versionId) {
+    const info = data?.published?.[slot];
+    if (!info || info.version_id !== versionId) return;
+    const dialog = element('dialog', 'confirm-dialog tracking-full');
+    const title = element('h2', '', '完整代码');
+    title.id = 'tracking-full-title';
+    dialog.setAttribute('aria-labelledby', title.id);
+    dialog.append(title);
+    for (const [heading, body, empty] of [
+      ['GA4', info.ga4_body, '这一版没有 GA4'],
+      ['转化代码', info.conversion_body, '这一版没有转化代码'],
+    ]) {
+      dialog.append(element('p', 'muted', heading));
+      const box = element('textarea');
+      box.readOnly = true;
+      box.value = body || empty;
+      dialog.append(box);
+    }
+    const actions = element('div', 'actions');
+    const copy = element('button', 'button secondary', '复制');
+    const close = element('button', 'button primary', '关闭');
+    copy.type = 'button';
+    close.type = 'button';
+    copy.addEventListener('click', async () => {
+      const text = [info.ga4_body, info.conversion_body].filter(Boolean).join('\n\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('完整代码已复制。');
+      } catch {
+        toast('请在框里手动复制。', true);
+      }
+    });
+    const finish = () => { dialog.close(); dialog.remove(); };
+    close.addEventListener('click', finish);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); finish(); });
+    actions.append(copy, close);
+    dialog.append(actions);
+    document.body.append(dialog);
+    dialog.showModal();
+  }
+
   bind(document.querySelector('#tracking-ga4-form'), 'ga4');
   bind(document.querySelector('#tracking-conversion-form'), 'conversion');
   render();
-  return {load};
+  return {load, showFull};
 }

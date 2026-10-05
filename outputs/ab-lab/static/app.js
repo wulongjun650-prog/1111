@@ -423,9 +423,16 @@ function renderSlots() {
         await api(`/api/publish/${slot}`, { method: 'POST', body: { version_id: version.id } });
         toast(`${slot} 已换成这一版。`); await refreshState();
       }, 'button primary small'));
-      const codes = element('p', 'version-codes', '');
+      const codes = element('div', 'version-codes');
+      codes.hidden = true;
       codes.dataset.trackingSlot = slot;
       codes.dataset.trackingVersion = version.id;
+      codes.append(element('span', 'version-codes-text', ''));
+      const full = element('button', 'button secondary small version-full', '完整代码');
+      full.type = 'button';
+      full.hidden = true;
+      on(full, 'click', () => tracking.showFull(slot, version.id));
+      codes.append(full);
       const hash = element('details', 'version-hash'); hash.append(element('summary', '', '版本校验值'), element('span', '', version.sha256));
       row.append(actions, codes, hash); parent.append(row);
     };

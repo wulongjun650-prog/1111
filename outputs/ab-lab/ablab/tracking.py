@@ -36,6 +36,7 @@ def normalize_conversion(body):
 
 def read_pages(pairs):
     ga4 = conversion = ''
+    ga4_body = conversion_body = ''
     for name, payload in _ordered(pairs):
         text = _text(name, payload)
         if text is None:
@@ -44,13 +45,15 @@ def read_pages(pairs):
             found = GA4_CONFIG.findall(text) or GA4_SRC.findall(text)
             if found:
                 ga4 = found[0].upper()
+                ga4_body = _usable(_extract_first(text, _ga4_spans(text))) or _canonical_ga4(ga4)
         if not conversion:
             found = SEND_TO.findall(text)
             if found:
                 conversion = found[0]
+                conversion_body = _usable(_extract_first(text, _conversion_spans(text))) or _canonical_conversion(conversion)
         if ga4 and conversion:
             break
-    return {'ga4': ga4, 'conversion': conversion}
+    return {'ga4': ga4, 'conversion': conversion, 'ga4_body': ga4_body, 'conversion_body': conversion_body}
 
 
 def rewrite_pages(pairs, ga4_body=None, conversion_body=None):
@@ -129,6 +132,14 @@ def _ordered(pairs):
 
 
 def _replace_ga4(text, snippet):
+    return _splice(text, _ga4_spans(text), snippet)
+
+
+def _replace_conversion(text, snippet):
+    return _splice(text, _conversion_spans(text), snippet)
+
+
+def _ga4_spans(text):
     spans = []
     for match in GA4_LOADER.finditer(text):
         start, end = match.start(), match.end()
@@ -141,10 +152,10 @@ def _replace_ga4(text, snippet):
         if following and re.search(r'''gtag\(\s*['"]config['"]''', following.group(2), re.I) and 'gtag_report_conversion' not in following.group(2):
             end += gap + following.end()
         spans.append((start, _one_newline(text, end)))
-    return _splice(text, spans, snippet)
+    return spans
 
 
-def _replace_conversion(text, snippet):
+def _conversion_spans(text):
     spans = []
     for match in re.finditer(r'function\s+gtag_report_conversion\s*\(', text):
         end = _closing_brace(text, match.end())
@@ -164,7 +175,56 @@ def _replace_conversion(text, snippet):
                 start = comment
                 break
         spans.append((start, _one_newline(text, end)))
-    return _splice(text, spans, snippet)
+    return spans
+
+
+def _extract_first(text, spans):
+    if not spans:
+        return ''
+    start, end = spans[0]
+    return text[start:end]
+
+
+def _usable(snippet):
+    snippet = snippet.strip()
+    if not snippet or len(snippet) > 12000 or '\x00' in snippet:
+        return ''
+    return snippet
+
+
+def _canonical_ga4(ga4_id):
+    return (
+        '<!-- Google tag (gtag.js) -->\n'
+        f'<script async src="https://www.googletagmanager.com/gtag/js?id={ga4_id}"></script>\n'
+        '<script>\n'
+        '  window.dataLayer = window.dataLayer || [];\n'
+        '  function gtag(){dataLayer.push(arguments);}\n'
+        "  gtag('js', new Date());\n"
+        '\n'
+        f"  gtag('config', '{ga4_id}');\n"
+        '</script>'
+    )
+
+
+def _canonical_conversion(send_to):
+    return (
+        '<!-- Event snippet for conversion page\n'
+        'In your html page, add the snippet and call gtag_report_conversion when someone clicks on the chosen link or button. -->\n'
+        '<script>\n'
+        'function gtag_report_conversion(url) {\n'
+        '  var callback = function () {\n'
+        "    if (typeof(url) != 'undefined') {\n"
+        '      window.location = url;\n'
+        '    }\n'
+        '  };\n'
+        "  gtag('event', 'conversion', {\n"
+        f"      'send_to': '{send_to}',\n"
+        "      'event_callback': callback\n"
+        '  });\n'
+        '  return false;\n'
+        '}\n'
+        '</script>'
+    )
 
 
 def _one_newline(text, end):
