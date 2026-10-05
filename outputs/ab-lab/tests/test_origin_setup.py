@@ -82,10 +82,11 @@ class DNS:
         return [expected]
 
 
-def world(tmp_path, *, dns=True, issuer='ok', fail_tls=False):
+def world(tmp_path, *, dns=True, issuer='ok', fail_tls=False, advance=True):
     registry = Registry(tmp_path / 'data')
     site = registry.add(DOMAIN)
-    registry.transition(site['id'], site['generation'], 'dns_verified', 'ready')
+    if advance:
+        registry.transition(site['id'], site['generation'], 'dns_verified', 'ready')
     configs = tmp_path / 'vhosts'
     configs.mkdir()
     config = configs / (DOMAIN + '.conf')
@@ -168,6 +169,30 @@ def test_certificate_for_any_other_name_is_discarded(tmp_path, mode):
     assert 'listen 443' not in config.read_text(encoding='utf-8')
     assert other.read_bytes() == before
     assert not (setup.certificate_root / site['id'] / 'fullchain.pem').exists()
+
+
+def test_origin_pass_builds_a_direct_domain_without_the_dns_service(tmp_path):
+    setup, registry, site, config, other, _calls = world(tmp_path, advance=False)
+    before = other.read_bytes()
+    assert registry.get(site['id'])['stage'] == 'unconfigured'
+    assert setup.run_pending() == 'done'
+    assert registry.get(site['id'])['stage'] == 'active'
+    assert setup.panel.created == [DOMAIN]
+    assert 'listen 443 ssl;' in config.read_text(encoding='utf-8')
+    assert other.read_bytes() == before
+
+
+def test_origin_pass_leaves_cloudflare_domains_untouched(tmp_path):
+    setup, registry, site, config, _other, _calls = world(tmp_path, advance=False)
+    registry.set_cloudflare(site['id'], 'c' * 32, 'ada.ns.cloudflare.com', 'pending', '等待 NS')
+    before = config.read_text(encoding='utf-8')
+    setup.run_pending()
+    saved = registry.get(site['id'])
+    assert saved['stage'] == 'unconfigured'
+    assert saved['cf_status'] == 'pending'
+    assert saved['cf_detail'] == '等待 NS'
+    assert setup.panel.created == []
+    assert config.read_text(encoding='utf-8') == before
 
 
 def test_cloudflare_and_unready_dns_do_not_create_a_site(tmp_path):

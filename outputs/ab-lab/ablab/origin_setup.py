@@ -222,6 +222,8 @@ class OriginSetup:
         with worker_lock(self.lock_path) as acquired:
             if not acquired:
                 return 'busy'
+            from .provisioning import inspect_pending
+            inspect_pending(self.registry, self.server_ip, self.checker, skip_cloudflare=True)
             for site in self.registry.list():
                 if self._eligible(site):
                     self._run(site)

@@ -176,7 +176,7 @@ def _inspect_cloudflare(registry, site, cloudflare):
     registry.transition(site_id, generation, 'waiting_dns', f'请把 NS 改为 {shown}', 60)
 
 
-def inspect_pending(registry, server_ip, checker=None, cloudflare=None):
+def inspect_pending(registry, server_ip, checker=None, cloudflare=None, *, skip_cloudflare=False):
     if server_ip:
         server_ip = public_ipv4(server_ip)
     checker = checker or DNSChecker()
@@ -186,7 +186,8 @@ def inspect_pending(registry, server_ip, checker=None, cloudflare=None):
             continue
         site_id, generation = site['id'], site['generation']
         if site.get('cf_zone_id'):
-            _inspect_cloudflare(registry, site, cloudflare)
+            if not skip_cloudflare:
+                _inspect_cloudflare(registry, site, cloudflare)
             continue
         if not server_ip:
             registry.transition(site_id, generation, 'unconfigured', '服务器公网 IP 未配置；未创建宝塔站点或证书', 300)
