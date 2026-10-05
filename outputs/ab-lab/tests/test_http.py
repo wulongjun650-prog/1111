@@ -40,7 +40,7 @@ def test_upload_publish_modes_and_restart_persist(apps, tmp_path):
     response = target.get('/')
     assert 'Alpha' in response.text
     assert response.headers['cache-control'] == 'no-store'
-    assert 'sandbox' in response.headers['content-security-policy']
+    assert 'sandbox allow-scripts allow-forms allow-same-origin' in response.headers['content-security-policy']
     restarted = TestClient(create_target(tmp_path), base_url='http://127.0.0.1:8766', client=('127.0.0.1', 55555))
     assert 'Alpha' in restarted.get('/').text
 

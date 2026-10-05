@@ -210,11 +210,11 @@ class LocalBoundary:
                     policy = f"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src {target_origin}; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
                     extra += [(b'content-security-policy', policy.encode()), (b'x-frame-options', b'DENY')]
                 else:
-                    # Uploaded JS/forms are intentional; opaque origin prevents workers
-                    # and storage persistence, and prevents access to the local admin.
+                    # The page keeps its own origin so GA4 can store a cookie and send the visit.
+                    # The admin is a different host, so this page still cannot read the admin session.
                     ancestors = self.deployment.admin_origin if self.deployment else 'http://127.0.0.1:8765 http://localhost:8765'
                     forms = 'https:' if self.deployment else f'https: http://127.0.0.1:{self.port}'
-                    policy = f"sandbox allow-scripts allow-forms; frame-ancestors {ancestors}; form-action {forms}; object-src 'none'"
+                    policy = f"sandbox allow-scripts allow-forms allow-same-origin; frame-ancestors {ancestors}; form-action {forms}; object-src 'none'"
                     extra.append((b'content-security-policy', policy.encode()))
                 message['headers'] = [(k, v) for k, v in message.get('headers', []) if k.lower() not in {key for key, _ in extra}] + extra
             await send(message)
