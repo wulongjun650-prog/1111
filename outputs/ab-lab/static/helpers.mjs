@@ -21,7 +21,7 @@ export function rulesConfig(config, values) {
   const countries = normalizeSelection('countries', values.countries);
   const rules = { ...next.rules, countries, languages: normalizeSelection('languages', values.languages) };
   for (const key of ['blacklist', 'whitelist', 'blocked_cidrs', 'bot_markers']) rules[key] = list(values[key]);
-  for (const key of ['block_bots', 'block_ipv4', 'block_pc']) rules[key] = Boolean(values[key]);
+  for (const key of ['block_bots', 'strict_bots', 'block_ipv4', 'block_pc']) rules[key] = Boolean(values[key]);
   for (const [key, label, minimum, fallback] of [['min_android', 'Android 版本', 0, 0], ['min_ios', 'iOS 版本', 0, 0], ['max_visits', '访问次数', 0, 0], ['window_hours', '时间窗口', 1, 24]]) {
     const number = Number(values[key] ?? fallback);
     if (!Number.isInteger(number) || number < minimum) throw new Error(`${label}须为有效整数。`);

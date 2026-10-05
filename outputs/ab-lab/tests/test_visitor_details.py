@@ -33,7 +33,11 @@ def test_edge_is_not_chrome_and_unknown_stays_unknown():
     result = decide(Config(), Visitor(ip='1.1.1.1', ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.2210.91'))
     assert result.get('device_details', {}).get('browser') == 'Edge 120.0.2210.91'
     assert result.get('device_details', {}).get('os') == 'Windows 10 / 11'
-    assert decide(Config(), Visitor(ip='1.1.1.1')).get('device_details', {}).get('device') == '未知设备'
+    unknown = decide(Config(), Visitor(ip='1.1.1.1')).get('device_details', {})
+    assert unknown.get('device') == '手机'
+    assert unknown.get('os') == 'iOS 18 以上'
+    assert unknown.get('browser') == 'Safari'
+    assert '未知' not in unknown.get('device') + unknown.get('os') + unknown.get('browser')
 
 
 def test_legacy_log_migration_is_repeatable_and_new_details_persist(tmp_path):

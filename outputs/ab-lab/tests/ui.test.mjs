@@ -43,12 +43,13 @@ test('rule edits normalize lists and preserve unedited configuration', () => {
   const result = helpers.rulesConfig(base, {
     countries: 'hk, US, hk', languages: 'zh-CN, en', blacklist: '1.2.3.4\n5.6.7.8',
     whitelist: '', blocked_cidrs: '192.0.2.0/24', bot_markers: 'bot, crawler',
-    block_bots: true, block_ipv4: false, block_pc: true,
+    block_bots: true, strict_bots: true, block_ipv4: false, block_pc: true,
     min_android: '12', min_ios: '16', max_visits: '10', window_hours: '24',
   });
   assert.deepEqual(result.rules.countries, ['HK', 'US']);
   assert.deepEqual(result.rules.blacklist, ['1.2.3.4', '5.6.7.8']);
   assert.equal(result.rules.min_ios, 16);
+  assert.equal(result.rules.strict_bots, true);
   assert.equal(result.rules.future_option, true);
   assert.equal(result.routing, 'FORCE_A');
   assert.deepEqual(base.rules, { future_option: true });

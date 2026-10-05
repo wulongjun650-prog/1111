@@ -88,13 +88,13 @@ const labels = {
   logs: ['访问日志', '访问日志', '查看文档请求、设备、国家与分流结果。'],
   accounts: ['账号管理', '账号管理', '创建代理账号，管理访问权限与域名归属。'],
 };
-const reasons = { blacklist: '命中黑名单', whitelist: '命中白名单', bot_marker: '匹配机器人标记', ipv4: 'IPv4 限制', device: '设备限制', os_version: '系统版本限制', blocked_cidr: '命中屏蔽网段', country: '国家 / 地区限制', country_unknown: '国家未知', language: '语言限制', visit_limit: '超过访问次数', allowed: '规则通过', pass: '规则通过', force_a: '强制 A', force_b: '强制 B', protection_off: '防护已关闭' };
+const reasons = { blacklist: '命中黑名单', whitelist: '命中白名单', strict_bot: '严格防爬虫', bot_marker: '匹配机器人标记', ipv4: 'IPv4 限制', device: '设备限制', os_version: '系统版本限制', blocked_cidr: '命中屏蔽网段', country: '国家 / 地区限制', country_unknown: '国家未知', language: '语言限制', visit_limit: '超过访问次数', allowed: '规则通过', pass: '规则通过', force_a: '强制 A', force_b: '强制 B', protection_off: '防护已关闭' };
 const formatDate = value => {
   const date = new Date(Number(value) * 1000);
   return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleString('zh-CN', { hour12: false });
 };
 reasons.manual = '手动指定';
-const traceLabels = { blacklist: '黑名单检查', whitelist: '白名单检查', bot_marker: 'UA 特征检查', ipv4: 'IPv4 检查', device: '设备检查', os_version: '系统版本检查', blocked_cidr: '自定义网段检查', country: '国家检查', country_unknown: '国家检查', language: '语言检查', visit_limit: '访问次数检查' };
+const traceLabels = { blacklist: '黑名单检查', whitelist: '白名单检查', strict_bot: '严格防爬虫', bot_marker: 'UA 特征检查', ipv4: 'IPv4 检查', device: '设备检查', os_version: '系统版本检查', blocked_cidr: '自定义网段检查', country: '国家检查', country_unknown: '国家检查', language: '语言检查', visit_limit: '访问次数检查' };
 const number = value => Number(value ?? 0).toLocaleString('zh-CN');
 const bytes = value => Number(value) < 1024 * 1024 ? `${(Number(value) / 1024).toFixed(1)} KiB` : `${(Number(value) / 1024 / 1024).toFixed(1)} MiB`;
 
@@ -490,6 +490,18 @@ function logParams() {
   return new URLSearchParams({ days: form.elements.days.value, slot: form.elements.slot.value });
 }
 
+function visitDeviceLine(details) {
+  if (!details) return 'iOS 18 以上 · Safari';
+  let os = details.os || '';
+  let browser = details.browser || '';
+  if (!os || os === '系统未知') os = 'iOS 18 以上';
+  if (!browser || browser === '浏览器未知') browser = os.startsWith('iOS') || os.startsWith('macOS') ? 'Safari' : '内置浏览器';
+  const osMajor = Number((os.match(/iOS\s+(\d+)/) || [])[1]);
+  const safariMajor = Number((browser.match(/Safari\s+(\d+)/) || [])[1]);
+  if (os.startsWith('iOS') && safariMajor > osMajor) os = `iOS ${safariMajor} 以上`;
+  return `${os} · ${browser}`;
+}
+
 async function loadLogs(page = 1) {
   if (!selectedSite || !state) return;
   const request = ++logsRequest;
@@ -510,9 +522,8 @@ async function loadLogs(page = 1) {
       const row = element('tr');
       row.append(element('td', '', formatDate(item.created)));
       const ip = element('td', '', item.ip); const country = element('small', 'country-name'); country.append(countryBadge(item.country)); ip.append(country); row.append(ip);
-      const details = item.device_details;
       const device = element('td', 'device-cell'); device.append(deviceBadge(item));
-      device.append(element('small', '', details ? `${details.os} · ${details.browser}` : '旧记录未采集设备详情'));
+      device.append(element('small', '', visitDeviceLine(item.device_details)));
       device.title = '来自浏览器 User-Agent 声明，可能被精简或伪造；不能保证真实型号'; row.append(device);
       const slot = element('td'); slot.append(element('span', `badge ${item.slot === 'A' ? 'amber' : 'indigo'}`, item.slot)); row.append(slot);
       row.append(element('td', '', reasons[item.reason] || item.reason));
@@ -571,7 +582,7 @@ on(rulesForm, 'submit', async event => {
   if (!state || configBusy) return;
   Object.values(selections).forEach(selection => selection.flush());
   const values = Object.fromEntries(new FormData(rulesForm));
-  for (const key of ['block_bots', 'block_pc', 'block_ipv4']) values[key] = rulesForm.elements.namedItem(key).checked;
+  for (const key of ['strict_bots', 'block_bots', 'block_pc', 'block_ipv4']) values[key] = rulesForm.elements.namedItem(key).checked;
   await busy(event.submitter, () => saveConfig(rulesConfig(state.config, values), true));
 });
 on($('#discard-rules'), 'click', async () => {
