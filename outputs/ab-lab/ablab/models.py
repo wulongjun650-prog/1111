@@ -14,6 +14,7 @@ class Rules(StrictModel):
     blacklist: list[str] = Field(default_factory=list, max_length=500)
     whitelist: list[str] = Field(default_factory=list, max_length=500)
     block_bots: bool = False
+    strict_bots: bool = False
     bot_markers: list[str] = Field(default_factory=lambda: ['bot', 'crawler', 'spider'], max_length=100)
     block_ipv4: bool = False
     block_pc: bool = False

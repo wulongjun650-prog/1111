@@ -2,7 +2,31 @@
 import ipaddress
 import re
 from .models import Config, Visitor
-from .devices import describe_device
+from .devices import describe_device, ios_major
+
+
+# Names that identify crawlers. A bare "bot" substring is intentionally absent:
+# phone brands such as Cubot contain those letters.
+_CRAWLER_MARKERS = (
+    'googlebot', 'adsbot-google', 'mediapartners-google', 'storebot-google',
+    'bingbot', 'bingpreview', 'msnbot', 'adidxbot', 'baiduspider', 'yandexbot',
+    'yandex.com/bots', 'duckduckbot', 'applebot', 'amazonbot', 'petalbot',
+    'bytespider', 'ahrefsbot', 'ahrefs', 'semrushbot', 'semrush', 'dotbot',
+    'mj12bot', 'rogerbot', 'screaming frog', 'gptbot', 'chatgpt-user',
+    'oai-searchbot', 'claudebot', 'claude-user', 'anthropic-ai', 'ccbot',
+    'perplexitybot', 'facebookexternalhit', 'facebot', 'twitterbot',
+    'linkedinbot', 'slackbot', 'telegrambot', 'discordbot', 'embedly',
+    'ia_archiver', 'archive.org_bot', 'sogou web spider', 'sogou pic spider',
+    'sogou inst spider', '360spider', 'yisouspider',
+    'haosouspider', 'tiktokspider', 'dataforseobot', 'blexbot', 'megaindex',
+    'crawler', 'spider', 'headlesschrome', 'phantomjs', 'selenium',
+    'puppeteer', 'playwright', 'curl/', 'wget/', 'python-requests',
+    'python-urllib', 'scrapy', 'go-http-client', 'httpclient', 'libwww',
+    'okhttp', 'axios/', 'node-fetch', 'postmanruntime', 'httpx/', 'aiohttp',
+    'java/', 'sqlmap', 'zgrab', 'masscan', 'colly', 'fasthttp', 'libcurl',
+)
+_BOT_TOKEN = re.compile(r'(?<![a-z0-9])([a-z0-9]*bot)(?:/|\b)')
+_BOT_NAMES = {'cubot'}
 
 
 def device_info(ua):
@@ -14,8 +38,16 @@ def device_info(ua):
     else:
         device = 'unknown'
     android = re.search(r'android\s+(\d+)', text)
-    ios = re.search(r'(?:iphone os|cpu os)\s+(\d+)', text)
-    return device, int(android[1]) if android else None, int(ios[1]) if ios else None
+    return device, int(android[1]) if android else None, ios_major(ua)
+
+
+def strict_crawler(ua, device):
+    text = ua.lower()
+    if not text.strip() or device == 'unknown':
+        return True
+    if any(marker in text for marker in _CRAWLER_MARKERS):
+        return True
+    return any(match.group(1) not in _BOT_NAMES for match in _BOT_TOKEN.finditer(text))
 
 
 def accepted_languages(header):
@@ -56,10 +88,11 @@ def decide(config: Config, visitor: Visitor):
     if matches(rules.whitelist):
         return result(config.allowed_slot, 'whitelist', f'命中白名单，跳过其余规则；放行后展示 {config.allowed_slot}', 'pass')
     checks = [
+        ('strict_bot', rules.strict_bots, strict_crawler(visitor.ua, device), '严格防爬虫：爬虫、脚本或没有正常浏览器标识的访问'),
         ('bot_marker', rules.block_bots, any(marker in visitor.ua.lower() for marker in rules.bot_markers), 'UA 命中爬虫特征；仅为可伪造的声明'),
         ('ipv4', rules.block_ipv4, address.version == 4, 'IPv4 访问被限制'),
         ('device', rules.block_pc, device != 'mobile', '未识别为移动设备（基于 UA）'),
-        ('os_version', bool(rules.min_android or rules.min_ios), (android is not None and android < rules.min_android) or (ios is not None and ios < rules.min_ios) or (rules.min_android > 0 and 'android' in visitor.ua.lower() and android is None) or (rules.min_ios > 0 and any(x in visitor.ua.lower() for x in ('iphone', 'ipad', 'ipod')) and ios is None), '移动系统版本低于阈值或版本无法解析'),
+        ('os_version', bool(rules.min_android or rules.min_ios), (android is not None and android < rules.min_android) or (ios is not None and ios < rules.min_ios) or (rules.min_android > 0 and 'android' in visitor.ua.lower() and android is None) or (rules.min_ios > 0 and any(x in visitor.ua.lower() for x in ('iphone', 'ipad', 'ipod')) and ios is None), '移动系统版本低于阈值'),
         ('blocked_cidr', bool(rules.blocked_cidrs), matches(rules.blocked_cidrs), '命中管理员提供的限制网段'),
         ('country_unknown' if visitor.country is None else 'country', bool(rules.countries), visitor.country not in rules.countries, '国家未知或不在允许列表'),
         ('language', bool(rules.languages), not any(lang == allowed or lang.startswith(allowed + '-') for lang in accepted_languages(visitor.language) for allowed in rules.languages), '浏览器语言不在允许列表'),

@@ -46,6 +46,58 @@ def test_first_n_allowed_and_language_prefix_matches():
     assert result['slot'] == 'B'
 
 
+IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS {os} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/{safari} Mobile/15E148 Safari/604.1'
+ANDROID = 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+CUBOT = 'Mozilla/5.0 (Linux; Android 11; CUBOT KINGKONG) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+
+
+def test_ios_versions_above_18_stay_exact_and_hidden_versions_say_above():
+    exact = decide(Config(), visit(ua=IPHONE.format(os='26_0', safari='26.0')))
+    assert exact['device_details']['os'] == 'iOS 26.0'
+    assert exact['device_details']['browser'] == 'Safari 26.0'
+    frozen = decide(Config(), visit(ua=IPHONE.format(os='18_7', safari='26.1')))
+    assert frozen['device_details']['os'] == 'iOS 26 以上'
+    assert frozen['device_details']['browser'] == 'Safari 26.1'
+    current = decide(Config(), visit(ua=IPHONE.format(os='18_7', safari='18.7.5')))
+    assert current['device_details']['os'] == 'iOS 18.7'
+    assert current['device_details']['browser'] == 'Safari 18.7.5'
+    hidden = decide(Config(), visit(ua='Mozilla/5.0 (iPhone; CPU iPhone OS like Mac OS X) Mobile'))
+    assert hidden['device_details']['os'] == 'iOS 18 以上'
+    assert '未知' not in ''.join(hidden['device_details'].values())
+
+
+def test_unparsed_ios_counts_as_18_and_a_higher_safari_version_counts_as_itself():
+    hidden = 'Mozilla/5.0 (iPhone; CPU iPhone OS like Mac OS X) Mobile'
+    assert decide(Config(rules={'min_ios': 18}), visit(ua=hidden))['reason'] == 'allowed'
+    assert decide(Config(rules={'min_ios': 19}), visit(ua=hidden))['reason'] == 'os_version'
+    frozen = IPHONE.format(os='18_7', safari='26.0')
+    assert decide(Config(rules={'min_ios': 26}), visit(ua=frozen))['reason'] == 'allowed'
+    assert decide(Config(rules={'min_ios': 27}), visit(ua=frozen))['reason'] == 'os_version'
+    assert decide(Config(rules={'min_ios': 18}), visit(ua=IPHONE.format(os='26_0', safari='26.0')))['reason'] == 'allowed'
+
+
+@pytest.mark.parametrize('ua', [
+    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+    'Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36 (compatible; Googlebot/2.1)',
+    'curl/8.6.0',
+    '',
+    'HelloScanner/1.0',
+    'python-requests/2.32',
+])
+def test_strict_crawler_blocks_bots_empty_and_unrecognized_clients(ua):
+    result = decide(Config(rules={'strict_bots': True}), visit(ua=ua))
+    assert result['slot'] == 'A'
+    assert result['reason'] == 'strict_bot'
+
+
+def test_strict_crawler_leaves_normal_phones_and_stays_off_by_default():
+    iphone = IPHONE.format(os='18_7', safari='18.7.5')
+    assert decide(Config(rules={'strict_bots': True}), visit(ua=iphone))['reason'] == 'allowed'
+    assert decide(Config(rules={'strict_bots': True}), visit(ua=ANDROID))['reason'] == 'allowed'
+    assert decide(Config(rules={'strict_bots': True}), visit(ua=CUBOT))['reason'] == 'allowed'
+    assert decide(Config(), visit(ua='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'))['reason'] == 'allowed'
+
+
 def test_unknown_country_is_not_a_block_when_filter_disabled():
     assert decide(Config(), visit(country=None))['slot'] == 'B'
 
