@@ -670,7 +670,15 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             raise ValueError('号码预设只能更换 WhatsApp 号码')
         number = store.whatsapp_number(body.number_id)
         version, changed = store.apply_whatsapp_number(base, number, body.occurrence_ids, body.expected_published, guard)
-        return {'version':version, 'changed':changed}
+        site = registry.get(request.path_params.get('site_id', 'default'))
+        purged = None
+        if site.get('cf_zone_id') and cloudflare.configured:
+            try:
+                cloudflare.purge(site['cf_zone_id'], site['domain'])
+                purged = {'ok': True}
+            except ProvisioningError as error:
+                purged = {'ok': False, 'detail': str(error)[:180]}
+        return {'version':version, 'changed':changed, 'cloudflare':purged}
 
     @routes.get('/source/{slot}/{version_id}')
     def get_source(slot: Slot, version_id: VersionId, path: str | None = None, store=Depends(site_store)):

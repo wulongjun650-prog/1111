@@ -416,9 +416,10 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       catch (error) {if (!isCurrent(value) || error.stale) return; refreshFailed = true;}
       if (!isCurrent(value)) return;
       await scan(value);
+      const cacheNote = result.cloudflare?.ok ? ' Cloudflare 缓存已清除。' : result.cloudflare ? ' 号码已换，但 Cloudflare 缓存没清掉。' : '';
       if (isCurrent(value)) showMessage(refreshFailed
-        ? '号码已更换并发布 B，但状态刷新失败。请刷新状态确认当前版本。进线语未改。'
-        : `已更换 ${result.changed} 处号码并发布 B。进线语未改。`, refreshFailed);
+        ? '号码已更换并发布 B，但状态刷新失败。请刷新状态确认当前版本。进线语未改。' + cacheNote
+        : `已更换 ${result.changed} 处号码并发布 B。进线语未改。` + cacheNote, refreshFailed || Boolean(result.cloudflare && !result.cloudflare.ok));
     } catch (error) {
       if (!isCurrent(value) || error.stale) return;
       if (error.status === 400) await scan(value);

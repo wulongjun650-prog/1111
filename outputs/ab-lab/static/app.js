@@ -37,7 +37,7 @@ const sourceEditor = createSourceEditor({api, on, element, confirmAction, getSit
 });
 const bRedirects = createBRedirects({api, on, element, confirmAction, getSite:() => state?.site,
   onApplied:async result => {
-    if (!result.check) toast('WhatsApp 号码已更换并发布。进线语未改。');
+    if (!result.check) toast(result.cloudflare?.ok ? 'WhatsApp 号码已更换并发布，Cloudflare 缓存已清除。' : result.cloudflare ? 'WhatsApp 号码已更换。Cloudflare 缓存没清掉，请稍后再试。' : 'WhatsApp 号码已更换并发布。进线语未改。', Boolean(result.cloudflare && !result.cloudflare.ok));
     else toast(result.check.status === 'unknown' ? 'B 页已换链并发布；此链接状态未知，请确认目标页面。' : 'B 页已换链并发布，旧版本已保留。');
     await refreshState();
   },

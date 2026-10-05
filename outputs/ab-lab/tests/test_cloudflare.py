@@ -1,5 +1,7 @@
+import io
 import json
 import time
+import zipfile
 
 import httpx
 import pytest
@@ -110,6 +112,8 @@ class Api:
             self.last_rule = rule
             return envelope(body)
         if rest == 'purge_cache' and request.method == 'POST':
+            if getattr(self, 'purge_error', False):
+                return failure(9000, 'cache is busy')
             assert json.loads(request.content) == {'purge_everything': True}
             return envelope({'id': zone_id})
         raise AssertionError(f'unexpected {request.method} {path}')
@@ -282,6 +286,57 @@ def test_status_check_keeps_pending_when_cloudflare_cannot_confirm(tmp_path):
     assert body['cloudflare']['ok'] is False
     assert body['site']['cf_status'] == 'pending'
     assert TOKEN not in checked.text
+
+
+def test_swapping_a_whatsapp_number_purges_that_domains_cache(tmp_path):
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    http = session(tmp_path, client(api))
+    added = http.post('/api/sites', json={'domain': 'shop.example.com', 'cloudflare': True})
+    assert added.status_code == 200, added.text
+    site_id = added.json()['site']['id']
+    prefix = f'/api/sites/{site_id}'
+    archive = io.BytesIO()
+    page = """<!doctype html><script>
+const CONFIG = { whatsappNumber: '85264150954' };
+function go(){ location.href = 'https://wa.me/' + String(CONFIG.whatsappNumber).replace(/\\D/g,''); }
+</script>"""
+    with zipfile.ZipFile(archive, 'w') as bundle:
+        bundle.writestr('index.html', page)
+    uploaded = http.post(prefix + '/upload/B?name=wa.zip', content=archive.getvalue())
+    assert uploaded.status_code == 200, uploaded.text
+    version = uploaded.json()['version']['id']
+    assert http.post(prefix + '/publish/B', json={'version_id': version}).status_code == 200
+    scan = http.get(prefix + '/b-redirects').json()
+    numbers = [item for item in scan['occurrences'] if item['kind'] == 'whatsapp_number']
+    assert [item['url'] for item in numbers] == ['85264150954']
+    pool = http.post(prefix + '/b-redirects/numbers', json={'phones': ['85211112222'], 'note': ''})
+    assert pool.status_code == 200, pool.text
+    before = [path for _, path in api.calls if path.endswith('/purge_cache')]
+    swapped = http.post(prefix + '/b-redirects/numbers/apply', json={
+        'version_id': scan['version']['id'], 'number_id': pool.json()['numbers'][0]['id'],
+        'occurrence_ids': [numbers[0]['id']], 'expected_published': scan['published_version'],
+    })
+    assert swapped.status_code == 200, swapped.text
+    assert swapped.json()['cloudflare'] == {'ok': True}
+    assert swapped.json()['changed'] == 1
+    after = [path for _, path in api.calls if path.endswith('/purge_cache')]
+    assert len(after) == len(before) + 1
+    published = http.get(prefix + '/b-redirects').json()
+    assert [item['url'] for item in published['occurrences'] if item['kind'] == 'whatsapp_number'] == ['85211112222']
+
+    api.purge_error = True
+    again = http.get(prefix + '/b-redirects').json()
+    number = [item for item in again['occurrences'] if item['kind'] == 'whatsapp_number'][0]
+    kept = http.post(prefix + '/b-redirects/numbers/apply', json={
+        'version_id': again['version']['id'], 'number_id': pool.json()['numbers'][0]['id'],
+        'occurrence_ids': [number['id']], 'expected_published': again['published_version'],
+    })
+    assert kept.status_code == 200, kept.text
+    assert kept.json()['cloudflare']['ok'] is False
+    assert TOKEN not in kept.text
+    assert [item['url'] for item in http.get(prefix + '/b-redirects').json()['occurrences'] if item['kind'] == 'whatsapp_number'] == ['85211112222']
 
 
 def test_failed_attach_keeps_the_domain_and_hides_the_token(tmp_path):
