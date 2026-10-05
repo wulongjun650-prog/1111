@@ -4,6 +4,12 @@ export function createTracking({api, on, element, confirmAction, toast, getState
   let request = 0;
   let data = null;
 
+  function describe(info) {
+    const ga4 = info?.ga4 ? `GA4 ${info.ga4}` : '没有 GA4';
+    const conversion = info?.conversion ? `转化 ${info.conversion}` : '没有转化代码';
+    return `${ga4} · ${conversion}`;
+  }
+
   function line(slot, info) {
     if (!data) return `${slot} 正在发布：读取中`;
     const ga4 = info?.ga4 ? `GA4 ${info.ga4}` : '还没有 GA4';
@@ -16,6 +22,10 @@ export function createTracking({api, on, element, confirmAction, toast, getState
     current.replaceChildren();
     for (const slot of ['A', 'B']) {
       current.append(element('p', '', line(slot, data?.published?.[slot])));
+    }
+    for (const node of document.querySelectorAll('[data-tracking-slot]')) {
+      const info = data?.published?.[node.dataset.trackingSlot];
+      node.textContent = data && info?.version_id === node.dataset.trackingVersion ? describe(info) : '';
     }
     for (const kind of ['ga4', 'conversion']) {
       const root = lists[kind];

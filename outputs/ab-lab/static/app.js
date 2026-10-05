@@ -423,8 +423,11 @@ function renderSlots() {
         await api(`/api/publish/${slot}`, { method: 'POST', body: { version_id: version.id } });
         toast(`${slot} 已换成这一版。`); await refreshState();
       }, 'button primary small'));
+      const codes = element('p', 'version-codes', '');
+      codes.dataset.trackingSlot = slot;
+      codes.dataset.trackingVersion = version.id;
       const hash = element('details', 'version-hash'); hash.append(element('summary', '', '版本校验值'), element('span', '', version.sha256));
-      row.append(actions, hash); parent.append(row);
+      row.append(actions, codes, hash); parent.append(row);
     };
     for (const version of visible) appendVersion(version, versions);
     if (older.length) {
