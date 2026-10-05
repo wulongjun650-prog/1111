@@ -1,4 +1,5 @@
 import io
+import time
 import zipfile
 import pytest
 from fastapi.testclient import TestClient
@@ -106,6 +107,23 @@ def test_clearing_logs_removes_only_the_selected_domain(tmp_path):
     assert cleared.json()['deleted'] == 1
     assert admin.get(f'/api/sites/{other}/logs').json()['total'] == 0
     assert admin.get('/api/sites/default/logs').json()['total'] == 1
+
+
+def test_recent_count_is_only_the_last_minute_of_one_domain(tmp_path):
+    app = create_admin(tmp_path)
+    admin = TestClient(app, base_url='http://127.0.0.1:8765', client=('127.0.0.1', 50000))
+    admin.headers.update({'Origin': 'http://127.0.0.1:8765', 'X-CSRF-Token': app.state.csrf})
+    other = admin.post('/api/sites', json={'domain': 'other.example.com'}).json()['site']['id']
+    decision = {'device': 'mobile', 'slot': 'B', 'reason': 'allowed'}
+    current = app.state.registry.store('default')
+    current.event('203.0.113.10', 'US', decision, '/', 'PAGE')
+    current.event('203.0.113.11', 'US', decision, '/', 'PAGE')
+    app.state.registry.store(other).event('203.0.113.20', 'HK', decision, '/', 'PAGE')
+    with current.connect() as db:
+        db.execute('UPDATE events SET created=? WHERE id=(SELECT MIN(id) FROM events)', (time.time() - 120,))
+    assert current.recent_count(60) == 1
+    assert admin.get('/api/logs/rate').json() == {'count': 1, 'seconds': 60}
+    assert admin.get(f'/api/sites/{other}/logs/rate').json()['count'] == 1
 
 
 def test_missing_selected_version_never_falls_back(apps):

@@ -492,6 +492,10 @@ class Store:
             db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode,device_details) VALUES(?,?,?,?,?,?,?,?,?)', (time.time(), masked, country, decision['device'], decision['slot'], decision['reason'], path[:512], mode, json.dumps(details, ensure_ascii=False) if details else None))
             db.execute('DELETE FROM events WHERE created<? OR id <= (SELECT MAX(id)-10000 FROM events)', (time.time() - 30 * 86400,))
 
+    def recent_count(self, seconds=60):
+        with self.connect() as db:
+            return db.execute('SELECT COUNT(*) FROM events WHERE created>=?', (time.time() - seconds,)).fetchone()[0]
+
     def logs(self, days=7, slot='', page=1, page_size=25):
         where = 'created>=?'
         args = [time.time() - days * 86400]

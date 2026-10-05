@@ -814,6 +814,10 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', page: int = Query(default=1, ge=1, le=10000), store=Depends(site_store)):
         return store.logs(days, slot, page)
 
+    @routes.get('/logs/rate')
+    def log_rate(store=Depends(site_store)):
+        return {'count': store.recent_count(60), 'seconds': 60}
+
     @routes.post('/logs/clear')
     def clear_logs(store=Depends(site_store)):
         return {'deleted': store.clear_logs()}
