@@ -60,10 +60,14 @@
 .version-codes[hidden] { display: none !important; }
 .tracking-full { max-width: 720px; }
 .tracking-full textarea { min-height: 150px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-.log-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 18px; }
-.log-watch { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin-left: auto; }
-.log-watch input[type="number"] { width: 76px; }
+.log-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 18px; margin-bottom: 18px; }
+.log-toolbar .filter-bar { padding-bottom: 0; }
+.log-watch { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-left: auto; }
+.log-watch label { flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
+.log-watch input[type="number"] { width: 72px; }
+#watch-count { white-space: nowrap; }
 .watch-alarm { align-items: center; }
+@media (max-width: 1100px) { .log-watch { margin-left: 0; } }
 .watch-alarm p { font-weight: 650; color: var(--ink, #20283d); }
 .tracking-form { display: grid; gap: 10px; margin-top: 12px; }
 .tracking-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
