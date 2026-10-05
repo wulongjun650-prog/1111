@@ -23,7 +23,8 @@ from pydantic import Field
 
 from .archives import EDITABLE_EXTENSIONS, MAX_FILE, MAX_ZIP, editable_file, import_content, read_source, resolve_file, source_files
 from .analytics import summarize
-from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput
+from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput
+from .tracking import normalize_conversion, normalize_ga4
 from .linkcheck import LinkChecker
 from .redirects import public_occurrences, rewrite_text, scan_bundle
 from .rules import decide
@@ -719,6 +720,41 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 purged = {'ok': False, 'detail': str(error)[:180]}
         return {'version':version, 'changed':changed, 'cloudflare':purged}
 
+    @routes.get('/tracking')
+    def get_tracking(store=Depends(site_store)):
+        return {'snippets': registry.tracking_snippets(), 'published': store.published_tracking()}
+
+    @routes.post('/tracking')
+    def add_tracking(body: TrackingSnippetInput, store=Depends(site_store)):
+        label, snippet = normalize_ga4(body.body) if body.kind == 'ga4' else normalize_conversion(body.body)
+        return {'snippet': registry.add_tracking_snippet(body.kind, label, snippet, body.note)}
+
+    @routes.delete('/tracking/{snippet_id}')
+    def delete_tracking(snippet_id: int, store=Depends(site_store)):
+        registry.delete_tracking_snippet(snippet_id)
+        return {'ok': True}
+
+    @routes.post('/tracking/apply')
+    def apply_tracking(body: TrackingApply, request: Request, store=Depends(site_store)):
+        if body.ga4_id is None and body.conversion_id is None:
+            raise ValueError('请选择要写入的 GA4 或转化代码')
+        ga4 = registry.tracking_snippet(body.ga4_id) if body.ga4_id else None
+        conversion = registry.tracking_snippet(body.conversion_id) if body.conversion_id else None
+        if ga4 and ga4['kind'] != 'ga4':
+            raise ValueError('选中的不是 GA4 代码')
+        if conversion and conversion['kind'] != 'conversion':
+            raise ValueError('选中的不是转化代码')
+        version = store.apply_tracking(body.slot, ga4['body'] if ga4 else None, conversion['body'] if conversion else None, body.expected_published)
+        site = registry.get(request.path_params.get('site_id', 'default'))
+        purged = None
+        if site.get('cf_zone_id') and cloudflare.configured:
+            try:
+                cloudflare.purge(site['cf_zone_id'], site['domain'])
+                purged = {'ok': True}
+            except ProvisioningError as error:
+                purged = {'ok': False, 'detail': str(error)[:180]}
+        return {'version': version, 'published': store.published_tracking(), 'cloudflare': purged}
+
     @routes.get('/source/{slot}/{version_id}')
     def get_source(slot: Slot, version_id: VersionId, path: str | None = None, store=Depends(site_store)):
         source_version(store, slot, version_id)
@@ -778,6 +814,10 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', page: int = Query(default=1, ge=1, le=10000), store=Depends(site_store)):
         return store.logs(days, slot, page)
 
+    @routes.post('/logs/clear')
+    def clear_logs(store=Depends(site_store)):
+        return {'deleted': store.clear_logs()}
+
     @routes.get('/logs.csv')
     def export_logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', store=Depends(site_store)):
         fields = ['id', 'created', 'ip', 'country', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
@@ -796,7 +836,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if principal(request)['role'] != 'admin':
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted'}
+                            'counters_reset', 'logs_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 

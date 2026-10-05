@@ -161,6 +161,19 @@ class WhatsAppNumberInput(StrictModel):
         return list(dict.fromkeys(normalize_whatsapp_phone(value) for value in values))
 
 
+class TrackingSnippetInput(StrictModel):
+    kind: Literal['ga4', 'conversion']
+    body: str = Field(min_length=1, max_length=12000, strict=True)
+    note: str = Field(default='', max_length=300, strict=True)
+
+
+class TrackingApply(StrictModel):
+    slot: Literal['A', 'B']
+    ga4_id: int | None = Field(default=None, gt=0)
+    conversion_id: int | None = Field(default=None, gt=0)
+    expected_published: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
+
+
 class WhatsAppNumberApply(StrictModel):
     version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
     number_id: int = Field(gt=0, strict=True)

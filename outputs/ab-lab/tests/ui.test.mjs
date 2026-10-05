@@ -22,6 +22,7 @@ test('Chinese searches expose a selectable Korean result and meaningful country 
 
 test('site paths are explicit and preserve global endpoints', () => {
   assert.equal(helpers.sitePath('/api/config', 'default'), '/api/sites/default/config');
+  assert.equal(helpers.sitePath('/api/tracking/apply', 'default'), '/api/sites/default/tracking/apply');
   assert.equal(helpers.sitePath('/api/upload/A?name=a.zip', 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/upload/A?name=a.zip`);
   assert.equal(helpers.sitePath('/api/logout', 'default'), '/api/logout');
   assert.equal(helpers.sitePath('/api/sites', 'default'), '/api/sites');
