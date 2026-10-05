@@ -6,7 +6,7 @@ export function patchConfig(config, patch) {
 
 export function sitePath(path, siteId) {
   if (!/^(default|[a-f0-9]{32})$/.test(siteId)) throw new Error('站点 ID 无效');
-  if (/^\/api\/(state|config|upload|publish|source|b-redirects|preview|links|counters|simulate|logs|audit|analytics)([/.?]|$)/.test(path)) {
+  if (/^\/api\/(state|config|upload|publish|source|b-redirects|preview|links|counters|simulate|logs|audit|analytics|tracking)([/.?]|$)/.test(path)) {
     return `/api/sites/${siteId}${path.slice(4)}`;
   }
   return path;

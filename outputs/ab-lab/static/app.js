@@ -9,6 +9,7 @@ import { createSelection } from './selection.mjs';
 import { isAdmin, chooseSite, accountSitePath } from './account-ui.mjs';
 import { createSourceEditor } from './source-editor.mjs';
 import { createBRedirects } from './b-redirects.mjs';
+import { createTracking } from './tracking.mjs';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -35,6 +36,7 @@ const dashboard = createDashboard(api, () => isAdmin(account) ? '所有域名' :
 const sourceEditor = createSourceEditor({api, on, element, confirmAction, getSite:() => state?.site,
   onSaved:async result => {toast(`${result.version.slot} 源码已保存并发布，旧版本已保留。`); await refreshState();},
 });
+const tracking = createTracking({api, on, element, confirmAction, toast, getState:() => state, refresh: () => refreshState()});
 const bRedirects = createBRedirects({api, on, element, confirmAction, getSite:() => state?.site,
   onApplied:async result => {
     if (!result.check) toast(result.cloudflare?.ok ? 'WhatsApp 号码已更换并发布，Cloudflare 缓存已清除。' : result.cloudflare ? 'WhatsApp 号码已更换。Cloudflare 缓存没清掉，请稍后再试。' : 'WhatsApp 号码已更换并发布。进线语未改。', Boolean(result.cloudflare && !result.cloudflare.ok));
@@ -284,6 +286,7 @@ function renderState() {
   renderSlots();
   bRedirects.update(state);
   renderLinks();
+  if (activeTab === 'content') tracking.load().catch(error => { if (!error.stale) toast(error.message || '统计代码读取失败。', true); });
 }
 
 async function refreshState() {
@@ -555,6 +558,7 @@ async function selectTab(name, {load = true} = {}) {
   $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',accounts:'ACCOUNTS'}[name];
   $('#page-title').textContent = labels[name][1]; $('#page-subtitle').textContent = labels[name][2];
   if (name !== 'content') closePreview();
+  else if (state) await tracking.load();
   await bRedirects.setActive(name === 'content');
   if (name === 'logs') await loadLogs();
   if (name === 'domains' && load) await loadDomains();

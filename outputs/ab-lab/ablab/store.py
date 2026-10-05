@@ -375,6 +375,69 @@ class Store:
             raise
         return version | {'slot':'B'}, changed
 
+    def published_tracking(self):
+        from .archives import read_source, source_files
+        from .tracking import read_pages
+        found = {}
+        slots = self.slots()
+        for slot in ('A', 'B'):
+            version_id = slots.get(slot)
+            info = {'version_id': version_id, 'ga4': '', 'conversion': ''}
+            if version_id:
+                try:
+                    files = source_files(self.pages / version_id)
+                    pairs = [(name, read_source(path, name)) for name, (path, _) in files.items()]
+                    info.update(read_pages(pairs))
+                except ValueError:
+                    pass
+            found[slot] = info
+        return found
+
+    def apply_tracking(self, slot, ga4_body, conversion_body, expected_published):
+        from .archives import MAX_TOTAL, read_source, source_files, validate_file, write_bundle
+        from .tracking import rewrite_pages
+        if slot not in ('A', 'B'):
+            raise ValueError('只能写入 A 或 B')
+        if not ga4_body and not conversion_body:
+            raise ValueError('请选择要写入的 GA4 或转化代码')
+        published = self.slots().get(slot)
+        if not published:
+            raise ValueError('这个位置还没有发布页面')
+        if expected_published and expected_published != published:
+            raise Conflict('当前发布版本已变化，请刷新后再写入')
+        base = self.version(published)
+        if not base or base['slot'] != slot:
+            raise ValueError('版本不存在或槽位不符')
+        files = source_files(self.pages / published)
+        pairs = [(name, read_source(path, name)) for name, (path, _) in sorted(files.items())]
+        edited, changed = rewrite_pages(pairs, ga4_body, conversion_body)
+        if not changed:
+            raise ValueError('页面里的代码已经是这一份')
+        total, digest = 0, hashlib.sha256()
+        checked = []
+        for name, data in edited:
+            validate_file(name, data)
+            total += len(data)
+            if total > MAX_TOTAL:
+                raise ValueError('源码目录超过总大小限制')
+            checked.append((name, data))
+            digest.update(name.encode('utf-8') + b'\x00' + str(len(data)).encode() + b'\x00' + data)
+        version = write_bundle(checked, base['name'], self.pages, digest.hexdigest())
+        try:
+            with self.connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                current = db.execute('SELECT version_id FROM slots WHERE slot=?', (slot,)).fetchone()[0]
+                if current != published:
+                    raise Conflict('当前发布版本已变化，请刷新后再写入')
+                db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], slot, version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
+                db.execute('UPDATE slots SET version_id=? WHERE slot=?', (version['id'], slot))
+                self._audit(db, 'content_imported', {'slot': slot, 'version': version['id'], 'source_version': published, 'files': version['files'], 'tracking': True})
+                self._audit(db, 'version_published', {'slot': slot, 'before': current, 'after': version['id']})
+        except Exception:
+            shutil.rmtree(self.pages / version['id'], ignore_errors=True)
+            raise
+        return version | {'slot': slot}
+
     def reset_counts(self):
         with self.connect() as db:
             db.execute('DELETE FROM counters')

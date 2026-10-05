@@ -146,6 +146,30 @@
         <div class="card mode-bar"><div><h2>访客看到什么</h2><p class="muted">整页内容，或一打开就跳转。</p></div><fieldset id="content-controls" class="inline-controls" disabled><legend class="sr-only">交付设置</legend><label>方式<select id="content-mode"><option value="PAGE">页面</option><option value="LINK">跳转链接</option></select></label><label id="distribution-field">怎么分<select id="distribution"><option value="random">随机</option><option value="round_robin">轮流</option><option value="equal">尽量均衡</option></select></label></fieldset></div>
         <article class="card" id="links-card" hidden><div class="card-heading"><div><h2>链接管理</h2></div><span id="link-count" class="badge neutral">0 个链接</span></div><form id="links-form"><fieldset id="links-fields" class="link-entry" disabled><legend class="sr-only">批量添加链接</legend><label>给谁用<select name="slot"><option value="A">A</option><option value="B">B</option></select></label><label class="grow">链接<textarea name="urls" rows="3" placeholder="每行一个完整的 https:// 或 http:// 链接" required></textarea></label><button class="button primary" type="submit">添加链接</button></fieldset></form><div id="links-list" class="links-list"><p class="empty-state">还没有链接。每行一个，添加后就会开始分配。</p></div></article>
         <div class="slot-grid" id="slot-cards"></div>
+        <article id="tracking-card" class="card" aria-label="统计代码">
+          <div class="card-heading"><div><h2>统计代码</h2><p class="muted">先保存。再点一下，写进这个域名正在发布的 A 或 B。已有旧代码会整段换掉。</p></div></div>
+          <div id="tracking-current" class="tracking-current"></div>
+          <div class="form-grid">
+            <section>
+              <h3>GA4</h3>
+              <div id="tracking-ga4-list"></div>
+              <form id="tracking-ga4-form" class="tracking-form">
+                <label>GA4 代码<textarea name="body" rows="5" placeholder="粘贴 Google tag 整段代码" required></textarea></label>
+                <label>备注<input name="note" maxlength="300" placeholder="例如 主号"></label>
+                <button class="button secondary small" type="submit">保存 GA4</button>
+              </form>
+            </section>
+            <section>
+              <h3>转化代码</h3>
+              <div id="tracking-conversion-list"></div>
+              <form id="tracking-conversion-form" class="tracking-form">
+                <label>转化代码<textarea name="body" rows="5" placeholder="粘贴 gtag_report_conversion 整段代码" required></textarea></label>
+                <label>备注<input name="note" maxlength="300" placeholder="例如 联系人"></label>
+                <button class="button secondary small" type="submit">保存转化代码</button>
+              </form>
+            </section>
+          </div>
+        </article>
         <article id="b-redirects" class="card" aria-label="B 页换链"></article>
         <section id="preview-panel" class="card" hidden><div class="card-heading"><div><h2 id="preview-title">版本预览</h2><p class="muted">只在这里看，不会发给访客</p></div><button id="close-preview" class="button secondary">关闭预览</button></div><div id="preview-frame"></div></section>
       </section>

@@ -47,6 +47,10 @@ class Registry:
                 CREATE TABLE IF NOT EXISTS site_events(
                     id INTEGER PRIMARY KEY, site_id TEXT NOT NULL, created REAL NOT NULL,
                     stage TEXT NOT NULL, detail TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS tracking_snippets(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, label TEXT NOT NULL,
+                    body TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', created REAL NOT NULL,
+                    UNIQUE(kind, label));
             ''')
             # Serialize migration across admin and target startup. SQLite backup
             # includes WAL; only a complete backup is installed at the final path.
@@ -203,6 +207,48 @@ class Registry:
                     (detail, site_id))
             self._event(db, site_id, stage, detail[:180])
         return self.get(site_id)
+
+    def tracking_snippets(self):
+        with self.connect() as db:
+            return [self._tracking_public(row) for row in db.execute('SELECT * FROM tracking_snippets ORDER BY id')]
+
+    def tracking_snippet(self, snippet_id):
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM tracking_snippets WHERE id=?', (snippet_id,)).fetchone()
+        if row is None:
+            raise ValueError('保存的代码不存在')
+        return dict(row)
+
+    def add_tracking_snippet(self, kind, label, body, note):
+        if kind not in ('ga4', 'conversion'):
+            raise ValueError('代码类型无效')
+        note = note.strip()
+        if len(note) > 300:
+            raise ValueError('备注最多 300 字')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT id FROM tracking_snippets WHERE kind=? AND label=?', (kind, label)).fetchone()
+            if row:
+                db.execute('UPDATE tracking_snippets SET body=?,note=? WHERE id=?', (body, note, row['id']))
+                snippet_id = row['id']
+            else:
+                count = db.execute('SELECT COUNT(*) AS n FROM tracking_snippets WHERE kind=?', (kind,)).fetchone()['n']
+                if count >= 100:
+                    raise ValueError('最多保存 100 条，请先删掉不用的')
+                cursor = db.execute(
+                    'INSERT INTO tracking_snippets(kind,label,body,note,created) VALUES(?,?,?,?,?)',
+                    (kind, label, body, note, time.time()))
+                snippet_id = cursor.lastrowid
+            return self._tracking_public(db.execute('SELECT * FROM tracking_snippets WHERE id=?', (snippet_id,)).fetchone())
+
+    def delete_tracking_snippet(self, snippet_id):
+        with self.connect() as db:
+            if not db.execute('DELETE FROM tracking_snippets WHERE id=?', (snippet_id,)).rowcount:
+                raise ValueError('保存的代码不存在')
+
+    @staticmethod
+    def _tracking_public(row):
+        return {'id': row['id'], 'kind': row['kind'], 'label': row['label'], 'note': row['note'], 'created': row['created']}
 
     def set_note(self, site_id, note):
         if not isinstance(note, str) or len(note) > 200:

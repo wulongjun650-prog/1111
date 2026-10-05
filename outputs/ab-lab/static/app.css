@@ -54,3 +54,11 @@
   .version-row { grid-template-columns: 1fr; }
   .version-row .actions { grid-column: 1; grid-row: auto; }
 }
+.tracking-current { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.tracking-current p { background: #f8f9fc; border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: 12px; }
+.tracking-form { display: grid; gap: 10px; margin-top: 12px; }
+.tracking-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+.tracking-row strong { flex: 1; font-size: 12px; overflow-wrap: anywhere; font-weight: 600; }
+.tracking-row .actions { gap: 6px; }
+.button.quiet { background: transparent; border-color: transparent; color: #8b93a7; }
+@media (max-width: 760px) { .tracking-current { grid-template-columns: 1fr; } }
