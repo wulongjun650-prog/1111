@@ -91,6 +91,23 @@ def test_b_split_rewrites_the_page_before_it_is_sent(apps):
     assert 'split.example' not in target.get('/').text
 
 
+def test_clearing_logs_removes_only_the_selected_domain(tmp_path):
+    app = create_admin(tmp_path)
+    admin = TestClient(app, base_url='http://127.0.0.1:8765', client=('127.0.0.1', 50000))
+    admin.headers.update({'Origin': 'http://127.0.0.1:8765', 'X-CSRF-Token': app.state.csrf})
+    other = admin.post('/api/sites', json={'domain': 'other.example.com'}).json()['site']['id']
+    decision = {'device': 'mobile', 'slot': 'B', 'reason': 'allowed'}
+    app.state.registry.store('default').event('203.0.113.10', 'US', decision, '/', 'PAGE')
+    app.state.registry.store(other).event('203.0.113.20', 'HK', decision, '/', 'PAGE')
+    assert admin.get('/api/sites/default/logs').json()['total'] == 1
+    assert admin.get(f'/api/sites/{other}/logs').json()['total'] == 1
+    cleared = admin.post(f'/api/sites/{other}/logs/clear', json={})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()['deleted'] == 1
+    assert admin.get(f'/api/sites/{other}/logs').json()['total'] == 0
+    assert admin.get('/api/sites/default/logs').json()['total'] == 1
+
+
 def test_missing_selected_version_never_falls_back(apps):
     admin, target = apps
     upload(admin, 'A', 'Alpha')

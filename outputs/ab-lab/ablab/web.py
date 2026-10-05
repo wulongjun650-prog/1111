@@ -814,6 +814,10 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', page: int = Query(default=1, ge=1, le=10000), store=Depends(site_store)):
         return store.logs(days, slot, page)
 
+    @routes.post('/logs/clear')
+    def clear_logs(store=Depends(site_store)):
+        return {'deleted': store.clear_logs()}
+
     @routes.get('/logs.csv')
     def export_logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', store=Depends(site_store)):
         fields = ['id', 'created', 'ip', 'country', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
@@ -832,7 +836,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if principal(request)['role'] != 'admin':
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted'}
+                            'counters_reset', 'logs_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 

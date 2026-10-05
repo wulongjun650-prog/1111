@@ -518,10 +518,12 @@ function visitDeviceLine(details) {
 async function loadLogs(page = 1) {
   if (!selectedSite || !state) return;
   const request = ++logsRequest;
+  const domain = currentDomain() || '当前域名';
+  $('#logs-scope').textContent = `只显示 ${domain}，其他域名不在这里`;
   const params = logParams();
   $('#export-logs').href = sitePath(`/api/logs.csv?${params}`, selectedSite);
   params.set('page', String(page));
-  $('#logs-summary').textContent = '正在加载访问记录…';
+  $('#logs-summary').textContent = `正在加载 ${domain} 的访问记录…`;
   $('#logs-prev').disabled = true; $('#logs-next').disabled = true;
   try {
     const data = await api(`/api/logs?${params}`);
@@ -529,7 +531,7 @@ async function loadLogs(page = 1) {
     logPage = data.page; logPages = Math.max(1, data.pages);
     const root = $('#logs-body'); root.replaceChildren();
     if (!data.items.length) {
-      const row = element('tr'); const cell = element('td', 'empty-state', '当前条件下暂无访问记录。打开测试站点后，再来查看。'); cell.colSpan = 7; row.append(cell); root.append(row);
+      const row = element('tr'); const cell = element('td', 'empty-state', `${domain} 还没有访问记录。`); cell.colSpan = 7; row.append(cell); root.append(row);
     }
     for (const item of data.items) {
       const row = element('tr');
@@ -543,7 +545,7 @@ async function loadLogs(page = 1) {
       const path = element('td', 'path-cell', logPath(item.path)); path.title = logPath(item.path); row.append(path);
       row.append(element('td', '', { PAGE: '页面', LINK: '链接', RULES: '规则', FORCE_A: '强制 A', FORCE_B: '强制 B' }[item.mode] || item.mode)); root.append(row);
     }
-    $('#logs-summary').textContent = `共 ${number(data.total)} 条 · 每页 25 条`;
+    $('#logs-summary').textContent = `${domain} · 共 ${number(data.total)} 条 · 每页 25 条`;
     $('#logs-page').textContent = `${logPage} / ${logPages}`;
   } catch (error) {
     if (request === logsRequest) $('#logs-summary').textContent = '加载失败；请点击「查询」重试。';
@@ -645,6 +647,14 @@ on($('#log-filters'), 'submit', event => { event.preventDefault(); return loadLo
 on($('#log-filters'), 'change', () => loadLogs());
 on($('#logs-prev'), 'click', () => loadLogs(logPage - 1));
 on($('#logs-next'), 'click', () => loadLogs(logPage + 1));
+on($('#clear-logs'), 'click', event => busy(event.currentTarget, async () => {
+  const domain = currentDomain() || '当前域名';
+  if (!await confirmAction(`清空 ${domain} 的全部访问记录？删掉后不能恢复。其他域名不受影响。`)) return;
+  const result = await api('/api/logs/clear', { method: 'POST', body: {} });
+  toast(`已清空 ${domain} 的 ${number(result.deleted)} 条访问记录。`);
+  await refreshState();
+  await loadLogs();
+}));
 window.addEventListener('beforeunload', event => { if (dirty || sourceEditor.isDirty() || bRedirects.isDirty()) { event.preventDefault(); event.returnValue = ''; } });
 
 const stages = { legacy: '原有站点（保留）', unconfigured: '接入服务未配置', waiting_dns: '等待 DNS 解析', dns_verified: '解析已指向本机，等待建站', creating: '正在创建站点', proxy: '配置入口', certificate: '正在申请证书', verifying: '验收中', active: '已接入', failed: '失败待处理', paused: '已暂停', unsupported: '面板接口待验证' };

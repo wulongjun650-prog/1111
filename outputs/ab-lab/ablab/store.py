@@ -443,6 +443,12 @@ class Store:
             db.execute('DELETE FROM counters')
             self._audit(db, 'counters_reset', {'scope': 'all IP visit counters; link allocation counts unchanged'})
 
+    def clear_logs(self):
+        with self.connect() as db:
+            deleted = db.execute('DELETE FROM events').rowcount
+            self._audit(db, 'logs_cleared', {'deleted': deleted})
+        return deleted
+
     def add_links(self, slot, urls):
         with self.connect() as db:
             db.executemany('INSERT OR IGNORE INTO links(slot,url) VALUES(?,?)', [(slot, url) for url in urls])

@@ -22,7 +22,7 @@ test('empty accounts can use catalog and account routes but cannot call site API
   for (const path of ['/api/me','/api/sites','/api/accounts','/api/accounts/admin/password','/api/logout']) {
     assert.equal(accounts.accountSitePath(path, null), path);
   }
-  for (const path of ['/api/state','/api/config','/api/analytics?scope=all','/api/logs.csv','/api/audit','/api/preview','/api/upload/A','/api/b-redirects','/api/b-redirects/presets/1/check','/api/tracking','/api/tracking/apply']) {
+  for (const path of ['/api/state','/api/config','/api/analytics?scope=all','/api/logs.csv','/api/logs/clear','/api/audit','/api/preview','/api/upload/A','/api/b-redirects','/api/b-redirects/presets/1/check','/api/tracking','/api/tracking/apply']) {
     assert.throws(() => accounts.accountSitePath(path, null), /域名/);
   }
   assert.equal(accounts.accountSitePath('/api/state', 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/state`);
