@@ -58,8 +58,8 @@ function reasonsChart(root,rows) {
 }
 function recentVisits(root,rows) {
   root.replaceChildren();
-  if(!rows.length) {const row=node('tr'),td=node('td','chart-empty','还没有访问记录。真实访问发生后，会显示设备和对应国家。');td.colSpan=5;row.append(td);root.append(row);return;}
-  rows.forEach(item=> {const row=node('tr');row.append(node('td','visit-time',new Date(item.created*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})));const device=node('td'),country=node('td'),result=node('td');device.append(deviceBadge(item));country.append(countryBadge(item.country));const outcome={allowed:'放行',blocked:'拦截',other:'手动／其他'}[item.outcome]||'其他';result.append(node('span',`outcome ${item.outcome}`,`${outcome} · ${item.slot}`));row.append(node('td','visit-domain',item.domain || '本地站点'),device,country,result);root.append(row);});
+  if(!rows.length) {const row=node('tr'),td=node('td','chart-empty','还没有访问记录。真实访问发生后，会显示 IP、设备和对应国家。');td.colSpan=6;row.append(td);root.append(row);return;}
+  rows.forEach(item=> {const row=node('tr');row.append(node('td','visit-time',new Date(item.created*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})));const device=node('td'),country=node('td'),result=node('td');device.append(deviceBadge(item));country.append(countryBadge(item.country));const outcome={allowed:'放行',blocked:'拦截',other:'手动／其他'}[item.outcome]||'其他';result.append(node('span',`outcome ${item.outcome}`,`${outcome} · ${item.slot}`));row.append(node('td','visit-domain',item.domain || '本地站点'),node('td','visit-ip',item.ip || '—'),device,country,result);root.append(row);});
 }
 export function createDashboard(api, aggregateLabel = () => '所有域名') {
   let generation=0;
