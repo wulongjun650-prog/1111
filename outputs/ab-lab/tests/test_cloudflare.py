@@ -41,6 +41,7 @@ class Api:
             self.zones.update(zones)
         self.records = records or {}
         self.polish = polish
+        self.ssl = 'flexible'
         self.calls = []
 
     def transport(self):
@@ -88,6 +89,12 @@ class Api:
             saved = current | body | {'id': record_id}
             self.records[zone_id] = [saved]
             return envelope(saved)
+        if rest == 'settings/ssl' and request.method == 'GET':
+            return envelope({'id': 'ssl', 'value': self.ssl})
+        if rest == 'settings/ssl' and request.method == 'PATCH':
+            assert json.loads(request.content) == {'value': 'strict'}
+            self.ssl = 'strict'
+            return envelope({'id': 'ssl', 'value': 'strict'})
         if rest == 'settings' and request.method == 'GET':
             return envelope([
                 {'id': 'brotli', 'value': 'on', 'editable': True},
@@ -139,7 +146,9 @@ def test_attach_copies_rules_and_proxies_to_origin():
     assert '1 项因套餐没套上' in attached['detail']
     assert api.records[ZONE][0]['proxied'] is True
     assert api.last_rule['expression'] == 'http.host eq "new.example.com"'
-    assert not any(path.endswith('/settings/ssl') or path.endswith('/settings/development_mode') for _, path in api.calls)
+    assert api.ssl == 'strict'
+    assert any(method == 'PATCH' and path.endswith('/settings/ssl') for method, path in api.calls)
+    assert not any(path.endswith('/settings/development_mode') for _, path in api.calls)
 
 
 def test_existing_grey_record_is_turned_orange_without_a_new_zone():
@@ -378,6 +387,20 @@ def test_failed_attach_keeps_the_domain_and_hides_the_token(tmp_path):
     assert TOKEN not in response.text
     assert body['site']['cf_status'] == 'failed'
     assert body['site']['cf_zone_id'] == ''
+
+
+def test_strict_https_is_kept_and_not_rewritten():
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]})
+    api.ssl = 'strict'
+    turned = client(api).ensure_strict_ssl(ZONE, 'shop.example.com')
+    assert turned == {'ssl': 'strict'}
+    assert not any(method == 'PATCH' and path.endswith('/settings/ssl') for method, path in api.calls)
+    api.ssl = 'flexible'
+    again = client(api).ensure_strict_ssl(ZONE, 'shop.example.com')
+    assert again == {'ssl': 'strict'}
+    assert api.ssl == 'strict'
+    patches = [path for method, path in api.calls if method == 'PATCH' and path.endswith('/settings/ssl')]
+    assert patches == ['/client/v4/zones/' + ZONE + '/settings/ssl']
 
 
 def test_disable_turns_the_apex_grey_and_keeps_its_address():

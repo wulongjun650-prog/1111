@@ -203,8 +203,9 @@ class PanelCertificateIssuer:
 class OriginSetup:
     def __init__(self, registry, state_dir, server_ip, panel, issuer, *,
                  certificate_root=CERTIFICATE_ROOT, config_dir=Path('/www/server/panel/vhost/nginx'),
-                 runner=subprocess.run, checker=None):
+                 runner=subprocess.run, checker=None, cloudflare=None):
         self.registry, self.panel, self.issuer = registry, panel, issuer
+        self.cloudflare = cloudflare
         self.server_ip = public_ipv4(server_ip)
         self.root = no_symlinks(Path(state_dir))
         self.certificate_root = no_symlinks(Path(certificate_root))
@@ -222,7 +223,9 @@ class OriginSetup:
         with worker_lock(self.lock_path) as acquired:
             if not acquired:
                 return 'busy'
+            from .cloudflare import repair_strict_ssl
             from .provisioning import inspect_pending
+            repair_strict_ssl(self.registry, self.cloudflare)
             inspect_pending(self.registry, self.server_ip, self.checker, skip_cloudflare=True)
             for site in self.registry.list():
                 if self._eligible(site):
@@ -314,6 +317,8 @@ class OriginSetup:
             job['phase'] = 'certificate'
             self._write_job(job)
         if job['phase'] == 'certificate':
+            if not self._cloudflare_https_ready(site):
+                return
             fullchain, key_path = self._cert_paths(identity)
             self._publish(identity, render_origin_https(identity, fullchain, key_path))
             job['phase'] = 'ready'
@@ -364,6 +369,21 @@ class OriginSetup:
             key_path.unlink(missing_ok=True)
             raise ProvisioningError('证书名称与这个域名不一致，未写入 Nginx。') from None
 
+    def _cloudflare_https_ready(self, site):
+        """Do not turn on the HTTP redirect while Cloudflare still uses plain HTTP."""
+        latest = self.registry.get(site['id'])
+        if not latest.get('cf_zone_id'):
+            return True
+        if self.cloudflare is None or not self.cloudflare.token:
+            self._stage(site, 'certificate', detail='Cloudflare 加密回源还不能修改，先不开启强制跳转。', delay=60)
+            return False
+        try:
+            self.cloudflare.ensure_strict_ssl(latest['cf_zone_id'], latest['domain'])
+        except ProvisioningError:
+            self._stage(site, 'certificate', detail='Cloudflare 还没改成加密回源，先不开启强制跳转。', delay=60)
+            return False
+        return True
+
     def _publish(self, identity, text):
         config, _receipt = self.nginx._paths(identity)
         config = no_symlinks(config)
@@ -398,8 +418,12 @@ def serve_origin(data_dir, server_ip, *, port_path=PANEL_PORT, api_path=Path('/w
     from .sites import Registry
     try:
         server_ip = public_ipv4(server_ip)
+        from .cloudflare import Cloudflare
         panel = PanelSites.from_local_config(panel_loopback_address(port_path), api_path, writes_enabled=True)
-        setup = OriginSetup(Registry(data_dir), ORIGIN_ROOT, server_ip, panel, PanelCertificateIssuer())
+        cloudflare = Cloudflare(os.environ.get('AB_CLOUDFLARE_TOKEN', ''), os.environ.get('AB_CLOUDFLARE_TEMPLATE', ''), server_ip)
+        setup = OriginSetup(
+            Registry(data_dir), ORIGIN_ROOT, server_ip, panel, PanelCertificateIssuer(),
+            cloudflare=cloudflare if cloudflare.token else None)
     except (ProvisioningError, ValueError, OSError) as error:
         print(str(error), flush=True)
         raise SystemExit(1) from None

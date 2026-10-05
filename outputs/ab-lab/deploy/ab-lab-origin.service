@@ -16,6 +16,7 @@ StateDirectory=ab-lab-origin ab-lab-certificates
 StateDirectoryMode=0700
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/ab-lab/cloudflare.env
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
