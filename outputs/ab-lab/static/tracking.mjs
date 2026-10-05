@@ -5,6 +5,7 @@ export function createTracking({api, on, element, confirmAction, toast, getState
   let data = null;
 
   function line(slot, info) {
+    if (!data) return `${slot} 正在发布：读取中`;
     const ga4 = info?.ga4 ? `GA4 ${info.ga4}` : '还没有 GA4';
     const conversion = info?.conversion ? `转化 ${info.conversion}` : '还没有转化代码';
     return `${slot} 正在发布：${ga4}，${conversion}`;
