@@ -339,6 +339,27 @@ function go(){ location.href = 'https://wa.me/' + String(CONFIG.whatsappNumber).
     assert [item['url'] for item in http.get(prefix + '/b-redirects').json()['occurrences'] if item['kind'] == 'whatsapp_number'] == ['85211112222']
 
 
+def test_ready_origin_can_attach_cloudflare_and_stays_active(tmp_path):
+    api = Api()
+    http = session(tmp_path, client(api))
+    added = http.post('/api/sites', json={'domain': 'ready.example.com'})
+    assert added.status_code == 200, added.text
+    site_id = added.json()['site']['id']
+    early = http.post(f'/api/sites/{site_id}/cloudflare', json={})
+    assert early.status_code == 400
+    assert '证书' in early.json()['detail']
+    site = Registry(tmp_path).get(site_id)
+    assert Registry(tmp_path).transition(site_id, site['generation'], 'active', '本机 HTTPS 已接入')
+    attached = http.post(f'/api/sites/{site_id}/cloudflare', json={})
+    assert attached.status_code == 200, attached.text
+    body = attached.json()
+    assert body['site']['stage'] == 'active'
+    assert body['site']['cf_status'] == 'pending'
+    assert body['cloudflare']['ok'] is True
+    assert body['cloudflare']['nameservers'] == SERVERS
+    assert TOKEN not in attached.text
+
+
 def test_failed_attach_keeps_the_domain_and_hides_the_token(tmp_path):
     def explode(request):
         raise httpx.ConnectError(TOKEN, request=request)

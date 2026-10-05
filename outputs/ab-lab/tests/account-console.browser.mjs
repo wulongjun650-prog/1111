@@ -261,3 +261,38 @@ test('cloudflare stays unchecked unless the operator opts in',async()=>{
     assert.deepEqual(errors,[]);
   });
 });
+
+test('a site with its own certificate can attach Cloudflare afterwards', async () => {
+  await withConsole('agent', async (page, url, errors) => {
+    const readyId = 'b'.repeat(32);
+    let ready = {id: readyId, domain: 'ready.example.com', owner_id: agent.id, enabled: true, stage: 'active', cf_status: '', cf_zone_id: '', cf_nameservers: '', error: '本机 HTTPS 已接入', note: ''};
+    const posts = [];
+    await page.route('**/api/**', async route => {
+      const request = route.request(), pathname = new URL(request.url()).pathname;
+      if (pathname === '/api/sites' && request.method() === 'GET') {
+        await route.fulfill({json: {account: agent, sites: [ready], google_reputation_configured: false, cloudflare_configured: true, cloudflare_template: 'rules.example.com', server_ip: '8.8.8.8'}});
+        return;
+      }
+      if (pathname === `/api/sites/${readyId}/cloudflare` && request.method() === 'POST') {
+        posts.push(request.postDataJSON());
+        ready = {...ready, cf_zone_id: 'c'.repeat(32), cf_status: 'pending', cf_nameservers: 'ada.ns.cloudflare.com,bob.ns.cloudflare.com'};
+        await route.fulfill({json: {site: ready, cloudflare: {ok: true, status: 'pending', nameservers: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'], detail: '等待 NS'}}});
+        return;
+      }
+      if (pathname === `/api/sites/${readyId}/cloudflare/status`) {
+        await route.fulfill({json: {site: ready, cloudflare: {ok: true, status: ready.cf_status || 'pending', active: false, nameservers: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'], detail: 'NS'}}});
+        return;
+      }
+      if (pathname === `/api/sites/${readyId}/state`) { await route.fulfill({json: {...siteState, site: ready}}); return; }
+      if (pathname.endsWith('/analytics')) { await route.fulfill({json: analytics}); return; }
+      throw new Error(`Unexpected endpoint ${pathname}`);
+    });
+    await page.goto(url);
+    await page.locator('[data-tab="domains"]').click();
+    await page.getByRole('button', {name: '套用 Cloudflare'}).click();
+    await page.getByText('NS：ada.ns.cloudflare.com').waitFor();
+    assert.deepEqual(posts, [{}]);
+    assert.match(await page.locator('.domain-table').innerText(), /Cloudflare 待处理/);
+    assert.deepEqual(errors, []);
+  });
+});

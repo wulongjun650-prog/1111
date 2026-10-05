@@ -1,0 +1,27 @@
+[Unit]
+Description=AB Lab origin site and certificate for one direct-DNS domain at a time
+After=network-online.target ab-lab-admin.service ab-lab-target.service
+Wants=network-online.target ab-lab-target.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/ab-lab
+ExecStart=/opt/ab-lab/.venv/bin/python /opt/ab-lab/run.py --service origin --config /etc/ab-lab/config.json
+Restart=on-failure
+RestartSec=30
+UMask=0077
+StateDirectory=ab-lab-origin ab-lab-certificates
+StateDirectoryMode=0700
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ab-lab /var/lib/ab-lab-origin /var/lib/ab-lab-certificates /www/wwwroot /www/server/panel /www/server/nginx /www/wwwlogs
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

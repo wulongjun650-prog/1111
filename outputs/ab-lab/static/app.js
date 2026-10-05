@@ -622,7 +622,7 @@ on($('#logs-prev'), 'click', () => loadLogs(logPage - 1));
 on($('#logs-next'), 'click', () => loadLogs(logPage + 1));
 window.addEventListener('beforeunload', event => { if (dirty || sourceEditor.isDirty() || bRedirects.isDirty()) { event.preventDefault(); event.returnValue = ''; } });
 
-const stages = { legacy: '原有站点（保留）', unconfigured: '接入服务未配置', waiting_dns: '等待 DNS 解析', dns_verified: '解析已验证', creating: '正在创建站点', proxy: '配置入口', certificate: '配置证书', verifying: '验收中', active: '已接入', failed: '失败待处理', paused: '已暂停', unsupported: '面板接口待验证' };
+const stages = { legacy: '原有站点（保留）', unconfigured: '接入服务未配置', waiting_dns: '等待 DNS 解析', dns_verified: '解析已指向本机，等待建站', creating: '正在创建站点', proxy: '配置入口', certificate: '正在申请证书', verifying: '验收中', active: '已接入', failed: '失败待处理', paused: '已暂停', unsupported: '面板接口待验证' };
 
 async function loadAccounts() {
   if (!isAdmin(account)) return;
@@ -802,6 +802,7 @@ function renderDomains() {
     const dnsPassed = ['active','dns_verified','creating','proxy','certificate','verifying'].includes(site.stage);
     validation.append(element('small','domain-detail',`${dnsPassed ? 'DNS 已验证' : 'DNS 未确认'} · ${site.stage === 'active' ? '证书已验收' : '证书未确认'}`));
     if (site.cf_nameservers && site.cf_status === 'pending') validation.append(element('small','domain-detail',`NS：${site.cf_nameservers.split(',').join('、')} · 本页会自动检查，生效后变为「有效」`));
+    if (catalog.cloudflare_configured && site.stage === 'active' && !site.cf_status && site.id !== 'default') validation.append(element('small','domain-detail','证书已接入。确认网站能打开后，点「套用 Cloudflare」，再把注册商 NS 改成页面给出的两条。'));
     const date = site.created ? new Date(site.created*1000) : null;
     created.append(element('span','',date ? date.toLocaleDateString('zh-CN') : '—'));
     created.title = date ? formatDate(site.created) : '登记时间未知';
@@ -827,6 +828,12 @@ function renderDomains() {
       await api(`/api/sites/${site.id}/cloudflare/purge`,{method:'POST',body:{}});
       toast(`已清除 ${site.domain} 的 Cloudflare 缓存。`);
     },'button secondary small'));
+    if (catalog.cloudflare_configured && site.stage === 'active' && !site.cf_status && site.id !== 'default') actions.append(actionButton('套用 Cloudflare',async()=>{
+      const result = await api(`/api/sites/${site.id}/cloudflare`,{method:'POST',body:{},timeout:60000});
+      await loadDomains();
+      const servers = (result.cloudflare?.nameservers || []).join('、');
+      toast(result.cloudflare?.ok ? (servers ? `已套用 Cloudflare。请把注册商 NS 改为：${servers}` : '已套用 Cloudflare。请按提示修改 NS。') : (result.cloudflare?.detail || 'Cloudflare 未完成'), !result.cloudflare?.ok);
+    },'button primary small'));
     if (site.cf_status === 'failed') actions.append(actionButton('重试 CF',async()=>{
       const result = await api(`/api/sites/${site.id}/cloudflare`,{method:'POST',body:{},timeout:60000});
       await loadDomains();
@@ -875,7 +882,7 @@ async function loadDomains({refreshSelection = true} = {}) {
   $('#cf-choice-note').hidden = !cloudflareReady;
   if (!cloudflareReady) $('#use-cloudflare').checked = false;
   const templateName = catalog.cloudflare_template ? `「${catalog.cloudflare_template}」上的` : '已配置的';
-  $('#cf-choice-note').textContent = cloudflareReady ? `勾选后，新域名套用${templateName}缓存和优化规则，NS 改到 Cloudflare。不勾选则仍用 A 记录指向服务器。` : '';
+  $('#cf-choice-note').textContent = cloudflareReady ? `建议先不勾选：A 记录指向本机后会自动建站并申请证书，确认能打开后再套用${templateName}规则。勾选则马上套用规则，NS 改到 Cloudflare。` : '';
   syncDnsInstructions();
   renderDomains();
   const visible = new Set(catalog.sites.map(site=>site.id));
@@ -987,7 +994,7 @@ function syncDnsInstructions() {
     return;
   }
   $('#dns-instructions').textContent = catalog?.server_ip
-    ? `解析类型：A ｜ 记录值：${catalog.server_ip} ｜ 主机记录：按你填写的完整域名，在域名服务商处选择对应子域名（根域名通常为 @）。`
+    ? `先把 A 记录指到 ${catalog.server_ip}，再点建立域名。程序会自动建站并申请证书。网站能打开后，再点「套用 Cloudflare」。`
     : '服务器公网 IP 尚未配置；现在可以登记域名和测试独立配置，但不能自动建站或申请证书。';
 }
 
@@ -1011,7 +1018,7 @@ on($('#domain-form'), 'submit', async event => {
       $('#cf-result').hidden = false;
       $('#cf-result').textContent = result.cloudflare.detail;
       toast(result.cloudflare.detail, true);
-    } else toast('域名已登记。请按页面提示设置 DNS 解析。');
+    } else toast('域名已登记。A 记录指向本机后，会自动建站并申请证书。');
   });
 });
 

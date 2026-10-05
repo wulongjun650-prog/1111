@@ -388,16 +388,17 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             zone_id = getattr(error, 'zone_id', '') or ''
             detail = str(error)[:400]
             updated = registry.set_cloudflare(site['id'], zone_id, names, 'failed', detail)
-            if zone_id:
+            if zone_id and site['stage'] != 'active':
                 registry.transition(updated['id'], updated['generation'], 'waiting_dns', detail)
                 updated = registry.get(site['id'])
             return updated, {'ok': False, 'detail': detail, 'nameservers': names.split(',') if names else [], 'status': 'failed'}
         names = ','.join(attached['nameservers'])
         updated = registry.set_cloudflare(site['id'], attached['zone_id'], names, attached['status'], attached['detail'])
-        if attached['status'] == 'active' and registry.transition(updated['id'], updated['generation'], 'dns_verified', attached['detail']):
-            registry.transition(updated['id'], updated['generation'], 'unsupported', '解析条件已满足；面板自动写入适配尚未完成，未创建目录、站点或证书')
-        else:
-            registry.transition(updated['id'], updated['generation'], 'waiting_dns', attached['detail'])
+        if site['stage'] != 'active':
+            if attached['status'] == 'active' and registry.transition(updated['id'], updated['generation'], 'dns_verified', attached['detail']):
+                registry.transition(updated['id'], updated['generation'], 'unsupported', '解析条件已满足；面板自动写入适配尚未完成，未创建目录、站点或证书')
+            else:
+                registry.transition(updated['id'], updated['generation'], 'waiting_dns', attached['detail'])
         return registry.get(site['id']), {
             'ok': True, 'detail': attached['detail'], 'nameservers': attached['nameservers'], 'status': attached['status'],
         }
@@ -422,10 +423,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.post('/api/sites/{site_id}/cloudflare')
     def retry_cloudflare(site_id: str, request: Request):
         site = authorized_site(request, site_id)
-        if site['id'] == 'default' or not site['cf_status']:
-            raise ValueError('添加时未选择 Cloudflare，这条域名仍按原来的解析接入')
+        if site['id'] == 'default':
+            raise ValueError('原有站点不在这里套用 Cloudflare')
         if not cloudflare.configured:
             raise ValueError('服务器未配置 Cloudflare')
+        if not cloudflare.origin_ip:
+            raise ValueError('服务器公网 IP 未配置，无法把 Cloudflare 回源到本机')
+        if not site['cf_status'] and site['stage'] != 'active':
+            raise ValueError('请先等本机证书接入完成，再套用 Cloudflare')
         site, attached = apply_cloudflare(site)
         return {'site': site, 'cloudflare': attached}
 
