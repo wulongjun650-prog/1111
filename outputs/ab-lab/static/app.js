@@ -35,7 +35,11 @@ const sourceEditor = createSourceEditor({api, on, element, confirmAction, getSit
   onSaved:async result => {toast(`${result.version.slot} 源码已保存并发布，旧版本已保留。`); await refreshState();},
 });
 const bRedirects = createBRedirects({api, on, element, confirmAction, getSite:() => state?.site,
-  onApplied:async result => {toast(result.check.status === 'unknown' ? 'B 页已换链并发布；此链接状态未知，请确认目标页面。' : 'B 页已换链并发布，旧版本已保留。'); await refreshState();},
+  onApplied:async result => {
+    if (!result.check) toast('WhatsApp 号码已更换并发布。进线语未改。');
+    else toast(result.check.status === 'unknown' ? 'B 页已换链并发布；此链接状态未知，请确认目标页面。' : 'B 页已换链并发布，旧版本已保留。');
+    await refreshState();
+  },
 });
 const reputationChecking = new Set();
 const latestReputation = new Map();

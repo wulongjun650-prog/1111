@@ -23,7 +23,7 @@ from pydantic import Field
 
 from .archives import EDITABLE_EXTENSIONS, MAX_FILE, MAX_ZIP, editable_file, import_content, read_source, resolve_file, source_files
 from .analytics import summarize
-from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, VersionChoice, Visitor
+from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput
 from .linkcheck import LinkChecker
 from .redirects import public_occurrences, rewrite_text, scan_bundle
 from .rules import decide
@@ -173,7 +173,7 @@ class LocalBoundary:
                 return
         is_upload = re.fullmatch(r'/api/(?:sites/[a-f0-9]{32}/|sites/default/)?upload/[AB]', scope['path'])
         limit = MAX_ZIP if self.admin and is_upload else 256 * 1024
-        if self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/(?:sites/(?:[a-f0-9]{32}|default)/)?b-redirects/apply', scope['path']):
+        if self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/(?:sites/(?:[a-f0-9]{32}|default)/)?b-redirects/(?:apply|numbers/apply)', scope['path']):
             limit = 512 * 1024  # Up to 5,000 selected SHA-256 occurrence IDs.
         if self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/(?:sites/(?:[a-f0-9]{32}|default)/)?source/[AB]/[a-f0-9]{32}', scope['path']):
             # JSON can escape each UTF-8 byte as six ASCII characters.
@@ -576,7 +576,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             base = source_version(store, 'B', version_id)
             occurrences, warnings = scan_bundle(store.pages / version_id, version_id)
         return {'version':base, 'published_version':published, 'occurrences':public_occurrences(occurrences),
-                'warnings':warnings, 'presets':store.redirect_presets(), 'active':store.redirect_active(), 'split':store.redirect_split()}
+                'warnings':warnings, 'presets':store.redirect_presets(), 'numbers':store.whatsapp_numbers(),
+                'active':store.redirect_active(), 'split':store.redirect_split()}
 
     @routes.put('/b-redirects/split')
     def save_b_redirect_split(body: RedirectSplit, store=Depends(site_store)):
@@ -605,8 +606,11 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if store.slots()['B'] != body.expected_published:
             raise Conflict('当前 B 发布版本已变化，请重新扫描后再换链')
         occurrences, _ = scan_bundle(store.pages / base['id'], base['id'])
-        if not set(body.occurrence_ids).issubset({item['id'] for item in occurrences}):
+        chosen = [item for item in occurrences if item['id'] in set(body.occurrence_ids)]
+        if len(chosen) != len(body.occurrence_ids):
             raise Conflict('源码或跳转位置已变化，请重新扫描后再换链')
+        if any(item['kind'] == 'whatsapp_number' for item in chosen):
+            raise ValueError('WhatsApp 号码请用号码预设更换')
         preset = store.redirect_preset(body.preset_id)
         result = app.state.link_checker.check(preset['url'])
         store.save_redirect_check(preset, result, guard)
@@ -614,6 +618,31 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             raise ValueError('此链接不正常：' + result['detail'])
         version, changed = store.apply_redirects(base, preset, body.occurrence_ids, body.expected_published, guard)
         return {'version':version, 'check':result, 'changed':changed}
+
+    @routes.post('/b-redirects/numbers')
+    def add_whatsapp_numbers(body: WhatsAppNumberInput, store=Depends(site_store)):
+        return {'numbers':store.add_whatsapp_numbers(body.phones, body.note)}
+
+    @routes.delete('/b-redirects/numbers/{number_id}')
+    def delete_whatsapp_number(number_id: int, store=Depends(site_store)):
+        store.delete_whatsapp_number(number_id)
+        return {'ok':True}
+
+    @routes.post('/b-redirects/numbers/apply')
+    def apply_whatsapp_numbers(body: WhatsAppNumberApply, request: Request, store=Depends(site_store)):
+        guard = redirect_commit_guard(request, store)
+        base = source_version(store, 'B', body.version_id)
+        if store.slots()['B'] != body.expected_published:
+            raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
+        occurrences, _ = scan_bundle(store.pages / base['id'], base['id'])
+        chosen = [item for item in occurrences if item['id'] in set(body.occurrence_ids)]
+        if len(chosen) != len(body.occurrence_ids):
+            raise Conflict('源码或跳转位置已变化，请重新扫描后再换号')
+        if any(item['kind'] != 'whatsapp_number' for item in chosen):
+            raise ValueError('号码预设只能更换 WhatsApp 号码')
+        number = store.whatsapp_number(body.number_id)
+        version, changed = store.apply_whatsapp_number(base, number, body.occurrence_ids, body.expected_published, guard)
+        return {'version':version, 'changed':changed}
 
     @routes.get('/source/{slot}/{version_id}')
     def get_source(slot: Slot, version_id: VersionId, path: str | None = None, store=Depends(site_store)):
@@ -692,7 +721,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if principal(request)['role'] != 'admin':
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated'}
+                            'counters_reset', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 

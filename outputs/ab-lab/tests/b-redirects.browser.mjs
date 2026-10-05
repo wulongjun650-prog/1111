@@ -39,7 +39,7 @@ async function withConsole(run) {
     presets:[{id:1,url:'https://safe.example/landing',note:'<img src=x onerror="window.presetExecuted=true">',created:1,check:check('normal')},
       {id:2,url:'https://blocked.example/landing',note:'风险地址',created:1,check:check('abnormal')},
       {id:3,url:'https://unknown.example/landing',note:'待确认地址',created:1,check:check('unknown')}],
-    active:null,adds:[],checks:[],applies:[],uploads:[],deletes:[],checkResults:{},activeChecks:0,maxChecks:0,
+    active:null,numbers:[],adds:[],numberAdds:[],checks:[],applies:[],numberApplies:[],uploads:[],deletes:[],numberDeletes:[],checkResults:{},activeChecks:0,maxChecks:0,
     applyStatus:200,scanStatus:200,stateStatus:200,delayCheck:null,releaseCheck:null,delayVersion:null,releaseScan:null};
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/api/**',async route=>{
@@ -54,7 +54,7 @@ async function withConsole(run) {
     else if(pathname===`/api/sites/${siteId}/b-redirects`) {
       fixture.scans.push(url.searchParams.get('version_id'));
       const selected=url.searchParams.get('version_id')||fixture.published.B;
-      response=structuredClone({version:fixture.versions.find(item=>item.id===selected),published_version:fixture.published.B,occurrences:fixture.byVersion[selected]||[],warnings:[],presets:fixture.presets,active:fixture.active});
+      response=structuredClone({version:fixture.versions.find(item=>item.id===selected),published_version:fixture.published.B,occurrences:fixture.byVersion[selected]||[],warnings:[],presets:fixture.presets,numbers:fixture.numbers,active:fixture.active});
       status=fixture.scanStatus;
       if(status!==200) response={detail:'无法读取此版本'};
       if(selected===fixture.delayVersion) await new Promise(resolve=>{fixture.releaseScan=resolve;});
@@ -75,6 +75,19 @@ async function withConsole(run) {
     } else if(/\/b-redirects\/presets\/[^/]+$/.test(pathname) && request.method()==='DELETE') {
       const id=Number(pathname.split('/').at(-1));fixture.deletes.push(id);
       fixture.presets=fixture.presets.filter(item=>item.id!==id);response={presets:fixture.presets};
+    } else if(pathname===`/api/sites/${siteId}/b-redirects/numbers` && request.method()==='POST') {
+      const body=request.postDataJSON();fixture.numberAdds.push(body);
+      const added=body.phones.map((phone,index)=>({id:fixture.numbers.length+index+20,phone,note:body.note||'',created:3}));
+      fixture.numbers.push(...added);response={numbers:added};
+    } else if(pathname===`/api/sites/${siteId}/b-redirects/numbers/apply`) {
+      const body=request.postDataJSON(),number=fixture.numbers.find(item=>item.id===body.number_id);
+      fixture.numberApplies.push({body,csrf:request.headers()['x-csrf-token']});
+      const saved=version('B',`wa-${fixture.numberApplies.length}`);fixture.versions.push(saved);fixture.published.B=saved.id;
+      fixture.byVersion[saved.id]=(fixture.byVersion[body.version_id]||[]).map(item=>({...item,id:`${item.kind}-${saved.id}`,url:body.occurrence_ids.includes(item.id)&&item.kind==='whatsapp_number'?number.phone:item.url}));
+      response={version:saved,changed:body.occurrence_ids.length};
+    } else if(/\/b-redirects\/numbers\/[^/]+$/.test(pathname) && request.method()==='DELETE') {
+      const id=Number(pathname.split('/').at(-1));fixture.numberDeletes.push(id);
+      fixture.numbers=fixture.numbers.filter(item=>item.id!==id);response={ok:true};
     } else if(pathname===`/api/sites/${siteId}/b-redirects/apply`) {
       const body=request.postDataJSON(),preset=fixture.presets.find(item=>item.id===body.preset_id);
       fixture.applies.push({body,csrf:request.headers()['x-csrf-token']});
@@ -352,5 +365,37 @@ test('a WhatsApp jump is labeled WhatsApp beside the other page link', async () 
     assert.match(text, /85257980601/);
     assert.match(text, /你好，黑马/);
     assert.doesNotMatch(text, /跳转变量/);
+  });
+});
+
+test('WhatsApp number box replaces only the checked phone and leaves link apply alone', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [
+      ...occurrences('live-b'),
+      {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85264150954'}
+    ];
+    fixture.numbers = [{id:9, phone:'85299990000', note:'一线', created:1}];
+    await page.locator('[data-tab="content"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#b-redirect-occurrences input[type=checkbox]').length === 3);
+    assert.match(await page.locator('#b-wa').innerText(), /WS 号码/);
+    assert.match(await page.locator('#b-redirect-numbers').innerText(), /85299990000/);
+    assert.match(await page.locator('#b-redirect-occurrences').innerText(), /WhatsApp 号码/);
+    assert.match(await page.locator('#b-redirect-occurrences').innerText(), /85264150954/);
+    assert.equal(await page.locator('#b-redirect-numbers .b-redirect-active-badge').count(), 0);
+    await page.locator('#b-wa-numbers').fill('85211112222\n+852 3333 4444');
+    await page.locator('#b-wa-add').click();
+    await page.locator('#b-redirect-numbers').getByText('85233334444', {exact:true}).waitFor();
+    assert.deepEqual(fixture.numberAdds[0].phones, ['85211112222', '85233334444']);
+    const numberApply = page.waitForResponse(response => response.url().includes('/b-redirects/numbers/apply'));
+    await page.locator('#b-redirect-numbers [data-number-id="9"]').getByRole('button', {name:'换成这个号码', exact:true}).click();
+    await numberApply;
+    assert.deepEqual(fixture.numberApplies[0].body.occurrence_ids, ['wa-live-b']);
+    assert.equal(fixture.numberApplies[0].body.number_id, 9);
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    const linkApply = page.waitForResponse(response => response.url().includes('/b-redirects/apply') && !response.url().includes('/numbers'));
+    await page.locator('#b-redirect-presets [data-preset-id="1"]').getByRole('button', {name:'换成这条', exact:true}).click();
+    await linkApply;
+    assert.deepEqual(fixture.applies.at(-1).body.occurrence_ids, ['anchor-wa-1', 'js_location-wa-1']);
+    assert.equal(fixture.applies.at(-1).body.occurrence_ids.includes('whatsapp_number-wa-1'), false);
   });
 });

@@ -158,16 +158,18 @@ function goWhatsApp(){
 fetch(buildWhatsAppUrl('nope'));'''
     root, pages = bundle(tmp_path, f'<script>{source}</script><img src="assets/banner.webp">')
     occurrences, warnings = redirects.scan_bundle(root, 'original')
-    assert [item['url'] for item in occurrences] == ['https://api.whatsapp.com/send?phone=85257980601&text=hello']
+    assert [(item['kind'], item['url']) for item in occurrences] == [('whatsapp_number', '85257980601')]
     assert not warnings
     version, count = redirects.replace_bundle(root, 'original', [occurrences[0]['id']],
-                                              'https://new.example/landing', pages, 'changed.zip')
+                                              '85299990000', pages, 'changed.zip')
     assert count == 1
     rewritten = (pages / version['id'] / 'index.html').read_text(encoding='utf-8')
-    assert '85257980601' in rewritten
-    assert 'api.whatsapp.com' not in rewritten
+    assert '85257980601' not in rewritten
+    assert '85299990000' in rewritten
+    assert 'api.whatsapp.com' in rewritten
+    assert "params.set('text', message)" in rewritten
     rescanned, _ = redirects.scan_bundle(pages / version['id'], version['id'])
-    assert [item['url'] for item in rescanned] == ['https://new.example/landing']
+    assert [(item['kind'], item['url']) for item in rescanned] == [('whatsapp_number', '85299990000')]
 
 
 def test_landing_page_lists_visitor_jumps_and_skips_google_tags(tmp_path):
@@ -191,9 +193,9 @@ def test_landing_page_lists_visitor_jumps_and_skips_google_tags(tmp_path):
 <a href="https://www.youtube.com/@EconManBlog/shorts">YouTube</a>'''
     root, _ = bundle(tmp_path, page)
     occurrences, warnings = redirects.scan_bundle(root, 'original')
-    assert [item['url'] for item in occurrences] == [
-        'https://api.whatsapp.com/send?phone=85257980601&text=hi&type=phone_number&app_absent=0',
-        'https://www.youtube.com/@EconManBlog/shorts']
+    assert [(item['kind'], item['url']) for item in occurrences] == [
+        ('whatsapp_number', '85257980601'),
+        ('anchor', 'https://www.youtube.com/@EconManBlog/shorts')]
     assert not warnings
     assert all('google' not in item['url'] and 'facebook' not in item['url'] for item in occurrences)
 
@@ -221,10 +223,9 @@ location.href = `https://wa.me/${direct}?text=${missing}`;
 location.href = 'https://wa.me/' + CONFIG.whatsappNumber;'''
     root, _ = bundle(tmp_path, f'<script>{source}</script>')
     occurrences, warnings = redirects.scan_bundle(root, 'original')
-    assert [item['url'] for item in occurrences] == [
-        'https://api.whatsapp.com/send?phone=85257980601&text=你好，黑马',
-        'https://wa.me/85211112222',
-        'https://wa.me/852-5798-0601']
+    assert [(item['kind'], item['url']) for item in occurrences] == [
+        ('whatsapp_number', '85257980601'),
+        ('whatsapp_number', '85211112222')]
     assert not warnings
     assert all('心水' not in item['url'] and 'gateAnswers' not in item['url'] for item in occurrences)
 
@@ -237,9 +238,24 @@ def test_encoded_whatsapp_text_is_encoded_once(tmp_path):
   return `https://api.whatsapp.com/send?${params.toString()}`;
 }
 location.href = build('hello world');'''
+    root, pages = bundle(tmp_path, '<script src="app.js"></script>', source)
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert [(item['kind'], item['url']) for item in occurrences] == [('whatsapp_number', '85257980601')]
+    assert not warnings
+    version, _ = redirects.replace_bundle(root, 'original', [occurrences[0]['id']], '85288887777', pages, 'changed.zip')
+    rewritten = (pages / version['id'] / 'app.js').read_text(encoding='utf-8')
+    assert 'api.whatsapp.com' in rewritten and 'hello world' in rewritten
+    assert '85257980601' not in rewritten and '85288887777' in rewritten
+
+
+def test_static_whatsapp_url_stays_a_full_link(tmp_path):
+    source = '''location.href = "https://api.whatsapp.com/send?phone=85257980601&text=hello";
+location.href = "https://www.youtube.com/@EconManBlog/shorts";'''
     root, _ = bundle(tmp_path, '<script src="app.js"></script>', source)
     occurrences, warnings = redirects.scan_bundle(root, 'original')
-    assert [item['url'] for item in occurrences] == ['https://api.whatsapp.com/send?phone=85257980601&text=hello%20world']
+    assert occurrences[0]['kind'] == 'js_location'
+    assert occurrences[0]['url'].startswith('https://api.whatsapp.com/send?phone=85257980601')
+    assert occurrences[1]['url'] == 'https://www.youtube.com/@EconManBlog/shorts'
     assert not warnings
 
 

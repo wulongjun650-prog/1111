@@ -205,8 +205,11 @@ def test_agent_all_new_routes_isolated_and_owner_change_during_check(accounts):
         assert a.post(bad_prefix+'/b-redirects/presets',json={'urls':['https://example.org'],'note':''}).status_code == 404
         assert a.post(bad_prefix+f"/b-redirects/presets/{link['id']}/check",json={}).status_code == 404
         assert a.delete(bad_prefix+f"/b-redirects/presets/{link['id']}").status_code == 404
+        assert a.post(bad_prefix+'/b-redirects/numbers',json={'phones':['85211112222'],'note':''}).status_code == 404
+        assert a.delete(bad_prefix+'/b-redirects/numbers/1').status_code == 404
         assert apply(a,scan,link,bad_prefix).status_code == 404
-    assert checker.calls == [] and b.get(f"/api/sites/{other['id']}/b-redirects").json()['presets'] == []
+    other_state = b.get(f"/api/sites/{other['id']}/b-redirects").json()
+    assert checker.calls == [] and other_state['presets'] == [] and other_state['numbers'] == []
     def transfer():
         assert owner.put(prefix+'/owner',json={'owner_id':two['id']}).status_code == 200
     app.state.link_checker = Checker(callback=transfer)
@@ -251,3 +254,73 @@ def test_owner_transfer_during_bundle_creation_cannot_publish(accounts, monkeypa
     assert store.slots()['B'] == base
     assert [version['id'] for version in store.versions()] == [base]
     assert {path.name for path in store.pages.iterdir()} == {base}
+
+
+def upload_whatsapp(client):
+    archive = io.BytesIO()
+    page = '''<!doctype html><script>
+const CONFIG = { whatsappNumber: '85264150954' };
+const VARIANTS = { blackhorse: { message: '你好，我想免費領取今日潛力黑馬名單，麻煩發給我，謝謝。' } };
+function buildWhatsAppUrl(message){
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\\D/g,'');
+  const params = new URLSearchParams();
+  params.set('phone', phone);
+  params.set('text', message);
+  params.set('type', 'phone_number');
+  params.set('app_absent', '0');
+  return `https://api.whatsapp.com/send?${params.toString()}`;
+}
+function go(){ window.location.assign(buildWhatsAppUrl(VARIANTS.blackhorse.message)); }
+</script><a href="https://www.youtube.com/@EconManBlog/shorts">YouTube</a>'''
+    with zipfile.ZipFile(archive, 'w') as bundle:
+        bundle.writestr('index.html', page)
+    result = client.post('/api/upload/B?name=wa.zip', content=archive.getvalue())
+    assert result.status_code == 200, result.text
+    version = result.json()['version']['id']
+    assert client.post('/api/publish/B', json={'version_id':version}).status_code == 200
+    return version
+
+
+def test_whatsapp_number_pool_rewrites_only_the_phone(console):
+    client, app = console
+    base = upload_whatsapp(client)
+    app.state.link_checker = checker = Checker()
+    scan = client.get('/api/b-redirects').json()
+    numbers = [item for item in scan['occurrences'] if item['kind'] == 'whatsapp_number']
+    links = [item for item in scan['occurrences'] if item['kind'] != 'whatsapp_number']
+    assert [item['url'] for item in numbers] == ['85264150954']
+    assert links and links[0]['url'].startswith('https://www.youtube.com/')
+    added = client.post('/api/b-redirects/numbers', json={'phones':['85211112222', '+852 3333 4444', '852-5555-6666', '85211112222'], 'note':'一线'})
+    assert added.status_code == 200, added.text
+    pool = added.json()['numbers']
+    assert [item['phone'] for item in pool] == ['85211112222', '85233334444', '85255556666']
+    assert client.get('/api/b-redirects').json()['active'] is None
+    denied = apply(client, scan, preset(client), ids=[numbers[0]['id']])
+    assert denied.status_code == 400 and '号码预设' in denied.json()['detail']
+    assert checker.calls == [] and app.state.store.slots()['B'] == base
+    chosen = pool[0]
+    response = client.post('/api/b-redirects/numbers/apply', json={
+        'version_id':scan['version']['id'], 'number_id':chosen['id'],
+        'occurrence_ids':[numbers[0]['id']], 'expected_published':scan['published_version']})
+    assert response.status_code == 200, response.text
+    assert checker.calls == [] and response.json()['changed'] == 1
+    published = app.state.store.slots()['B']
+    text = (app.state.store.pages/published/'index.html').read_text(encoding='utf-8')
+    assert 'api.whatsapp.com' in text and '你好，我想免費領取今日潛力黑馬名單' in text
+    assert '85264150954' not in text and '85211112222' in text
+    assert 'youtube.com' in text
+    state = client.get('/api/b-redirects').json()
+    assert state['active'] is None
+    assert [item['phone'] for item in state['numbers']] == ['85211112222', '85233334444', '85255556666']
+    assert [item['url'] for item in state['occurrences'] if item['kind'] == 'whatsapp_number'] == ['85211112222']
+    youtube = next(item for item in state['occurrences'] if item['kind'] != 'whatsapp_number')
+    link = preset(client, url='https://example.com/watch')
+    swapped = apply(client, state, link, ids=[youtube['id']])
+    assert swapped.status_code == 200, swapped.text
+    assert checker.calls == ['https://example.com/watch']
+    after = (app.state.store.pages/app.state.store.slots()['B']/'index.html').read_text(encoding='utf-8')
+    assert '85211112222' in after and 'api.whatsapp.com' in after and 'https://example.com/watch' in after
+    assert client.post('/api/b-redirects/numbers', json={'phones':['12'], 'note':''}).status_code in (400, 422)
+    assert client.delete('/api/b-redirects/numbers/'+str(pool[1]['id'])).status_code == 200
+    remaining = client.get('/api/b-redirects').json()['numbers']
+    assert [item['phone'] for item in remaining] == ['85211112222', '85255556666']

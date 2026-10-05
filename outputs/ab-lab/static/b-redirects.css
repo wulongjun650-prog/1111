@@ -46,12 +46,22 @@
 .b-redirect-check-detail { overflow-wrap: anywhere; margin-top: 4px; }
 .b-redirect-message { margin: 0 0 14px; padding: 12px 15px; background: var(--surface-soft); border-left: 3px solid var(--chart-allow); border-radius: 0 10px 10px 0; font-size: 12px; overflow-wrap: anywhere; }
 .b-redirect-message.error { border-left-color: var(--chart-block); }
+.b-wa { margin-top: 18px; padding: 14px 16px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+.b-wa-head strong { display: block; font-size: 13px; }
+.b-wa-status { margin: 2px 0 10px; color: var(--muted); font-size: 12px; }
+.b-wa-list { display: grid; gap: 10px; }
+.b-wa-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.b-wa-row.active { background: color-mix(in srgb, var(--chart-allow) 10%, var(--surface)); border-color: color-mix(in srgb, var(--chart-allow) 38%, var(--line)); }
+.b-wa-row .actions { margin-left: auto; flex-shrink: 0; }
+.b-wa .b-redirect-add-form { margin-top: 12px; margin-bottom: 0; }
 @media (max-width: 900px) {
   .b-now { grid-template-columns: 1fr; }
   .b-redirect-add-form { grid-template-columns: minmax(0, 1fr) minmax(140px, .6fr); }
   .b-redirect-add-form > .grow { grid-column: 1 / -1; }
   .b-redirect-preset { flex-direction: column; align-items: stretch; }
   .b-redirect-preset .actions { margin-left: 0; justify-content: flex-end; }
+  .b-wa-row { flex-direction: column; align-items: stretch; }
+  .b-wa-row .actions { margin-left: 0; justify-content: flex-end; }
   .b-split { flex-wrap: wrap; }
   .b-split .switch { margin-left: 0; }
 }
