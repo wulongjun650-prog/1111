@@ -349,7 +349,10 @@ function go(){ location.href = 'https://wa.me/' + String(CONFIG.whatsappNumber).
         'occurrence_ids': [number['id']], 'expected_published': again['published_version'],
     })
     assert kept.status_code == 200, kept.text
-    assert kept.json()['cloudflare']['ok'] is False
+    assert kept.json()['changed'] == 0
+    assert kept.json()['version']['id'] == again['published_version']
+    assert kept.json()['cloudflare'] is None
+    assert [path for _, path in api.calls if path.endswith('/purge_cache')] == after
     assert TOKEN not in kept.text
     assert [item['url'] for item in http.get(prefix + '/b-redirects').json()['occurrences'] if item['kind'] == 'whatsapp_number'] == ['85211112222']
 

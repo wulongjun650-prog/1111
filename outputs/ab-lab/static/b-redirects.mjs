@@ -372,10 +372,13 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
 
   async function apply(value, preset) {
     if (!isCurrent(value) || value.busy || value.loading || value.checking.has(preset.id) || !value.versionId || !linkSelected(value).length) return;
+    const links = linkSelected(value);
+    if (links.every(row => row.url === preset.url)) { showMessage('这些位置已经是这条链接，没有新版本。'); return; }
     value.busy = true; updateControls(); showMessage('正在检测，并换进 B 页…');
     try {
       const result = await api('/api/b-redirects/apply', {method:'POST', body:{version_id:value.versionId, preset_id:preset.id, occurrence_ids:linkSelected(value).map(item => item.id), expected_published:value.expectedPublished}});
       if (!isCurrent(value)) return;
+      if (!result.changed) { showMessage('这些位置已经是这条链接，没有新版本。'); return; }
       value.versionId = result.version.id; value.published = result.version.id;
       value.expectedPublished = result.version.id; value.selectionDirty = false;
       if (!value.versions.some(item => item.id === result.version.id)) value.versions.push(result.version);
@@ -403,10 +406,13 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
 
   async function applyNumber(value, item) {
     if (!isCurrent(value) || value.busy || value.loading || !value.versionId || !numberSelected(value).length) return;
+    const numbers = numberSelected(value);
+    if (numbers.every(row => row.url === item.phone)) { showMessage('页面里已经是这个号码，没有新版本。'); return; }
     value.busy = true; updateControls(); showMessage('正在更换 WhatsApp 号码…');
     try {
       const result = await api('/api/b-redirects/numbers/apply', {method:'POST', body:{version_id:value.versionId, number_id:item.id, occurrence_ids:numberSelected(value).map(row => row.id), expected_published:value.expectedPublished}});
       if (!isCurrent(value)) return;
+      if (!result.changed) { showMessage('页面里已经是这个号码，没有新版本。'); return; }
       value.versionId = result.version.id; value.published = result.version.id;
       value.expectedPublished = result.version.id; value.selectionDirty = false;
       if (!value.versions.some(saved => saved.id === result.version.id)) value.versions.push(result.version);
