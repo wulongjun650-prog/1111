@@ -100,6 +100,19 @@ def test_bundled_database_and_explicit_missing_override(monkeypatch):
     assert web.geo_country('8.8.8.8') is None
 
 
+def test_old_cloudflare_japan_rows_show_as_hong_kong(tmp_path):
+    store = Store(tmp_path)
+    decision = {'device': 'mobile', 'slot': 'B', 'reason': 'allowed'}
+    store.event('172.64.215.1', 'JP', decision, '/', 'RULES')
+    store.event('203.0.113.9', 'JP', decision, '/', 'RULES')
+    admin = TestClient(web.create_admin(tmp_path), base_url='http://127.0.0.1:8765', client=('127.0.0.1', 1))
+    rows = admin.get('/api/logs').json()['items']
+    assert [(row['country'], row['ip']) for row in rows] == [('JP', '203.0.113.0/24'), ('HK', '172.64.215.0/24')]
+    exported = admin.get('/api/logs.csv').text
+    assert 'HK' in exported and '172.64.215' not in exported
+    assert web.shown_country('1.32.192.0/24', 'HK') == 'HK'
+
+
 def test_cloudflare_edge_keeps_the_visitor_country(tmp_path, monkeypatch):
     from ablab.settings import Deployment
     monkeypatch.delenv('AB_GEOIP_PATH', raising=False)

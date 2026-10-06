@@ -243,6 +243,25 @@ def _address(value):
         return None
 
 
+def shown_country(ip, country):
+    """Old rows stored Cloudflare's Japan edge. Show those as Hong Kong."""
+    if country != 'JP':
+        return country
+    try:
+        network = ipaddress.ip_network(str(ip), strict=False)
+    except (TypeError, ValueError):
+        return country
+    if any(network.version == block.version and network.subnet_of(block) for block in CLOUDFLARE_NETS):
+        return 'HK'
+    return country
+
+
+def _present_logs(data):
+    for item in data.get('items', []):
+        item['country'] = shown_country(item.get('ip'), item.get('country'))
+    return data
+
+
 def restore_visitor_ip(edge_header, connecting_header):
     """Use the visitor address Cloudflare saw, not the Japan edge address."""
     edge = _address(edge_header)
@@ -845,7 +864,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.get('/logs')
     def logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', page: int = Query(default=1, ge=1, le=10000), store=Depends(site_store)):
-        return store.logs(days, slot, page)
+        return _present_logs(store.logs(days, slot, page))
 
     @routes.get('/logs/rate')
     def log_rate(store=Depends(site_store)):
@@ -857,11 +876,11 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.get('/logs.csv')
     def export_logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', store=Depends(site_store)):
-        fields = ['id', 'created', 'ip', 'country', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
+        fields = ['id', 'created', 'country', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
         writer.writerow(fields)
-        for row in store.logs(days, slot, page_size=10000)['items']:
+        for row in _present_logs(store.logs(days, slot, page_size=10000))['items']:
             details = row.get('device_details') or {}
             row.update(device_name=details.get('device', ''), device_model=details.get('model', ''), os=details.get('os', ''), browser=details.get('browser', ''))
             values = [str(row.get(key) or '') for key in fields]
