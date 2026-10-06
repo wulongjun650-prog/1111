@@ -243,6 +243,12 @@ def _address(value):
         return None
 
 
+def displayed_hong_kong(ip, country):
+    """True when the visit list shows this row as Hong Kong, including old Japan-edge rows."""
+    shown = shown_country(ip, country)
+    return isinstance(shown, str) and shown.upper() == 'HK'
+
+
 def shown_country(ip, country):
     """Old rows stored Cloudflare's Japan edge. Show those as Hong Kong."""
     if country != 'JP':
@@ -874,6 +880,10 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def clear_logs(store=Depends(site_store)):
         return {'deleted': store.clear_logs()}
 
+    @routes.post('/logs/clear-foreign')
+    def clear_foreign_logs(store=Depends(site_store)):
+        return store.clear_logs_unless(displayed_hong_kong)
+
     @routes.get('/logs.csv')
     def export_logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', store=Depends(site_store)):
         fields = ['id', 'created', 'country', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
@@ -892,7 +902,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if principal(request)['role'] != 'admin':
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'logs_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted'}
+                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 

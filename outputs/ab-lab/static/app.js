@@ -660,6 +660,14 @@ on($('#clear-logs'), 'click', event => busy(event.currentTarget, async () => {
   await refreshState();
   await loadLogs();
 }));
+on($('#clear-foreign-logs'), 'click', event => busy(event.currentTarget, async () => {
+  const domain = currentDomain() || '当前域名';
+  if (!await confirmAction(`只删除 ${domain} 里显示成其他国家的访问记录？显示（香港）的会留下，包括以前存成日本、现在显示成香港的。删掉后不能恢复。其他域名不受影响。`)) return;
+  const result = await api('/api/logs/clear-foreign', { method: 'POST', body: {} });
+  toast(`已删除 ${domain} 的 ${number(result.deleted)} 条非香港记录，留下 ${number(result.kept)} 条显示（香港）的。`);
+  await refreshState();
+  await loadLogs();
+}));
 window.addEventListener('beforeunload', event => { if (dirty || sourceEditor.isDirty() || bRedirects.isDirty()) { event.preventDefault(); event.returnValue = ''; } });
 
 const stages = { legacy: '原有站点（保留）', unconfigured: '接入服务未配置', waiting_dns: '等待 DNS 解析', dns_verified: '解析已指向本机，等待建站', creating: '正在创建站点', proxy: '配置入口', certificate: '正在申请证书', verifying: '验收中', active: '已接入', failed: '失败待处理', paused: '已暂停', unsupported: '面板接口待验证' };
