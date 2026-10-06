@@ -1,4 +1,5 @@
 import sqlite3
+import time
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -46,7 +47,7 @@ def test_legacy_log_migration_is_repeatable_and_new_details_persist(tmp_path):
     store.event('1.1.1.1', 'KR', decision, '/', 'RULES')
     row = Store(tmp_path).logs()['items'][0]
     assert row.get('device_details', {}).get('device') == 'iPhone'
-    assert row['ip'] == '1.1.1.0/24'
+    assert row['ip'] == '1.1.1.1'
     assert row['country'] == 'KR'
 
 
@@ -103,14 +104,28 @@ def test_bundled_database_and_explicit_missing_override(monkeypatch):
 def test_old_cloudflare_japan_rows_show_as_hong_kong(tmp_path):
     store = Store(tmp_path)
     decision = {'device': 'mobile', 'slot': 'B', 'reason': 'allowed'}
-    store.event('172.64.215.1', 'JP', decision, '/', 'RULES')
-    store.event('203.0.113.9', 'JP', decision, '/', 'RULES')
+    with store.connect() as db:
+        db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode) VALUES(?,?,?,?,?,?,?,?)', (time.time(), '172.64.215.0/24', 'JP', 'mobile', 'B', 'allowed', '/edge', 'RULES'))
+        db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode) VALUES(?,?,?,?,?,?,?,?)', (time.time(), '203.0.113.0/24', 'JP', 'mobile', 'B', 'allowed', '/jp', 'RULES'))
+    store.event('1.32.192.8', 'HK', decision, '/new', 'RULES')
+    store.event('203.0.113.9', 'JP', decision, '/exact-jp', 'RULES')
+    stored = {row['path']: (row['country'], row['ip']) for row in store.logs()['items']}
+    assert stored['/edge'] == ('JP', '172.64.215.0/24')
+    assert stored['/jp'] == ('JP', '203.0.113.0/24')
+    assert stored['/new'] == ('HK', '1.32.192.8')
+    assert stored['/exact-jp'] == ('JP', '203.0.113.9')
     admin = TestClient(web.create_admin(tmp_path), base_url='http://127.0.0.1:8765', client=('127.0.0.1', 1))
-    rows = admin.get('/api/logs').json()['items']
-    assert [(row['country'], row['ip']) for row in rows] == [('JP', '203.0.113.0/24'), ('HK', '172.64.215.0/24')]
+    shown = {row['path']: (row['country'], row['ip']) for row in admin.get('/api/logs').json()['items']}
+    assert shown['/edge'] == ('HK', '172.64.215.0/24')
+    assert shown['/jp'] == ('JP', '203.0.113.0/24')
+    assert shown['/new'] == ('HK', '1.32.192.8')
+    assert shown['/exact-jp'] == ('JP', '203.0.113.9')
     exported = admin.get('/api/logs.csv').text
     assert 'HK' in exported and '172.64.215' not in exported
+    assert '1.32.192.8' in exported and '203.0.113.9' in exported
     assert web.shown_country('1.32.192.0/24', 'HK') == 'HK'
+    assert web.shown_country('172.64.215.0/24', 'JP') == 'HK'
+    assert web.shown_country('172.64.215.1', 'JP') == 'JP'
 
 
 def test_cloudflare_edge_keeps_the_visitor_country(tmp_path, monkeypatch):
@@ -122,15 +137,18 @@ def test_cloudflare_edge_keeps_the_visitor_country(tmp_path, monkeypatch):
     target.get('/', headers=headers)
     edge = Store(tmp_path).logs()['items'][0]
     assert edge['country'] == 'JP'
-    assert edge['ip'] == '172.70.222.0/24'
+    assert edge['ip'] == '172.70.222.1'
     target.get('/', headers=headers | {'cf-connecting-ip':'1.32.192.1'})
     visitor = Store(tmp_path).logs()['items'][0]
     assert visitor['country'] == 'HK'
-    assert visitor['ip'] == '1.32.192.0/24'
+    assert visitor['ip'] == '1.32.192.1'
     target.get('/', headers={'x-real-ip':'8.8.8.8','cf-connecting-ip':'1.32.192.1','x-forwarded-proto':'https'})
     direct = Store(tmp_path).logs()['items'][0]
     assert direct['country'] == 'US'
-    assert direct['ip'] == '8.8.8.0/24'
+    assert direct['ip'] == '8.8.8.8'
+    target.get('/', headers={'x-real-ip':'172.70.222.1','cf-connecting-ip':'2001:4860:4860::8888','x-forwarded-proto':'https'})
+    v6 = Store(tmp_path).logs()['items'][0]
+    assert v6['ip'] == '2001:4860:4860::8888'
     assert web.restore_visitor_ip(b'172.70.222.1', b'10.1.2.3') == '172.70.222.1'
 
 
@@ -142,5 +160,5 @@ def test_country_and_device_are_captured_before_ip_masking(tmp_path, monkeypatch
     target.get('/', headers={'x-real-ip':'8.8.8.8','x-forwarded-proto':'https','user-agent':'Mozilla/5.0 (Linux; Android 13; SM-S918B Build/TP1A) Chrome/120.0.0.0 Mobile Safari/537.36'})
     row = Store(tmp_path).logs()['items'][0]
     assert row['country'] == 'US'
-    assert row['ip'] == '8.8.8.0/24'
+    assert row['ip'] == '8.8.8.8'
     assert row['device_details']['model'] == 'SM-S918B'

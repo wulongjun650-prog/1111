@@ -147,12 +147,13 @@ def test_clearing_other_countries_keeps_displayed_hong_kong(tmp_path):
     other = admin.post('/api/sites', json={'domain': 'other.example.com'}).json()['site']['id']
     decision = {'device': 'mobile', 'slot': 'B', 'reason': 'allowed'}
     current = app.state.registry.store('default')
+    with current.connect() as db:
+        db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode) VALUES(?,?,?,?,?,?,?,?)', (time.time(), '172.64.215.0/24', 'JP', 'mobile', 'B', 'allowed', '/old-edge', 'PAGE'))
+        db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode) VALUES(?,?,?,?,?,?,?,?)', (time.time(), '2400:cb00::/48', 'JP', 'mobile', 'B', 'allowed', '/old-edge6', 'PAGE'))
     current.event('1.32.192.8', 'HK', decision, '/hk', 'PAGE')
     current.event('104.16.1.2', 'hk', decision, '/hk-lower', 'PAGE')
-    current.event('172.64.215.1', 'JP', decision, '/edge', 'PAGE')
-    current.event('2400:cb00::1', 'JP', decision, '/edge6', 'PAGE')
+    current.event('172.64.215.1', 'JP', decision, '/exact-edge', 'PAGE')
     current.event('203.0.113.9', 'JP', decision, '/jp', 'PAGE')
-    current.event('2001:db8::1', 'JP', decision, '/jp6', 'PAGE')
     current.event('8.8.8.8', 'US', decision, '/us', 'PAGE')
     current.event('203.0.113.50', None, decision, '/none', 'PAGE')
     elsewhere = app.state.registry.store(other)
@@ -162,9 +163,11 @@ def test_clearing_other_countries_keeps_displayed_hong_kong(tmp_path):
     assert cleared.status_code == 200, cleared.text
     assert cleared.json() == {'deleted': 4, 'kept': 4}
     shown = {row['path']: row['country'] for row in admin.get('/api/sites/default/logs').json()['items']}
-    assert shown == {'/hk': 'HK', '/hk-lower': 'hk', '/edge': 'HK', '/edge6': 'HK'}
-    stored = {row['path']: row['country'] for row in current.logs()['items']}
-    assert stored['/edge'] == 'JP' and stored['/edge6'] == 'JP'
+    assert shown == {'/hk': 'HK', '/hk-lower': 'hk', '/old-edge': 'HK', '/old-edge6': 'HK'}
+    stored = {row['path']: (row['country'], row['ip']) for row in current.logs()['items']}
+    assert stored['/old-edge'] == ('JP', '172.64.215.0/24')
+    assert stored['/old-edge6'] == ('JP', '2400:cb00::/48')
+    assert stored['/hk'] == ('HK', '1.32.192.8')
     assert {row['path'] for row in elsewhere.logs()['items']} == {'/other-us', '/other-hk'}
     again = admin.post('/api/sites/default/logs/clear-foreign', json={})
     assert again.json() == {'deleted': 0, 'kept': 4}
@@ -301,7 +304,7 @@ def test_logs_do_not_store_query_secrets(apps):
     target.get('/?password=not-for-log')
     logs = admin.get('/api/logs').json()
     assert logs['items'][0]['path'] == '/'
-    assert logs['items'][0]['ip'] == '127.0.0.0/24'
+    assert logs['items'][0]['ip'] == '127.0.0.1'
     assert 'not-for-log' not in admin.get('/api/logs.csv').text
 
 

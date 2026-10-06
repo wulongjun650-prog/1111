@@ -506,6 +506,12 @@ function logParams() {
   return new URLSearchParams({ days: form.elements.days.value, slot: form.elements.slot.value });
 }
 
+function visitAddress(ip) {
+  const text = String(ip || '');
+  if (!text || text.includes('/')) return '—';
+  return text;
+}
+
 function visitDeviceLine(details) {
   if (!details) return 'iOS 18 以上 · Safari';
   let os = details.os || '';
@@ -536,12 +542,13 @@ async function loadLogs(page = 1, {quiet = false} = {}) {
     logPage = data.page; logPages = Math.max(1, data.pages);
     const root = $('#logs-body'); root.replaceChildren();
     if (!data.items.length) {
-      const row = element('tr'); const cell = element('td', 'empty-state', `${domain} 还没有访问记录。`); cell.colSpan = 7; row.append(cell); root.append(row);
+      const row = element('tr'); const cell = element('td', 'empty-state', `${domain} 还没有访问记录。`); cell.colSpan = 8; row.append(cell); root.append(row);
     }
     for (const item of data.items) {
       const row = element('tr');
       row.append(element('td', '', formatDate(item.created)));
       row.append(element('td', 'country-name', countryParen(item.country)));
+      row.append(element('td', 'ip-cell', visitAddress(item.ip)));
       const device = element('td', 'device-cell'); device.append(deviceBadge(item));
       device.append(element('small', '', visitDeviceLine(item.device_details)));
       device.title = '来自浏览器 User-Agent 声明，可能被精简或伪造；不能保证真实型号'; row.append(device);

@@ -18,6 +18,7 @@ def test_generated_deployment_is_private_and_does_not_edit_nginx(tmp_path):
         proxy = (tmp_path / f'nginx-{service}.conf').read_text()
         assert f'proxy_pass http://127.0.0.1:{port};' in proxy
         assert 'proxy_set_header X-Real-IP $remote_addr;' in proxy
+        assert 'proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;' in proxy
         assert 'proxy_set_header X-Forwarded-Proto $scheme;' in proxy
         assert 'location ^~ /' in proxy and 'proxy_cache off;' in proxy
         assert 'ssl_certificate' not in proxy and 'listen ' not in proxy

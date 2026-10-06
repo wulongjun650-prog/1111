@@ -57,6 +57,7 @@ location ^~ / {{
     proxy_set_header Connection "";
     proxy_set_header Host {domain};
     proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For "";
     proxy_set_header Forwarded "";

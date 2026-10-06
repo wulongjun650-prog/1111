@@ -75,3 +75,4 @@
 .tracking-row .actions { gap: 6px; }
 .button.quiet { background: transparent; border-color: transparent; color: #8b93a7; }
 @media (max-width: 760px) { .tracking-current { grid-template-columns: 1fr; } }
+.ip-cell { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: nowrap; }

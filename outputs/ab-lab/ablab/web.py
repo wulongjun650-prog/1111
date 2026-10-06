@@ -250,8 +250,11 @@ def displayed_hong_kong(ip, country):
 
 
 def shown_country(ip, country):
-    """Old rows stored Cloudflare's Japan edge. Show those as Hong Kong."""
-    if country != 'JP':
+    """Old rows stored Cloudflare's Japan edge as a network. Show those as Hong Kong.
+
+    A complete address keeps the country stored for that address.
+    """
+    if country != 'JP' or '/' not in str(ip or ''):
         return country
     try:
         network = ipaddress.ip_network(str(ip), strict=False)
@@ -886,12 +889,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.get('/logs.csv')
     def export_logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', store=Depends(site_store)):
-        fields = ['id', 'created', 'country', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
+        fields = ['id', 'created', 'country', 'ip', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
         writer.writerow(fields)
         for row in _present_logs(store.logs(days, slot, page_size=10000))['items']:
             details = row.get('device_details') or {}
+            if '/' in str(row.get('ip') or ''):
+                row['ip'] = ''
             row.update(device_name=details.get('device', ''), device_model=details.get('model', ''), os=details.get('os', ''), browser=details.get('browser', ''))
             values = [str(row.get(key) or '') for key in fields]
             writer.writerow(["'" + value if value.startswith(('=', '+', '-', '@', '\t', '\r')) else value for value in values])
