@@ -628,6 +628,20 @@ class Scanner:
                     if found:
                         return found
                 return None
+            called = call_name(expression)
+            if called and called not in seen and len(seen) < 8:
+                body = lookup_function(called, scope)
+                if body:
+                    # A helper can return {scheme, universal}; the caller jumps through one field.
+                    overlay = dict(extra or {})
+                    for param, argument in zip(body[2], call_arguments(expression)):
+                        if argument:
+                            overlay[param] = argument
+                    for item in function_returns(body):
+                        found = static_object(item, scope_of(item, scope), (*seen, called), overlay)
+                        if found:
+                            return found
+                    return None
             if expression[0].kind != 'identifier' or expression[0].value in seen:
                 return None
             name = expression[0].value
@@ -995,6 +1009,28 @@ class Scanner:
                     for item in returns:
                         found = collect(item, kind, scope_of(item, scope), (*seen, name), overlay) or found
                     return found
+            field, next_at = field_at(expression, 1)
+            if field and next_at == len(expression) and expression[0].kind == 'identifier' and expression[0].value not in seen:
+                name = expression[0].value
+                if extra and name in extra:
+                    base, base_scope, field_extra = extra[name], scope_of(extra[name], scope), None
+                else:
+                    base = constants.get(name)
+                    base_scope = scope_of(base, scope) if base else scope
+                    field_extra = extra
+                if base:
+                    called = call_name(base)
+                    if called and called not in (*seen, name) and len(seen) < 8:
+                        body = lookup_function(called, base_scope)
+                        if body:
+                            field_extra = dict(field_extra or {})
+                            for param, argument in zip(body[2], call_arguments(base)):
+                                if argument:
+                                    field_extra[param] = argument
+                    obj = static_object(base, base_scope, (*seen, name), field_extra)
+                    chosen = obj.get(field) if obj else None
+                    if chosen:
+                        return collect(chosen, kind, scope_of(chosen, base_scope), (*seen, name), field_extra)
             self.warnings.append(f'{self.path}:{bisect.bisect_right(self.lines, offset + expression[0].start)} 有无法静态解析的跳转，请在源码编辑器核对。')
             return False
 

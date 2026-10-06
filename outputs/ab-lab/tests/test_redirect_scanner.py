@@ -278,6 +278,48 @@ location.href = "https://real.example/";'''
     assert warnings
 
 
+def test_whatsapp_object_fields_are_the_jump(tmp_path):
+    source = r'''const CONFIG = { whatsappNumber: '85257980601', googleSendTo: 'AW-1/abc' };
+function gtag_report_conversion(url) {
+  var callback = function () {
+    if (typeof(url) != 'undefined') { window.location = url; }
+  };
+}
+function getWhatsAppUrls(message) {
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+  const encodedMsg = encodeURIComponent(message);
+  return {
+    scheme: `whatsapp://send?phone=${phone}&text=${encodedMsg}`,
+    universal: `https://wa.me/${phone}?text=${encodedMsg}`
+  };
+}
+function goWhatsApp() {
+  const fullMessage = '你好';
+  const urls = getWhatsAppUrls(fullMessage);
+  if (true) { window.location.href = urls.scheme; }
+  setTimeout(() => { window.location.href = urls.universal; }, 1500);
+  window.open(urls.universal, '_blank');
+}'''
+    root, pages = bundle(tmp_path, f'<script>{source}</script><a href="https://www.youtube.com/@EconManBlog/shorts">YouTube</a>')
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert [(item['kind'], item['url']) for item in occurrences] == [
+        ('whatsapp_number', '85257980601'),
+        ('anchor', 'https://www.youtube.com/@EconManBlog/shorts')]
+    assert len(warnings) == 1 and '无法静态解析' in warnings[0]
+    version, count = redirects.replace_bundle(root, 'original', [occurrences[0]['id']],
+                                              '85211112222', pages, 'changed.zip')
+    assert count == 1
+    rewritten = (pages / version['id'] / 'index.html').read_text(encoding='utf-8')
+    assert '85257980601' not in rewritten and '85211112222' in rewritten
+    assert 'whatsapp://send?phone=' in rewritten and 'https://wa.me/' in rewritten
+    assert 'encodeURIComponent(message)' in rewritten
+    rescanned, _ = redirects.scan_bundle(pages / version['id'], version['id'])
+    assert ('whatsapp_number', '85211112222') in [(item['kind'], item['url']) for item in rescanned]
+    again, copied = redirects.replace_bundle(pages / version['id'], version['id'], [rescanned[0]['id']],
+                                             '85211112222', pages, 'same.zip')
+    assert again is None and copied == 0
+
+
 def test_dom_anchor_href_and_setattribute_are_navigation(tmp_path):
     source = '''const destination="https://old.example/";
 document.querySelector("#destination").href=destination;
