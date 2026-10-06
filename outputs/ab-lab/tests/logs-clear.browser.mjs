@@ -56,7 +56,7 @@ test('clearing other countries sits beside search and keeps the Hong Kong rows',
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(() => document.querySelector('#connection')?.textContent === '服务已连接');
     await page.click('[data-tab="logs"]');
-    await page.waitForFunction(() => document.querySelector('#logs-body')?.textContent?.includes('（美国）'));
+    await page.waitForFunction(() => [...document.querySelectorAll('#logs-body img.country-flag')].some(img => img.getAttribute('src') === '/static/flags/us.svg'));
     const search = await page.locator('#log-filters button[type="submit"]').boundingBox();
     const button = await page.locator('#clear-foreign-logs').boundingBox();
     assert.equal(await page.locator('#clear-foreign-logs').textContent(), '一键清除非投放地区');
@@ -67,14 +67,16 @@ test('clearing other countries sits beside search and keeps the Hong Kong rows',
     assert.match(await page.locator('dialog.confirm-dialog p').textContent(), /显示（香港）的会留下/);
     await page.locator('dialog.confirm-dialog button', {hasText: '取消'}).click();
     assert.equal(clears.length, 0);
-    assert.match(await page.locator('#logs-body').textContent(), /（美国）/);
+    assert.match(await page.locator('#logs-body img.country-flag').last().getAttribute('src'), /\/static\/flags\/us\.svg$/);
+    assert.match(await page.locator('#logs-body').textContent(), /美国/);
     await page.click('#clear-foreign-logs');
     await page.locator('dialog.confirm-dialog button', {hasText: '确认'}).click();
     await page.waitForFunction(() => document.querySelector('#toast-region')?.textContent?.includes('留下 2 条'));
     assert.deepEqual(clears, [{}]);
     const body = await page.locator('#logs-body').textContent();
-    assert.match(body, /（香港）/);
-    assert.doesNotMatch(body, /（美国）/);
+    assert.match(body, /香港/);
+    assert.doesNotMatch(body, /美国/);
+    assert.match(await page.locator('#logs-body img.country-flag').first().getAttribute('src'), /\/static\/flags\/hk\.svg$/);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
