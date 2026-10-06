@@ -51,6 +51,7 @@ async function withConsole(run) {
       response=status===200?{site,config:{routing:'RULES',allowed_slot:'B',protection:true,content_mode:'PAGE',distribution:'random',rules:{}},versions:fixture.versions,slots:fixture.published,links:[],health:{geoip:true},target_url:'http://127.0.0.1:9000',revision:1}:{detail:'读取状态失败'};
     }
     else if(pathname.endsWith('/analytics')) response={period:'today',end:new Date().toISOString(),summary:{total:0,allowed:0,blocked:0,rate:0},trend:[],domains:[],countries:[],reasons:[],recent:[]};
+    else if(pathname===`/api/sites/${siteId}/tracking`) response={snippets:[], published:{A:{version_id:fixture.published.A, ga4:'', conversion:'', ga4_body:'', conversion_body:''}, B:{version_id:fixture.published.B, ga4:'', conversion:'', ga4_body:'', conversion_body:''}}};
     else if(pathname===`/api/sites/${siteId}/b-redirects`) {
       fixture.scans.push(url.searchParams.get('version_id'));
       const selected=url.searchParams.get('version_id')||fixture.published.B;
@@ -153,8 +154,9 @@ test('B redirect selection applies the chosen version and preserves exclusions a
     assert.match(await presetRow(page,1).innerText(),/当前使用中/,'the live redirect preset is flagged after a successful swap');
     assert.equal(await presetRow(page,2).locator('.b-redirect-active-badge').count(),0,'only the live redirect preset is flagged');
     await presetRow(page,1).getByRole('button',{name:'再换一次',exact:true}).click();
-    await page.waitForFunction(()=>document.querySelector('#b-redirect-version').value==='saved-2' && document.querySelector('#b-redirect-occurrences input[type=checkbox]')?.value==='href-saved-2');
-    assert.deepEqual(fixture.applies[1].body,{version_id:'saved-1',preset_id:1,occurrence_ids:['href-saved-1'],expected_published:'saved-1'});
+    await page.locator('#b-redirect-message').getByText('这些位置已经是这条链接，没有新版本。').waitFor();
+    assert.equal(fixture.applies.length,1,'the same link on the selected spots does not publish another version');
+    assert.equal(await page.locator('#b-redirect-version').inputValue(),'saved-1');
     assert.deepEqual(await page.locator('#b-redirect-occurrences input[type=checkbox]').evaluateAll(items=>items.map(item=>item.checked)),[true,false]);
     assert.equal(fixture.published.A,'live-a');
     fixture.scanStatus=500;
@@ -172,9 +174,9 @@ test('B redirect selection applies the chosen version and preserves exclusions a
     await page.waitForFunction(()=>document.querySelector('#b-redirects').getAttribute('aria-busy')==='false');
     assert.match(await page.locator('#b-redirect-message').innerText(),/已.*发布|发布.*成功/,'the confirmed publication is acknowledged even when refreshing its state fails');
     assert.match(await page.locator('#b-redirect-message').innerText(),/刷新|状态/);
-    assert.equal(fixture.published.B,'saved-3');
-    assert.equal(await page.locator('#b-redirect-version').inputValue(),'saved-3');
-    assert.equal(fixture.applies.length,3,'a failed status refresh never repeats the successful apply');
+    assert.equal(fixture.published.B,'saved-2');
+    assert.equal(await page.locator('#b-redirect-version').inputValue(),'saved-2');
+    assert.equal(fixture.applies.length,2,'a failed status refresh never repeats the successful apply');
   });
 });
 
@@ -397,5 +399,49 @@ test('WhatsApp number box replaces only the checked phone and leaves link apply 
     await linkApply;
     assert.deepEqual(fixture.applies.at(-1).body.occurrence_ids, ['anchor-wa-1', 'js_location-wa-1']);
     assert.equal(fixture.applies.at(-1).body.occurrence_ids.includes('whatsapp_number-wa-1'), false);
+  });
+});
+
+test('clicking another number moves the current-number mark onto it', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [
+      ...occurrences('live-b'),
+      {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85264150954'}
+    ];
+    fixture.numbers = [
+      {id:8, phone:'85264150954', note:'旧号', created:1},
+      {id:9, phone:'85299990000', note:'新号', created:1}
+    ];
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="8"] .b-redirect-active-badge').waitFor();
+    const numberApply = page.waitForResponse(response => response.url().includes('/b-redirects/numbers/apply'));
+    await page.locator('#b-redirect-numbers [data-number-id="9"]').getByRole('button', {name:'换成这个号码', exact:true}).click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    assert.equal(await page.locator('#b-redirect-numbers [data-number-id="8"] .b-redirect-active-badge').count(), 0);
+    await numberApply;
+    assert.equal(fixture.numberApplies.at(-1).body.number_id, 9);
+    assert.deepEqual(fixture.numberApplies.at(-1).body.occurrence_ids, ['wa-live-b']);
+    await page.locator('.b-wa-status').getByText('当前号码已换成 85299990000').waitFor();
+  });
+});
+
+test('clicking the number already on the page keeps the mark and does not publish', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [
+      ...occurrences('live-b'),
+      {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85264150954'}
+    ];
+    fixture.numbers = [
+      {id:8, phone:'85264150954', note:'旧号', created:1},
+      {id:9, phone:'85299990000', note:'新号', created:1}
+    ];
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="8"] .b-redirect-active-badge').waitFor();
+    await page.locator('#b-redirect-numbers [data-number-id="8"]').getByRole('button', {name:'换成这个号码', exact:true}).click();
+    await page.locator('#b-redirect-message').getByText('这个号码已经是当前号码。').waitFor();
+    await page.locator('.b-wa-status').getByText('这个号码已经是当前号码。').waitFor();
+    assert.equal(fixture.numberApplies.length, 0);
+    assert.equal(await page.locator('#b-redirect-numbers [data-number-id="8"] .b-redirect-active-badge').count(), 1);
+    assert.equal(await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').count(), 0);
   });
 });
