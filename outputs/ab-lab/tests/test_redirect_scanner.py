@@ -170,6 +170,10 @@ fetch(buildWhatsAppUrl('nope'));'''
     assert "params.set('text', message)" in rewritten
     rescanned, _ = redirects.scan_bundle(pages / version['id'], version['id'])
     assert [(item['kind'], item['url']) for item in rescanned] == [('whatsapp_number', '85299990000')]
+    again, copied = redirects.replace_bundle(pages / version['id'], version['id'], [rescanned[0]['id']],
+                                             '85299990000', pages, 'same.zip')
+    assert again is None and copied == 0
+    assert {path.name for path in pages.iterdir()} == {'original', version['id']}
 
 
 def test_landing_page_lists_visitor_jumps_and_skips_google_tags(tmp_path):

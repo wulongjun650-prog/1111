@@ -764,7 +764,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         version, changed = store.apply_whatsapp_number(base, number, body.occurrence_ids, body.expected_published, guard)
         site = registry.get(request.path_params.get('site_id', 'default'))
         purged = None
-        if site.get('cf_zone_id') and cloudflare.configured:
+        if changed and site.get('cf_zone_id') and cloudflare.configured:
             try:
                 cloudflare.purge(site['cf_zone_id'], site['domain'])
                 purged = {'ok': True}

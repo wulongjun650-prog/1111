@@ -1146,16 +1146,23 @@ def replace_bundle(root, version_id, occurrence_ids, url, pages, filename):
         from .store import Conflict
         raise Conflict('源码或跳转位置已变化，请重新扫描后再换链')
     selected = [item for item in occurrences if item['id'] in wanted]
-    files, total, edited, digest = source_files(root), 0, [], hashlib.sha256()
+    # The same number or link is already in every chosen spot. Keep this version.
+    if all(item['url'] == url for item in selected):
+        return None, 0
+    files, total, edited, digest, changed_bytes = source_files(root), 0, [], hashlib.sha256(), False
     for path, (file, _) in sorted(files.items()):
         data = snapshots[path] if path in snapshots else read_source(file, path)
         positions = [item for item in selected if item['path'] == path]
         if positions:
-            data = rewrite_text(data, positions, url)
+            rewritten = rewrite_text(data, positions, url)
+            changed_bytes = changed_bytes or rewritten != data
+            data = rewritten
         validate_file(path, data)
         total += len(data)
         if total > MAX_TOTAL:
             raise ValueError('源码目录超过总大小限制')
         edited.append((path, data))
         digest.update(path.encode() + b'\0' + str(len(data)).encode() + b'\0' + data)
+    if not changed_bytes:
+        return None, 0
     return write_bundle(edited, filename, pages, digest.hexdigest()), len(selected)

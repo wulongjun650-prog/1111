@@ -309,13 +309,17 @@ class Store:
                 saved = db.execute('SELECT url FROM redirect_presets WHERE id=?', (preset['id'],)).fetchone()
                 if not saved or saved['url'] != preset['url']:
                     raise KeyError('备用链接已删除或变更')
+                if version is None:
+                    db.execute('INSERT INTO redirect_active VALUES(1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET url=excluded.url,preset_id=excluded.preset_id,version_id=excluded.version_id,updated=excluded.updated', (preset['url'], preset['id'], base['id'], time.time()))
+                    return base | {'slot':'B'}, 0
                 db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], 'B', version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
                 db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
                 db.execute('INSERT INTO redirect_active VALUES(1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET url=excluded.url,preset_id=excluded.preset_id,version_id=excluded.version_id,updated=excluded.updated', (preset['url'], preset['id'], version['id'], time.time()))
                 self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed})
                 self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
         except Exception:
-            shutil.rmtree(self.pages / version['id'])
+            if version is not None:
+                shutil.rmtree(self.pages / version['id'])
             raise
         return version | {'slot':'B'}, changed
 
@@ -366,12 +370,15 @@ class Store:
                 saved = db.execute('SELECT phone FROM whatsapp_numbers WHERE id=?', (number['id'],)).fetchone()
                 if not saved or saved['phone'] != number['phone']:
                     raise KeyError('WhatsApp 号码已删除或变更')
+                if version is None:
+                    return base | {'slot':'B'}, 0
                 db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], 'B', version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
                 db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
                 self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed, 'whatsapp_number':number['phone']})
                 self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
         except Exception:
-            shutil.rmtree(self.pages / version['id'])
+            if version is not None:
+                shutil.rmtree(self.pages / version['id'])
             raise
         return version | {'slot':'B'}, changed
 

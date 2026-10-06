@@ -313,6 +313,15 @@ def test_whatsapp_number_pool_rewrites_only_the_phone(console):
     assert state['active'] is None
     assert [item['phone'] for item in state['numbers']] == ['85211112222', '85233334444', '85255556666']
     assert [item['url'] for item in state['occurrences'] if item['kind'] == 'whatsapp_number'] == ['85211112222']
+    before = [item['id'] for item in app.state.store.versions()]
+    repeated = client.post('/api/b-redirects/numbers/apply', json={
+        'version_id': state['version']['id'], 'number_id': chosen['id'],
+        'occurrence_ids': [item['id'] for item in state['occurrences'] if item['kind'] == 'whatsapp_number'],
+        'expected_published': state['published_version']})
+    assert repeated.status_code == 200, repeated.text
+    assert repeated.json()['changed'] == 0
+    assert repeated.json()['version']['id'] == published
+    assert [item['id'] for item in app.state.store.versions()] == before
     youtube = next(item for item in state['occurrences'] if item['kind'] != 'whatsapp_number')
     link = preset(client, url='https://example.com/watch')
     swapped = apply(client, state, link, ids=[youtube['id']])
