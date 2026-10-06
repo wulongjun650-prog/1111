@@ -22,9 +22,11 @@ test('empty accounts can use catalog and account routes but cannot call site API
   for (const path of ['/api/me','/api/sites','/api/accounts','/api/accounts/admin/password','/api/logout']) {
     assert.equal(accounts.accountSitePath(path, null), path);
   }
-  for (const path of ['/api/state','/api/config','/api/analytics?scope=all','/api/logs.csv','/api/logs/clear','/api/audit','/api/preview','/api/upload/A','/api/b-redirects','/api/b-redirects/presets/1/check','/api/tracking','/api/tracking/apply']) {
+  for (const path of ['/api/state','/api/config','/api/analytics?scope=all','/api/logs.csv','/api/logs/clear','/api/audit','/api/preview','/api/upload/A','/api/b-redirects','/api/b-redirects/presets/1/check','/api/tracking','/api/tracking/apply','/api/versions/B/cleanup','/api/versions/B/' + 'b'.repeat(32)]) {
     assert.throws(() => accounts.accountSitePath(path, null), /域名/);
   }
   assert.equal(accounts.accountSitePath('/api/state', 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/state`);
   assert.equal(accounts.accountSitePath('/api/b-redirects?version_id=mine', 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/b-redirects?version_id=mine`);
+  assert.equal(accounts.accountSitePath('/api/versions/B/' + 'b'.repeat(32), 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/versions/B/${'b'.repeat(32)}`);
+  assert.equal(accounts.accountSitePath('/api/versions/B/cleanup', 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/versions/B/cleanup`);
 });

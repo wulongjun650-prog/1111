@@ -27,6 +27,8 @@ test('site paths are explicit and preserve global endpoints', () => {
   assert.equal(helpers.sitePath('/api/config', 'default'), '/api/sites/default/config');
   assert.equal(helpers.sitePath('/api/tracking/apply', 'default'), '/api/sites/default/tracking/apply');
   assert.equal(helpers.sitePath('/api/upload/A?name=a.zip', 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/upload/A?name=a.zip`);
+  assert.equal(helpers.sitePath('/api/versions/B/' + 'b'.repeat(32), 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/versions/B/${'b'.repeat(32)}`);
+  assert.equal(helpers.sitePath('/api/versions/B/cleanup', 'default'), '/api/sites/default/versions/B/cleanup');
   assert.equal(helpers.sitePath('/api/logout', 'default'), '/api/logout');
   assert.equal(helpers.sitePath('/api/sites', 'default'), '/api/sites');
   assert.throws(() => helpers.sitePath('/api/state', '../x'));
