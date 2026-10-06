@@ -456,6 +456,19 @@ class Store:
             self._audit(db, 'logs_cleared', {'deleted': deleted})
         return deleted
 
+    def clear_logs_unless(self, keep):
+        """Delete visit rows in this site only. keep(ip, country) uses the same display rule as the log list."""
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            rows = db.execute('SELECT id, ip, country FROM events').fetchall()
+            remove = [row['id'] for row in rows if not keep(row['ip'], row['country'])]
+            deleted = 0
+            for start in range(0, len(remove), 500):
+                chunk = remove[start:start + 500]
+                deleted += db.execute(f"DELETE FROM events WHERE id IN ({','.join('?' * len(chunk))})", chunk).rowcount
+            self._audit(db, 'logs_foreign_cleared', {'deleted': deleted, 'kept': len(rows) - deleted})
+        return {'deleted': deleted, 'kept': len(rows) - deleted}
+
     def add_links(self, slot, urls):
         with self.connect() as db:
             db.executemany('INSERT OR IGNORE INTO links(slot,url) VALUES(?,?)', [(slot, url) for url in urls])

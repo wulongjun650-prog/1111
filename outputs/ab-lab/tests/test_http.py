@@ -140,6 +140,37 @@ def test_clearing_logs_removes_only_the_selected_domain(tmp_path):
     assert admin.get('/api/sites/default/logs').json()['total'] == 1
 
 
+def test_clearing_other_countries_keeps_displayed_hong_kong(tmp_path):
+    app = create_admin(tmp_path)
+    admin = TestClient(app, base_url='http://127.0.0.1:8765', client=('127.0.0.1', 50000))
+    admin.headers.update({'Origin': 'http://127.0.0.1:8765', 'X-CSRF-Token': app.state.csrf})
+    other = admin.post('/api/sites', json={'domain': 'other.example.com'}).json()['site']['id']
+    decision = {'device': 'mobile', 'slot': 'B', 'reason': 'allowed'}
+    current = app.state.registry.store('default')
+    current.event('1.32.192.8', 'HK', decision, '/hk', 'PAGE')
+    current.event('104.16.1.2', 'hk', decision, '/hk-lower', 'PAGE')
+    current.event('172.64.215.1', 'JP', decision, '/edge', 'PAGE')
+    current.event('2400:cb00::1', 'JP', decision, '/edge6', 'PAGE')
+    current.event('203.0.113.9', 'JP', decision, '/jp', 'PAGE')
+    current.event('2001:db8::1', 'JP', decision, '/jp6', 'PAGE')
+    current.event('8.8.8.8', 'US', decision, '/us', 'PAGE')
+    current.event('203.0.113.50', None, decision, '/none', 'PAGE')
+    elsewhere = app.state.registry.store(other)
+    elsewhere.event('8.8.4.4', 'US', decision, '/other-us', 'PAGE')
+    elsewhere.event('1.1.1.1', 'HK', decision, '/other-hk', 'PAGE')
+    cleared = admin.post('/api/sites/default/logs/clear-foreign', json={})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json() == {'deleted': 4, 'kept': 4}
+    shown = {row['path']: row['country'] for row in admin.get('/api/sites/default/logs').json()['items']}
+    assert shown == {'/hk': 'HK', '/hk-lower': 'hk', '/edge': 'HK', '/edge6': 'HK'}
+    stored = {row['path']: row['country'] for row in current.logs()['items']}
+    assert stored['/edge'] == 'JP' and stored['/edge6'] == 'JP'
+    assert {row['path'] for row in elsewhere.logs()['items']} == {'/other-us', '/other-hk'}
+    again = admin.post('/api/sites/default/logs/clear-foreign', json={})
+    assert again.json() == {'deleted': 0, 'kept': 4}
+    assert current.logs()['total'] == 4
+
+
 def test_recent_count_is_only_the_last_minute_of_one_domain(tmp_path):
     app = create_admin(tmp_path)
     admin = TestClient(app, base_url='http://127.0.0.1:8765', client=('127.0.0.1', 50000))

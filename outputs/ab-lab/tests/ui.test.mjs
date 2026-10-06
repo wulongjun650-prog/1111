@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const helpers = await import('../static/helpers.mjs').catch(() => ({}));
 
@@ -29,9 +30,19 @@ test('site paths are explicit and preserve global endpoints', () => {
   assert.equal(helpers.sitePath('/api/upload/A?name=a.zip', 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/upload/A?name=a.zip`);
   assert.equal(helpers.sitePath('/api/versions/B/' + 'b'.repeat(32), 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/versions/B/${'b'.repeat(32)}`);
   assert.equal(helpers.sitePath('/api/versions/B/cleanup', 'default'), '/api/sites/default/versions/B/cleanup');
+  assert.equal(helpers.sitePath('/api/logs/clear-foreign', 'default'), '/api/sites/default/logs/clear-foreign');
   assert.equal(helpers.sitePath('/api/logout', 'default'), '/api/logout');
   assert.equal(helpers.sitePath('/api/sites', 'default'), '/api/sites');
   assert.throws(() => helpers.sitePath('/api/state', '../x'));
+});
+
+test('the non-target visit button sits beside search and calls the current site', () => {
+  const html = readFileSync(new URL('../templates/index.html', import.meta.url), 'utf8');
+  assert.match(html, /查询<\/button><button id="clear-foreign-logs" class="button secondary" type="button">一键清除非投放地区<\/button>/);
+  const app = readFileSync(new URL('../static/app.js', import.meta.url), 'utf8');
+  assert.match(app, /#clear-foreign-logs/);
+  assert.match(app, /\/api\/logs\/clear-foreign/);
+  assert.match(app, /显示（香港）的会留下/);
 });
 
 test('quick config updates preserve rules and do not mutate server state', () => {
