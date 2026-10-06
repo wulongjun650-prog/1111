@@ -111,10 +111,11 @@ class LocalBoundary:
                 site = self.registry.for_host(host)
                 allowed_hosts = (host,) if site else ()
             expected_origin = self.deployment.admin_origin
-            try:
-                state['visitor_ip'] = str(ipaddress.ip_address(headers.get(b'x-real-ip', b'').decode('ascii')))
-            except (ValueError, UnicodeError):
+            visitor_ip = restore_visitor_ip(headers.get(b'x-real-ip', b''), headers.get(b'cf-connecting-ip', b''))
+            if visitor_ip is None:
                 local = False
+            else:
+                state['visitor_ip'] = visitor_ip
             local &= headers.get(b'x-forwarded-proto') == b'https'
         invalid = not local or host not in allowed_hosts
         if self.admin:
@@ -219,6 +220,38 @@ class LocalBoundary:
                 message['headers'] = [(k, v) for k, v in message.get('headers', []) if k.lower() not in {key for key, _ in extra}] + extra
             await send(message)
         await self.app(scope, replay, secured)
+
+
+# Published ranges from https://www.cloudflare.com/ips-v4 and /ips-v6.
+# A client can set CF-Connecting-IP itself, so it counts only when the
+# connecting address is one of these edges.
+CLOUDFLARE_NETS = tuple(ipaddress.ip_network(item) for item in (
+    '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+    '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20',
+    '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+    '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
+    '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32',
+    '2405:8100::/32', '2a06:98c0::/29', '2c0f:f248::/32',
+))
+
+
+def _address(value):
+    try:
+        text = value.decode('ascii').strip() if isinstance(value, (bytes, bytearray)) else str(value).strip()
+        return ipaddress.ip_address(text)
+    except (AttributeError, ValueError, UnicodeError):
+        return None
+
+
+def restore_visitor_ip(edge_header, connecting_header):
+    """Use the visitor address Cloudflare saw, not the Japan edge address."""
+    edge = _address(edge_header)
+    if edge is None:
+        return None
+    connecting = _address(connecting_header)
+    if connecting is not None and connecting.is_global and any(edge in network for network in CLOUDFLARE_NETS):
+        return str(connecting)
+    return str(edge)
 
 
 def geo_path():

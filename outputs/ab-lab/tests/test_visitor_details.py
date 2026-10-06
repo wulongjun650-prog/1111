@@ -100,6 +100,27 @@ def test_bundled_database_and_explicit_missing_override(monkeypatch):
     assert web.geo_country('8.8.8.8') is None
 
 
+def test_cloudflare_edge_keeps_the_visitor_country(tmp_path, monkeypatch):
+    from ablab.settings import Deployment
+    monkeypatch.delenv('AB_GEOIP_PATH', raising=False)
+    target = TestClient(web.create_target(tmp_path, deployment=Deployment('https://admin.example.com','https://target.example.com')),
+                        base_url='https://target.example.com', client=('127.0.0.1',1))
+    headers = {'x-real-ip':'172.70.222.1','x-forwarded-proto':'https','user-agent':'Mozilla/5.0'}
+    target.get('/', headers=headers)
+    edge = Store(tmp_path).logs()['items'][0]
+    assert edge['country'] == 'JP'
+    assert edge['ip'] == '172.70.222.0/24'
+    target.get('/', headers=headers | {'cf-connecting-ip':'1.32.192.1'})
+    visitor = Store(tmp_path).logs()['items'][0]
+    assert visitor['country'] == 'HK'
+    assert visitor['ip'] == '1.32.192.0/24'
+    target.get('/', headers={'x-real-ip':'8.8.8.8','cf-connecting-ip':'1.32.192.1','x-forwarded-proto':'https'})
+    direct = Store(tmp_path).logs()['items'][0]
+    assert direct['country'] == 'US'
+    assert direct['ip'] == '8.8.8.0/24'
+    assert web.restore_visitor_ip(b'172.70.222.1', b'10.1.2.3') == '172.70.222.1'
+
+
 def test_country_and_device_are_captured_before_ip_masking(tmp_path, monkeypatch):
     from ablab.settings import Deployment
     monkeypatch.delenv('AB_GEOIP_PATH', raising=False)
