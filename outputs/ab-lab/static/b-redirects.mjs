@@ -87,6 +87,11 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     message.classList.toggle('error', error); message.setAttribute('role', error ? 'alert' : 'status');
   }
 
+  function showNumberStatus(text) {
+    const status = waBox.querySelector('.b-wa-status');
+    if (status && text) status.textContent = text;
+  }
+
   function updateControls() {
     const value = session, busy = !value || value.busy || value.loading;
     version.disabled = busy || !value?.versions.length;
@@ -406,27 +411,45 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
 
   async function applyNumber(value, item) {
     if (!isCurrent(value) || value.busy || value.loading || !value.versionId || !numberSelected(value).length) return;
-    const numbers = numberSelected(value);
-    if (numbers.every(row => row.url === item.phone)) { showMessage('页面里已经是这个号码，没有新版本。'); return; }
-    value.busy = true; updateControls(); showMessage('正在更换 WhatsApp 号码…');
+    const targets = numberSelected(value);
+    if (targets.every(row => row.url === item.phone)) {
+      renderNumbers(value);
+      const text = '这个号码已经是当前号码。';
+      showMessage(text); showNumberStatus(text);
+      try { await onApplied({changed:0}); } catch (error) { if (!isCurrent(value) || error.stale) return; }
+      return;
+    }
+    const previous = value.occurrences.map(row => ({...row}));
+    const targetIds = new Set(targets.map(row => row.id));
+    value.occurrences = value.occurrences.map(row => targetIds.has(row.id) ? {...row, url:item.phone} : row);
+    renderOccurrences(value); renderNumbers(value);
+    value.busy = true; updateControls(); showMessage('正在更换 WhatsApp 号码…'); showNumberStatus('正在把当前号码换成 ' + item.phone + '…');
     try {
-      const result = await api('/api/b-redirects/numbers/apply', {method:'POST', body:{version_id:value.versionId, number_id:item.id, occurrence_ids:numberSelected(value).map(row => row.id), expected_published:value.expectedPublished}});
+      const result = await api('/api/b-redirects/numbers/apply', {method:'POST', body:{version_id:value.versionId, number_id:item.id, occurrence_ids:targets.map(row => row.id), expected_published:value.expectedPublished}});
       if (!isCurrent(value)) return;
-      if (!result.changed) { showMessage('页面里已经是这个号码，没有新版本。'); return; }
+      if (!result.changed) {
+        value.occurrences = previous; renderOccurrences(value); renderNumbers(value);
+        const text = '这个号码已经是当前号码。';
+        showMessage(text); showNumberStatus(text);
+        try { await onApplied({changed:0}); } catch (error) { if (!isCurrent(value) || error.stale) return; }
+        return;
+      }
       value.versionId = result.version.id; value.published = result.version.id;
       value.expectedPublished = result.version.id; value.selectionDirty = false;
       if (!value.versions.some(saved => saved.id === result.version.id)) value.versions.push(result.version);
-      value.occurrences = []; renderVersions(value); renderOccurrences(value);
+      renderVersions(value); renderOccurrences(value); renderNumbers(value);
       let refreshFailed = false;
       try {await onApplied(result);}
       catch (error) {if (!isCurrent(value) || error.stale) return; refreshFailed = true;}
       if (!isCurrent(value)) return;
       await scan(value);
       const cacheNote = result.cloudflare?.ok ? ' Cloudflare 缓存已清除。' : result.cloudflare ? ' 号码已换，但 Cloudflare 缓存没清掉。' : '';
-      if (isCurrent(value)) showMessage(refreshFailed
+      const done = refreshFailed
         ? '号码已更换并发布 B，但状态刷新失败。请刷新状态确认当前版本。进线语未改。' + cacheNote
-        : `已更换 ${result.changed} 处号码并发布 B。进线语未改。` + cacheNote, refreshFailed || Boolean(result.cloudflare && !result.cloudflare.ok));
+        : `已换成 ${item.phone}。进线语未改。` + cacheNote;
+      if (isCurrent(value)) { showMessage(done, refreshFailed || Boolean(result.cloudflare && !result.cloudflare.ok)); showNumberStatus(`当前号码已换成 ${item.phone}。`); }
     } catch (error) {
+      if (isCurrent(value) && !error.stale) { value.occurrences = previous; renderOccurrences(value); renderNumbers(value); showNumberStatus('没有换成这个号码。'); }
       if (!isCurrent(value) || error.stale) return;
       if (error.status === 400) await scan(value);
       if (isCurrent(value)) showMessage(error.status === 409
@@ -518,6 +541,13 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       clear();
       value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], warnings:[], presets:[], numbers:[], presetsRevision:0, numbersRevision:0, active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
       session = value;
+    }
+    if (value.busy) {
+      for (const item of state.versions.filter(item => item.slot === 'B')) {
+        if (!value.versions.some(saved => saved.id === item.id)) value.versions.push(item);
+      }
+      renderVersions(value); updateControls();
+      return;
     }
     const changed = value.published !== state.slots.B;
     value.versions = state.versions.filter(item => item.slot === 'B');

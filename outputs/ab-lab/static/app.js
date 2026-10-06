@@ -41,7 +41,7 @@ const tracking = createTracking({api, on, element, confirmAction, toast, getStat
 const visitWatch = createVisitWatch({api, getSite: () => selectedSite, getDomain: () => currentDomain(), isLogsOpen: () => activeTab === 'logs', reloadLogs: () => loadLogs(logPage, {quiet: true})});
 const bRedirects = createBRedirects({api, on, element, confirmAction, getSite:() => state?.site,
   onApplied:async result => {
-    if (!result.changed) toast(result.check ? '这些位置已经是这条链接，没有新版本。' : '页面里已经是这个号码，没有新版本。');
+    if (!result.changed) toast(result.check ? '这些位置已经是这条链接，没有新版本。' : '这个号码已经是当前号码。');
     else if (!result.check) toast(result.cloudflare?.ok ? 'WhatsApp 号码已更换并发布，Cloudflare 缓存已清除。' : result.cloudflare ? 'WhatsApp 号码已更换。Cloudflare 缓存没清掉，请稍后再试。' : 'WhatsApp 号码已更换并发布。进线语未改。', Boolean(result.cloudflare && !result.cloudflare.ok));
     else toast(result.check.status === 'unknown' ? 'B 页已换链并发布；此链接状态未知，请确认目标页面。' : 'B 页已换链并发布，旧版本已保留。');
     await refreshState();
