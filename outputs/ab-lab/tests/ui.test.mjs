@@ -38,8 +38,11 @@ test('site paths are explicit and preserve global endpoints', () => {
 
 test('the non-target visit button sits beside search and calls the current site', () => {
   const html = readFileSync(new URL('../templates/index.html', import.meta.url), 'utf8');
-  assert.match(html, /查询<\/button><button id="clear-foreign-logs" class="button secondary" type="button">一键清除非投放地区<\/button>/);
   const app = readFileSync(new URL('../static/app.js', import.meta.url), 'utf8');
+  assert.match(html, /查询<\/button><button id="clear-foreign-logs" class="button secondary" type="button">一键清除非投放地区<\/button>/);
+  assert.match(html, /<th>国家<\/th><th>IP<\/th>/);
+  assert.match(app, /function visitAddress/);
+  assert.match(app, /text\.includes\('\/'\)/);
   assert.match(app, /#clear-foreign-logs/);
   assert.match(app, /\/api\/logs\/clear-foreign/);
   assert.match(app, /显示（香港）的会留下/);

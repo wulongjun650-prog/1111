@@ -41,6 +41,7 @@ def test_owned_new_config_is_backed_up_and_checked_before_reload(tmp_path):
     assert 'proxy_pass http://127.0.0.1:8766;' in text
     assert 'proxy_set_header Host new.example.com;' in text
     assert 'proxy_set_header X-Real-IP $remote_addr;' in text
+    assert 'proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;' in text
     assert 'proxy_set_header X-Forwarded-Proto $scheme;' in text
     assert 'proxy_set_header X-Forwarded-For "";' in text
     assert 'location ^~ /.well-known/acme-challenge/' in text

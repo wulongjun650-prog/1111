@@ -46,6 +46,8 @@ def test_switch_and_repeat_do_not_rewrite_or_reload(deployment):
     assert 'proxy_pass http://127.0.0.1:8766;' in output
     assert 'proxy_set_header Host new.example.com;' in output
     assert 'proxy_set_header X-Forwarded-For "";' in output
+    assert 'proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;' in output
+    assert 'proxy_set_header X-Real-IP $http_cf_connecting_ip' not in output
     assert [cmd[1:] for cmd in calls] == [['-t'], ['-t'], ['-s', 'reload']]
     assert not pending(tls).exists()
     assert any(p.read_bytes() == previous for p in config.parent.rglob('*') if p.is_file())

@@ -504,12 +504,10 @@ class Store:
             return dict(row)
 
     def event(self, ip, country, decision, path, mode):
-        address = ipaddress.ip_address(ip)
-        prefix = 24 if address.version == 4 else 48
-        masked = str(ipaddress.ip_network(f'{address}/{prefix}', strict=False))
+        exact = str(ipaddress.ip_address(ip))
         with self.connect() as db:
             details = decision.get('device_details')
-            db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode,device_details) VALUES(?,?,?,?,?,?,?,?,?)', (time.time(), masked, country, decision['device'], decision['slot'], decision['reason'], path[:512], mode, json.dumps(details, ensure_ascii=False) if details else None))
+            db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode,device_details) VALUES(?,?,?,?,?,?,?,?,?)', (time.time(), exact, country, decision['device'], decision['slot'], decision['reason'], path[:512], mode, json.dumps(details, ensure_ascii=False) if details else None))
             db.execute('DELETE FROM events WHERE created<? OR id <= (SELECT MAX(id)-10000 FROM events)', (time.time() - 30 * 86400,))
 
     def recent_count(self, seconds=60):
