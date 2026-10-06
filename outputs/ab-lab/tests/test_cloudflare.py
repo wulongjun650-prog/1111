@@ -260,6 +260,32 @@ def test_unchecked_add_keeps_the_old_path_and_checked_is_optional(tmp_path):
     assert any(path.endswith('/purge_cache') for _, path in api.calls)
 
 
+def test_saving_the_visible_slot_purges_that_domains_cache(tmp_path):
+    api = Api()
+    http = session(tmp_path, client(api))
+    added = http.post('/api/sites', json={'domain': 'new.example.com', 'cloudflare': True})
+    assert added.status_code == 200, added.text
+    site_id = added.json()['site']['id']
+    before = [path for _, path in api.calls if path.endswith('/purge_cache')]
+    current = http.get(f'/api/sites/{site_id}/state').json()
+    current['config']['routing'] = 'RULES'
+    current['config']['allowed_slot'] = 'A'
+    saved = http.put(f'/api/sites/{site_id}/config', json={'config': current['config'], 'revision': current['revision']})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()['config']['allowed_slot'] == 'A'
+    assert saved.json()['cloudflare'] == {'ok': True}
+    after = [path for _, path in api.calls if path.endswith('/purge_cache')]
+    assert len(after) == len(before) + 1
+    published = http.post(f'/api/sites/{site_id}/upload/A?name=page.html', content=b'<h1>Alpha</h1>')
+    assert published.status_code == 200, published.text
+    version_id = published.json()['version']['id']
+    went_live = http.post(f'/api/sites/{site_id}/publish/A', json={'version_id': version_id})
+    assert went_live.status_code == 200, went_live.text
+    assert went_live.json()['cloudflare'] == {'ok': True}
+    finished = [path for _, path in api.calls if path.endswith('/purge_cache')]
+    assert len(finished) == len(after) + 1
+
+
 def test_open_page_checks_pending_nameservers_until_the_zone_is_active(tmp_path):
     api = Api(zones={'new.example.com': [zone('new.example.com', status='pending')]}, records={
         ZONE: [{'id': RECORD, 'type': 'A', 'name': 'new.example.com', 'content': ORIGIN, 'proxied': True}],

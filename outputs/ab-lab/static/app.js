@@ -322,7 +322,10 @@ async function saveConfig(config, ruleSave = false) {
     state = updated;
     if (ruleSave && editing === editAtStart) setDirty(false);
     renderState();
-    toast(ruleSave ? '访问规则已保存。' : '配置已更新，即刻生效。');
+    const cache = updated.cloudflare;
+    const cleared = cache?.ok ? ' Cloudflare 缓存已清除，请刷新落地页。' : '';
+    const failed = cache && cache.ok === false ? ' Cloudflare 缓存没清掉，请再保存一次。' : '';
+    toast((ruleSave ? '访问规则已保存。' : '配置已更新，即刻生效。') + cleared + failed);
   } catch (error) {
     if (error.status === 409) {
       try { await refreshState(); } catch { toast('重新同步失败，草稿仍保留。请刷新状态后重试。', true); }

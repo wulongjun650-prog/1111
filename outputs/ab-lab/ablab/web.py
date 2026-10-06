@@ -401,6 +401,16 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         visit_url = target_url if site_id == 'default' else (f'https://{site["domain"]}' if deployment else f'{target_url}/_sites/{site_id}/')
         return {'config': config.model_dump(), 'revision': revision, 'versions': store.versions(), 'slots': store.slots(), 'links': store.links(), 'stats': store.stats(), 'health': {'geoip': geo_ready(), 'geoip_detail': geo_status(), 'local_only': deployment is None}, 'site': site, 'target_url': visit_url, 'preview_origin': target_url}
 
+    def purge_site_cache(site):
+        """Drop the cached landing page so a slot change is what visitors see."""
+        if not site.get('cf_zone_id') or not cloudflare.configured:
+            return None
+        try:
+            cloudflare.purge(site['cf_zone_id'], site['domain'])
+        except ProvisioningError as error:
+            return {'ok': False, 'detail': str(error)[:180]}
+        return {'ok': True}
+
     @app.get('/api/sites')
     def list_sites(request: Request):
         account = principal(request)
@@ -634,8 +644,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.put('/config')
     def update_config(body: ConfigUpdate, request: Request, store=Depends(site_store)):
+        site_id = request.path_params.get('site_id', 'default')
         store.save_config(body.config, body.revision)
-        return state(store, request.path_params.get('site_id', 'default'))
+        result = state(store, site_id)
+        purged = purge_site_cache(registry.get(site_id))
+        if purged is not None:
+            result['cloudflare'] = purged
+        return result
 
     @routes.post('/upload/{slot}')
     async def upload(slot: Slot, request: Request, name: str = Query(min_length=1, max_length=200), store=Depends(site_store)):
@@ -647,9 +662,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return {'version': version | {'slot': slot}}
 
     @routes.post('/publish/{slot}')
-    def publish(slot: Slot, body: VersionChoice, store=Depends(site_store)):
+    def publish(slot: Slot, body: VersionChoice, request: Request, store=Depends(site_store)):
         store.publish(slot, body.version_id)
-        return {'ok': True}
+        result = {'ok': True}
+        purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+        if purged is not None:
+            result['cloudflare'] = purged
+        return result
 
     @routes.delete('/versions/B/{version_id}')
     def delete_b_version(version_id: VersionId, store=Depends(site_store)):
