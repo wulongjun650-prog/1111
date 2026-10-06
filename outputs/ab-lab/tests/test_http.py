@@ -81,6 +81,26 @@ def test_b_version_delete_and_cleanup_keep_the_published_page(apps, tmp_path):
     assert any(item['action'] == 'b_version_deleted' for item in admin.get('/api/audit').json()['items'])
 
 
+def test_deleting_a_b_version_uses_the_selected_domain(apps, tmp_path):
+    admin, _target = apps
+    other = admin.post('/api/sites', json={'domain': 'shop.example'}).json()['site']['id']
+    uploaded = admin.post(f'/api/sites/{other}/upload/B?name=old.html', content=b'<h1>Old</h1>')
+    assert uploaded.status_code == 200, uploaded.text
+    version_id = uploaded.json()['version']['id']
+    missed = admin.delete(f'/api/versions/B/{version_id}')
+    assert missed.status_code == 400
+    assert '只能删除未发布的 B 版本' in missed.json()['detail']
+    assert (tmp_path / 'sites' / other / 'pages' / version_id).is_dir()
+    removed = admin.delete(f'/api/sites/{other}/versions/B/{version_id}')
+    assert removed.status_code == 200, removed.text
+    state = admin.get(f'/api/sites/{other}/state').json()
+    assert all(item['id'] != version_id for item in state['versions'])
+    assert not (tmp_path / 'sites' / other / 'pages' / version_id).exists()
+    kept = admin.post('/api/sites/default/upload/B?name=keep.html', content=b'<h1>Keep</h1>')
+    assert kept.status_code == 200
+    assert any(item['id'] == kept.json()['version']['id'] for item in admin.get('/api/state').json()['versions'])
+
+
 def test_b_split_rewrites_the_page_before_it_is_sent(apps):
     admin, target = apps
     upload(admin, 'B', '<a href="https://old.example/landing">go</a>')
