@@ -60,8 +60,10 @@ def summarize(registry, site_id, period, scope, tz_offset, now, owner_id=None):
                 f'FROM events WHERE created>=? AND created{comparison}? ORDER BY created DESC,id DESC',
                 (start, end),
             )
+            from .web import shown_country
             for row in rows:
                 item = dict(row)
+                item['country'] = shown_country(item.get('ip'), item.get('country'))
                 reason = item['reason']
                 outcome = 'allowed' if reason in ALLOWED else 'blocked' if reason in BLOCKED else 'other'
                 add(summary, outcome)

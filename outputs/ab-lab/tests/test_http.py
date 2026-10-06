@@ -45,6 +45,17 @@ def test_upload_publish_modes_and_restart_persist(apps, tmp_path):
     assert 'Alpha' in restarted.get('/').text
 
 
+def test_switching_a_version_does_not_create_another_copy(apps):
+    admin, _target = apps
+    older = upload(admin, 'B', '<h1>Older</h1>')
+    upload(admin, 'B', '<h1>Newer</h1>')
+    before = [item['id'] for item in admin.get('/api/state').json()['versions'] if item['slot'] == 'B']
+    assert admin.post('/api/publish/B', json={'version_id': older}).status_code == 200
+    after = [item['id'] for item in admin.get('/api/state').json()['versions'] if item['slot'] == 'B']
+    assert after == before
+    assert admin.get('/api/state').json()['slots']['B'] == older
+
+
 def test_b_version_delete_and_cleanup_keep_the_published_page(apps, tmp_path):
     admin, target = apps
     live = upload(admin, 'B', '<h1>Live</h1>')

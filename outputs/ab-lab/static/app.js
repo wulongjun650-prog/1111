@@ -1,10 +1,10 @@
 import { createDashboard } from './dashboard.mjs';
 import { applyTheme } from './theme.mjs';
-import { themeFor, countryBadge, deviceBadge, icon, reputationView } from './presentation.mjs';
+import { themeFor, deviceBadge, icon, reputationView } from './presentation.mjs';
 import { createReputationAutoCheck } from './reputation.mjs';
 import { createCloudflareAutoCheck } from './cloudflare-status.mjs';
 import { patchConfig, rulesConfig, parseLinks, previewURL, logPath, validateUpload, sitePath } from './helpers.mjs';
-import { countryLabel } from './locale.mjs';
+import { countryLabel, countryParen } from './locale.mjs';
 import { createSelection } from './selection.mjs';
 import { isAdmin, chooseSite, accountSitePath } from './account-ui.mjs';
 import { createSourceEditor } from './source-editor.mjs';
@@ -540,7 +540,7 @@ async function loadLogs(page = 1, {quiet = false} = {}) {
     for (const item of data.items) {
       const row = element('tr');
       row.append(element('td', '', formatDate(item.created)));
-      const ip = element('td', '', item.ip); const country = element('small', 'country-name'); country.append(countryBadge(item.country)); ip.append(country); row.append(ip);
+      row.append(element('td', 'country-name', countryParen(item.country)));
       const device = element('td', 'device-cell'); device.append(deviceBadge(item));
       device.append(element('small', '', visitDeviceLine(item.device_details)));
       device.title = '来自浏览器 User-Agent 声明，可能被精简或伪造；不能保证真实型号'; row.append(device);

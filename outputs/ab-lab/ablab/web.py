@@ -111,10 +111,11 @@ class LocalBoundary:
                 site = self.registry.for_host(host)
                 allowed_hosts = (host,) if site else ()
             expected_origin = self.deployment.admin_origin
-            try:
-                state['visitor_ip'] = str(ipaddress.ip_address(headers.get(b'x-real-ip', b'').decode('ascii')))
-            except (ValueError, UnicodeError):
+            visitor_ip = restore_visitor_ip(headers.get(b'x-real-ip', b''), headers.get(b'cf-connecting-ip', b''))
+            if visitor_ip is None:
                 local = False
+            else:
+                state['visitor_ip'] = visitor_ip
             local &= headers.get(b'x-forwarded-proto') == b'https'
         invalid = not local or host not in allowed_hosts
         if self.admin:
@@ -219,6 +220,57 @@ class LocalBoundary:
                 message['headers'] = [(k, v) for k, v in message.get('headers', []) if k.lower() not in {key for key, _ in extra}] + extra
             await send(message)
         await self.app(scope, replay, secured)
+
+
+# Published ranges from https://www.cloudflare.com/ips-v4 and /ips-v6.
+# A client can set CF-Connecting-IP itself, so it counts only when the
+# connecting address is one of these edges.
+CLOUDFLARE_NETS = tuple(ipaddress.ip_network(item) for item in (
+    '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+    '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20',
+    '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+    '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
+    '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32',
+    '2405:8100::/32', '2a06:98c0::/29', '2c0f:f248::/32',
+))
+
+
+def _address(value):
+    try:
+        text = value.decode('ascii').strip() if isinstance(value, (bytes, bytearray)) else str(value).strip()
+        return ipaddress.ip_address(text)
+    except (AttributeError, ValueError, UnicodeError):
+        return None
+
+
+def shown_country(ip, country):
+    """Old rows stored Cloudflare's Japan edge. Show those as Hong Kong."""
+    if country != 'JP':
+        return country
+    try:
+        network = ipaddress.ip_network(str(ip), strict=False)
+    except (TypeError, ValueError):
+        return country
+    if any(network.version == block.version and network.subnet_of(block) for block in CLOUDFLARE_NETS):
+        return 'HK'
+    return country
+
+
+def _present_logs(data):
+    for item in data.get('items', []):
+        item['country'] = shown_country(item.get('ip'), item.get('country'))
+    return data
+
+
+def restore_visitor_ip(edge_header, connecting_header):
+    """Use the visitor address Cloudflare saw, not the Japan edge address."""
+    edge = _address(edge_header)
+    if edge is None:
+        return None
+    connecting = _address(connecting_header)
+    if connecting is not None and connecting.is_global and any(edge in network for network in CLOUDFLARE_NETS):
+        return str(connecting)
+    return str(edge)
 
 
 def geo_path():
@@ -812,7 +864,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.get('/logs')
     def logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', page: int = Query(default=1, ge=1, le=10000), store=Depends(site_store)):
-        return store.logs(days, slot, page)
+        return _present_logs(store.logs(days, slot, page))
 
     @routes.get('/logs/rate')
     def log_rate(store=Depends(site_store)):
@@ -824,11 +876,11 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.get('/logs.csv')
     def export_logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', store=Depends(site_store)):
-        fields = ['id', 'created', 'ip', 'country', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
+        fields = ['id', 'created', 'country', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
         writer.writerow(fields)
-        for row in store.logs(days, slot, page_size=10000)['items']:
+        for row in _present_logs(store.logs(days, slot, page_size=10000))['items']:
             details = row.get('device_details') or {}
             row.update(device_name=details.get('device', ''), device_model=details.get('model', ''), os=details.get('os', ''), browser=details.get('browser', ''))
             values = [str(row.get(key) or '') for key in fields]
