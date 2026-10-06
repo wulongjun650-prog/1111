@@ -19,12 +19,17 @@ export function countryLabel(code) {
   const normalized = String(code).toUpperCase();
   return regionCodes.includes(normalized) ? `${names.countries.of(normalized)} · ${normalized}` : `国家未知 · ${normalized}`;
 }
+export function countryShort(code) {
+  if (!code) return '未知国家';
+  const normalized = String(code).toUpperCase();
+  if (normalized === 'HK') return '香港';
+  const name = countryLabel(code).split(' · ')[0];
+  return name.startsWith('国家未知') ? '未知国家' : name;
+}
 export function countryParen(code) {
   if (!code) return '（未知）';
-  const normalized = String(code).toUpperCase();
-  if (normalized === 'HK') return '（香港）';
-  const name = countryLabel(code).split(' · ')[0];
-  return name.startsWith('国家未知') ? '（未知）' : `（${name}）`;
+  const name = countryShort(code);
+  return name === '未知国家' ? '（未知）' : `（${name}）`;
 }
 export function searchOptions(kind, query) {
   const text = query.trim().toLowerCase();

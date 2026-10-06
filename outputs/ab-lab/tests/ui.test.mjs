@@ -16,6 +16,7 @@ test('Chinese searches expose a selectable Korean result and meaningful country 
   assert.equal(locale.searchOptions('countries', '韩国')[0].code, 'KR');
   assert.equal(locale.searchOptions('languages', '韩语')[0].code, 'ko');
   assert.match(locale.countryLabel('KR'), /韩国/);
+  assert.equal(locale.countryShort('HK'), '香港');
   assert.equal(locale.countryParen('HK'), '（香港）');
   assert.equal(locale.countryParen(null), '（未知）');
   assert.match(locale.countryLabel(null), /未知/);

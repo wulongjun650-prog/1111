@@ -1,4 +1,4 @@
-import { options, countryLabel } from './locale.mjs';
+import { options, countryShort } from './locale.mjs';
 
 const regions = new Set(options.countries.map(item => item.code));
 export function themeFor(config) {
@@ -54,7 +54,7 @@ export function countryBadge(code) {
   const path = flagPath(code);
   if (path) { const img = node('img','country-flag'); img.src = path; img.alt = ''; img.width = 24; img.height = 18; wrap.append(img); }
   else wrap.append(icon('domains'));
-  wrap.append(node('span','',path ? countryLabel(code).split(' · ')[0] : '未知国家'));
+  wrap.append(node('span','',path ? countryShort(code) : '未知国家'));
   return wrap;
 }
 export function deviceBadge(item) {

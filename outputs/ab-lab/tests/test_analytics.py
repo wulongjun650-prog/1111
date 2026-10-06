@@ -194,6 +194,22 @@ def test_calendar_windows_offset_and_future_exclusion(tmp_path, monkeypatch):
     assert utc['trend'][4]['total'] == 1
 
 
+def test_cloudflare_japan_joins_the_hong_kong_total(tmp_path, monkeypatch):
+    monkeypatch.setattr('time.time', lambda: NOW)
+    store = Store(tmp_path)
+    event(store, NOW - 60, 'allowed', 'B', 'JP', '172.64.215.0/24')
+    event(store, NOW - 50, 'allowed', 'B', 'HK', '1.32.192.0/24')
+    event(store, NOW - 40, 'allowed', 'B', 'JP', '203.0.113.0/24')
+    result = client(tmp_path).get('/api/analytics?period=today').json()
+    totals = {row['code']: row['total'] for row in result['countries']}
+    assert totals['HK'] == 2
+    assert totals['JP'] == 1
+    shown = {item['ip']: item['country'] for item in result['recent']}
+    assert shown['172.64.215.0/24'] == 'HK'
+    assert shown['1.32.192.0/24'] == 'HK'
+    assert shown['203.0.113.0/24'] == 'JP'
+
+
 def test_invalid_query_and_production_auth(tmp_path, monkeypatch):
     monkeypatch.setattr('time.time', lambda: NOW)
     admin = client(tmp_path)
