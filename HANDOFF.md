@@ -14,7 +14,7 @@
 - 不要覆盖 `/var/lib/ab-lab` 或 `/etc/ab-lab/config.json`。不要跑 `install.sh`，不要跑 `configure.py --set-password`。
 - 不要随便重启 `ab-lab-target`。它在吐落地页，广告可能开着。改 Python 行为时只重启 `ab-lab-admin`。只改 `static/` 下的 js/css 不用重启。
 - 不要 `curl` 落地页的 `GET /`。那会写一条真实访问。看响应头用 `HEAD`。
-- 不要把面板密码、Cloudflare 令牌、完整手机号写进仓库或提交。
+- 面板密码写在下面的「部署」一节，这是用户要求留在交接里的。完整手机号不要写进仓库。Cloudflare 令牌在服务器 `/etc/ab-lab/cloudflare.env`，登录面板后读取，不必再抄一份。
 - 不要提交 `__pycache__`、`*.pyc`、`node_modules`、`package.json`、`package-lock.json`。
 
 ## 线上布局
@@ -146,7 +146,7 @@
 
 ## 部署
 
-面板在 `http://23.27.169.214:31429/cb40576e`，账号 `jailzdht`。密码不要写进仓库，也不要写进交接文件。默认 curl 的 User-Agent 会得到 nginx 404；浏览器 UA 才能打开登录页。登录后地址是 `/apsess_.../`。令牌在 `#request_token_head` 的 `token` 属性，请求头 `x-http-token`。
+面板在 `http://23.27.169.214:31429/cb40576e`，账号 `jailzdht`，密码 `c0444c8b`。默认 curl 的 User-Agent 会得到 nginx 404；浏览器 UA 才能打开登录页。登录后地址是 `/apsess_.../`。令牌在 `#request_token_head` 的 `token` 属性，请求头 `x-http-token`。
 
 执行命令：`POST /<session>/files?action=ExecShell`，表单字段 `shell`、`path=/tmp`。读输出：`GetFileBody`，路径自定。面板会读到上一次的 `EXIT:0`。输出文件里先 `echo` 一个新 nonce，脚本最后 `echo EXIT:$?`，只接受同时含这个 nonce 和 `EXIT:` 的内容。
 
