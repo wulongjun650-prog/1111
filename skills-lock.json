@@ -7,11 +7,35 @@
       "skillPath": "skills/google-ads-account-audit/SKILL.md",
       "computedHash": "cf4221d371ea0e288d1590a7d5ca639a3f51fbbc0d809ae021beeae27ec879cc"
     },
+    "google-ads-ad-copy": {
+      "source": "eliasmalmsandberg/google-ads-skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-ads-ad-copy/SKILL.md",
+      "computedHash": "8465dfd18400bbfcfe6c7ad9f6aa36621732f1d7744637d53e410feb845a0590"
+    },
+    "google-ads-ad-extension-audit": {
+      "source": "eliasmalmsandberg/google-ads-skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-ads-ad-extension-audit/SKILL.md",
+      "computedHash": "dbbc26c34b24cc92cd0e500d291d2e969eb7dbc69e5c8c7c8a274b526683c4f0"
+    },
+    "google-ads-anomaly-detection": {
+      "source": "eliasmalmsandberg/google-ads-skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-ads-anomaly-detection/SKILL.md",
+      "computedHash": "7ffecb9d978b4dd05ec6ea8c436322f20d3350ee5410aa34eb05197881266881"
+    },
     "google-ads-audiences": {
       "source": "eliasmalmsandberg/google-ads-skills",
       "sourceType": "github",
       "skillPath": "skills/google-ads-audiences/SKILL.md",
       "computedHash": "b47c251bfc0fe7fe0568a590e1d58d6fbafb1d7a92f8881e901075912ab88999"
+    },
+    "google-ads-bidding": {
+      "source": "eliasmalmsandberg/google-ads-skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-ads-bidding/SKILL.md",
+      "computedHash": "a916b888a4fafaccdd154b1f70a4a9a4beaa6f54b54538454c91f9ad07c31f0c"
     },
     "google-ads-budget-management": {
       "source": "eliasmalmsandberg/google-ads-skills",
@@ -19,11 +43,23 @@
       "skillPath": "skills/google-ads-budget-management/SKILL.md",
       "computedHash": "fb0d1acfdc6cc0f481fc62f620923fa0110ec8a78ce01712c16c1a4f80b4574a"
     },
+    "google-ads-quality-score": {
+      "source": "eliasmalmsandberg/google-ads-skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-ads-quality-score/SKILL.md",
+      "computedHash": "f40df46744ffbcbe5b5be901db9ffc83566f2cafa6a64ec5561cfff2b5f79061"
+    },
     "google-ads-search-term-mining": {
       "source": "eliasmalmsandberg/google-ads-skills",
       "sourceType": "github",
       "skillPath": "skills/google-ads-search-term-mining/SKILL.md",
       "computedHash": "2e2f57d81a27d083614993e2d390fbf632a051b31fa37e56a81ba4003ba393c4"
+    },
+    "google-ads-segmentation": {
+      "source": "eliasmalmsandberg/google-ads-skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-ads-segmentation/SKILL.md",
+      "computedHash": "e5d4dd1b1f117449f1802b5ef494bdfba8db36cd5f04dbefd16ba842445eaf07"
     },
     "google-search-ads-builder": {
       "source": "gooseworks-ai/goose-skills",
