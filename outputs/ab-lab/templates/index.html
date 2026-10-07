@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/static/charts-v02.css">
   <link rel="stylesheet" href="/static/source-editor.css">
   <link rel="stylesheet" href="/static/b-redirects.css">
+  <link rel="stylesheet" href="/static/desk.css">
   <script type="module" src="/static/app.js"></script>
 </head>
 <body data-account-role="{{ account.role | e }}">
@@ -22,6 +23,7 @@
     <nav aria-label="主导航">
       <button class="nav-item active" data-tab="overview" aria-current="page"><span aria-hidden="true">◫</span>流量总览<span class="nav-arrow" aria-hidden="true">›</span></button>
       <button class="nav-item" data-tab="content"><span aria-hidden="true">▧</span>A/B 内容</button>
+      <button class="nav-item" data-tab="desk"><span aria-hidden="true">▤</span>工单</button>
       <button class="nav-item" data-tab="rules"><span aria-hidden="true">≋</span>访问规则</button>
       <button class="nav-item" data-tab="simulate"><span aria-hidden="true">⌘</span>规则模拟</button>
       <button class="nav-item" data-tab="logs"><span aria-hidden="true">≡</span>访问日志</button>
@@ -172,6 +174,10 @@
         </article>
         <article id="b-redirects" class="card" aria-label="B 页换链"></article>
         <section id="preview-panel" class="card" hidden><div class="card-heading"><div><h2 id="preview-title">版本预览</h2><p class="muted">只在这里看，不会发给访客</p></div><button id="close-preview" class="button secondary">关闭预览</button></div><div id="preview-frame"></div></section>
+      </section>
+
+      <section id="panel-desk" class="tab-panel" aria-label="工单" hidden>
+        <article id="desk-root" class="card" aria-label="工单与投手"></article>
       </section>
 
       <section id="panel-rules" class="tab-panel" aria-label="访问规则" hidden>

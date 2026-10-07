@@ -40,7 +40,7 @@ async function withConsole(run, options = {}) {
     presets:[{id:1,url:'https://safe.example/landing',note:'<img src=x onerror="window.presetExecuted=true">',created:1,check:check('normal')},
       {id:2,url:'https://blocked.example/landing',note:'风险地址',created:1,check:check('abnormal')},
       {id:3,url:'https://unknown.example/landing',note:'待确认地址',created:1,check:check('unknown')}],
-    active:null,numbers:[],adds:[],numberAdds:[],checks:[],applies:[],numberApplies:[],uploads:[],deletes:[],numberDeletes:[],trustChecks:[],trustResults:{},trust_poll:false,checkResults:{},activeChecks:0,maxChecks:0,
+    active:null,numbers:[],adds:[],numberAdds:[],checks:[],applies:[],numberApplies:[],uploads:[],deletes:[],numberDeletes:[],trustChecks:[],trustResults:{},trust_poll:false,deskReviews:[],deskSwitch:'',checkResults:{},activeChecks:0,maxChecks:0,
     applyStatus:200,scanStatus:200,stateStatus:200,delayCheck:null,releaseCheck:null,delayVersion:null,releaseScan:null};
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/api/**',async route=>{
@@ -108,6 +108,14 @@ async function withConsole(run, options = {}) {
         fixture.active={url:preset.url,preset_id:preset.id,version_id:saved.id,updated:4};
         response={version:saved,check:preset.check,changed:body.occurrence_ids.length};
       }
+    } else if(pathname===`/api/sites/${siteId}/desk/review` && request.method()==='POST') {
+      const body=request.postDataJSON();
+      fixture.deskReviews.push(body);
+      const phone=body.phone;
+      const leads=phone==='85299990000'?2:0;
+      response={rows:[{name:'鳄鱼-梵高', code:'sampleTicket', phone:phone||'85299990000', leads:String(leads)}], total:String(leads), switch:fixture.deskSwitch||'', online:fixture.deskSwitch==='online'?4:1};
+    } else if(pathname===`/api/sites/${siteId}/desk/quote` && request.method()==='POST') {
+      response={text:'10/06\nHK项目\nAJ\n消耗：33.29\n进线：0.8\n成本：41.61', adjusted:'33.29', cost:'41.61', row:[]};
     } else if(pathname===`/api/sites/${siteId}/upload/B`) {
       const uploaded=version('B','upload-b');fixture.versions.push(uploaded);fixture.byVersion[uploaded.id]=occurrences(uploaded.id);
       fixture.uploads.push({name:url.searchParams.get('name'),body:request.postData(),csrf:request.headers()['x-csrf-token']});response={version:uploaded};
@@ -574,6 +582,60 @@ test('a trusted current number switches to the next spare, and a lone number ala
     await page.locator('#b-redirect-numbers [data-number-id="9"]').getByRole('button', {name:'再测一次', exact:true}).click();
     await recheck;
     await page.locator('#wa-trust-alarm').getByText('当前号码出现信任弹窗。').waitFor();
+    assert.equal(fixture.numberApplies.length, 0);
+  });
+});
+
+test('work order over three online switches the published number and shows lead detail', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [
+      ...occurrences('live-b'),
+      {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}
+    ];
+    fixture.numbers = [
+      {id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:10, phone:'85200002222', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}
+    ];
+    fixture.deskSwitch = 'online';
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    await page.locator('[data-tab="desk"]').click();
+    await page.locator('#desk-url').fill('https://admin.haiwangweb.com/web#/accountshow/sampleTicket');
+    await page.locator('#desk-name').fill('鳄鱼-梵高');
+    await page.locator('#desk-password').fill('secret');
+    await page.getByRole('button', {name:'添加工单', exact:true}).click();
+    await page.locator('#desk-date').fill('10/06');
+    await page.locator('#desk-project').fill('HK项目');
+    await page.locator('#desk-buyer').fill('AJ');
+    await page.locator('#desk-phone').fill('85299990000');
+    await page.locator('#desk-spend').fill('28.95');
+    await page.locator('#desk-leads').fill('0.8');
+    await page.getByRole('button', {name:'生成金额', exact:true}).click();
+    await page.locator('#desk-preview').getByText('成本：41.61').waitFor();
+    const applied = page.waitForResponse(response => response.url().includes('/numbers/apply'));
+    await page.locator('#desk-check').click();
+    await applied;
+    await page.locator('.desk-message').getByText('已自动换成下一个预存号码').waitFor();
+    await page.locator('.desk-lead').getByText('鳄鱼-梵高').waitFor();
+    assert.equal(fixture.deskReviews.at(-1).phone, '85299990000');
+    assert.equal(fixture.deskReviews.at(-1).tickets[0].password, 'secret');
+    assert.equal(fixture.numberApplies.at(-1).body.number_id, 10);
+    assert.equal(await page.locator('#b-redirect-numbers [data-number-id="10"] .b-redirect-active-badge').count(), 1);
+  });
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [
+      ...occurrences('live-b'),
+      {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}
+    ];
+    fixture.numbers = [{id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}];
+    fixture.deskSwitch = 'offline';
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    await page.locator('[data-tab="desk"]').click();
+    await page.locator('#desk-url').fill('https://admin.haiwangweb.com/web#/accountshow/sampleTicket');
+    await page.getByRole('button', {name:'添加工单', exact:true}).click();
+    await page.locator('#desk-check').click();
+    await page.locator('.desk-alarm').getByText('当前号码离线').waitFor();
     assert.equal(fixture.numberApplies.length, 0);
   });
 });

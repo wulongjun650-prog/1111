@@ -596,9 +596,9 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       const done = refreshFailed
         ? '号码已更换并发布 B，但状态刷新失败。请刷新状态确认当前版本。进线语未改。' + cacheNote
         : options.automatic
-        ? '当前号码出现信任弹窗，已自动换成下一个预存号码。进线语未改。' + cacheNote
+        ? `${options.doneText || '当前号码出现信任弹窗，已自动换成下一个预存号码。进线语未改。'}${cacheNote}`
         : `已换成 ${item.phone}。进线语未改。` + cacheNote;
-      const statusText = options.automatic ? '当前号码出现信任弹窗，已自动换成下一个。' : `当前号码已换成 ${item.phone}。`;
+      const statusText = options.automatic ? (options.statusText || '当前号码出现信任弹窗，已自动换成下一个。') : `当前号码已换成 ${item.phone}。`;
       if (isCurrent(value)) { showMessage(done, refreshFailed || Boolean(result.cloudflare && !result.cloudflare.ok)); showNumberStatus(statusText); }
       return true;
     } catch (error) {
@@ -767,6 +767,27 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     };
   }
 
+  async function switchLive() {
+    const value = session;
+    if (!isCurrent(value)) return {ok: false, detail: '号码池还没载入'};
+    if (!value.scanned) await scan(value);
+    if (!isCurrent(value) || !value.scanned) return {ok: false, detail: '号码池还没载入'};
+    const phones = [...liveNumbers(value)];
+    if (phones.length !== 1) return {ok: false, detail: '当前发布页没有唯一的 WhatsApp 号码'};
+    const next = nextSpare(value, phones[0]);
+    if (!next) return {ok: false, detail: '没有可换的预存号码'};
+    const targets = value.occurrences.filter(item => item.kind === 'whatsapp_number' && item.url === phones[0]);
+    const ok = await applyNumber(value, next, {occurrences: targets, automatic: true, statusText: '已自动换成下一个。', doneText: '已自动换成下一个预存号码。进线语未改。'});
+    return {ok: Boolean(ok), detail: ok ? '已换号' : '没有换成这个号码'};
+  }
+
+  function livePhone() {
+    const value = session;
+    if (!value || value.versionId !== value.published) return '';
+    const phones = [...liveNumbers(value)];
+    return phones.length === 1 ? phones[0] : '';
+  }
+
   renderNumbers(null);
-  return {update, clear, selectVersion, setActive, isDirty};
+  return {update, clear, selectVersion, setActive, isDirty, switchLive, livePhone};
 }
