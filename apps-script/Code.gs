@@ -7,11 +7,11 @@
  *   本腳本每小時重建「Ads_Upload」表 → Google Ads 每日定時從呢張表導入離線轉化
  *
  * 部署：
- *   1. 新建一個 Google 表格 → 擴充功能 → Apps Script，把本檔案全部貼入，修改下面 SETTINGS
- *   2. 揀函數 setup → 執行一次（會要求授權），自動建表、加剔選框、建每小時觸發器
+ *   1. 新建一個 Google 表格 → 擴充功能 → Apps Script，把本檔案全部貼入（SETTINGS 按需修改）
+ *   2. 揀函數 setup → 執行一次（會要求授權），自動建表、建每小時觸發器，並喺「執行記錄」印出客服密鑰
  *   3. 部署 → 新增部署作業 → 類型「網頁應用程式」；執行身分「我」；存取權「所有人」
  *      複製 .../exec 網址，填入 index.html 的 CONFIG.leadEndpoint
- *   4. 客服標記頁：.../exec?key=<ADMIN_KEY>（加入手機主畫面）
+ *   4. 客服標記頁：.../exec?key=<setup 印出的密鑰>（加入手機主畫面）；忘記密鑰可再執行 showAdminKey
  *   5. Google Ads → 目標 → 轉換 → 新增 → 匯入 → 「CRM、檔案或其他資料來源」→「追蹤點擊轉換」
  *      建立兩個轉換動作，名稱必須同 SETTINGS 一致；
  *      再到 工具 → 上傳 → 時間表 → 來源揀 Google 試算表，貼本表格網址，揀「Ads_Upload」工作表，每日執行
@@ -19,7 +19,6 @@
  */
 
 const SETTINGS = {
-  ADMIN_KEY: 'change-me-to-a-long-random-string',
   TIMEZONE: 'Asia/Hong_Kong',
   CHAT_CONVERSION_NAME: 'WhatsApp開聊',
   CHAT_CONVERSION_VALUE: '',
@@ -61,6 +60,22 @@ function setup() {
     .filter(t => t.getHandlerFunction() === 'rebuildUpload')
     .forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('rebuildUpload').timeBased().everyHours(1).create();
+  showAdminKey();
+}
+
+/** 密鑰首次自動生成並存入指令碼屬性，唔會出現喺程式碼入面 */
+function getAdminKey_() {
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty('ADMIN_KEY');
+  if (!key) {
+    key = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
+    props.setProperty('ADMIN_KEY', key);
+  }
+  return key;
+}
+
+function showAdminKey() {
+  console.log('客服標記頁：<部署網址>/exec?key=' + getAdminKey_());
 }
 
 /** 落地頁 sendBeacon 上報入口 */
@@ -104,7 +119,7 @@ function doPost(e) {
 /** 客服標記頁：.../exec?key=ADMIN_KEY */
 function doGet(e) {
   const key = (e && e.parameter && e.parameter.key) || '';
-  if (key !== SETTINGS.ADMIN_KEY) return text_('forbidden');
+  if (key !== getAdminKey_()) return text_('forbidden');
   return HtmlService.createHtmlOutput(markPageHtml_(key))
     .setTitle('WhatsApp 轉化標記')
     .addMetaTag('viewport', 'width=device-width,initial-scale=1');
@@ -112,7 +127,7 @@ function doGet(e) {
 
 /** 客服標記頁透過 google.script.run 呼叫 */
 function markLead(key, code, type, value) {
-  if (key !== SETTINGS.ADMIN_KEY) throw new Error('無權限');
+  if (key !== getAdminKey_()) throw new Error('無權限');
   code = String(code || '').trim().toUpperCase();
   if (!CODE_RE.test(code)) throw new Error('編號格式唔啱（應為 6 位英文字母／數字）');
 
