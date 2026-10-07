@@ -140,8 +140,6 @@
     .wa-alt button,.wa-alt a{flex:1;min-height:46px;display:flex;align-items:center;justify-content:center;border:1px solid #dfdad1;background:#fff;color:#33435f;border-radius:13px;font-size:13px;font-weight:900;cursor:pointer}
     .wa-alt button:active,.wa-alt a:active{transform:scale(.97);background:#f3f1ec}
     .wa-number{margin-top:10px;font-size:12px;color:#5d6a7d;font-weight:800}
-    .wa-web-link{display:none;margin-top:10px;color:var(--navy2);font-size:12px;font-weight:900;text-decoration:underline;text-underline-offset:3px;padding:6px}
-    .wa-web-link.show{display:inline-block}
     .wa-browser-tip{display:none;margin-top:10px;padding:9px 11px;border-radius:12px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:11px;line-height:1.5;font-weight:800}
     .wa-browser-tip.show{display:block}
     .wa-close{margin-top:12px;border:0;background:none;color:#8e95a0;font-size:12px;font-weight:800;padding:8px;cursor:pointer}
@@ -265,7 +263,6 @@
         <button type="button" id="wa-copy-msg">複製留言內容</button>
       </div>
       <div class="wa-number" id="wa-number-text"></div>
-      <a class="wa-web-link" id="wa-fallback-web" href="#">改用網頁連結開啟 WhatsApp →</a>
       <div class="wa-browser-tip" id="wa-browser-tip">如仍未能開啟：請按右上角「⋯」，選擇「在瀏覽器中開啟」，再按一次領取按鈕。</div>
       <button class="wa-close" type="button" id="wa-fallback-close">關閉</button>
     </div>
@@ -468,6 +465,8 @@
     const IOS_WEBVIEW = IS_IOS && (!/Safari\//.test(UA) || IN_APP_RE.test(UA));
     // Android：系統 WebView 的 UA 帶 "; wv)"；Chrome Custom Tabs（AdMob / YouTube / Gmail 常用）與 Chrome 相同
     const ANDROID_WEBVIEW = IS_ANDROID && (/; wv\)/.test(UA) || IN_APP_RE.test(UA));
+    // intent:// 只有 Chromium 內核（Chrome / Samsung / 小米 / 華為 / Edge 等）穩定支援；Firefox、UC、QQ 瀏覽器等改用 wa.me
+    const ANDROID_INTENT_OK = IS_ANDROID && /Chrome\/\d+/.test(UA) && !/UCBrowser|Quark|MQQBrowser|Opera Mini|Firefox|FxiOS/i.test(UA);
     const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
                  : IS_ANDROID ? (ANDROID_WEBVIEW ? 'android_webview' : 'android_browser')
                  : 'desktop';
@@ -536,7 +535,6 @@
 
     const waFallback = document.getElementById('wa-fallback');
     const waFallbackOpen = document.getElementById('wa-fallback-open');
-    const waFallbackWeb = document.getElementById('wa-fallback-web');
     const waCopyNumber = document.getElementById('wa-copy-number');
     const waCopyMsg = document.getElementById('wa-copy-msg');
     const waNumberText = document.getElementById('wa-number-text');
@@ -550,13 +548,11 @@
       const hrefByEnv = {
         ios_browser: urls.universal,
         ios_webview: urls.scheme,
-        android_browser: urls.intent,
+        android_browser: ANDROID_INTENT_OK ? urls.intent : urls.universal,
         android_webview: urls.scheme,
         desktop: urls.universal
       };
       waFallbackOpen.href = hrefByEnv[WA_ENV];
-      waFallbackWeb.href = urls.universal;
-      waFallbackWeb.classList.toggle('show', WA_ENV !== 'ios_browser' && WA_ENV !== 'desktop');
       waNumberText.textContent = `WhatsApp 號碼：+${urls.phone}`;
       waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
     }
@@ -616,7 +612,7 @@
 
       let target = urls.universal;
       if (WA_ENV === 'ios_webview') target = urls.scheme;
-      else if (WA_ENV === 'android_browser') target = urls.intent;
+      else if (WA_ENV === 'android_browser' && ANDROID_INTENT_OK) target = urls.intent;
 
       if (WA_ENV === 'android_webview') {
         if (e) e.preventDefault();
@@ -695,10 +691,6 @@
     waFallbackOpen.addEventListener('click', () => {
       waAttempt = { t: Date.now(), placement: 'fallback', left: false };
       track('wa_fallback_click', {});
-    });
-    waFallbackWeb.addEventListener('click', () => {
-      waAttempt = { t: Date.now(), placement: 'fallback_web', left: false };
-      track('wa_fallback_click', { via: 'web' });
     });
     waCopyNumber.addEventListener('click', () => {
       copyText(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
