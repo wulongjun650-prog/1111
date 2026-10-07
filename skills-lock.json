@@ -1,11 +1,23 @@
 {
   "version": 1,
   "skills": {
+    "google-ads-account-audit": {
+      "source": "eliasmalmsandberg/google-ads-skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-ads-account-audit/SKILL.md",
+      "computedHash": "cf4221d371ea0e288d1590a7d5ca639a3f51fbbc0d809ae021beeae27ec879cc"
+    },
     "google-ads-audiences": {
       "source": "eliasmalmsandberg/google-ads-skills",
       "sourceType": "github",
       "skillPath": "skills/google-ads-audiences/SKILL.md",
       "computedHash": "b47c251bfc0fe7fe0568a590e1d58d6fbafb1d7a92f8881e901075912ab88999"
+    },
+    "google-ads-budget-management": {
+      "source": "eliasmalmsandberg/google-ads-skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-ads-budget-management/SKILL.md",
+      "computedHash": "fb0d1acfdc6cc0f481fc62f620923fa0110ec8a78ce01712c16c1a4f80b4574a"
     },
     "google-ads-search-term-mining": {
       "source": "eliasmalmsandberg/google-ads-skills",
