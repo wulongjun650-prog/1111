@@ -274,8 +274,9 @@
       whatsappNumber: '85257980601',
       receptionist: 'Chloe',
       googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq',
-      // 喚起後多少毫秒頁面仍在前台，就彈出兜底面板
+      // 喚起後多少毫秒頁面仍在前台，就彈出兜底面板；App 內置瀏覽器由宿主即時決定放唔放行，可以更快彈
       fallbackDelay: 1600,
+      fallbackDelayInApp: 1200,
       // 離線轉化回傳：填入 apps-script/Code.gs 部署後的 Web App 網址（.../exec）；留空則唔上報，留言亦唔加編號
       // 注意：三個領取按鈕 <a href> 入面亦寫死咗號碼作為 JS 失效時嘅保底，換號時一併改
       leadEndpoint: ''
@@ -630,7 +631,7 @@
       waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false };
       try {
         prepareFallback(urls, message);
-        if (WA_ENV !== 'desktop') armFallback(CONFIG.fallbackDelay);
+        if (WA_ENV !== 'desktop') armFallback((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
       } catch (err) {}
 
       try {
