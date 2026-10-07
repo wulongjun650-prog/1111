@@ -673,3 +673,95 @@ process.stdout.write(JSON.stringify(picks));
         for priority in priorities:
             expected.append(f'你好，我想免費領取{interest}，麻煩發給我，謝謝。\n今日最想睇：{interest} 比較重視：{priority}\n（編號：K1）')
     assert picks == expected
+
+
+ANCHOR_PAGE = r'''<!doctype html>
+<button class="cta" type="button" data-wa data-location="hero" id="hero-cta">免費領取</button>
+<p>保留这段</p>
+<!-- 两步意向筛选抽屉 -->
+<div class="lead-gate" id="lead-gate">
+  <div class="gate-panel">
+    <a class="gate-confirm" href="https://wa.me/85257980601?text=hello" id="gate-confirm" role="button">立即查看</a>
+  </div>
+</div>
+<div class="wa-fallback" id="wa-fallback">
+  <a id="wa-fallback-open" href="#">開啟</a>
+  <a id="wa-fallback-web" href="#">網頁</a>
+</div>
+<script>
+    const gateCancel = document.getElementById('gate-cancel');
+    const gateBack = document.getElementById('gate-back');
+    const gateConfirm = document.getElementById('gate-confirm');
+    const leadGate = document.getElementById('lead-gate');
+    function buildWhatsAppUrls(message) {
+      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+      const text = encodeURIComponent(message);
+      const universal = `https://wa.me/${phone}?text=${text}`;
+      return { phone, universal, scheme: `whatsapp://send?phone=${phone}&text=${text}`, intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end` };
+    }
+    function buildMessage(leadCode) {
+      const extra = `\n\n今日最想睇：${gateAnswers.interest || '今日精選名單'}`;
+      const code = leadCode ? `\n（編號：${leadCode}）` : '';
+      return extra + code;
+    }
+    function openInHiddenFrame(url) {
+      const frame = document.createElement('iframe');
+      frame.src = url;
+    }
+    function prepareFallback(urls, message) {
+      waFallbackOpen.href = urls.universal;
+      waFallbackWeb.href = urls.universal;
+    }
+    function goWhatsApp(e, locationName) {
+      const anchor = e && e.currentTarget && e.currentTarget.tagName === 'A' ? e.currentTarget : null;
+      if (redirecting) return;
+      redirecting = true;
+      const message = buildMessage(leadCode);
+      const urls = buildWhatsAppUrls(message);
+      let target = urls.universal;
+      if (WA_ENV === 'ios_webview') target = urls.scheme;
+      else if (WA_ENV === 'android_browser') target = urls.intent;
+      if (WA_ENV === 'android_webview') {
+        if (e) e.preventDefault();
+        openInHiddenFrame(urls.scheme);
+      } else if (anchor) {
+        anchor.href = target;
+        if (WA_ENV === 'desktop') { anchor.target = '_blank'; anchor.rel = 'noopener'; }
+      } else if (WA_ENV === 'desktop') {
+        window.open(target, '_blank');
+      } else {
+        window.location.href = target;
+      }
+    }
+    gateCancel.addEventListener('click', closeLeadGate);
+    gateBack.addEventListener('click', () => setGateStep(1));
+    leadGate.addEventListener('click', e => { if (e.target === leadGate) closeLeadGate(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) closeLeadGate(); });
+    document.querySelectorAll('[data-wa]').forEach(btn => {
+      btn.addEventListener('click', () => openLeadGate(btn.dataset.location));
+    });
+    gateConfirm.addEventListener('click', e => {
+      if (!gateAnswers.interest || !gateAnswers.priority) { e.preventDefault(); return; }
+      closeLeadGate();
+      goWhatsApp(e, pendingLocation);
+    });
+</script>
+'''
+
+
+def test_anchor_jump_is_recognized_and_left_byte_for_byte():
+    from ablab.redirects import strip_lead_gate
+    updated = strip_lead_gate(ANCHOR_PAGE)
+    assert 'id="lead-gate"' not in updated and '两步意向筛选抽屉' not in updated
+    assert 'id="wa-fallback"' in updated and 'id="wa-fallback-web"' in updated and '保留这段' in updated
+    assert 'openLeadGate(btn.dataset.location)' not in updated
+    assert 'goWhatsApp(null, btn.dataset.location)' in updated
+    assert 'goWhatsApp(e, pendingLocation)' in updated
+    assert 'anchor.href = target' in updated
+    for name in ('goWhatsApp', 'buildWhatsAppUrls', 'prepareFallback', 'openInHiddenFrame'):
+        _same_function(ANCHOR_PAGE, updated, name)
+    with pytest.raises(ValueError, match='已经拿掉'):
+        strip_lead_gate(updated)
+    alien = ANCHOR_PAGE.replace('anchor.href = target', 'anchor.setAttribute("href", target)')
+    with pytest.raises(ValueError, match='没有原来的跳转函数'):
+        strip_lead_gate(alien)

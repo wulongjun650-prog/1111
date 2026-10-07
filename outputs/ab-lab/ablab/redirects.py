@@ -1407,19 +1407,37 @@ def _guard_listener(text, name):
     )
 
 
+def _go_whatsapp_call(text, span):
+    """Keep the page's own argument list. Two-argument jumps get a null event."""
+    head = text[span[0]:text.find('{', span[0])]
+    params = [part.strip() for part in head.split('(', 1)[1].rsplit(')', 1)[0].split(',') if part.strip()]
+    if len(params) >= 2:
+        return 'goWhatsApp(null, btn.dataset.location)'
+    return 'goWhatsApp(btn.dataset.location)'
+
+
+def _known_jump(text, span):
+    jump = text[span[0]:span[1]]
+    legacy = 'switch (WA_ENV)' in jump
+    anchored = 'anchor.href = target' in jump and "WA_ENV === 'android_webview'" in jump
+    return legacy or anchored
+
+
 def strip_lead_gate(text):
-    """Drop the two-step gate and fill its two lines at random. The jump switch stays."""
+    """Drop the two-step gate and fill its two lines at random. The jump function stays."""
     has_gate = bool(re.search(r'\bid\s*=\s*(["\'])lead-gate\1', text))
     if not has_gate and 'RANDOM_POOL' in text:
         raise ValueError('两步问卷已经拿掉，进线语已经是随机的。')
     if not has_gate:
         raise ValueError('当前 B 页没有两步问卷')
-    if _js_function_span(text, 'goWhatsApp') is None or 'switch (WA_ENV)' not in text:
+    jump_span = _js_function_span(text, 'goWhatsApp')
+    if jump_span is None or not _known_jump(text, jump_span):
         raise ValueError('当前页面没有原来的跳转函数，没有改动')
     if text.count('openLeadGate(btn.dataset.location)') != 1:
         raise ValueError('当前页面的领取按钮不是原来的写法，没有改动')
     if _js_function_span(text, 'buildMessage') is None:
         raise ValueError('当前页面没有原来的进线语，没有改动')
+    direct_call = _go_whatsapp_call(text, jump_span)
     kept = {}
     for name in ('goWhatsApp', 'buildWhatsAppUrls', 'prepareFallback', 'openInHiddenFrame'):
         span = _js_function_span(text, name)
@@ -1431,7 +1449,7 @@ def strip_lead_gate(text):
         raise ValueError('当前 B 页的问卷框没能拿掉，没有改动')
     if had_fallback and not re.search(r'\bid\s*=\s*(["\'])wa-fallback\1', removed):
         raise ValueError('跳转代码发生了变化，已取消')
-    updated = removed.replace('openLeadGate(btn.dataset.location)', 'goWhatsApp(btn.dataset.location)', 1)
+    updated = removed.replace('openLeadGate(btn.dataset.location)', direct_call, 1)
     span = _js_function_span(updated, 'buildMessage')
     indent = re.match(r'[ \t]*', updated[span[0]:span[1]]).group(0)
     updated = updated[:span[0]] + _direct_message(indent) + updated[span[1]:]
@@ -1448,6 +1466,6 @@ def strip_lead_gate(text):
         span = _js_function_span(updated, name)
         if span is None or updated[span[0]:span[1]] != source:
             raise ValueError('跳转代码发生了变化，已取消')
-    if text[switch_at:][:400] != updated[updated.find('switch (WA_ENV)'):][:400]:
+    if switch_at >= 0 and text[switch_at:][:400] != updated[updated.find('switch (WA_ENV)'):][:400]:
         raise ValueError('跳转代码发生了变化，已取消')
     return updated
