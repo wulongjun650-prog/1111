@@ -288,6 +288,8 @@ class WorkOrderWindow:
         fills = 0
         next_fill = time.time()
         next_shot = time.time() + 0.4
+        opened = time.time()
+        reloaded = False
         while time.time() < deadline:
             if self._ready_id:
                 request_id = self._ready_id
@@ -313,6 +315,19 @@ class WorkOrderWindow:
                 except DeskError:
                     pass
                 next_shot = time.time() + 0.8
+            if not reloaded and not self._ready_id and time.time() - opened > 6:
+                reloaded = True
+                try:
+                    hint = self._hint()
+                except DeskError:
+                    hint = {}
+                title = str(hint.get('title') or '')
+                if hint.get('length') == 0 and not hint.get('box') and 'moment' not in title.lower():
+                    try:
+                        self._call('Page.reload', {'ignoreCache': True})
+                    except DeskError:
+                        pass
+                    next_fill = time.time() + 2
         raise DeskError('工单窗口里还没读到数据。请在下面的画面里点验证。')
 
     def _show(self):
@@ -329,6 +344,16 @@ class WorkOrderWindow:
         raw = base64.b64decode(encoded)
         with self._ui:
             self._picture = raw
+
+    def _hint(self):
+        expression = """(() => {
+          const text = (document.body && document.body.innerText || '').trim();
+          const box = document.querySelector('input[type="password"], input[placeholder*="密码"]');
+          return {length: text.length, box: Boolean(box), title: document.title || ''};
+        })()"""
+        result = self._call('Runtime.evaluate', {'expression': expression, 'returnByValue': True})
+        value = (result.get('result') or {}).get('value')
+        return value if isinstance(value, dict) else {}
 
     def _fill(self, password):
         result = self._call('Runtime.evaluate', {'expression': _fill_script(password), 'returnByValue': True})
