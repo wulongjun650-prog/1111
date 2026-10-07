@@ -1160,6 +1160,8 @@ _RECEPTION_TAG = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _RECEPTION_SENTENCE = re.compile(r'本次由助理[\s\S]{0,120}?接待')
+_RECEPTIONIST_FIELD = re.compile(r'''(receptionist\s*:\s*)(['"])([^'"]*)\2''')
+_RECEPTION_JS = re.compile(r'本次由助理\s*(\$\{CONFIG\.receptionist\})\s*接待')
 
 
 def reception_line(name):
@@ -1167,17 +1169,31 @@ def reception_line(name):
     return reception_sentence(name)
 
 
+def _replace_static_sentence(text, sentence):
+    for match in _RECEPTION_SENTENCE.finditer(text):
+        if '${' in match.group(0):
+            continue
+        return text[:match.start()] + sentence + text[match.end():]
+    return text
+
+
 def rewrite_reception(text, name):
-    """Replace the whole assistant sentence once. The name is not written twice."""
+    """Replace the whole assistant sentence once. The name is not written twice.
+
+    Pages that copy CONFIG.receptionist into the line at load keep that field
+    and the template in agreement, without a space after 助理.
+    """
     sentence = reception_line(name)
+    shown = sentence.removeprefix('本次由助理').removesuffix(' 接待')
 
     def swap(match):
         return match.group(1) + sentence + match.group(5)
 
     updated, count = _RECEPTION_TAG.subn(swap, text, count=1)
-    if count:
-        return updated
-    return _RECEPTION_SENTENCE.sub(sentence, text, count=1)
+    if not count:
+        updated = _replace_static_sentence(text, sentence)
+    updated = _RECEPTIONIST_FIELD.sub(lambda match: match.group(1) + match.group(2) + shown + match.group(2), updated, count=1)
+    return _RECEPTION_JS.sub(lambda match: '本次由助理' + match.group(1) + ' 接待', updated)
 
 
 def rewrite_reception_bytes(data, name):

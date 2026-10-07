@@ -384,6 +384,28 @@ def test_reception_line_is_replaced_once_and_not_duplicated():
     assert rewrite_reception('<h1>没有接待行</h1>', 'Vivian') == '<h1>没有接待行</h1>'
 
 
+def test_scripted_reception_keeps_the_config_and_shows_the_name_once():
+    from ablab.redirects import rewrite_reception
+    page = '''<div class="reception" id="reception-text">本次由助理 Chloe 接待</div>
+<script>
+const CONFIG = { whatsappNumber: "85265492837", receptionist: 'Chloe' };
+const receptionText = document.getElementById('reception-text');
+receptionText.textContent = `本次由助理 ${CONFIG.receptionist} 接待`;
+const message = '你好，我想免費領取今日潛力黑馬名單';
+</script>'''
+    updated = rewrite_reception(page, 'Vivian 關詠怡')
+    assert '<div class="reception" id="reception-text">本次由助理Vivian 關詠怡 接待</div>' in updated
+    assert "receptionist: 'Vivian 關詠怡'" in updated
+    assert '本次由助理${CONFIG.receptionist} 接待' in updated
+    assert '本次由助理 ${CONFIG.receptionist}' not in updated
+    assert '85265492837' in updated and '你好，我想免費領取今日潛力黑馬名單' in updated
+    assert 'Vivian 關詠怡本次由助理' not in updated
+    again = rewrite_reception(updated, 'Vivian 關詠怡')
+    assert again.count('Vivian 關詠怡') == updated.count('Vivian 關詠怡')
+    shown = '本次由助理' + 'Vivian 關詠怡' + ' 接待'
+    assert shown == '本次由助理Vivian 關詠怡 接待'
+
+
 def test_changing_the_reception_name_publishes_that_sentence_only(console):
     client, app = console
     upload_reception(client)

@@ -186,6 +186,44 @@ def test_number_split_assigns_on_open_and_leaves_jump_links(apps):
     assert admin.get('/api/b-redirects').json()['split']['enabled'] is True
 
 
+def test_scripted_b_page_split_updates_the_name_the_browser_will_show(apps):
+    admin, target = apps
+    page = '''<!doctype html>
+<div class="reception" id="reception-text">本次由助理 Chloe 接待</div>
+<a href="https://www.youtube.com/@EconManBlog/shorts">YouTube</a>
+<script>
+const CONFIG = { whatsappNumber: "85265492837", receptionist: 'Chloe' };
+const receptionText = document.getElementById('reception-text');
+receptionText.textContent = `本次由助理 ${CONFIG.receptionist} 接待`;
+const message = '你好，我想免費領取今日潛力黑馬名單';
+function getWhatsAppUrls(message) {
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\\D/g, '');
+  const encodedMsg = encodeURIComponent(message);
+  return { universal: `https://wa.me/${phone}?text=${encodedMsg}` };
+}
+function goWhatsApp() {
+  const urls = getWhatsAppUrls(message);
+  window.location.href = urls.universal;
+}
+</script>'''
+    upload(admin, 'B', page)
+    vivian = admin.post('/api/b-redirects/numbers', json={'phones': ['85211112222'], 'note': '', 'display_name': 'Vivian 關詠怡'}).json()['numbers'][0]
+    other = admin.post('/api/b-redirects/numbers', json={'phones': ['85233334444'], 'note': '', 'display_name': 'Chloe 陳'}).json()['numbers'][0]
+    saved = admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': vivian['id'], 'weight': 1}]})
+    assert saved.status_code == 200, saved.text
+    first = target.get('/')
+    assert first.text.count('本次由助理Vivian 關詠怡 接待') == 1
+    assert "receptionist: 'Vivian 關詠怡'" in first.text
+    assert '本次由助理${CONFIG.receptionist} 接待' in first.text
+    assert '85211112222' in first.text and '85265492837' not in first.text
+    assert 'youtube.com' in first.text and '你好，我想免費領取今日潛力黑馬名單' in first.text
+    assert 'https://wa.me/' in first.text
+    admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': other['id'], 'weight': 1}]})
+    sticky = target.get('/')
+    assert '85211112222' in sticky.text and "receptionist: 'Vivian 關詠怡'" in sticky.text
+    assert '85233334444' not in sticky.text
+
+
 def test_b_split_rewrites_the_page_before_it_is_sent(apps):
     admin, target = apps
     upload(admin, 'B', '<a href="https://old.example/landing">go</a>')
