@@ -11,7 +11,7 @@ const {chromium} = createRequire(import.meta.url)('playwright');
 const root = path.resolve(import.meta.dirname,'..');
 const render = role => execFileSync(process.env.PYTHON || 'python',['-X','utf8','-c',
   'from jinja2 import Environment,FileSystemLoader; import sys; print(Environment(loader=FileSystemLoader("templates")).get_template("index.html").render(account={"role":sys.argv[1]},username="viewer",deployment=False,csrf_token="csrf",target_url="http://127.0.0.1:9000"))',role],{cwd:root,encoding:'utf8'});
-const documents = {admin:render('admin'),agent:render('agent')};
+const documents = {admin:render('admin'),agent:render('agent'),observer:render('observer')};
 const siteId = 'a'.repeat(32);
 const agent = {id:'agent-id',username:'viewer',role:'agent',enabled:true};
 const admin = {id:'admin',username:'boss',role:'admin',enabled:true};
@@ -22,7 +22,12 @@ const analytics = {period:'today',end:new Date().toISOString(),tz_offset:0,summa
 async function withConsole(role, run) {
   const browser = await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE});
   const server = http.createServer(async (req,res)=>{
-    if(req.url==='/') {res.setHeader('Content-Type','text/html; charset=utf-8');res.end(documents[role]);return;}
+    if(req.url==='/') {
+      res.setHeader('Content-Type','text/html; charset=utf-8');
+      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'");
+      res.end(documents[role]);
+      return;
+    }
     if(req.url.startsWith('/static/')) {
       const file=path.join(root,req.url);
       try {res.setHeader('Content-Type',/\.(js|mjs)$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'image/png');res.end(await fs.readFile(file));}
@@ -293,6 +298,73 @@ test('a site with its own certificate can attach Cloudflare afterwards', async (
     await page.getByText('NS：ada.ns.cloudflare.com').waitFor();
     assert.deepEqual(posts, [{}]);
     assert.match(await page.locator('.domain-table').innerText(), /Cloudflare 待处理/);
+    assert.deepEqual(errors, []);
+  });
+});
+
+test('observer can read domains and accounts while action buttons stay hidden', async () => {
+  const observer = {id:'watch-id', username:'watcher', role:'observer', enabled:true};
+  await withConsole('observer', async (page, url, errors) => {
+    await page.route('**/api/**', async route => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname === '/api/sites') {
+        await route.fulfill({json:{account:observer, sites:[{...site, owner_username:'viewer', google_reputation:{status:'expired', checked_at:1, expires_at:2, threats:[], detail:'检测结果已过期，请重新检测'}}], google_reputation_configured:true, server_ip:'203.0.113.1'}});
+        return;
+      }
+      if (pathname === `/api/sites/${siteId}/reputation/check` && route.request().method() === 'POST') {
+        await route.fulfill({json:{result:{status:'clean', checked_at:2_000, expires_at:9_999_999_999, threats:[], detail:'本次查询未命中指定风险列表'}}});
+        return;
+      }
+      if (pathname === `/api/sites/${siteId}/state`) { await route.fulfill({json:siteState}); return; }
+      if (pathname.endsWith('/analytics')) { await route.fulfill({json:analytics}); return; }
+      if (pathname === '/api/accounts') {
+        await route.fulfill({json:{items:[
+          admin,
+          {...agent, domain_count:1},
+          {...observer, domain_count:0},
+        ]}});
+        return;
+      }
+      if (pathname === `/api/sites/${siteId}/logs`) { await route.fulfill({json:{items:[], total:0, page:1, pages:1}}); return; }
+      if (pathname === `/api/sites/${siteId}/provision/events`) { await route.fulfill({json:{items:[]}}); return; }
+      throw new Error(`Unexpected endpoint ${pathname}`);
+    });
+    await page.goto(url);
+    const welcome = page.locator('#observer-welcome');
+    await welcome.waitFor();
+    assert.match(await welcome.innerText(), /欢迎登录/);
+    assert.match(await welcome.innerText(), /全网功能最多，最牛B，最强大的/);
+    assert.match(await welcome.innerText(), /双子星系统/);
+    assert.match(await welcome.innerText(), /此为观察号。只有看，没有更改任何功能选项的权利/);
+    await page.locator('#observer-enter').click();
+    await welcome.waitFor({state:'detached'});
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#observer-welcome') === null);
+    await page.waitForFunction(() => document.querySelector('#site-selector').value === 'a'.repeat(32));
+    assert.match(await page.locator('.sidebar-footer').innerText(), /观察账号/);
+    assert.equal(await page.locator('#account-form').count(), 0);
+    assert.equal(await page.locator('#new-domain').isHidden(), true);
+    assert.equal(await page.locator('#clear-logs').isHidden(), true);
+    assert.equal(await page.locator('#clear-foreign-logs').isHidden(), true);
+    assert.equal(await page.locator('[data-tab="desk"]').count(), 0);
+    assert.equal(await page.locator('#panel-desk').count(), 0);
+    assert.equal(await page.locator('#desk-check').count(), 0);
+    assert.equal(await page.locator('#rules-form button[type="submit"]').isHidden(), true);
+    assert.equal(await page.locator('#logout').count(), 0);
+    await page.locator('[data-tab="accounts"]').click();
+    await page.getByRole('cell', {name:'watcher'}).waitFor();
+    assert.match(await page.locator('#account-list').innerText(), /观察号/);
+    assert.match(await page.locator('#account-list').innerText(), /viewer/);
+    assert.equal(await page.getByRole('button', {name:'停用'}).count(), 0);
+    assert.equal(await page.getByRole('button', {name:'重设密码'}).count(), 0);
+    await page.locator('[data-tab="domains"]').click();
+    await page.getByText('未检出风险').waitFor();
+    assert.match(await page.locator('.domain-table').innerText(), /归属：viewer/);
+    assert.equal(await page.getByRole('button', {name:'分配'}).count(), 0);
+    assert.equal(await page.getByRole('button', {name:'下线'}).count(), 0);
+    await page.locator('[data-tab="logs"]').click();
+    await page.locator('#log-filters button[type="submit"]').waitFor();
+    assert.equal(await page.locator('#logs-prev').isHidden(), false);
     assert.deepEqual(errors, []);
   });
 });

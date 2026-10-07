@@ -16,6 +16,20 @@
   <script type="module" src="/static/app.js"></script>
 </head>
 <body data-account-role="{{ account.role | e }}">
+  {% if account.role == 'observer' %}
+  <div id="observer-welcome" class="observer-welcome" role="dialog" aria-modal="true" aria-labelledby="observer-welcome-title">
+    <div class="observer-welcome-card">
+      <p class="observer-kicker">GEMINI · AB SYSTEM</p>
+      <div class="observer-mark" aria-hidden="true"><svg viewBox="0 0 40 40" width="54" height="54" fill="none"><path d="M20 2 25 15 38 20 25 25 20 38 15 25 2 20 15 15Z" fill="currentColor"/><circle cx="32" cy="7" r="2.4" fill="currentColor"/></svg></div>
+      <h1 id="observer-welcome-title">欢迎登录</h1>
+      <p class="observer-boast">全网功能最多，最牛B，最强大的<br>AB 系统 · 双子星系统</p>
+      <p class="observer-seal">观察号</p>
+      <p class="observer-limit">此为观察号。只有看，<br class="observer-break">没有更改任何功能选项的权利。</p>
+      <button id="observer-enter" class="observer-enter" type="button" autofocus>确定</button>
+    </div>
+  </div>
+  <script src="/static/observer-welcome.js"></script>
+  {% endif %}
   <a class="skip-link" href="#main">跳到主要内容</a>
   <aside class="sidebar">
     <a class="brand" href="#overview" aria-label="双子星 概览"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40" width="35" height="35" fill="none"><path d="M20 3 24 16 37 20 24 24 20 37 16 24 3 20 16 16Z" fill="currentColor"/><circle cx="30" cy="9" r="3" fill="currentColor"/><path d="M5 29 8 32 5 35 2 32Z" fill="currentColor"/></svg></span><span>双子星<small>GEMINI · TRAFFIC</small></span></a>
@@ -23,15 +37,15 @@
     <nav aria-label="主导航">
       <button class="nav-item active" data-tab="overview" aria-current="page"><span aria-hidden="true">◫</span>流量总览<span class="nav-arrow" aria-hidden="true">›</span></button>
       <button class="nav-item" data-tab="content"><span aria-hidden="true">▧</span>A/B 内容</button>
-      <button class="nav-item" data-tab="desk"><span aria-hidden="true">▤</span>工单</button>
+      {% if account.role != 'observer' %}<button class="nav-item" data-tab="desk"><span aria-hidden="true">▤</span>工单</button>{% endif %}
       <button class="nav-item" data-tab="rules"><span aria-hidden="true">≋</span>访问规则</button>
       <button class="nav-item" data-tab="simulate"><span aria-hidden="true">⌘</span>规则模拟</button>
       <button class="nav-item" data-tab="logs"><span aria-hidden="true">≡</span>访问日志</button>
       <button class="nav-item" data-tab="domains"><span aria-hidden="true">◎</span>域名管理</button>
-      {% if account.role == 'admin' %}<button class="nav-item" data-tab="accounts"><span aria-hidden="true">◎</span>账号管理</button>{% endif %}
+      {% if account.role in ['admin', 'observer'] %}<button class="nav-item" data-tab="accounts"><span aria-hidden="true">◎</span>账号管理</button>{% endif %}
     </nav>
     <div class="sidebar-note"><span class="status-dot"></span> {{ '自用服务器环境' if deployment else '本地实验环境' }}<p><span id="sidebar-theme">正在读取主题</span><br>仅管理后台可见</p></div>
-    <div class="sidebar-footer"><span class="avatar">AB</span><div>{{ username }}<small>{{ '总管理员' if account.role == 'admin' else '代理账号' }} · {{ 'HTTPS' if deployment else '仅限本机访问' }}</small></div><span class="lock" aria-hidden="true">◇</span></div>
+    <div class="sidebar-footer"><span class="avatar">AB</span><div>{{ username }}<small>{{ '总管理员' if account.role == 'admin' else '观察账号' if account.role == 'observer' else '代理账号' }} · {{ 'HTTPS' if deployment else '仅限本机访问' }}</small></div><span class="lock" aria-hidden="true">◇</span></div>
   </aside>
   <div class="workspace">
     <header class="topbar">
@@ -73,12 +87,16 @@
       <div id="geoip-warning" class="notice error" hidden>{% if account.role == 'admin' %}国家数据库不可用：请检查安装包 resources/country.mmdb 或配置的 geoip_path。未识别国家的请求不会被伪造为已知国家。{% else %}国家识别暂不可用，请联系管理员。{% endif %}</div>
       <div id="no-sites" class="notice" hidden><p>还没有可管理的域名。添加域名后即可配置内容、访问规则和查看流量。</p><button id="empty-add-domain" class="button primary small">＋ 添加域名</button></div>
 
-      {% if account.role == 'admin' %}
+      {% if account.role in ['admin', 'observer'] %}
       <section id="panel-accounts" class="tab-panel" aria-label="账号管理" hidden>
-        <article class="card"><div class="card-heading"><div><p class="eyebrow">AGENT ACCOUNTS</p><h2>创建代理账号</h2></div></div><p class="muted">代理只能管理分配给自己的域名，也可以添加自己的域名。账号密码由你交给代理。</p>
-          <form id="account-form" class="account-entry"><label>用户名<input name="username" required maxlength="64" pattern="[A-Za-z0-9_.@\-]+" title="使用字母、数字或 _ . @ -，最多 64 位" autocomplete="off" spellcheck="false"></label><label>初始密码<input name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><button class="button primary" type="submit">创建代理账号</button></form><p class="subtle">密码为 12–256 位，创建成功后不再显示。停用账号会立即退出该代理的现有会话。</p>
+        {% if account.role == 'admin' %}
+        <article class="card"><div class="card-heading"><div><p class="eyebrow">AGENT ACCOUNTS</p><h2>创建账号</h2></div></div><p class="muted">代理只能管理分配给自己的域名。观察号可以看全部域名和账号名单，不能修改任何内容。密码由你交给对方。</p>
+          <form id="account-form" class="account-entry"><label>用户名<input name="username" required maxlength="64" pattern="[A-Za-z0-9_.@\-]+" title="使用字母、数字或 _ . @ -，最多 64 位" autocomplete="off" spellcheck="false"></label><label>角色<select name="role"><option value="agent">代理</option><option value="observer">观察号</option></select></label><label>初始密码<input name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><button class="button primary" type="submit">创建账号</button></form><p class="subtle">密码为 12–256 位，创建成功后不再显示。停用账号会立即退出该账号的现有会话。</p>
         </article>
-        <article class="card"><div class="card-heading"><div><h2>账号列表</h2><p class="card-caption">管理代理的访问权限与密码</p></div><button id="refresh-accounts" class="button secondary small">刷新</button></div><div id="account-list" class="table-scroll"><p class="empty-state">正在读取账号…</p></div></article>
+        {% else %}
+        <article class="card"><div class="card-heading"><div><p class="eyebrow">READ ONLY</p><h2>只能查看</h2></div></div><p class="muted">观察号可以看全部域名里的流量、内容和账号名单。不能发布、换号、检查工单或修改任何设置。密码不会显示。</p></article>
+        {% endif %}
+        <article class="card"><div class="card-heading"><div><h2>账号列表</h2><p class="card-caption">{{ '管理访问权限与密码' if account.role == 'admin' else '用户名、角色和名下域名' }}</p></div><button id="refresh-accounts" class="button secondary small">刷新</button></div><div id="account-list" class="table-scroll"><p class="empty-state">正在读取账号…</p></div></article>
       </section>
       {% endif %}
 
@@ -176,9 +194,9 @@
         <section id="preview-panel" class="card" hidden><div class="card-heading"><div><h2 id="preview-title">版本预览</h2><p class="muted">只在这里看，不会发给访客</p></div><button id="close-preview" class="button secondary">关闭预览</button></div><div id="preview-frame"></div></section>
       </section>
 
-      <section id="panel-desk" class="tab-panel" aria-label="工单" hidden>
+      {% if account.role != 'observer' %}<section id="panel-desk" class="tab-panel" aria-label="工单" hidden>
         <article id="desk-root" class="card" aria-label="工单与投手"></article>
-      </section>
+      </section>{% endif %}
 
       <section id="panel-rules" class="tab-panel" aria-label="访问规则" hidden>
         <div class="notice"><span aria-hidden="true">ⓘ</span><p>规则命中拦截时展示 A，放行后展示你在“A/B 内容”页选择的 A 或 B。黑名单 → 白名单 → 严格防爬虫 → UA 标记 → IPv4 → 设备 → 系统版本 → 自定义 CIDR → 国家 → 语言 → 访问次数。全局强制路由与防护关闭优先。</p></div>

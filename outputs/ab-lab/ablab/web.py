@@ -53,6 +53,7 @@ class SiteMetadata(StrictModel):
 class AccountCreate(StrictModel):
     username: str = Field(min_length=1, max_length=64, strict=True)
     password: str = Field(min_length=12, max_length=256, strict=True)
+    role: Literal['agent', 'observer'] = 'agent'
 
 
 class AccountEnabled(StrictModel):
@@ -166,11 +167,19 @@ class LocalBoundary:
                 if match:
                     try:
                         owned = self.registry.get(match.group(1))
-                        if session['role'] != 'admin' and owned['owner_id'] != session['account_id']:
+                        if session['role'] not in ('admin', 'observer') and owned['owner_id'] != session['account_id']:
                             raise KeyError(match.group(1))
                     except KeyError:
                         await JSONResponse({'detail': '站点不存在'}, status_code=404)(scope, receive, send)
                         return
+                # The domains page refreshes Google's cached lookup. That write
+                # stays inside the reputation cache and does not change a site.
+                observer_may_refresh = scope['method'] == 'POST' and re.fullmatch(
+                    r'/api/sites/(?:[a-f0-9]{32}|default)/reputation/check', scope['path'])
+                if (session['role'] == 'observer' and scope['method'] not in ('GET', 'HEAD')
+                        and scope['path'] != '/api/logout' and not observer_may_refresh):
+                    await JSONResponse({'detail': '观察号只能查看'}, status_code=403)(scope, receive, send)
+                    return
         state['csrf'] = csrf
         if self.admin and scope['method'] not in ('GET', 'HEAD') and not is_ingest:
             if origin != expected_origin.encode() or not secrets.compare_digest(headers.get(b'x-csrf-token', b''), csrf.encode()):
@@ -391,6 +400,9 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             return accounts.get_account(request.state.account_id)
         return accounts.admin_account() or {'id': 'admin', 'username': '本地管理员', 'role': 'admin', 'enabled': True, 'created': 0}
 
+    def sees_everything(account):
+        return account['role'] in ('admin', 'observer')
+
     def require_admin(request):
         account = principal(request)
         if account['role'] != 'admin':
@@ -400,12 +412,12 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def authorized_site(request, site_id):
         site = registry.get(site_id)
         account = principal(request)
-        if account['role'] != 'admin' and site['owner_id'] != account['id']:
+        if not sees_everything(account) and site['owner_id'] != account['id']:
             raise HTTPException(404, '站点不存在')
         return site
 
     def site_store(request: Request):
-        if 'site_id' not in request.path_params and principal(request)['role'] != 'admin':
+        if 'site_id' not in request.path_params and not sees_everything(principal(request)):
             raise HTTPException(404, '请使用当前域名的操作入口')
         site_id = request.path_params.get('site_id', 'default')
         authorized_site(request, site_id)
@@ -430,8 +442,9 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.get('/api/sites')
     def list_sites(request: Request):
         account = principal(request)
-        sites = reputation.catalog(registry.list(None if account['role'] == 'admin' else account['id']))
-        if account['role'] == 'admin':
+        everything = sees_everything(account)
+        sites = reputation.catalog(registry.list(None if everything else account['id']))
+        if everything:
             names = {row['id']: row['username'] for row in accounts.list_accounts()}
             for site in sites:
                 site['owner_username'] = names.get(site['owner_id'], account['username'] if site['owner_id'] == 'admin' else '账号不存在')
@@ -445,7 +458,9 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @app.get('/api/accounts')
     def list_accounts(request: Request):
-        require_admin(request)
+        account = principal(request)
+        if not sees_everything(account):
+            raise HTTPException(403, '需要总管理员权限')
         counts = {}
         for site in registry.list():
             counts[site['owner_id']] = counts.get(site['owner_id'], 0) + 1
@@ -454,7 +469,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.post('/api/accounts')
     def create_account(request: Request, body: AccountCreate):
         require_admin(request)
-        return {'account': accounts.create_agent(body.username, body.password)}
+        created = accounts.create_observer(body.username, body.password) if body.role == 'observer' else accounts.create_agent(body.username, body.password)
+        return {'account': created}
 
     @app.patch('/api/accounts/{account_id}')
     def enable_account(account_id: str, request: Request, body: AccountEnabled):
@@ -470,7 +486,9 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.put('/api/sites/{site_id}/owner')
     def assign_site_owner(site_id: str, request: Request, body: SiteOwner):
         require_admin(request)
-        accounts.get_account(body.owner_id)
+        target = accounts.get_account(body.owner_id)
+        if target['role'] not in ('admin', 'agent'):
+            raise ValueError('观察号不能作为域名归属')
         return {'site': registry.assign_owner(site_id, body.owner_id)}
 
     @app.post('/api/sites/{site_id}/reputation/check')
@@ -652,11 +670,12 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                   tz_offset: int = Query(default=480, ge=-840, le=840)):
         site_id = request.path_params.get('site_id', 'default')
         account = principal(request)
-        if scope != 'all' and 'site_id' not in request.path_params and account['role'] != 'admin':
+        everything = sees_everything(account)
+        if scope != 'all' and 'site_id' not in request.path_params and not everything:
             raise HTTPException(404, '请使用当前域名的操作入口')
         if scope != 'all' or 'site_id' in request.path_params:
             authorized_site(request, site_id)
-        return summarize(registry, site_id, period, scope, tz_offset, time.time(), None if account['role'] == 'admin' else account['id'])
+        return summarize(registry, site_id, period, scope, tz_offset, time.time(), None if everything else account['id'])
 
     @routes.put('/config')
     def update_config(body: ConfigUpdate, request: Request, store=Depends(site_store)):
@@ -1026,7 +1045,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @routes.get('/audit')
     def audit(request: Request, store=Depends(site_store)):
         items = store.audit()
-        if principal(request)['role'] != 'admin':
+        if not sees_everything(principal(request)):
             site_actions = {'config_updated', 'content_imported', 'version_published',
                             'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted', 'whatsapp_trust_checked'}
             items = [item for item in items if item['action'] in site_actions]

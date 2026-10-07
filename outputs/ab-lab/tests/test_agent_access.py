@@ -1,5 +1,6 @@
 import hashlib
 import time
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from ablab.auth import Auth
@@ -140,6 +141,87 @@ def test_admin_management_still_requires_origin_csrf_and_admin_cannot_be_disable
     assert owner.post('/api/accounts', json={'username':'bad', 'password':'valid-test-password', 'role':'admin'}).status_code == 422
     assert owner.patch('/api/accounts/admin', json={'enabled':False}).status_code == 400
     assert owner.post('/api/accounts/admin/password', json={'password':'new-valid-password'}).status_code == 400
+
+
+def sign_in(app, username, password):
+    settings = Deployment(admin_origin='https://admin.test', target_origin='https://visitor.test')
+    client = TestClient(app, base_url=settings.admin_origin, client=('127.0.0.1', 4000))
+    client.headers.update({'Origin': settings.admin_origin, 'X-Real-IP': '203.0.113.10', 'X-Forwarded-Proto': 'https', 'X-CSRF-Token': app.state.csrf})
+    result = client.post('/api/login', json={'username': username, 'password': password})
+    assert result.status_code == 200, result.text
+    client.headers['X-CSRF-Token'] = result.json()['csrf']
+    return client
+
+
+def test_observer_reads_every_domain_and_account_but_cannot_change_anything(accounts):
+    app, auth, owner, a, b, one, two = accounts
+    first, second = add(a, 'one.test'), add(b, 'two.test')
+    with app.state.registry.store(first['id']).connect() as db:
+        db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode) VALUES(?,?,?,?,?,?,?,?)',
+                   (time.time()-60, '203.0.113.0/24', 'KR', 'mobile', 'B', 'allowed', '/', 'RULES'))
+    created = owner.post('/api/accounts', json={'username': 'watcher', 'password': 'watch-password-ok', 'role': 'observer'})
+    assert created.status_code == 200, created.text
+    assert created.json()['account']['role'] == 'observer'
+    assert 'password' not in created.json()['account']
+    assert a.post('/api/accounts', json={'username': 'forged-watch', 'password': 'watch-password-ok', 'role': 'observer'}).status_code == 403
+    watcher = sign_in(app, 'watcher', 'watch-password-ok')
+    page = watcher.get('/')
+    assert page.status_code == 200
+    assert 'data-tab="accounts"' in page.text and '观察账号' in page.text
+    catalog = watcher.get('/api/sites')
+    assert catalog.status_code == 200, catalog.text
+    assert {site['domain'] for site in catalog.json()['sites']} >= {'one.test', 'two.test'}
+    assert catalog.json()['sites'][-1]['owner_username'] == 'agent-two'
+    listed = watcher.get('/api/accounts')
+    assert listed.status_code == 200, listed.text
+    assert {item['username'] for item in listed.json()['items']} >= {'admin888', 'agent-one', 'agent-two', 'watcher'}
+    assert all('password' not in item for item in listed.json()['items'])
+    assert a.get('/api/accounts').status_code == 403
+    assert watcher.get(f"/api/sites/{second['id']}/state").status_code == 200
+    assert watcher.get(f"/api/sites/{first['id']}/logs").status_code == 200
+    assert watcher.get(f"/api/sites/{first['id']}/audit").status_code == 200
+    analytics = watcher.get('/api/analytics?scope=all')
+    assert analytics.status_code == 200, analytics.text
+    assert analytics.json()['summary']['total'] == 1
+    app.state.reputation.key = 'test-key'
+    app.state.reputation.transport = httpx.MockTransport(lambda request: httpx.Response(200, json={}))
+    checked = watcher.post(f"/api/sites/{first['id']}/reputation/check", json={})
+    assert checked.status_code == 200, checked.text
+    assert checked.json()['result']['status'] == 'clean'
+    shown = next(site for site in watcher.get('/api/sites').json()['sites'] if site['id'] == first['id'])
+    assert shown['google_reputation']['status'] == 'clean'
+    assert app.state.registry.get(first['id'])['owner_id'] == one['id']
+    assert app.state.registry.get(first['id'])['enabled'] == 1
+    before = app.state.registry.store(first['id']).logs(7, '', 1)['total']
+    writes = [
+        ('POST', '/api/sites', {'domain': 'watcher.test'}),
+        ('PUT', f"/api/sites/{first['id']}/config", {}),
+        ('POST', f"/api/sites/{first['id']}/publish/A", {}),
+        ('POST', f"/api/sites/{first['id']}/simulate", {}),
+        ('POST', f"/api/sites/{first['id']}/logs/clear", {}),
+        ('POST', f"/api/sites/{first['id']}/logs/clear-foreign", {}),
+        ('POST', f"/api/sites/{first['id']}/desk/review", {'tickets': [], 'phone': ''}),
+        ('POST', f"/api/sites/{first['id']}/desk/quote", {}),
+        ('POST', f"/api/sites/{first['id']}/desk/sheet", {}),
+        ('POST', f"/api/sites/{first['id']}/desk/screen/click", {'x': 1, 'y': 1}),
+        ('POST', f"/api/sites/{first['id']}/cloudflare/status", {}),
+        ('POST', f"/api/sites/{first['id']}/cloudflare/purge", {}),
+        ('POST', f"/api/sites/{first['id']}/b-redirects/numbers/apply", {}),
+        ('POST', '/api/accounts', {'username': 'another', 'password': 'watch-password-ok', 'role': 'agent'}),
+        ('PATCH', f"/api/accounts/{one['id']}", {'enabled': False}),
+        ('PUT', f"/api/sites/{first['id']}/owner", {'owner_id': 'admin'}),
+    ]
+    for method, path, body in writes:
+        result = watcher.request(method, path, json=body)
+        assert result.status_code == 403, (method, path, result.text)
+        assert result.json()['detail'] == '观察号只能查看'
+    assert app.state.registry.store(first['id']).logs(7, '', 1)['total'] == before
+    assert watcher.get('/api/sites').status_code == 200
+    refused = owner.put(f"/api/sites/{first['id']}/owner", json={'owner_id': created.json()['account']['id']})
+    assert refused.status_code == 400, refused.text
+    assert app.state.registry.get(first['id'])['owner_id'] == one['id']
+    assert watcher.post('/api/logout').status_code == 200
+    assert watcher.get('/api/sites').status_code == 401
 
 
 def test_registry_owner_migration_preserves_existing_sites_and_worker_fields(tmp_path):

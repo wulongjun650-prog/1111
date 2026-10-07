@@ -14,6 +14,14 @@ COOKIE = '__Host-ab_session'
 SESSION_SECONDS = 8 * 3600
 # One expensive password operation at a time keeps memory bounded on small VPSs.
 PASSWORD_LOCK = threading.Lock()
+ACCOUNTS_SQL = '''CREATE TABLE accounts (
+    id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+    role TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+    created REAL NOT NULL, auth_epoch INTEGER NOT NULL DEFAULT 0,
+    CHECK((id='admin' AND role='admin') OR (id!='admin' AND role IN ('agent','observer'))))'''
+SESSIONS_SQL = '''CREATE TABLE account_sessions (
+    token_hash TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id),
+    expires REAL NOT NULL)'''
 
 
 def password_hash(password, salt):
@@ -31,15 +39,10 @@ class Auth:
                 id INTEGER PRIMARY KEY CHECK(id=1), username TEXT NOT NULL, password_hash TEXT NOT NULL)''')
             db.execute('''CREATE TABLE IF NOT EXISTS admin_sessions (
                 token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, expires REAL NOT NULL)''')
-            db.execute('''CREATE TABLE IF NOT EXISTS accounts (
-                id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
-                role TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
-                created REAL NOT NULL, auth_epoch INTEGER NOT NULL DEFAULT 0,
-                CHECK((id='admin' AND role='admin') OR (id!='admin' AND role='agent')))''')
-            db.execute('''CREATE TABLE IF NOT EXISTS account_sessions (
-                token_hash TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id),
-                expires REAL NOT NULL)''')
+            db.execute('CREATE TABLE IF NOT EXISTS ' + ACCOUNTS_SQL.removeprefix('CREATE TABLE '))
+            db.execute('CREATE TABLE IF NOT EXISTS ' + SESSIONS_SQL.removeprefix('CREATE TABLE '))
             db.execute('CREATE INDEX IF NOT EXISTS account_session_owner ON account_sessions(account_id)')
+            self._allow_observer(db)
             db.execute('CREATE TABLE IF NOT EXISTS login_attempts (ip_key TEXT NOT NULL, created REAL NOT NULL)')
             db.execute('CREATE INDEX IF NOT EXISTS login_time ON login_attempts(created)')
             db.execute('''INSERT INTO accounts(id,username,password_hash,role,created)
@@ -58,6 +61,26 @@ class Auth:
                 self.store._audit(db, 'admin_password_migrated', {'username': legacy['username']})
             # Legacy tokens have no account identity and must never be accepted.
             db.execute('DELETE FROM admin_sessions')
+
+    @staticmethod
+    def _allow_observer(db):
+        """SQLite cannot alter a CHECK. Rebuild accounts so existing rows can sit beside observers."""
+        current = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='accounts'").fetchone()
+        if current is None or 'observer' in current['sql']:
+            return
+        db.execute('ALTER TABLE accounts RENAME TO accounts_legacy_roles')
+        db.execute(ACCOUNTS_SQL)
+        db.execute('''INSERT INTO accounts(id,username,password_hash,role,enabled,created,auth_epoch)
+            SELECT id,username,password_hash,role,enabled,created,auth_epoch FROM accounts_legacy_roles''')
+        db.execute('''CREATE TABLE account_sessions_next (
+            token_hash TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id),
+            expires REAL NOT NULL)''')
+        db.execute('''INSERT INTO account_sessions_next(token_hash,account_id,expires)
+            SELECT token_hash,account_id,expires FROM account_sessions''')
+        db.execute('DROP TABLE account_sessions')
+        db.execute('DROP TABLE accounts_legacy_roles')
+        db.execute('ALTER TABLE account_sessions_next RENAME TO account_sessions')
+        db.execute('CREATE INDEX IF NOT EXISTS account_session_owner ON account_sessions(account_id)')
 
     def ready(self):
         return self.admin_account() is not None
@@ -115,6 +138,12 @@ class Auth:
             raise Conflict('账号已存在') from None
 
     def create_agent(self, username, password):
+        return self._create_account(username, password, 'agent', 'agent_created')
+
+    def create_observer(self, username, password):
+        return self._create_account(username, password, 'observer', 'observer_created')
+
+    def _create_account(self, username, password, role, action):
         self._username(username)
         encoded = self._encode(password)
         account_id = uuid.uuid4().hex
@@ -122,19 +151,19 @@ class Auth:
             with self.store.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
                 db.execute('''INSERT INTO accounts(id,username,password_hash,role,created)
-                    VALUES (?,?,?,'agent',?)''', (account_id, username, encoded, time.time()))
-                self.store._audit(db, 'agent_created', {'account_id': account_id, 'username': username})
+                    VALUES (?,?,?,?,?)''', (account_id, username, encoded, role, time.time()))
+                self.store._audit(db, action, {'account_id': account_id, 'username': username})
                 return self._public(db.execute('SELECT * FROM accounts WHERE id=?', (account_id,)).fetchone())
         except sqlite3.IntegrityError:
             raise Conflict('账号已存在') from None
 
     @staticmethod
-    def _agent(db, account_id):
+    def _managed(db, account_id):
         row = db.execute('SELECT * FROM accounts WHERE id=?', (account_id,)).fetchone()
         if row is None:
             raise KeyError(account_id)
-        if row['role'] != 'agent':
-            raise ValueError('只能修改代理账号')
+        if row['role'] not in ('agent', 'observer'):
+            raise ValueError('只能修改代理或观察号')
         return row
 
     def set_enabled(self, account_id, enabled):
@@ -142,7 +171,7 @@ class Auth:
             raise ValueError('enabled 必须为布尔值')
         with self.store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            self._agent(db, account_id)
+            self._managed(db, account_id)
             db.execute('UPDATE accounts SET enabled=?,auth_epoch=auth_epoch+1 WHERE id=?', (enabled, account_id))
             db.execute('DELETE FROM account_sessions WHERE account_id=?', (account_id,))
             self.store._audit(db, 'account_enabled', {'account_id': account_id, 'enabled': enabled})
@@ -150,14 +179,15 @@ class Auth:
 
     def reset_agent_password(self, account_id, password):
         with self.store.connect() as db:
-            self._agent(db, account_id)
+            role = self._managed(db, account_id)['role']
         encoded = self._encode(password)
         with self.store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            self._agent(db, account_id)
+            self._managed(db, account_id)
             db.execute('UPDATE accounts SET password_hash=?,auth_epoch=auth_epoch+1 WHERE id=?', (encoded, account_id))
             db.execute('DELETE FROM account_sessions WHERE account_id=?', (account_id,))
-            self.store._audit(db, 'agent_password_reset', {'account_id': account_id})
+            action = 'observer_password_reset' if role == 'observer' else 'agent_password_reset'
+            self.store._audit(db, action, {'account_id': account_id})
 
     def login(self, username, password, ip):
         now = time.time()
@@ -190,7 +220,7 @@ class Auth:
             db.execute('DELETE FROM account_sessions WHERE expires<?', (now,))
             db.execute('DELETE FROM login_attempts WHERE ip_key=?', (ip_key,))
             db.execute('INSERT INTO account_sessions VALUES (?,?,?)', (self.key(token), row['id'], now + SESSION_SECONDS))
-            action = 'admin_login' if row['role'] == 'admin' else 'agent_login'
+            action = {'admin': 'admin_login', 'agent': 'agent_login', 'observer': 'observer_login'}[row['role']]
             self.store._audit(db, action, {'username': username, 'account_id': row['id']})
         return token, 200
 

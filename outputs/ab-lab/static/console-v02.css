@@ -171,3 +171,96 @@ html.theme-morphing .advanced-panel, html.theme-morphing #hero-switch button {
 @media (prefers-reduced-motion: reduce) {
   html #theme-transition.is-active { opacity: 0 !important; visibility: hidden !important; }
 }
+body[data-account-role="observer"] :is(button, input[type="submit"]):not(
+  .nav-item,
+  #logout,
+  #refresh-state,
+  #refresh-analytics,
+  #refresh-domains,
+  #refresh-accounts,
+  #refresh-audit,
+  #logs-prev,
+  #logs-next,
+  #copy-domain,
+  #watch-silence,
+  #log-filters button[type="submit"],
+  #toast-region button,
+  #observer-enter,
+  dialog button,
+  [data-go]
+) {
+  display: none !important;
+}
+body.observer-gated { overflow: hidden; }
+.observer-welcome {
+  position: fixed; inset: 0; z-index: 90; display: grid; place-items: center;
+  padding: 28px 18px; color: #f8f1df;
+  background:
+    radial-gradient(ellipse at 50% 0%, #8a6420 0%, transparent 42%),
+    radial-gradient(ellipse at 50% 120%, #3a2a08 0%, transparent 46%),
+    radial-gradient(circle at 12% 88%, #24325f 0%, transparent 28%),
+    radial-gradient(circle at 88% 18%, #4a3010 0%, transparent 26%),
+    #05070d;
+}
+.observer-welcome::before {
+  content: ""; position: absolute; inset: 18px; pointer-events: none;
+  border: 1px solid #e7c57a33;
+  background:
+    linear-gradient(#e7c57a, #e7c57a) left top / 72px 1px no-repeat,
+    linear-gradient(#e7c57a, #e7c57a) left top / 1px 72px no-repeat,
+    linear-gradient(#e7c57a, #e7c57a) right top / 72px 1px no-repeat,
+    linear-gradient(#e7c57a, #e7c57a) right top / 1px 72px no-repeat,
+    linear-gradient(#e7c57a, #e7c57a) left bottom / 72px 1px no-repeat,
+    linear-gradient(#e7c57a, #e7c57a) left bottom / 1px 72px no-repeat,
+    linear-gradient(#e7c57a, #e7c57a) right bottom / 72px 1px no-repeat,
+    linear-gradient(#e7c57a, #e7c57a) right bottom / 1px 72px no-repeat;
+}
+.observer-welcome-card {
+  position: relative; z-index: 1; width: min(860px, 100%); text-align: center;
+  padding: clamp(40px, 6vw, 72px) clamp(22px, 5vw, 64px) clamp(36px, 5vw, 56px);
+  border: 1px solid #e4c27a88; border-radius: 28px;
+  background:
+    linear-gradient(180deg, #1c2438f2, #0b0f18f5);
+  box-shadow:
+    0 0 0 1px #f6dc9a22,
+    0 0 80px #c8963e33,
+    0 32px 90px #000000cc,
+    inset 0 1px #ffffff22;
+}
+.observer-kicker { margin: 0; letter-spacing: .52em; font-size: 13px; color: #e7c57a; }
+.observer-mark { margin: 22px auto 0; color: #ffe7ad; filter: drop-shadow(0 0 22px #e7c57aaa); }
+.observer-mark svg { width: 68px; height: 68px; }
+.observer-welcome h1 {
+  margin: 8px 0 16px; font-size: clamp(52px, 8vw, 92px); font-weight: 800;
+  letter-spacing: .2em; text-indent: .2em; line-height: 1.05; color: #fff4d2;
+  background: linear-gradient(180deg, #fff8e4 0%, #f3d78a 42%, #d7a44a 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 8px 18px #c8963e66);
+}
+.observer-boast {
+  margin: 0; color: #fffaf0; font-size: clamp(20px, 2.8vw, 34px); font-weight: 800; line-height: 1.45;
+  text-shadow: 0 2px 16px #00000088;
+}
+.observer-seal {
+  display: inline-block; margin: 28px 0 14px; padding: 8px 28px;
+  border: 1px solid #e7c57a; border-radius: 999px;
+  letter-spacing: .5em; text-indent: .5em; color: #f0d48a; font-weight: 800;
+  background: #e7c57a14; box-shadow: inset 0 0 18px #e7c57a22;
+}
+.observer-limit { margin: 0; font-size: clamp(16px, 2vw, 20px); line-height: 1.7; color: #ffd9d9; }
+.observer-break { display: none; }
+.observer-enter {
+  margin-top: 32px; min-width: 240px; height: 58px; border: 0; border-radius: 999px;
+  font: inherit; font-size: 20px; font-weight: 800; letter-spacing: .46em; text-indent: .46em;
+  color: #1b1305; cursor: pointer;
+  background: linear-gradient(180deg, #ffe7b0, #e0b25a 46%, #b8862f);
+  box-shadow: 0 0 0 1px #fff3cc88, 0 14px 36px #c8963e77;
+}
+.observer-enter:hover { background: linear-gradient(180deg, #fff4d4, #f0c56a 46%, #c8963e); }
+@media (max-width: 640px) {
+  .observer-welcome::before { inset: 10px; }
+  .observer-kicker, .observer-seal, .observer-enter { letter-spacing: .22em; text-indent: .22em; }
+  .observer-welcome h1 { font-size: 46px; letter-spacing: .14em; text-indent: .14em; }
+  .observer-boast { font-size: 18px; }
+  .observer-break { display: inline; }
+}
