@@ -34,7 +34,7 @@ const COLS = [
   '時間', '編號', '已開聊', '開聊時間', '已成交', '成交時間', '成交金額',
   'gclid', 'gbraid', 'wbraid', '分類', '重點', '變體', '位置', '環境',
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
-  '號碼', '接待', '頁面', 'UA'
+  '號碼', '接待', '頁面', 'UA', '廣告版位', '廣告素材'
 ];
 const C = Object.fromEntries(COLS.map((name, i) => [name, i + 1]));
 const CODE_RE = /^[A-Z0-9]{6}$/;
@@ -100,7 +100,8 @@ function doPost(e) {
     ['分類', 'interest'], ['重點', 'priority'], ['變體', 'variant'], ['位置', 'placement'], ['環境', 'wa_env'],
     ['utm_source', 'utm_source'], ['utm_medium', 'utm_medium'], ['utm_campaign', 'utm_campaign'],
     ['utm_content', 'utm_content'], ['utm_term', 'utm_term'],
-    ['號碼', 'number'], ['接待', 'receptionist'], ['頁面', 'page'], ['UA', 'ua']
+    ['號碼', 'number'], ['接待', 'receptionist'], ['頁面', 'page'], ['UA', 'ua'],
+    ['廣告版位', 'placement_app'], ['廣告素材', 'creative']
   ].forEach(([col, key]) => { row[C[col] - 1] = clean(data[key]); });
 
   const lock = LockService.getScriptLock();

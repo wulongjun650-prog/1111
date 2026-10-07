@@ -302,7 +302,8 @@
       const TTL = 90 * 24 * 3600 * 1000;
       const q = new URLSearchParams(location.search);
       const fresh = {};
-      ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach(k => {
+      // placement / creative / device 由 Google Ads 最終網址後綴 {placement} {creative} {device} 帶入，用嚟分辨 AASTOCKS、etnet 等來源 App
+      ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'placement', 'creative', 'device'].forEach(k => {
         const v = q.get(k);
         if (v) fresh[k] = v.slice(0, 300);
       });
@@ -497,7 +498,7 @@
     function gtagReady() { return typeof gtag === 'function' && !!window.google_tag_manager; }
 
     function track(name, params) {
-      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV }, params);
+      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
       if (gtagReady()) { try { gtag('event', name, payload); } catch (e) {} return; }
       try {
         const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
@@ -645,6 +646,8 @@
           utm_campaign: CLICK_IDS.utm_campaign || '',
           utm_content: CLICK_IDS.utm_content || '',
           utm_term: CLICK_IDS.utm_term || '',
+          placement_app: CLICK_IDS.placement || '',
+          creative: CLICK_IDS.creative || '',
           interest: pickedLine.interest,
           priority: pickedLine.priority,
           variant: currentKey,
