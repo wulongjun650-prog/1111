@@ -2,7 +2,7 @@ import {parseLinks} from './helpers.mjs';
 
 export function createBRedirects({api, on, element, confirmAction, getSite, onApplied, readOnly = false}) {
   const root = document.querySelector('#b-redirects');
-  let session = null, active = false, queueGeneration = 0, checkQueue = Promise.resolve(), trustQueue = Promise.resolve(), trustTimer = 0, trustFlight = false, splitTimer = 0, splitEpoch = 0;
+  let session = null, active = false, queueGeneration = 0, checkQueue = Promise.resolve(), trustQueue = Promise.resolve(), trustTimer = 0, trustFlight = false, splitTimer = 0, splitEpoch = 0, numberSplitTimer = 0, numberSplitEpoch = 0;
   const TRUST_LABELS = {trust:'出现信任弹窗', clear:'正常', unconfirmed:'未确认', unchecked:'未检测'};
   const TRUST_CLASS = {trust:'abnormal', clear:'normal', unconfirmed:'unknown'};
   const TRUST_MIN_SECONDS = 10;
@@ -69,12 +69,28 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const waLabel = element('label', 'grow', '添加号码');
   const waNumbers = element('textarea'); waNumbers.id = 'b-wa-numbers'; waNumbers.rows = 2; waNumbers.required = true;
   waNumbers.placeholder = '每行一个号码，例如 85264150954'; waLabel.append(waNumbers);
+  const waNameLabel = element('label', '', '接待名');
+  const waName = element('input'); waName.id = 'b-wa-name'; waName.maxLength = 40; waName.placeholder = '例如 Vivian 關詠怡'; waNameLabel.append(waName);
   const waNoteLabel = element('label', '', '备注');
   const waNote = element('input'); waNote.id = 'b-wa-note'; waNote.maxLength = 300; waNote.placeholder = '可选'; waNoteLabel.append(waNote);
   const waAdd = element('button', 'button secondary', '添加号码'); waAdd.id = 'b-wa-add'; waAdd.type = 'submit';
-  waForm.append(waLabel, waNoteLabel, waAdd);
+  const waReception = element('button', 'button primary', '改接待名'); waReception.id = 'b-wa-reception'; waReception.type = 'button';
+  waForm.id = 'b-wa-form';
+  waForm.append(waLabel, waNameLabel, waNoteLabel, waAdd, waReception);
+  const waSplitPanel = element('div', 'b-split wa-number-split'); waSplitPanel.id = 'b-wa-split';
+  const waSplitCopy = element('div', 'b-split-copy');
+  waSplitCopy.append(element('strong', '', '号码分流'), element('p', 'b-split-status', '关闭时，访客都看当前发布的号码。'));
+  const waSplitModeLabel = element('label', 'b-split-mode-label', '分配'); waSplitModeLabel.hidden = true;
+  const waSplitMode = element('select'); waSplitMode.id = 'b-wa-split-mode';
+  waSplitMode.append(element('option', '', '随机'), element('option', '', '按概率'));
+  waSplitMode.options[0].value = 'random'; waSplitMode.options[1].value = 'weighted';
+  waSplitModeLabel.append(waSplitMode);
+  const waSplitToggle = element('button', 'switch'); waSplitToggle.type = 'button'; waSplitToggle.id = 'b-wa-split-toggle';
+  waSplitToggle.setAttribute('role', 'switch'); waSplitToggle.setAttribute('aria-checked', 'false'); waSplitToggle.setAttribute('aria-label', '号码分流');
+  waSplitToggle.append(element('span'));
+  waSplitPanel.append(waSplitCopy, waSplitModeLabel, waSplitToggle);
   waBox.dataset.trustSeconds = String(trustSeconds);
-  waBox.append(waHead, waNoteLine, waSwitchNote, waIntervalRow, waList, waForm);
+  waBox.append(waHead, waNoteLine, waSwitchNote, waIntervalRow, waSplitPanel, waList, waForm);
   waIntervalApply.addEventListener('click', applyTrustSeconds);
   waInterval.addEventListener('keydown', event => {
     if (event.key !== 'Enter') return;
@@ -98,7 +114,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const linkSelected = value => selected(value).filter(item => item.kind !== 'whatsapp_number');
   const numberSelected = value => selected(value).filter(item => item.kind === 'whatsapp_number');
   const activePreset = value => (value.active && value.active.version_id === value.published) ? value.active.preset_id : null;
-  const isDirty = () => Boolean(urls.value.trim() || note.value.trim() || waNumbers.value.trim() || waNote.value.trim() || session?.selectionDirty || session?.splitDirty);
+  const isDirty = () => Boolean(urls.value.trim() || note.value.trim() || waNumbers.value.trim() || waName.value.trim() || waNote.value.trim() || session?.selectionDirty || session?.splitDirty || session?.numberSplitDirty);
   const blankSplit = () => ({enabled:false, mode:'random', members:[]});
   const date = timestamp => timestamp ? new Date(Number(timestamp) * 1000).toLocaleString('zh-CN', {hour12:false}) : '尚未检测';
   const endpoint = value => `/api/b-redirects${value.versionId ? `?version_id=${encodeURIComponent(value.versionId)}` : ''}`;
@@ -216,8 +232,10 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     version.disabled = busy || !value?.versions.length;
     rescan.disabled = busy;
     urls.disabled = !value || value.busy; note.disabled = urls.disabled; add.disabled = urls.disabled;
-    waNumbers.disabled = urls.disabled; waNote.disabled = urls.disabled; waAdd.disabled = urls.disabled;
+    waNumbers.disabled = urls.disabled; waName.disabled = urls.disabled; waNote.disabled = urls.disabled; waAdd.disabled = urls.disabled; waReception.disabled = urls.disabled;
     splitToggle.disabled = !value || value.busy; splitMode.disabled = splitToggle.disabled || splitModeLabel.hidden;
+    waSplitToggle.disabled = !value || value.busy; waSplitMode.disabled = waSplitToggle.disabled || waSplitModeLabel.hidden;
+    waList.querySelectorAll('.wa-split-join input').forEach(input => { input.disabled = waSplitToggle.disabled || input.title === '先写接待名'; });
     presets.querySelectorAll('.b-split-join input').forEach(input => { input.disabled = splitToggle.disabled; });
     root.setAttribute('aria-busy', String(Boolean(value?.loading || value?.busy)));
     occurrences.querySelectorAll('input').forEach(input => {input.disabled = busy;});
@@ -362,6 +380,83 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     }
   }
 
+  const numberSplitPayload = split => {
+    const mode = split?.mode === 'weighted' ? 'weighted' : 'random';
+    return {enabled:Boolean(split?.enabled), mode, members:(split?.members || []).map(item => ({number_id:item.number_id, weight:mode === 'weighted' ? Math.min(100, Math.max(1, Number(item.weight) || 1)) : 1}))};
+  };
+  const sameNumberSplit = (left, right) => JSON.stringify(numberSplitPayload(left)) === JSON.stringify(numberSplitPayload(right));
+
+  function renderNumberSplit(value) {
+    const split = value?.numberSplit || blankSplit();
+    waSplitToggle.setAttribute('aria-checked', String(Boolean(split.enabled)));
+    waSplitMode.value = split.mode === 'weighted' ? 'weighted' : 'random';
+    waSplitModeLabel.hidden = !split.enabled;
+    root.classList.toggle('wa-split-on', Boolean(split.enabled));
+    root.classList.toggle('wa-split-weighted', Boolean(split.enabled) && waSplitMode.value === 'weighted');
+    const status = waSplitPanel.querySelector('.b-split-status');
+    if (!value || value.numberSplitSaving) status.textContent = value?.numberSplitSaving ? '正在保存…' : '关闭时，访客都看当前发布的号码。';
+    else if (!split.enabled) status.textContent = '关闭时，访客都看当前发布的号码。';
+    else if (!(split.members || []).length) status.textContent = '勾上预存号码后，访客一打开页面就分好。';
+    else status.textContent = split.mode === 'weighted' ? '按概率。访客打开页面就分好，同一个人始终这个号。' : '随机。访客打开页面就分好，同一个人始终这个号。';
+    updateControls();
+  }
+
+  function rememberNumber(value, id, checked, weight, immediate = true) {
+    const number = (value.numbers || []).find(item => item.id === id);
+    if (checked && !number?.display_name) { showMessage('先写接待名，再让这个号码参与分流。', true); renderNumbers(value); return; }
+    const split = value.numberSplit || blankSplit();
+    const members = (split.members || []).filter(item => item.number_id !== id);
+    if (checked) members.push({number_id:id, weight:Math.min(100, Math.max(1, Number(weight) || 1))});
+    let enabled = Boolean(split.enabled);
+    if (enabled && !members.length && value.savedNumberSplit?.enabled) enabled = false;
+    value.numberSplit = {...split, enabled, members};
+    renderNumberSplit(value);
+    queueNumberSplitSave(value, immediate || !enabled);
+  }
+
+  function queueNumberSplitSave(value, immediate = false) {
+    if (readOnly) return;
+    clearTimeout(numberSplitTimer); numberSplitTimer = 0;
+    if (!isCurrent(value)) return;
+    if (sameNumberSplit(value.numberSplit, value.savedNumberSplit || blankSplit())) {
+      value.numberSplitDirty = false; updateControls(); return;
+    }
+    const split = value.numberSplit || blankSplit();
+    if (split.enabled && !(split.members || []).length) {
+      value.numberSplitDirty = true; showMessage('先勾选要参与的号码'); updateControls(); return;
+    }
+    value.numberSplitDirty = true;
+    const run = () => commitNumberSplit(value);
+    if (immediate) run(); else numberSplitTimer = setTimeout(run, 250);
+  }
+
+  async function commitNumberSplit(value) {
+    if (!isCurrent(value)) return;
+    if (value.numberSplitSaving) {value.numberSplitAgain = true; return;}
+    const split = value.numberSplit || blankSplit();
+    if (split.enabled && !(split.members || []).length) {value.numberSplitDirty = true; showMessage('先勾选要参与的号码'); return;}
+    const epoch = numberSplitEpoch, sent = numberSplitPayload(split);
+    value.numberSplitSaving = true; renderNumberSplit(value);
+    try {
+      const result = await api('/api/b-redirects/numbers/split', {method:'PUT', body:sent});
+      if (!isCurrent(value) || epoch !== numberSplitEpoch) return;
+      value.savedNumberSplit = result.number_split || blankSplit();
+      if (!value.numberSplitAgain && sameNumberSplit(value.numberSplit, sent)) {
+        value.numberSplit = result.number_split || blankSplit(); value.numberSplitDirty = false; renderNumbers(value); renderNumberSplit(value);
+        showMessage(value.numberSplit.enabled ? '号码分流已开。访客打开页面就分好。' : '号码分流已关。都看当前发布的号码。');
+      }
+    } catch (error) {
+      if (isCurrent(value) && epoch === numberSplitEpoch && !error.stale) showMessage(error.message, true);
+    } finally {
+      if (isCurrent(value) && epoch === numberSplitEpoch) {
+        value.numberSplitSaving = false;
+        const again = value.numberSplitAgain; value.numberSplitAgain = false;
+        if (again || !sameNumberSplit(value.numberSplit, value.savedNumberSplit)) queueNumberSplitSave(value, true);
+        else renderNumberSplit(value);
+      }
+    }
+  }
+
   function renderPresets(value) {
     presets.replaceChildren();
     if (!value.presets.length) presets.append(element('p', 'empty-state', '还没有预设。先把要用的链接加进来。'));
@@ -419,13 +514,14 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       value.trustPoll = Boolean(result.trust_poll);
       value.active = result.active;
       if (!value.splitDirty) {value.split = result.split || blankSplit(); value.savedSplit = value.split;}
+      if (!value.numberSplitDirty) {value.numberSplit = result.number_split || blankSplit(); value.savedNumberSplit = value.numberSplit;}
       if (!presetsOnly) {
         value.versionId = result.version?.id || null; value.expectedPublished = result.published_version;
         value.occurrences = result.occurrences; value.warnings = result.warnings;
         value.scanned = true;
         renderVersions(value); renderOccurrences(value);
       }
-      renderPresets(value); renderNumbers(value); syncTrustTimer(value);
+      renderPresets(value); renderNumbers(value); renderNumberSplit(value); syncTrustTimer(value);
     } catch (error) {
       if (isCurrent(value) && request === value.request && !error.stale) showMessage(`扫描失败，当前选择仍保留。${error.message}`, true);
     } finally {
@@ -491,11 +587,22 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     for (const item of saved) {
       const inUse = current.has(item.phone);
       const row = element('div', `b-wa-row${inUse ? ' active' : ''}`); row.dataset.numberId = item.id;
+      const participate = element('div', 'wa-split-join');
+      const joinLabel = element('label', 'b-split-check');
+      const join = element('input'); join.type = 'checkbox'; join.checked = (value.numberSplit?.members || []).some(member => member.number_id === item.id);
+      const weight = element('input', 'b-split-weight'); weight.type = 'number'; weight.min = '1'; weight.max = '100'; weight.value = String((value.numberSplit?.members || []).find(member => member.number_id === item.id)?.weight || 1);
+      weight.setAttribute('aria-label', '比重');
+      if (!item.display_name) { join.disabled = true; join.title = '先写接待名'; }
+      joinLabel.append(join, element('span', '', '参与'));
+      participate.append(joinLabel, weight);
+      join.addEventListener('change', () => { if (isCurrent(value)) rememberNumber(value, item.id, join.checked, weight.value, true); });
+      weight.addEventListener('input', () => { if (isCurrent(value) && join.checked) rememberNumber(value, item.id, true, weight.value, false); });
       const info = element('div', 'b-redirect-preset-info');
       const titleLine = element('div', 'b-redirect-title-line');
       titleLine.append(element('strong', 'b-redirect-url', item.phone));
       if (inUse) titleLine.append(element('span', 'b-redirect-active-badge', '当前号码'));
       info.append(titleLine);
+      if (item.display_name) info.append(element('p', 'subtle', `本次由助理${item.display_name} 接待`));
       if (item.note) info.append(element('p', 'subtle', item.note));
       const trust = item.trust || {status:'unchecked'};
       const checking = Boolean(value?.trustChecking?.has(item.id));
@@ -510,7 +617,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
         on(button, 'click', () => action === 'apply-number' ? applyNumber(value, item) : action === 'recheck' ? checkNumber(value, item.id) : deleteNumber(value, item));
         actions.append(button);
       }
-      row.append(info, actions); waList.append(row);
+      row.append(participate, info, actions); waList.append(row);
     }
     paintTrustAlarm(value);
     updateControls();
@@ -565,7 +672,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     if (readOnly) return false;
     const targets = options.occurrences || numberSelected(value);
     if (!isCurrent(value) || value.busy || value.loading || !value.versionId || !targets.length) return false;
-    if (targets.every(row => row.url === item.phone)) {
+    if (targets.every(row => row.url === item.phone) && !item.display_name) {
       renderNumbers(value);
       const text = '这个号码已经是当前号码。';
       showMessage(text); showNumberStatus(text);
@@ -597,11 +704,12 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       if (!isCurrent(value)) return;
       await scan(value);
       const cacheNote = result.cloudflare?.ok ? ' Cloudflare 缓存已清除。' : result.cloudflare ? ' 号码已换，但 Cloudflare 缓存没清掉。' : '';
+      const receptionNote = item.display_name ? `接待名已写成：本次由助理${item.display_name} 接待。` : '';
       const done = refreshFailed
-        ? '号码已更换并发布 B，但状态刷新失败。请刷新状态确认当前版本。进线语未改。' + cacheNote
+        ? '号码已更换并发布 B，但状态刷新失败。请刷新状态确认当前版本。进线语未改。' + receptionNote + cacheNote
         : options.automatic
-        ? `${options.doneText || '当前号码出现信任弹窗，已自动换成下一个预存号码。进线语未改。'}${cacheNote}`
-        : `已换成 ${item.phone}。进线语未改。` + cacheNote;
+        ? `${options.doneText || '当前号码出现信任弹窗，已自动换成下一个预存号码。进线语未改。'}${receptionNote}${cacheNote}`
+        : `已换成 ${item.phone}。进线语未改。${receptionNote}` + cacheNote;
       const statusText = options.automatic ? (options.statusText || '当前号码出现信任弹窗，已自动换成下一个。') : `当前号码已换成 ${item.phone}。`;
       if (isCurrent(value)) { showMessage(done, refreshFailed || Boolean(result.cloudflare && !result.cloudflare.ok)); showNumberStatus(statusText); }
       return true;
@@ -661,18 +769,77 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     if (!isCurrent(value) || value.busy) return;
     const phones = parseNumbers(waNumbers.value);
     if (phones.length > 30) throw new Error('每次最多保存 30 个号码。');
+    if (phones.length > 1 && waName.value.trim()) throw new Error('写接待名时一次只填一个号码。');
     value.busy = true; updateControls(); showMessage();
     try {
-      const result = await api('/api/b-redirects/numbers', {method:'POST', body:{phones, note:waNote.value.trim()}});
+      const result = await api('/api/b-redirects/numbers', {method:'POST', body:{phones, note:waNote.value.trim(), display_name:phones.length === 1 ? waName.value.trim() : ''}});
       if (!isCurrent(value)) return;
       const oldIds = new Set(value.numbers.map(item => item.id));
       value.numbersRevision += 1;
       value.numbers = [...value.numbers.filter(item => !result.numbers.some(saved => saved.id === item.id)), ...result.numbers];
-      waNumbers.value = ''; waNote.value = ''; renderNumbers(value);
+      waNumbers.value = ''; waName.value = ''; waNote.value = ''; renderNumbers(value);
       showMessage(`已添加 ${result.numbers.length} 个号码，正在检测信任弹窗。`);
       value.busy = false; updateControls();
       checkAddedNumbers(value, result.numbers.filter(item => !oldIds.has(item.id)).map(item => item.id));
     } finally {if (isCurrent(value)) {value.busy = false; updateControls();}}
+  });
+  function receptionName() {
+    const name = waName.value.trim().replace(/\s+/g, ' ');
+    if (!name) throw new Error('请填写接待名。');
+    if (name.length > 40 || /[<>&"'\\]/.test(name)) throw new Error('接待名不能包含符号，最多 40 个字。');
+    return name;
+  }
+
+  async function writeReception() {
+    const value = session;
+    if (readOnly || !isCurrent(value) || value.busy) return;
+    let name, phones;
+    try {
+      name = receptionName();
+      phones = parseNumbers(waNumbers.value);
+    } catch (error) { showMessage(error.message, true); return; }
+    if (phones.length !== 1) { showMessage('改接待名时一次只填一个号码。', true); return; }
+    if (!value.versionId) { showMessage('先发布 B 页。', true); return; }
+    value.busy = true; updateControls(); showMessage('正在写成接待名…');
+    try {
+      const result = await api('/api/b-redirects/numbers/reception', {method:'POST', body:{phone:phones[0], display_name:name, version_id:value.versionId, expected_published:value.expectedPublished || value.published}});
+      if (!isCurrent(value)) return;
+      value.numbersRevision += 1;
+      const saved = result.number;
+      value.numbers = value.numbers.some(item => item.id === saved.id) ? value.numbers.map(item => item.id === saved.id ? saved : item) : [...value.numbers, saved];
+      if (result.changed) {
+        value.versionId = result.version.id; value.published = result.version.id; value.expectedPublished = result.version.id;
+        if (!value.versions.some(item => item.id === result.version.id)) value.versions.push(result.version);
+      }
+      waNumbers.value = ''; waName.value = '';
+      renderNumbers(value); renderVersions(value);
+      showMessage(result.changed ? `已写成：${result.sentence}` : `已经是：${result.sentence}`);
+      if (result.changed) { try { await onApplied(result); } catch (error) { if (!isCurrent(value) || error.stale) return; } }
+    } catch (error) {
+      if (isCurrent(value) && !error.stale) showMessage(error.message, true);
+    } finally {
+      if (isCurrent(value)) { value.busy = false; updateControls(); }
+    }
+  }
+
+  on(waReception, 'click', () => writeReception());
+  on(waSplitToggle, 'click', () => {
+    const value = session;
+    if (readOnly || !isCurrent(value) || value.busy) return;
+    const split = value.numberSplit || blankSplit();
+    value.numberSplit = {...split, enabled:!split.enabled};
+    renderNumberSplit(value);
+    if (value.numberSplit.enabled && !(value.numberSplit.members || []).length) {
+      value.numberSplitDirty = true; showMessage('先勾选要参与的号码'); clearTimeout(numberSplitTimer); numberSplitTimer = 0; updateControls(); return;
+    }
+    queueNumberSplitSave(value, true);
+  });
+  on(waSplitMode, 'change', () => {
+    const value = session;
+    if (readOnly || !isCurrent(value) || value.busy) return;
+    value.numberSplit = {...(value.numberSplit || blankSplit()), mode:waSplitMode.value};
+    renderNumberSplit(value);
+    queueNumberSplitSave(value, false);
   });
   on(splitToggle, 'click', () => {
     const value = session;
@@ -700,7 +867,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     let value = session;
     if (value?.siteId !== state.site.id) {
       clear();
-      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], warnings:[], presets:[], numbers:[], presetsRevision:0, numbersRevision:0, trustPoll:false, trustChecking:new Set(), active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
+      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], warnings:[], presets:[], numbers:[], presetsRevision:0, numbersRevision:0, trustPoll:false, trustChecking:new Set(), active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, numberSplit:blankSplit(), savedNumberSplit:blankSplit(), numberSplitDirty:false, numberSplitSaving:false, numberSplitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
       session = value;
     }
     if (value.busy) {
@@ -734,10 +901,10 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   }
 
   function clear() {
-    clearTimeout(splitTimer); splitTimer = 0; ++splitEpoch; ++queueGeneration; clearInterval(trustTimer); trustTimer = 0; trustFlight = false; session = null;
+    clearTimeout(splitTimer); splitTimer = 0; ++splitEpoch; clearTimeout(numberSplitTimer); numberSplitTimer = 0; ++numberSplitEpoch; ++queueGeneration; clearInterval(trustTimer); trustTimer = 0; trustFlight = false; session = null;
     waAlarm.hidden = true; trustAudio.stop(); waBox.dataset.trustPoll = '0'; waNoteLine.textContent = trustNote(false);
-    urls.value = ''; note.value = ''; waNumbers.value = ''; waNote.value = ''; version.replaceChildren(); occurrences.replaceChildren(); warnings.replaceChildren(); presets.replaceChildren();
-    renderNumbers(null); renderSplit(null);
+    urls.value = ''; note.value = ''; waNumbers.value = ''; waName.value = ''; waNote.value = ''; version.replaceChildren(); occurrences.replaceChildren(); warnings.replaceChildren(); presets.replaceChildren();
+    renderNumbers(null); renderSplit(null); renderNumberSplit(null);
     showMessage(); updateControls();
   }
 

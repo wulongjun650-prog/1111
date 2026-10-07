@@ -17,6 +17,11 @@
 .b-redirect-occurrence small { margin-top: 3px; font-family: Consolas, monospace; }
 .b-redirect-warnings { display: grid; gap: 4px; margin-top: 8px; }
 .b-redirect-add-form { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(140px, .4fr) auto; align-items: end; gap: 14px; margin-top: 16px; margin-bottom: 6px; }
+#b-wa-form { grid-template-columns: minmax(200px, 1.3fr) minmax(160px, 1fr) minmax(110px, .45fr) auto auto; }
+.wa-number-split { margin-top: 12px; }
+.wa-split-join { display: none; align-items: center; gap: 8px; flex: 0 0 auto; }
+#b-redirects.wa-split-on .wa-split-join { display: flex; }
+#b-redirects.wa-split-on.wa-split-weighted .wa-split-join:has(input[type=checkbox]:checked) .b-split-weight { display: inline-block; }
 .b-redirect-hint { display: block; margin-bottom: 4px; }
 .b-split { display: flex; align-items: center; gap: 16px; margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
 #b-redirects.split-on .b-split { border-color: color-mix(in srgb, var(--primary) 35%, var(--line)); background: color-mix(in srgb, var(--primary) 8%, var(--surface)); }

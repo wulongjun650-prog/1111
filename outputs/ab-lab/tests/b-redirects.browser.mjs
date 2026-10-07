@@ -40,7 +40,7 @@ async function withConsole(run, options = {}) {
     presets:[{id:1,url:'https://safe.example/landing',note:'<img src=x onerror="window.presetExecuted=true">',created:1,check:check('normal')},
       {id:2,url:'https://blocked.example/landing',note:'风险地址',created:1,check:check('abnormal')},
       {id:3,url:'https://unknown.example/landing',note:'待确认地址',created:1,check:check('unknown')}],
-    active:null,numbers:[],adds:[],numberAdds:[],checks:[],applies:[],numberApplies:[],uploads:[],deletes:[],numberDeletes:[],trustChecks:[],trustResults:{},trust_poll:false,deskReviews:[],deskSwitch:'',checkResults:{},activeChecks:0,maxChecks:0,
+    active:null,numbers:[],adds:[],numberAdds:[],receptions:[],numberSplits:[],checks:[],applies:[],numberApplies:[],uploads:[],deletes:[],numberDeletes:[],trustChecks:[],trustResults:{},trust_poll:false,deskReviews:[],deskSwitch:'',checkResults:{},activeChecks:0,maxChecks:0,
     applyStatus:200,scanStatus:200,stateStatus:200,delayCheck:null,releaseCheck:null,delayVersion:null,releaseScan:null};
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/api/**',async route=>{
@@ -79,8 +79,16 @@ async function withConsole(run, options = {}) {
       fixture.presets=fixture.presets.filter(item=>item.id!==id);response={presets:fixture.presets};
     } else if(pathname===`/api/sites/${siteId}/b-redirects/numbers` && request.method()==='POST') {
       const body=request.postDataJSON();fixture.numberAdds.push(body);
-      const added=body.phones.map((phone,index)=>({id:fixture.numbers.length+index+20,phone,note:body.note||'',created:3}));
+      const added=body.phones.map((phone,index)=>({id:fixture.numbers.length+index+20,phone,note:body.note||'',display_name:body.display_name||'',created:3}));
       fixture.numbers.push(...added);response={numbers:added};
+    } else if(pathname===`/api/sites/${siteId}/b-redirects/numbers/reception` && request.method()==='POST') {
+      const body=request.postDataJSON();fixture.receptions.push(body);
+      const saved={id:20,phone:body.phone,note:'',display_name:body.display_name,created:3,trust:{status:'unchecked',detail:'',checked_at:null}};
+      fixture.numbers=fixture.numbers.filter(item=>item.phone!==body.phone);fixture.numbers.push(saved);
+      response={number:saved,version:fixture.versions.find(item=>item.id===fixture.published.B),changed:1,sentence:`本次由助理${body.display_name} 接待`};
+    } else if(pathname===`/api/sites/${siteId}/b-redirects/numbers/split` && request.method()==='PUT') {
+      const body=request.postDataJSON();fixture.numberSplits.push(body);
+      response={number_split:{enabled:body.enabled,mode:body.mode,members:body.members.map(item=>({...item,phone:'85211112222',display_name:'Vivian 關詠怡'})),updated:5}};
     } else if(/\/b-redirects\/numbers\/\d+\/trust$/.test(pathname) && request.method()==='POST') {
       const id=Number(pathname.split('/').at(-2));
       const number=fixture.numbers.find(item=>item.id===id);
@@ -697,5 +705,40 @@ test('an offline spare is skipped when the work order switches the published num
     await page.locator('#desk-check').click();
     await applied;
     assert.equal(fixture.numberApplies.at(-1).body.number_id, 11);
+  });
+});
+
+test('reception name is posted once and number split does not use the jump-link switch', async () => {
+  await withConsole(async (page, fixture) => {
+    await openRedirects(page);
+    assert.equal(await page.locator('#b-wa-reception').count(), 1);
+    assert.equal(await page.locator('#b-split-toggle').count(), 1);
+    assert.equal(await page.locator('#b-wa-split-toggle').count(), 1);
+    await page.locator('#b-wa-numbers').fill('85211112222\n85233334444');
+    await page.locator('#b-wa-name').fill('Vivian 關詠怡');
+    await page.locator('#b-wa-add').click();
+    await page.locator('.toast.error').waitFor();
+    assert.match(await page.locator('.toast.error').innerText(), /一次只填一个号码/);
+    assert.equal(fixture.numberAdds.length, 0);
+    await page.locator('#b-wa-numbers').fill('85211112222');
+    const posted = page.waitForResponse(response => response.url().includes('/numbers/reception'));
+    await page.locator('#b-wa-reception').click();
+    assert.equal((await posted).status(), 200);
+    assert.deepEqual(fixture.receptions.at(-1), {
+      phone: '85211112222', display_name: 'Vivian 關詠怡', version_id: 'live-b', expected_published: 'live-b',
+    });
+    await page.locator('#b-redirect-message', {hasText: '已写成：本次由助理Vivian 關詠怡 接待'}).waitFor();
+    assert.match(await page.locator('#b-redirect-numbers').innerText(), /本次由助理Vivian 關詠怡 接待/);
+    await page.locator('#b-wa-split-toggle').click();
+    await page.locator('#b-redirect-message', {hasText: '先勾选要参与的号码'}).waitFor();
+    assert.equal(fixture.numberSplits.length, 0);
+    const saved = page.waitForResponse(response => response.url().includes('/numbers/split'));
+    await page.locator('#b-redirect-numbers .wa-split-join input[type=checkbox]').check();
+    assert.equal((await saved).status(), 200);
+    assert.equal(fixture.numberSplits.at(-1).enabled, true);
+    assert.equal(fixture.numberSplits.at(-1).mode, 'random');
+    assert.deepEqual(fixture.numberSplits.at(-1).members, [{number_id: 20, weight: 1}]);
+    assert.equal(await page.locator('#b-redirects.split-on').count(), 0);
+    assert.equal(await page.locator('#b-redirects.wa-split-on').count(), 1);
   });
 });
