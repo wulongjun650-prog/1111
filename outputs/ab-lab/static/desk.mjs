@@ -9,7 +9,7 @@ export function createDesk({api, on, element, livePhone, switchLive}) {
 
   const head = element('div', 'card-heading');
   head.append(element('h2', '', '工单与投手'));
-  const note = element('p', 'muted', '在线 APP 超过 3，或当前号码离线，就换掉正在发布的 B 页号码。进线按工单和号码分开计。消耗先乘 1.15，再除以进线得到成本。');
+  const note = element('p', 'muted', '检查时会打开一个窗口读取工单。在线 APP 超过 3，或当前号码离线，就换掉正在发布的 B 页号码。进线按工单和号码分开计。消耗先乘 1.15，再除以进线得到成本。');
   const message = element('p', 'desk-message'); message.hidden = true;
   const alarm = element('div', 'desk-alarm'); alarm.hidden = true; alarm.setAttribute('role', 'alert');
   const alarmText = element('p', '', ''); alarm.append(alarmText);
@@ -119,7 +119,7 @@ export function createDesk({api, on, element, livePhone, switchLive}) {
     if (!tickets.length) { showMessage('先添加工单。', true); return; }
     flight = true; check.disabled = true;
     try {
-      const report = await api('/api/desk/review', {method: 'POST', body: {phone: livePhone() || '', tickets}, timeout: 60000});
+      const report = await api('/api/desk/review', {method: 'POST', body: {phone: livePhone() || '', tickets}, timeout: 70000});
       renderStats(report);
       alarm.hidden = true; alarmText.textContent = '';
       if (!report.switch) { showMessage('当前号码不用换。'); return; }

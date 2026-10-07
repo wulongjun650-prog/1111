@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import hashlib
 import hmac
@@ -702,8 +703,9 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     app.state.link_checker = LinkChecker()
     app.state.trust_checker = TrustChecker(device_from_environ())
-    from .desk import DeskError, SheetWriter, buyer_quote, review_tickets, unavailable_reader
-    app.state.desk_reader = unavailable_reader
+    from .desk import DeskError, SheetWriter, buyer_quote, review_tickets
+    from .desk_window import WorkOrderWindow
+    app.state.desk_reader = WorkOrderWindow(Path(data_dir) / 'desk-browser')
     app.state.sheet_writer = SheetWriter(os.environ.get('AB_GOOGLE_SHEETS_TOKEN', ''))
 
     def redirect_commit_guard(request, store):
@@ -823,7 +825,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if not isinstance(body, dict):
             raise HTTPException(400, '工单数据无法读取')
         try:
-            return review_tickets(body.get('tickets'), str(body.get('phone') or ''), app.state.desk_reader)
+            return await asyncio.to_thread(review_tickets, body.get('tickets'), str(body.get('phone') or ''), app.state.desk_reader)
         except DeskError as error:
             raise HTTPException(400, str(error)) from None
 

@@ -600,6 +600,7 @@ test('work order over three online switches the published number and shows lead 
     await page.locator('[data-tab="content"]').click();
     await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
     await page.locator('[data-tab="desk"]').click();
+    await page.locator('#panel-desk').getByText('检查时会打开一个窗口读取工单').waitFor();
     await page.locator('#desk-url').fill('https://admin.haiwangweb.com/web#/accountshow/sampleTicket');
     await page.locator('#desk-name').fill('鳄鱼-梵高');
     await page.locator('#desk-password').fill('secret');
