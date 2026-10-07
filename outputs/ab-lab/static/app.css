@@ -95,3 +95,4 @@
 }
 html[data-theme="demon"] .logs-card .country-name .country-label,
 html[data-theme="demon"] .recent-card .country-name .country-label { color: #f6e8ef; }
+#secret-weapon { align-self: center; }

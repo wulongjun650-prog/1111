@@ -208,6 +208,7 @@ def test_observer_reads_every_domain_and_account_but_cannot_change_anything(acco
         ('POST', f"/api/sites/{first['id']}/cloudflare/purge", {}),
         ('POST', f"/api/sites/{first['id']}/b-redirects/numbers/apply", {}),
         ('POST', f"/api/sites/{first['id']}/b-redirects/numbers/reception", {'phone': '85211112222', 'display_name': 'Vivian', 'version_id': 'a' * 32}),
+        ('POST', f"/api/sites/{first['id']}/b-redirects/direct-entry", {'version_id': 'a' * 32, 'expected_published': 'a' * 32}),
         ('PUT', f"/api/sites/{first['id']}/b-redirects/numbers/split", {'enabled': True, 'mode': 'random', 'members': []}),
         ('POST', '/api/accounts', {'username': 'another', 'password': 'watch-password-ok', 'role': 'agent'}),
         ('PATCH', f"/api/accounts/{one['id']}", {'enabled': False}),

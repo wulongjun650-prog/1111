@@ -451,6 +451,44 @@ class Store:
         version, changed = self._reception_bundle(base['id'], name, base['name'], required=True)
         return self._commit_b_version(base, version, changed, expected_published, commit_guard, {'slot':'B', 'version': version['id'] if version else base['id'], 'reception': name, 'redirects_changed': changed})
 
+    def publish_direct_entry(self, base, expected_published, commit_guard=None):
+        """Publish the current B page with the two-step gate removed."""
+        from .archives import MAX_TOTAL, read_source, source_files, validate_file, write_bundle
+        from .redirects import strip_lead_gate
+        if base['slot'] != 'B':
+            raise KeyError('B 版本不存在')
+        files, total, edited, digest = source_files(self.pages / base['id']), 0, [], hashlib.sha256()
+        saw_gate, saw_pool = False, False
+        for path, (file, _) in sorted(files.items()):
+            data = read_source(file, path)
+            if Path(path).suffix.lower() in ('.html', '.htm'):
+                bom = data.startswith(b'\xef\xbb\xbf')
+                raw = data[3:] if bom else data
+                try:
+                    text = raw.decode('utf-8')
+                except UnicodeError:
+                    text = ''
+                has_gate = bool(re.search(r'\bid\s*=\s*(["\'])lead-gate\1', text))
+                if has_gate:
+                    saw_gate = True
+                    rewritten = strip_lead_gate(text)
+                    payload = rewritten.encode('utf-8')
+                    data = (b'\xef\xbb\xbf' + payload) if bom else payload
+                elif 'RANDOM_POOL' in text:
+                    saw_pool = True
+            validate_file(path, data)
+            total += len(data)
+            if total > MAX_TOTAL:
+                raise ValueError('源码目录超过总大小限制')
+            edited.append((path, data))
+            digest.update(path.encode() + b'\0' + str(len(data)).encode() + b'\0' + data)
+        if not saw_gate:
+            if saw_pool:
+                raise ValueError('两步问卷已经拿掉，进线语已经是随机的。')
+            raise ValueError('当前 B 页没有两步问卷')
+        version = write_bundle(edited, base['name'], self.pages, digest.hexdigest())
+        return self._commit_b_version(base, version, 1, expected_published, commit_guard, {'slot':'B', 'version': version['id'], 'direct_entry': True, 'redirects_changed': 1})
+
     def apply_whatsapp_number(self, base, number, occurrence_ids, expected_published, commit_guard=None):
         from .redirects import replace_bundle
         if base['slot'] != 'B':

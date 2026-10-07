@@ -612,6 +612,17 @@ $$('[data-routing]').forEach(button => on(button, 'click', () => saveConfig(patc
 $$('[data-allowed-slot]').forEach(button => on(button, 'click', () => saveConfig(patchConfig(state.config, { routing: 'RULES', allowed_slot: button.dataset.allowedSlot }))));
 on($('#protection-toggle'), 'click', () => saveConfig(patchConfig(state.config, { protection: !state.config.protection })));
 on($('#content-mode'), 'change', event => saveConfig(patchConfig(state.config, { content_mode: event.target.value })));
+on($('#secret-weapon'), 'click', event => busy(event.currentTarget, async () => {
+  if (!state?.slots?.B) {
+    toast('还没有发布 B 页。', true);
+    return;
+  }
+  if (!await confirmAction('拿掉两步问卷？领取按钮会直接打开 WhatsApp，进线语改成随机两句。跳转方式不变。')) return;
+  const result = await api('/api/b-redirects/direct-entry', { method: 'POST', body: { version_id: state.slots.B, expected_published: state.slots.B } });
+  const cache = result.cloudflare?.ok ? ' Cloudflare 缓存已清除。' : result.cloudflare ? ' 页面已发布，但 Cloudflare 缓存没清掉。' : '';
+  toast(`两步问卷已拿掉，进线语改为随机。${cache}`, Boolean(result.cloudflare && !result.cloudflare.ok));
+  await refreshState();
+}));
 on($('#distribution'), 'change', event => saveConfig(patchConfig(state.config, { distribution: event.target.value })));
 on(rulesForm, 'input', () => { editing++; setDirty(true); });
 on(rulesForm, 'submit', async event => {

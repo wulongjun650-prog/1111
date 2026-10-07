@@ -484,3 +484,284 @@ def test_applying_a_named_number_writes_its_sentence_and_only_the_phone(console)
     assert split['enabled'] is True and split['mode'] == 'weighted'
     assert split['members'] == [{'number_id': number['id'], 'weight': 40, 'phone': '85211112222', 'display_name': 'Vivian 關詠怡'}]
     assert client.get('/api/b-redirects').json()['split']['enabled'] is False
+
+
+GATE_PAGE = r'''<!doctype html>
+<!-- 问卷说明，不要删这一段后面的按钮 -->
+<button class="cta" type="button" data-wa data-location="hero">免費領取</button>
+<p>保留这段</p>
+<!-- 两步意向筛选抽屉 -->
+<div class="lead-gate" id="lead-gate" aria-hidden="true">
+  <div class="gate-panel">
+    <div class="gate-step" data-step="1">框</div>
+  </div>
+</div>
+<!-- 喚起失敗兜底 -->
+<div class="wa-fallback" id="wa-fallback">兜底</div>
+<a href="https://www.youtube.com/@EconManBlog/shorts">YouTube</a>
+<script>
+    const gateCancel = document.getElementById('gate-cancel');
+    const gateBack = document.getElementById('gate-back');
+    const gateConfirm = document.getElementById('gate-confirm');
+    const leadGate = document.getElementById('lead-gate');
+    const gateAnswers = { interest:'', priority:'' };
+    function buildWhatsAppUrls(message) {
+      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+      const text = encodeURIComponent(message);
+      const universal = `https://wa.me/${phone}?text=${text}`;
+      return {
+        phone,
+        universal,
+        scheme: `whatsapp://send?phone=${phone}&text=${text}`,
+        intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end`
+      };
+    }
+    function buildMessage(leadCode) {
+      const extra = `\n\n今日最想睇：${gateAnswers.interest || '今日精選名單'}\n比較重視：${gateAnswers.priority || '股票名稱＋今日值得留意原因'}`;
+      const code = leadCode ? `\n（編號：${leadCode}）` : '';
+      return (extra) + code;
+    }
+    function openInHiddenFrame(url) {
+      const frame = document.createElement('iframe');
+      frame.style.display = 'none';
+      frame.src = url;
+      document.body.appendChild(frame);
+      setTimeout(() => frame.remove(), 3000);
+    }
+    function prepareFallback(urls, message) {
+      fallbackPayload = { phone: urls.phone, message };
+    }
+    function goWhatsApp(locationName) {
+      if (redirecting) return;
+      const message = buildMessage(makeLeadCode());
+      const urls = buildWhatsAppUrls(message);
+      prepareFallback(urls, message);
+      switch (WA_ENV) {
+        case 'ios_browser':
+          window.location.href = urls.universal;
+          break;
+        case 'ios_webview':
+          window.location.href = urls.scheme;
+          break;
+        case 'android_browser':
+          window.location.href = urls.intent;
+          break;
+        case 'android_webview':
+          openInHiddenFrame(urls.scheme);
+          break;
+        default:
+          window.open(urls.universal, '_blank');
+          redirecting = false;
+          return;
+      }
+      armFallback(CONFIG.fallbackDelay);
+    }
+    gateCancel.addEventListener('click', closeLeadGate);
+    gateBack.addEventListener('click', () => setGateStep(1));
+    leadGate.addEventListener('click', e => { if (e.target === leadGate) closeLeadGate(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) closeLeadGate(); });
+    document.querySelectorAll('[data-wa]').forEach(btn => {
+      btn.addEventListener('click', () => openLeadGate(btn.dataset.location));
+    });
+    gateConfirm.addEventListener('click', () => {
+      closeLeadGate();
+      goWhatsApp(pendingLocation);
+    });
+</script>
+'''
+
+
+def upload_gate(client):
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, 'w') as bundle:
+        bundle.writestr('index.html', GATE_PAGE)
+        bundle.writestr('style.css', 'body{color:red}.lead-gate{display:none}\n')
+    result = client.post('/api/upload/B?name=gate.zip', content=archive.getvalue())
+    assert result.status_code == 200, result.text
+    version = result.json()['version']['id']
+    assert client.post('/api/publish/B', json={'version_id': version}).status_code == 200
+    return version
+
+
+def _same_function(before, after, name):
+    from ablab.redirects import _js_function_span
+    old = _js_function_span(before, name)
+    new = _js_function_span(after, name)
+    assert old and new
+    assert before[old[0]:old[1]] == after[new[0]:new[1]]
+
+
+def test_secret_weapon_removes_the_gate_and_keeps_the_jump(console):
+    client, app = console
+    base = upload_gate(client)
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['changed'] == 1
+    assert wrote.json()['cloudflare'] is None
+    text = published_html(app)
+    assert 'id="lead-gate"' not in text and '两步意向筛选抽屉' not in text
+    assert 'id="wa-fallback"' in text and '兜底' in text
+    assert '保留这段' in text and 'data-location="hero"' in text
+    assert 'youtube.com' in text
+    assert 'openLeadGate(btn.dataset.location)' not in text
+    assert 'goWhatsApp(btn.dataset.location)' in text
+    assert "if (gateCancel) gateCancel.addEventListener" in text
+    assert "if (leadGate) leadGate.addEventListener" in text
+    assert "leadGate && leadGate.classList.contains('show')" in text
+    for phrase in ('今日心水股名單', '近期潛力黑馬名單', '高息收息股名單', '股票名稱＋今日值得留意原因', '近期資金／成交異動重點', '所屬板塊＋後續觀察重點'):
+        assert phrase in text
+    assert '你好，我想免費領取${interest}，麻煩發給我，謝謝。\\n今日最想睇：${interest} 比較重視：${priority}' in text
+    for name in ('goWhatsApp', 'buildWhatsAppUrls', 'prepareFallback', 'openInHiddenFrame'):
+        _same_function(GATE_PAGE, text, name)
+    assert GATE_PAGE[GATE_PAGE.find('switch (WA_ENV)'):][:400] == text[text.find('switch (WA_ENV)'):][:400]
+    css = (app.state.store.pages / app.state.store.slots()['B'] / 'style.css').read_text(encoding='utf-8')
+    assert css == 'body{color:red}.lead-gate{display:none}\n'
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 400, again.text
+    assert '已经拿掉' in again.json()['detail']
+    assert app.state.store.slots()['B'] == wrote.json()['version']['id']
+    assert app.state.store.slots()['B'] != base
+
+
+def test_secret_weapon_refuses_a_page_without_the_gate(console):
+    client, app = console
+    base = upload_reception(client)
+    scan = client.get('/api/b-redirects').json()
+    refused = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert refused.status_code == 400, refused.text
+    assert '没有两步问卷' in refused.json()['detail']
+    assert app.state.store.slots()['B'] == base
+    assert '85264150954' in published_html(app)
+
+
+def test_random_entry_lines_draw_each_pool(console):
+    import json
+    import subprocess
+    client, _app = console
+    upload_gate(client)
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    from ablab.redirects import _js_function_span
+    text = published_html(_app)
+    span = _js_function_span(text, 'buildMessage')
+    source = text[span[0]:span[1]]
+    script = "const gateAnswers = {};\n" + source + """
+const values = [0, 0.34, 0.67, 0.99];
+const picks = [];
+for (const left of values) {
+  for (const right of values) {
+    const seq = [left, right];
+    let n = 0;
+    Math.random = () => seq[n++];
+    picks.push(buildMessage('K1'));
+  }
+}
+process.stdout.write(JSON.stringify(picks));
+"""
+    result = subprocess.run(['node', '-e', script], check=True, capture_output=True, text=True)
+    picks = json.loads(result.stdout)
+    interests = ['今日心水股名單', '近期潛力黑馬名單', '高息收息股名單', '高息收息股名單']
+    priorities = ['股票名稱＋今日值得留意原因', '近期資金／成交異動重點', '所屬板塊＋後續觀察重點', '所屬板塊＋後續觀察重點']
+    expected = []
+    for interest in interests:
+        for priority in priorities:
+            expected.append(f'你好，我想免費領取{interest}，麻煩發給我，謝謝。\n今日最想睇：{interest} 比較重視：{priority}\n（編號：K1）')
+    assert picks == expected
+
+
+ANCHOR_PAGE = r'''<!doctype html>
+<button class="cta" type="button" data-wa data-location="hero" id="hero-cta">免費領取</button>
+<p>保留这段</p>
+<!-- 两步意向筛选抽屉 -->
+<div class="lead-gate" id="lead-gate">
+  <div class="gate-panel">
+    <a class="gate-confirm" href="https://wa.me/85257980601?text=hello" id="gate-confirm" role="button">立即查看</a>
+  </div>
+</div>
+<div class="wa-fallback" id="wa-fallback">
+  <a id="wa-fallback-open" href="#">開啟</a>
+  <a id="wa-fallback-web" href="#">網頁</a>
+</div>
+<script>
+    const gateCancel = document.getElementById('gate-cancel');
+    const gateBack = document.getElementById('gate-back');
+    const gateConfirm = document.getElementById('gate-confirm');
+    const leadGate = document.getElementById('lead-gate');
+    function buildWhatsAppUrls(message) {
+      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+      const text = encodeURIComponent(message);
+      const universal = `https://wa.me/${phone}?text=${text}`;
+      return { phone, universal, scheme: `whatsapp://send?phone=${phone}&text=${text}`, intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end` };
+    }
+    function buildMessage(leadCode) {
+      const extra = `\n\n今日最想睇：${gateAnswers.interest || '今日精選名單'}`;
+      const code = leadCode ? `\n（編號：${leadCode}）` : '';
+      return extra + code;
+    }
+    function openInHiddenFrame(url) {
+      const frame = document.createElement('iframe');
+      frame.src = url;
+    }
+    function prepareFallback(urls, message) {
+      waFallbackOpen.href = urls.universal;
+      waFallbackWeb.href = urls.universal;
+    }
+    function goWhatsApp(e, locationName) {
+      const anchor = e && e.currentTarget && e.currentTarget.tagName === 'A' ? e.currentTarget : null;
+      if (redirecting) return;
+      redirecting = true;
+      const message = buildMessage(leadCode);
+      const urls = buildWhatsAppUrls(message);
+      let target = urls.universal;
+      if (WA_ENV === 'ios_webview') target = urls.scheme;
+      else if (WA_ENV === 'android_browser') target = urls.intent;
+      if (WA_ENV === 'android_webview') {
+        if (e) e.preventDefault();
+        openInHiddenFrame(urls.scheme);
+      } else if (anchor) {
+        anchor.href = target;
+        if (WA_ENV === 'desktop') { anchor.target = '_blank'; anchor.rel = 'noopener'; }
+      } else if (WA_ENV === 'desktop') {
+        window.open(target, '_blank');
+      } else {
+        window.location.href = target;
+      }
+    }
+    gateCancel.addEventListener('click', closeLeadGate);
+    gateBack.addEventListener('click', () => setGateStep(1));
+    leadGate.addEventListener('click', e => { if (e.target === leadGate) closeLeadGate(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) closeLeadGate(); });
+    document.querySelectorAll('[data-wa]').forEach(btn => {
+      btn.addEventListener('click', () => openLeadGate(btn.dataset.location));
+    });
+    gateConfirm.addEventListener('click', e => {
+      if (!gateAnswers.interest || !gateAnswers.priority) { e.preventDefault(); return; }
+      closeLeadGate();
+      goWhatsApp(e, pendingLocation);
+    });
+</script>
+'''
+
+
+def test_anchor_jump_is_recognized_and_left_byte_for_byte():
+    from ablab.redirects import strip_lead_gate
+    updated = strip_lead_gate(ANCHOR_PAGE)
+    assert 'id="lead-gate"' not in updated and '两步意向筛选抽屉' not in updated
+    assert 'id="wa-fallback"' in updated and 'id="wa-fallback-web"' in updated and '保留这段' in updated
+    assert 'openLeadGate(btn.dataset.location)' not in updated
+    assert 'goWhatsApp(null, btn.dataset.location)' in updated
+    assert 'goWhatsApp(e, pendingLocation)' in updated
+    assert 'anchor.href = target' in updated
+    for name in ('goWhatsApp', 'buildWhatsAppUrls', 'prepareFallback', 'openInHiddenFrame'):
+        _same_function(ANCHOR_PAGE, updated, name)
+    with pytest.raises(ValueError, match='已经拿掉'):
+        strip_lead_gate(updated)
+    alien = ANCHOR_PAGE.replace('anchor.href = target', 'anchor.setAttribute("href", target)')
+    with pytest.raises(ValueError, match='没有原来的跳转函数'):
+        strip_lead_gate(alien)

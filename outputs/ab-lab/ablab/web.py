@@ -24,7 +24,7 @@ from pydantic import Field
 
 from .archives import EDITABLE_EXTENSIONS, MAX_FILE, MAX_ZIP, editable_file, import_content, read_source, resolve_file, source_files
 from .analytics import summarize
-from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput, WhatsAppReception, WhatsAppSplit
+from .models import ConfigUpdate, DirectEntry, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput, WhatsAppReception, WhatsAppSplit
 from .tracking import normalize_conversion, normalize_ga4
 from .linkcheck import LinkChecker
 from .watrust import TrustChecker, device_from_environ
@@ -822,6 +822,23 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
         version, changed = store.publish_reception(base, body.display_name, body.expected_published, guard)
         return {'number': number, 'version': version, 'changed': changed, 'sentence': f'本次由助理{body.display_name} 接待'}
+
+    @routes.post('/b-redirects/direct-entry')
+    def publish_direct_entry(body: DirectEntry, request: Request, store=Depends(site_store)):
+        guard = redirect_commit_guard(request, store)
+        base = source_version(store, 'B', body.version_id)
+        if store.slots()['B'] != body.expected_published:
+            raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
+        version, changed = store.publish_direct_entry(base, body.expected_published, guard)
+        site = registry.get(request.path_params.get('site_id', 'default'))
+        purged = None
+        if changed and site.get('cf_zone_id') and cloudflare.configured:
+            try:
+                cloudflare.purge(site['cf_zone_id'], site['domain'])
+                purged = {'ok': True}
+            except ProvisioningError as error:
+                purged = {'ok': False, 'detail': str(error)[:180]}
+        return {'version': version, 'changed': changed, 'cloudflare': purged}
 
     @routes.put('/b-redirects/numbers/split')
     def save_whatsapp_number_split(body: WhatsAppSplit, store=Depends(site_store)):
