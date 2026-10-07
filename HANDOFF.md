@@ -4,7 +4,7 @@
 
 仓库：`github.com/wulongjun650-prog/1111`。产品代码在 `outputs/ab-lab`。后台对外是 `https://hhucuq.top/`。这是付费流量用的 A/B 落地页系统（用户口头叫双子星）。
 
-最新代码在分支 `cursor/purge-landing-cache-e8f4`（草稿 PR #29）。不要从 `main` 接着改 AB Lab，`main` 上没有这套功能。
+最新代码在分支 `cursor/allow-landing-popups-e8f4`（草稿 PR #31）。不要从 `main` 接着改 AB Lab，`main` 上没有这套功能。
 
 ## 现在不要做的事
 
@@ -130,6 +130,7 @@
 - 删除未发布 B 版本的 API 必须带站点范围。站点路径要包含 `versions` 和 `logs`。`/api/sites/{id}/...` 和 `/api/...` 都挂了。
 - 扫描把 `CONFIG.whatsappNumber` 的数字标成 `whatsapp_number`。当前号码的判断：已发布版本上，某个 `whatsapp_number` 出现位置的号码（只看数字，8–15 位）等于池里的号码。
 - 也认这种写法：函数用 `whatsapp://send?phone=${phone}` 和 `https://wa.me/${phone}` 组成返回对象，再把 `urls.scheme` / `urls.universal` 赋给 `location.href` 或 `window.open`。换号仍改 `CONFIG.whatsappNumber` 那一处。`gtag_report_conversion` 里的 `window.location = url` 是动态参数，扫描会留一条「无法静态解析」，那不是 WhatsApp 跳转。
+- 落地页的 CSP sandbox 必须保留 `allow-popups`、`allow-popups-to-escape-sandbox`、`allow-top-navigation-to-custom-protocols`。新落地在桌面只 `window.open` 打开 `wa.me`，在手机把地址设成 `whatsapp://`。旧落地是当前页 `location.assign` 到 `api.whatsapp.com`，没有这三项也能跳。拿掉弹窗许可后，桌面按钮点了页面不动。不要另加不加限定的 `allow-top-navigation`。改这一行要重启 `ab-lab-target`，再给每个已接入落地域名清一次缓存。边缘会把旧 CSP 一起缓存 20 小时，不清的话访客还是旧沙箱。VIP 规则和 72000 不动。
 
 ## 访问备份（只读，不要删）
 
@@ -165,7 +166,9 @@
 
 | PR | 头分支 | 基分支 | 内容 |
 | --- | --- | --- | --- |
-| #29 | `cursor/purge-landing-cache-e8f4` | #28 的分支 | 保存配置或发布时清该域名 CF 缓存。本文档也在这条分支上 |
+| #31 | `cursor/allow-landing-popups-e8f4` | #30 的分支 | 落地页 sandbox 允许新落地 `window.open` 和 `whatsapp://`。本文档也在这条分支上 |
+| #30 | `cursor/detect-whatsapp-object-e8f4` | #29 的分支 | 扫描返回对象上的 WhatsApp 跳转 |
+| #29 | `cursor/purge-landing-cache-e8f4` | #28 的分支 | 保存配置或发布时清该域名 CF 缓存 |
 | #28 | `cursor/visit-country-flags-e8f4` | #27 | 国家列国旗和更大的中文 |
 | #27 | `cursor/exact-visit-ip-e8f4` | #26 | 新访问记完整 IP 和该 IP 的国家；nginx 转发 `CF-Connecting-IP` |
 | #26 | `cursor/clear-non-hk-visits-e8f4` | #25 | 一键清除非投放地区 |

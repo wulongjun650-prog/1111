@@ -215,7 +215,18 @@ class LocalBoundary:
                     # The admin is a different host, so this page still cannot read the admin session.
                     ancestors = self.deployment.admin_origin if self.deployment else 'http://127.0.0.1:8765 http://localhost:8765'
                     forms = 'https:' if self.deployment else f'https: http://127.0.0.1:{self.port}'
-                    policy = f"sandbox allow-scripts allow-forms allow-same-origin; frame-ancestors {ancestors}; form-action {forms}; object-src 'none'"
+                    # Older landings assign https://api.whatsapp.com in this tab.
+                    # Newer ones open https://wa.me in a new tab on desktop and
+                    # set location to whatsapp:// on phones. Without the popup
+                    # and custom-protocol flags, that click stays on the page.
+                    # The new tab must leave this sandbox so WhatsApp Web is a
+                    # normal page. This still cannot read the admin session.
+                    policy = (
+                        "sandbox allow-scripts allow-forms allow-same-origin "
+                        "allow-popups allow-popups-to-escape-sandbox "
+                        "allow-top-navigation-to-custom-protocols; "
+                        f"frame-ancestors {ancestors}; form-action {forms}; object-src 'none'"
+                    )
                     extra.append((b'content-security-policy', policy.encode()))
                 message['headers'] = [(k, v) for k, v in message.get('headers', []) if k.lower() not in {key for key, _ in extra}] + extra
             await send(message)
