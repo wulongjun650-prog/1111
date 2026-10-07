@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "google-ads-audiences": {
+      "source": "eliasmalmsandberg/google-ads-skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-ads-audiences/SKILL.md",
+      "computedHash": "b47c251bfc0fe7fe0568a590e1d58d6fbafb1d7a92f8881e901075912ab88999"
+    },
+    "google-ads-search-term-mining": {
+      "source": "eliasmalmsandberg/google-ads-skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-ads-search-term-mining/SKILL.md",
+      "computedHash": "2e2f57d81a27d083614993e2d390fbf632a051b31fa37e56a81ba4003ba393c4"
+    },
+    "google-search-ads-builder": {
+      "source": "gooseworks-ai/goose-skills",
+      "sourceType": "github",
+      "skillPath": "skills/ads/composites/google-search-ads-builder/SKILL.md",
+      "computedHash": "0ebb880e3482d5f524e542ae09cbf7307af5213fec00970191202a6a32ac52e1"
+    },
+    "placement-exclusion-manager": {
+      "source": "aaron-he-zhu/aaron-marketing-skills",
+      "sourceType": "github",
+      "skillPath": "ad/activate/placement-exclusion-manager/SKILL.md",
+      "computedHash": "c58e9927ed0731200a633890bb2cd6c5530a34c33a81cadeca04b48d506131b7"
+    }
+  }
+}
