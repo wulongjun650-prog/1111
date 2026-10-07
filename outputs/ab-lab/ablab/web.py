@@ -26,6 +26,7 @@ from .analytics import summarize
 from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput
 from .tracking import normalize_conversion, normalize_ga4
 from .linkcheck import LinkChecker
+from .watrust import TrustChecker, device_from_environ
 from .redirects import public_occurrences, rewrite_text, scan_bundle
 from .rules import decide
 from .cloudflare import Cloudflare
@@ -697,6 +698,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return version
 
     app.state.link_checker = LinkChecker()
+    app.state.trust_checker = TrustChecker(device_from_environ())
 
     def redirect_commit_guard(request, store):
         site_id = request.path_params.get('site_id', 'default')
@@ -736,6 +738,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             occurrences, warnings = scan_bundle(store.pages / version_id, version_id)
         return {'version':base, 'published_version':published, 'occurrences':public_occurrences(occurrences),
                 'warnings':warnings, 'presets':store.redirect_presets(), 'numbers':store.whatsapp_numbers(),
+                'trust_poll':store.whatsapp_trust_poll_enabled(),
                 'active':store.redirect_active(), 'split':store.redirect_split()}
 
     @routes.put('/b-redirects/split')
@@ -786,6 +789,18 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def delete_whatsapp_number(number_id: int, store=Depends(site_store)):
         store.delete_whatsapp_number(number_id)
         return {'ok':True}
+
+    @routes.post('/b-redirects/numbers/{number_id}/trust')
+    def check_whatsapp_trust(number_id: int, store=Depends(site_store)):
+        number = store.whatsapp_number(number_id)
+
+        def persist(outcome):
+            return store.save_whatsapp_trust(number_id, outcome['status'], outcome.get('reason') or '')
+
+        result = app.state.trust_checker.check(number['phone'], persist)
+        if result.get('busy'):
+            return {'number':store.whatsapp_number(number_id), 'busy':True, 'poll_enabled':store.whatsapp_trust_poll_enabled()}
+        return {'number':result['number'], 'busy':False, 'poll_enabled':store.whatsapp_trust_poll_enabled()}
 
     @routes.post('/b-redirects/numbers/apply')
     def apply_whatsapp_numbers(body: WhatsAppNumberApply, request: Request, store=Depends(site_store)):
@@ -937,7 +952,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if principal(request)['role'] != 'admin':
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted'}
+                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted', 'whatsapp_trust_checked'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 

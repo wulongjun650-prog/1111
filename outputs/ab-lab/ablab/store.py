@@ -48,7 +48,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS links(id INTEGER PRIMARY KEY, slot TEXT NOT NULL, url TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 0, UNIQUE(slot,url));
                 CREATE TABLE IF NOT EXISTS rotation(slot TEXT PRIMARY KEY, last_id INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_presets(id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, note TEXT NOT NULL, created REAL NOT NULL, check_result TEXT);
-                CREATE TABLE IF NOT EXISTS whatsapp_numbers(id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL UNIQUE, note TEXT NOT NULL, created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS whatsapp_numbers(id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL UNIQUE, note TEXT NOT NULL, created REAL NOT NULL, trust_result TEXT);
                 CREATE TABLE IF NOT EXISTS redirect_active(id INTEGER PRIMARY KEY CHECK(id=1), url TEXT NOT NULL, preset_id INTEGER REFERENCES redirect_presets(id) ON DELETE SET NULL, version_id TEXT NOT NULL REFERENCES versions(id), updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_split(id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL, mode TEXT NOT NULL, members TEXT NOT NULL, updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_split_assign(visitor_hash TEXT PRIMARY KEY, preset_id INTEGER, url TEXT NOT NULL, created REAL NOT NULL);
@@ -60,6 +60,9 @@ class Store:
             columns = {row['name'] for row in db.execute('PRAGMA table_info(events)')}
             if 'device_details' not in columns:
                 db.execute('ALTER TABLE events ADD COLUMN device_details TEXT')
+            number_columns = {row['name'] for row in db.execute('PRAGMA table_info(whatsapp_numbers)')}
+            if 'trust_result' not in number_columns:
+                db.execute('ALTER TABLE whatsapp_numbers ADD COLUMN trust_result TEXT')
             db.execute('INSERT OR IGNORE INTO settings VALUES(1,?,0,?)', (Config().model_dump_json(), secrets.token_hex(32)))
             db.executemany('INSERT OR IGNORE INTO slots(slot) VALUES(?)', [('A',), ('B',)])
             self.secret = db.execute('SELECT secret FROM settings WHERE id=1').fetchone()[0].encode()
@@ -324,10 +327,27 @@ class Store:
         return version | {'slot':'B'}, changed
 
     @staticmethod
-    def _whatsapp_number(row):
+    def _trust_public(raw):
+        blank = {'status':'unchecked', 'detail':'', 'checked_at':None}
+        if not raw:
+            return blank
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError):
+            return blank
+        status = data.get('status')
+        if status not in ('trust', 'clear', 'unconfirmed'):
+            return blank
+        detail = {'trust':'出现信任弹窗', 'clear':'正常', 'unconfirmed':'这次没看清' if data.get('reason') != 'unconfigured' else '云手机还没接上'}[status]
+        return {'status':status, 'detail':detail, 'checked_at':data.get('checked_at')}
+
+    @classmethod
+    def _whatsapp_number(cls, row):
         if row is None:
             raise KeyError('WhatsApp 号码不存在')
-        return dict(row)
+        value = dict(row)
+        value['trust'] = cls._trust_public(value.pop('trust_result', None))
+        return value
 
     def whatsapp_numbers(self):
         with self.connect() as db:
@@ -352,6 +372,29 @@ class Store:
             if not db.execute('DELETE FROM whatsapp_numbers WHERE id=?', (number_id,)).rowcount:
                 raise KeyError('WhatsApp 号码不存在')
             self._audit(db, 'whatsapp_number_deleted', {'id':number_id})
+
+    def save_whatsapp_trust(self, number_id, status, reason):
+        if status not in ('trust', 'clear', 'unconfirmed'):
+            raise ValueError('信任检测结果无效')
+        payload = json.dumps({'status':status, 'reason':reason or '', 'checked_at':time.time()}, ensure_ascii=False)
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if not db.execute('UPDATE whatsapp_numbers SET trust_result=? WHERE id=?', (payload, number_id)).rowcount:
+                raise KeyError('WhatsApp 号码不存在')
+            self._audit(db, 'whatsapp_trust_checked', {'id':number_id, 'status':status})
+        return self.whatsapp_number(number_id)
+
+    def whatsapp_trust_poll_enabled(self):
+        with self.connect() as db:
+            found = set()
+            for row in db.execute('SELECT trust_result FROM whatsapp_numbers'):
+                if not row['trust_result']:
+                    continue
+                try:
+                    found.add(json.loads(row['trust_result']).get('status'))
+                except (TypeError, ValueError):
+                    continue
+            return 'trust' in found and 'clear' in found
 
     def apply_whatsapp_number(self, base, number, occurrence_ids, expected_published, commit_guard=None):
         from .redirects import replace_bundle

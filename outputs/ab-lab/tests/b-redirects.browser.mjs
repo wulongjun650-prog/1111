@@ -39,7 +39,7 @@ async function withConsole(run) {
     presets:[{id:1,url:'https://safe.example/landing',note:'<img src=x onerror="window.presetExecuted=true">',created:1,check:check('normal')},
       {id:2,url:'https://blocked.example/landing',note:'风险地址',created:1,check:check('abnormal')},
       {id:3,url:'https://unknown.example/landing',note:'待确认地址',created:1,check:check('unknown')}],
-    active:null,numbers:[],adds:[],numberAdds:[],checks:[],applies:[],numberApplies:[],uploads:[],deletes:[],numberDeletes:[],checkResults:{},activeChecks:0,maxChecks:0,
+    active:null,numbers:[],adds:[],numberAdds:[],checks:[],applies:[],numberApplies:[],uploads:[],deletes:[],numberDeletes:[],trustChecks:[],trustResults:{},trust_poll:false,checkResults:{},activeChecks:0,maxChecks:0,
     applyStatus:200,scanStatus:200,stateStatus:200,delayCheck:null,releaseCheck:null,delayVersion:null,releaseScan:null};
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/api/**',async route=>{
@@ -55,7 +55,7 @@ async function withConsole(run) {
     else if(pathname===`/api/sites/${siteId}/b-redirects`) {
       fixture.scans.push(url.searchParams.get('version_id'));
       const selected=url.searchParams.get('version_id')||fixture.published.B;
-      response=structuredClone({version:fixture.versions.find(item=>item.id===selected),published_version:fixture.published.B,occurrences:fixture.byVersion[selected]||[],warnings:[],presets:fixture.presets,numbers:fixture.numbers,active:fixture.active});
+      response=structuredClone({version:fixture.versions.find(item=>item.id===selected),published_version:fixture.published.B,occurrences:fixture.byVersion[selected]||[],warnings:[],presets:fixture.presets,numbers:fixture.numbers,trust_poll:Boolean(fixture.trust_poll),active:fixture.active});
       status=fixture.scanStatus;
       if(status!==200) response={detail:'无法读取此版本'};
       if(selected===fixture.delayVersion) await new Promise(resolve=>{fixture.releaseScan=resolve;});
@@ -80,6 +80,13 @@ async function withConsole(run) {
       const body=request.postDataJSON();fixture.numberAdds.push(body);
       const added=body.phones.map((phone,index)=>({id:fixture.numbers.length+index+20,phone,note:body.note||'',created:3}));
       fixture.numbers.push(...added);response={numbers:added};
+    } else if(/\/b-redirects\/numbers\/\d+\/trust$/.test(pathname) && request.method()==='POST') {
+      const id=Number(pathname.split('/').at(-2));
+      const number=fixture.numbers.find(item=>item.id===id);
+      fixture.trustChecks.push(id);
+      if(number) number.trust={status:fixture.trustResults[id]||'unconfirmed', detail:'这次没看清', checked_at:4};
+      const statuses=new Set(fixture.numbers.map(item=>item.trust?.status));
+      response={number, busy:false, poll_enabled:Boolean(fixture.trust_poll) || (statuses.has('trust') && statuses.has('clear'))};
     } else if(pathname===`/api/sites/${siteId}/b-redirects/numbers/apply`) {
       const body=request.postDataJSON(),number=fixture.numbers.find(item=>item.id===body.number_id);
       fixture.numberApplies.push({body,csrf:request.headers()['x-csrf-token']});
@@ -387,7 +394,9 @@ test('WhatsApp number box replaces only the checked phone and leaves link apply 
     await page.locator('#b-wa-numbers').fill('85211112222\n+852 3333 4444');
     await page.locator('#b-wa-add').click();
     await page.locator('#b-redirect-numbers').getByText('85233334444', {exact:true}).waitFor();
+    await page.locator('#b-redirect-numbers .b-redirect-check', {hasText:'未确认'}).nth(1).waitFor();
     assert.deepEqual(fixture.numberAdds[0].phones, ['85211112222', '85233334444']);
+    assert.deepEqual(fixture.trustChecks, [21, 22]);
     const numberApply = page.waitForResponse(response => response.url().includes('/b-redirects/numbers/apply'));
     await page.locator('#b-redirect-numbers [data-number-id="9"]').getByRole('button', {name:'换成这个号码', exact:true}).click();
     await numberApply;
@@ -443,5 +452,44 @@ test('clicking the number already on the page keeps the mark and does not publis
     assert.equal(fixture.numberApplies.length, 0);
     assert.equal(await page.locator('#b-redirect-numbers [data-number-id="8"] .b-redirect-active-badge').count(), 1);
     assert.equal(await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').count(), 0);
+  });
+});
+
+test('current number shows trust, clear, and unconfirmed without polling until both exist', async () => {
+  const base = [
+    ...occurrences('live-b'),
+    {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}
+  ];
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = base;
+    fixture.trust_poll = false;
+    fixture.numbers = [{id:9, phone:'85299990000', note:'', created:1, trust:{status:'trust', detail:'出现信任弹窗', checked_at:2}}];
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-check.abnormal').getByText('出现信任弹窗').waitFor();
+    await page.locator('#wa-trust-alarm').getByText('当前号码出现信任弹窗。').waitFor();
+    assert.equal(await page.locator('#b-wa').getAttribute('data-trust-poll'), '0');
+    assert.deepEqual(fixture.trustChecks, []);
+  });
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = base;
+    fixture.trust_poll = true;
+    fixture.numbers = [{id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}];
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-check.normal').getByText('正常').waitFor();
+    assert.equal(await page.locator('#wa-trust-alarm').count(), 1);
+    assert.equal(await page.locator('#wa-trust-alarm').isHidden(), true);
+    assert.equal(await page.locator('#b-wa').getAttribute('data-trust-poll'), '1');
+  });
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = base;
+    fixture.numbers = [{id:9, phone:'85299990000', note:'', created:1, trust:{status:'unconfirmed', detail:'这次没看清', checked_at:2}}];
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-check.unknown').getByText('未确认').waitFor();
+    assert.equal(await page.locator('#wa-trust-alarm').isHidden(), true);
+    assert.equal(await page.locator('#b-wa').getAttribute('data-trust-poll'), '0');
+    const recheck = page.waitForResponse(response => response.url().includes('/numbers/9/trust'));
+    await page.locator('#b-redirect-numbers [data-number-id="9"]').getByRole('button', {name:'再测一次', exact:true}).click();
+    await recheck;
+    assert.deepEqual(fixture.trustChecks, [9]);
   });
 });
