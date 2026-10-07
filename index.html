@@ -2,16 +2,19 @@
 <html lang="zh-HK">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#f6f4ef">
   <meta name="format-detection" content="telephone=no">
 
   <!-- 移动端极速网络连接预热与关键渲染资产预加载 -->
-  <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
-  <link rel="preconnect" href="https://connect.facebook.net" crossorigin>
+  <!-- gtag.js 是 no-cors 腳本請求，preconnect 不能帶 crossorigin，否則建立的連線用不上 -->
+  <link rel="preconnect" href="https://www.googletagmanager.com">
   <link rel="dns-prefetch" href="https://www.google-analytics.com">
+  <link rel="dns-prefetch" href="https://www.googleadservices.com">
+  <link rel="dns-prefetch" href="https://googleads.g.doubleclick.net">
+  <link rel="dns-prefetch" href="https://connect.facebook.net">
   <link rel="preload" as="image" href="assets/econman-banner.webp" type="image/webp" fetchpriority="high">
-  <link rel="preload" as="image" href="assets/hero-bg.webp" type="image/webp">
+  <link rel="preload" as="image" href="assets/hero-bg.webp" type="image/webp" fetchpriority="low">
 
   <title>講經MAN｜10月7日港股精選名單</title>
   <meta name="description" content="講經MAN整理10月7日最新港股午市數據：恒指守住24000點之上、科技股普遍回吐，北水今日仍暫停並於10月8日恢復；配合今日最新觀察名單。">
@@ -24,33 +27,30 @@
     gtag('js', new Date());
 
     gtag('config', 'G-Q6YP0DZLSY');
+    // 沒有 config AW-，send_to: 'AW-...' 的轉化事件可能根本不會發出
+    gtag('config', 'AW-11421360067');
   </script>
 
-  <!-- Event snippet for 联系人 conversion page -->
+  <!-- Meta Pixel：先建隊列，腳本延後到 load 之後或首次互動才載入，所有 fbq() 呼叫照常排隊 -->
   <script>
-  function gtag_report_conversion(url) {
-    var callback = function () {
-      if (typeof(url) != 'undefined') {
-        window.location = url;
-      }
-    };
-    gtag('event', 'conversion', {
-        'send_to': 'AW-11421360067/Z7iXCK6y948dEMO_kMYq',
-        'event_callback': callback
-    });
-    return false;
-  }
-  </script>
-
-  <!-- Meta Pixel -->
-  <script>
-    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    !function(f){if(f.fbq)return;var n=f.fbq=function(){n.callMethod?
     n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
-    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
-    document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];}(window);
     fbq('init', '1055025880503308');
     fbq('track', 'PageView');
+    (function(){
+      var loaded = false;
+      function loadPixel(){
+        if (loaded) return; loaded = true;
+        var s = document.createElement('script'); s.async = true;
+        s.src = 'https://connect.facebook.net/en_US/fbevents.js';
+        document.head.appendChild(s);
+      }
+      window.addEventListener('load', function(){ setTimeout(loadPixel, 1200); }, {once:true});
+      ['pointerdown','touchstart','scroll'].forEach(function(evt){
+        window.addEventListener(evt, loadPixel, {once:true, passive:true});
+      });
+    })();
   </script>
   <noscript><img height="1" width="1" style="display:none" alt=""
     src="https://www.facebook.com/tr?id=1055025880503308&ev=PageView&noscript=1"/></noscript>
@@ -119,7 +119,7 @@
     .hero-qualify-note{text-align:center;margin:8px 0 0;color:#8a7361;font-size:11px;line-height:1.45;font-weight:700}
 
     /* 问卷抽屉样式：100% 完整保留 */
-    .lead-gate{position:fixed;inset:0;z-index:60;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.42);padding:18px 12px calc(12px + env(safe-area-inset-bottom));backdrop-filter:blur(6px)}
+    .lead-gate{position:fixed;inset:0;z-index:60;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
     .lead-gate.show{display:flex}
     .gate-panel{width:100%;max-width:520px;background:linear-gradient(180deg,#fcfbf8 0%,#f6f3ed 100%);border-radius:28px 28px 0 0;box-shadow:0 -16px 42px rgba(13,23,39,.18);padding:14px 18px calc(18px + env(safe-area-inset-bottom));overflow:hidden;border:1px solid rgba(255,255,255,.55)}
     .gate-handle{width:54px;height:5px;border-radius:999px;background:#d8d2c7;margin:0 auto 13px}
@@ -158,7 +158,19 @@
     .gate-confirm{flex:1;border:0;background:linear-gradient(135deg,#f2a552,#e98a25);color:#fff;box-shadow:0 10px 22px rgba(229,124,21,.18)}
     .gate-confirm:disabled{opacity:.72;box-shadow:none;cursor:not-allowed;filter:saturate(.75)}
     .gate-trust{margin-top:12px;text-align:center;color:#8e95a0;font-size:10px;line-height:1.55}
-    @media(min-width:521px){.lead-gate{align-items:center;padding:18px}.gate-panel{border-radius:26px;padding-bottom:20px}}
+    .wa-fallback{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .wa-fallback.show{display:flex}
+    .wa-fallback .gate-panel{text-align:center}
+    .wa-fallback .gate-title{margin-top:4px}
+    .wa-fallback .cta{margin-top:14px}
+    .wa-alt{display:flex;gap:9px;margin-top:10px}
+    .wa-alt button,.wa-alt a{flex:1;min-height:46px;display:flex;align-items:center;justify-content:center;border:1px solid #dfdad1;background:#fff;color:#33435f;border-radius:13px;font-size:13px;font-weight:900;cursor:pointer}
+    .wa-alt button:active,.wa-alt a:active{transform:scale(.97);background:#f3f1ec}
+    .wa-number{margin-top:10px;font-size:12px;color:#5d6a7d;font-weight:800}
+    .wa-browser-tip{display:none;margin-top:10px;padding:9px 11px;border-radius:12px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:11px;line-height:1.5;font-weight:800}
+    .wa-browser-tip.show{display:block}
+    .wa-close{margin-top:12px;border:0;background:none;color:#8e95a0;font-size:12px;font-weight:800;padding:8px;cursor:pointer}
+    @media(min-width:521px){.lead-gate,.wa-fallback{align-items:center;padding:18px}.gate-panel{border-radius:26px;padding-bottom:20px}}
 
     @media(max-width:360px){h1{font-size:34px}.hero-heading{font-size:28px}.hero-card h3{font-size:21px}.hero{padding-left:17px;padding-right:17px}section{padding-left:17px;padding-right:17px}.stat-value{font-size:20px}.gate-title{font-size:20px}.gate-option{font-size:14px;padding:14px}}
   </style>
@@ -328,12 +340,33 @@
     </div>
   </div>
 
+  <!-- 喚起失敗兜底：App 內置瀏覽器攔截跳轉時，用戶仍有路可走 -->
+  <div class="wa-fallback" id="wa-fallback" aria-hidden="true">
+    <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="wa-fallback-title">
+      <div class="gate-handle"></div>
+      <h3 class="gate-title" id="wa-fallback-title">未自動開啟 WhatsApp？</h3>
+      <p class="gate-desc">按下面按鈕再試一次，打開後直接按「發送」即可領取名單。</p>
+      <a class="cta" id="wa-fallback-open" href="#">開啟 WhatsApp 領取名單</a>
+      <div class="wa-alt">
+        <button type="button" id="wa-copy-number">複製 WhatsApp 號碼</button>
+        <button type="button" id="wa-copy-msg">複製留言內容</button>
+      </div>
+      <div class="wa-number" id="wa-number-text"></div>
+      <div class="wa-browser-tip" id="wa-browser-tip">如仍未能開啟：請按右上角「⋯」，選擇「在瀏覽器中開啟」，再按一次領取按鈕。</div>
+      <button class="wa-close" type="button" id="wa-fallback-close">關閉</button>
+    </div>
+  </div>
+
   <script>
     // ====== 日常設定區：換號 / 換接待只改這裡 ======
     const CONFIG = {
       whatsappNumber: '85257980601',
       receptionist: 'Chloe',
-      googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq'
+      googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq',
+      // true = 第 2 題揀完即直接跳 WhatsApp（少一次點擊，可做 A/B）；false = 需再按「立即查看」
+      autoJumpOnStep2: false,
+      // 喚起後多少毫秒頁面仍在前台，就彈出兜底面板
+      fallbackDelay: 1600
     };
 
     // ====== 首屏三張卡：廣告參數決定預設卡，但用戶可自由左右滑 ======
@@ -515,6 +548,10 @@
         if (q === 'priority') {
           gateConfirm.disabled = false;
           try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'priority'}); } catch(e){}
+          if (CONFIG.autoJumpOnStep2) {
+            closeLeadGate();
+            goWhatsApp(pendingLocation);
+          }
         }
       });
     });
@@ -524,81 +561,203 @@
     leadGate.addEventListener('click', e => { if (e.target === leadGate) closeLeadGate(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) closeLeadGate(); });
 
-    // 【全端穿透】：智能构建 WhatsApp 唤醒协议
-    function getWhatsAppUrls(message) {
+    // ====== WhatsApp 跳轉：先判斷打開環境，再揀喚起方式 ======
+    const UA = navigator.userAgent || '';
+    const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const IS_ANDROID = /Android/i.test(UA);
+    const IN_APP_RE = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|musical_ly|Bytedance|Snapchat|Pinterest|LinkedInApp/i;
+    // iOS：Safari / SFSafariViewController / Chrome / Google App 的 UA 都帶 "Safari/"，宿主 App 自建的 WKWebView 不帶
+    const IOS_WEBVIEW = IS_IOS && (!/Safari\//.test(UA) || IN_APP_RE.test(UA));
+    // Android：系統 WebView 的 UA 帶 "; wv)"；Chrome Custom Tabs（AdMob / YouTube / Gmail 常用）與 Chrome 相同
+    const ANDROID_WEBVIEW = IS_ANDROID && (/; wv\)/.test(UA) || IN_APP_RE.test(UA));
+    const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
+                 : IS_ANDROID ? (ANDROID_WEBVIEW ? 'android_webview' : 'android_browser')
+                 : 'desktop';
+
+    function buildWhatsAppUrls(message) {
       const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
-      const encodedMsg = encodeURIComponent(message);
+      const text = encodeURIComponent(message);
+      const universal = `https://wa.me/${phone}?text=${text}`;
       return {
-        // iOS 原生底层私有协议：穿透 AASTOCKS / etnet 内嵌 WebView，直接秒开本地 WhatsApp
-        scheme: `whatsapp://send?phone=${phone}&text=${encodedMsg}`,
-        // 官方 Universal Link 兜底（替代卡死的 api.whatsapp.com）
-        universal: `https://wa.me/${phone}?text=${encodedMsg}`
+        phone,
+        universal,
+        scheme: `whatsapp://send?phone=${phone}&text=${text}`,
+        // 冇裝普通版（或只裝 Business 版）時 Chrome 會自動轉去 fallback，wa.me 再交俾已安裝嘅 App
+        intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end`
       };
     }
 
-    // 【解决苹果卡死与阻塞的核心跳转逻辑】
+    function buildMessage() {
+      const interestKey = Object.keys(defaultInterestMap).find(k => defaultInterestMap[k] === gateAnswers.interest);
+      const data = VARIANTS[interestKey] || VARIANTS[currentKey] || VARIANTS.blackhorse;
+      const extra = `\n\n今日最想睇：${gateAnswers.interest || '今日精選名單'}\n比較重視：${gateAnswers.priority || '股票名稱＋今日值得留意原因'}`;
+      return (data.message || '你好，我想免費領取今日精選名單，麻煩發給我，謝謝。') + extra;
+    }
+
+    function track(name, params) {
+      try {
+        if (typeof gtag === 'function') gtag('event', name, Object.assign({ transport_type: 'beacon', wa_env: WA_ENV }, params));
+      } catch (e) {}
+    }
+
+    // 宿主唔處理自訂 scheme 時，只係 iframe 失敗；主頁面唔會變成 ERR_UNKNOWN_URL_SCHEME 錯誤頁，兜底面板仍然可用
+    function openInHiddenFrame(url) {
+      const frame = document.createElement('iframe');
+      frame.style.display = 'none';
+      frame.src = url;
+      document.body.appendChild(frame);
+      setTimeout(() => frame.remove(), 3000);
+    }
+
+    const waFallback = document.getElementById('wa-fallback');
+    const waFallbackOpen = document.getElementById('wa-fallback-open');
+    const waCopyNumber = document.getElementById('wa-copy-number');
+    const waCopyMsg = document.getElementById('wa-copy-msg');
+    const waNumberText = document.getElementById('wa-number-text');
+    const waBrowserTip = document.getElementById('wa-browser-tip');
+    let waAttempt = null;
+    let fallbackTimer = 0;
+    let fallbackPayload = { phone: '', message: '' };
+
+    function prepareFallback(urls, message) {
+      fallbackPayload = { phone: urls.phone, message };
+      const hrefByEnv = {
+        ios_browser: urls.universal,
+        ios_webview: urls.scheme,
+        android_browser: urls.intent,
+        android_webview: urls.scheme,
+        desktop: urls.universal
+      };
+      waFallbackOpen.href = hrefByEnv[WA_ENV];
+      waNumberText.textContent = `WhatsApp 號碼：+${urls.phone}`;
+      waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
+    }
+
+    function showFallback() {
+      if (!waAttempt || waAttempt.left || document.hidden) return;
+      waFallback.classList.add('show');
+      waFallback.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      track('wa_fallback_shown', { placement: waAttempt.placement });
+    }
+
+    function hideFallback() {
+      if (!waFallback.classList.contains('show')) return;
+      waFallback.classList.remove('show');
+      waFallback.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function armFallback(delay) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(showFallback, delay);
+    }
+
+    function markLeft() {
+      if (!waAttempt || waAttempt.left) return;
+      waAttempt.left = true;
+      clearTimeout(fallbackTimer);
+      hideFallback();
+      track('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
+    }
+
+    // 頁面轉入後台 = WhatsApp 已被喚起
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) markLeft();
+      else redirecting = false;
+    });
+    window.addEventListener('pagehide', () => clearTimeout(fallbackTimer));
+    // 系統確認框（Android 揀 App、iOS「喺 WhatsApp 開啟？」）會令頁面失焦但仍然可見，期間唔好彈兜底
+    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) armFallback(3500); });
+    window.addEventListener('focus', () => {
+      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) armFallback(900);
+    });
+    window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
+
     function goWhatsApp(locationName) {
       if (redirecting) return;
       redirecting = true;
 
-      const data = VARIANTS[currentKey] || VARIANTS.blackhorse;
-      const extra = `\n\n今日最想睇：${gateAnswers.interest || '今日精選名單'}\n比較重視：${gateAnswers.priority || '股票名稱＋今日值得留意原因'}`;
-      const fullMessage = (data.message || '你好，我想免費領取今日精選名單，麻煩發給我，謝謝。') + extra;
+      const message = buildMessage();
+      const urls = buildWhatsAppUrls(message);
+      prepareFallback(urls, message);
 
-      const urls = getWhatsAppUrls(fullMessage);
-
-      // 数据埋点立即发送（非阻塞同步上报，不破坏点击手势调用栈）
+      // 打點只係同步入隊 + beacon 發送，唔會阻塞下面嘅跳轉；切去 WhatsApp 後 beacon 由瀏覽器繼續送出
       try {
         if (typeof fbq === 'function') {
           fbq('track', 'Contact', { content_name: 'WhatsApp', content_category: 'Lead' });
-          fbq('trackCustom', 'WhatsAppClick', { placement: locationName || 'unknown', variant: currentKey });
+          fbq('trackCustom', 'WhatsAppClick', { placement: locationName || 'unknown', variant: currentKey, wa_env: WA_ENV });
         }
       } catch (e) {}
-
+      track('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey });
       try {
-        if (typeof gtag === 'function') {
-          gtag('event', 'whatsapp_click', {
-            event_category: 'engagement',
-            event_label: locationName || 'unknown',
-            landing_variant: currentKey
-          });
-          gtag('event', 'conversion', { 'send_to': CONFIG.googleSendTo });
-        }
+        if (typeof gtag === 'function') gtag('event', 'conversion', { send_to: CONFIG.googleSendTo, transport_type: 'beacon' });
       } catch (e) {}
 
-      // 跨端环境精准分流
-      const ua = navigator.userAgent || '';
-      const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      const isAndroid = /Android/i.test(ua);
+      waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false };
 
-      if (isIOS) {
-        // [iOS 穿透核心]：必须在当前用户手势内「立即同步触发」，坚决去掉 setTimeout 延迟！
-        // 保持 Safari User Activation 凭证，彻底杜绝系统拦截弹窗与卡死
-        window.location.href = urls.scheme;
-
-        // 容灾兜底：若 1.5 秒后页面未切入后台（说明未装 WhatsApp 或唤醒受阻），自动平滑回落至 Universal Link
-        const startTime = Date.now();
-        setTimeout(() => {
-          if (Date.now() - startTime < 2200 && !document.hidden) {
-            window.location.href = urls.universal;
-          }
-        }, 1500);
-      } else if (isAndroid) {
-        // [Android 穿透]：秒开本地 WhatsApp，避免浏览器弹出“选择打开方式”弹窗
-        window.location.href = urls.scheme;
-        const startTime = Date.now();
-        setTimeout(() => {
-          if (Date.now() - startTime < 1800 && !document.hidden) {
-            window.location.href = urls.universal;
-          }
-        }, 1000);
-      } else {
-        // 桌面 PC 端：新窗口平滑打开 WhatsApp Web
-        window.open(urls.universal, '_blank');
+      // 全部喺用戶點擊嘅同一個調用棧內同步執行
+      switch (WA_ENV) {
+        case 'ios_browser':
+          // Universal Link：已安裝直接開 App、冇確認框；未安裝落到 WhatsApp 官方網頁，唔會彈「網址無效」
+          window.location.href = urls.universal;
+          break;
+        case 'ios_webview':
+          // WKWebView 唔會觸發 Universal Link，只能靠宿主轉交 scheme；失敗頁面保持原狀，由兜底面板接手
+          window.location.href = urls.scheme;
+          break;
+        case 'android_browser':
+          window.location.href = urls.intent;
+          break;
+        case 'android_webview':
+          openInHiddenFrame(urls.scheme);
+          break;
+        default:
+          window.open(urls.universal, '_blank');
+          redirecting = false;
+          return;
       }
 
+      armFallback(CONFIG.fallbackDelay);
       setTimeout(() => { redirecting = false; }, 2000);
     }
+
+    function legacyCopy(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      return ok;
+    }
+
+    function copyText(text, btn, okLabel) {
+      const original = btn.textContent;
+      const done = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
+      // 先試同步方法：部分 WebView 冇 clipboard API，而且 await 之後會失去用戶手勢
+      if (legacyCopy(text)) { done(); return; }
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => {});
+    }
+
+    waFallbackOpen.addEventListener('click', () => {
+      waAttempt = { t: Date.now(), placement: 'fallback', left: false };
+      track('wa_fallback_click', {});
+    });
+    waCopyNumber.addEventListener('click', () => {
+      copyText(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
+      track('wa_copy_number', {});
+    });
+    waCopyMsg.addEventListener('click', () => {
+      copyText(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
+      track('wa_copy_message', {});
+    });
+    document.getElementById('wa-fallback-close').addEventListener('click', hideFallback);
+    waFallback.addEventListener('click', e => { if (e.target === waFallback) hideFallback(); });
 
     document.querySelectorAll('[data-wa]').forEach(btn => {
       btn.addEventListener('click', () => openLeadGate(btn.dataset.location));
