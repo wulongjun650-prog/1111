@@ -32,6 +32,7 @@ def test_online_over_three_or_offline_switches():
     assert decision_for(crowded, PHONE) == 'online'
     assert decision_for(crowded, OTHER) == 'offline'
     assert decision_for(crowded, '85200003333') == ''
+    assert decision_for(crowded, '') == 'online'
     quiet = parse_ticket({'online': 2, 'accounts': [{'phone': PHONE, 'online_count': 1, 'leads': 0}]}, TICKET)
     assert decision_for(quiet, PHONE) == ''
     empty = parse_ticket({'online': 0, 'offline_apps': 4}, TICKET)
@@ -93,6 +94,10 @@ def test_lead_detail_names_the_work_order_and_number():
         {'name': '鳄鱼-梵高', 'code': 'sampleTicket', 'phone': OTHER, 'leads': '0.5'},
         {'name': '另一工单', 'code': 'secondTicket', 'phone': PHONE, 'leads': '1'},
     ]
+    quiet = parse_ticket({'online': 1, 'accounts': [{'phone': PHONE, 'leads': 0}, {'phone': OTHER, 'offline': True, 'leads': 2}]}, TICKET)
+    skipped = lead_report([quiet])
+    assert skipped['rows'] == [{'name': 'sampleTicket', 'code': 'sampleTicket', 'phone': OTHER, 'leads': '2'}]
+    assert skipped['total'] == '2'
 
 
 def test_buyer_quote_applies_fee_then_divides_by_leads():
@@ -106,7 +111,7 @@ def test_buyer_quote_applies_fee_then_divides_by_leads():
         '10/06',
         'HK项目',
         'AJ',
-        '187-027-3339 充值0     余额：1,447.93',
+        '187-027-3339 充值0 余额：1,447.93',
         '消耗：33.29',
         '进线：0.8',
         '成本：41.61',

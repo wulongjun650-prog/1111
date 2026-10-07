@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from ablab.desk import DeskError, review_tickets
-from ablab.desk_window import WorkOrderWindow
+from ablab.desk_window import WorkOrderWindow, readable_list
 
 
 PHONE = '85200001111'
@@ -70,6 +70,11 @@ def _server():
     thread_started = __import__('threading').Thread(target=server.serve_forever, daemon=True)
     thread_started.start()
     return server
+
+
+def test_a_rejected_list_is_not_treated_as_the_account_list():
+    assert readable_list({'code': 0, 'msg': 'password', 'data': {}}) is False
+    assert readable_list({'code': 1, 'data': {'items': [], 'shareStatistics': {}}}) is True
 
 
 def test_missing_browser_reports_that_the_window_cannot_open(tmp_path):

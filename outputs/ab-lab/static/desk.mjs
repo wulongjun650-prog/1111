@@ -6,6 +6,7 @@ export function createDesk({api, on, element, livePhone, switchLive}) {
   let active = false;
   let timer = 0;
   let flight = false;
+  let onlineHeld = false;
 
   const head = element('div', 'card-heading');
   head.append(element('h2', '', '工单与投手'));
@@ -114,7 +115,7 @@ export function createDesk({api, on, element, livePhone, switchLive}) {
     } catch { /* 发不出声音时，警报文字仍然留着 */ }
   }
 
-  async function review() {
+  async function review(manual = false) {
     if (flight) return;
     if (!tickets.length) { showMessage('先添加工单。', true); return; }
     flight = true; check.disabled = true;
@@ -122,10 +123,19 @@ export function createDesk({api, on, element, livePhone, switchLive}) {
       const report = await api('/api/desk/review', {method: 'POST', body: {phone: livePhone() || '', tickets}, timeout: 70000});
       renderStats(report);
       alarm.hidden = true; alarmText.textContent = '';
+      if (report.switch !== 'online') onlineHeld = false;
+      if (!manual && report.switch === 'online' && onlineHeld) {
+        showMessage('在线人数仍超过 3。这一轮已经换过号，不再连续换。');
+        return;
+      }
       if (!report.switch) { showMessage('当前号码不用换。'); return; }
       const reason = report.switch === 'offline' ? '当前号码离线' : '在线人数超过 3';
-      const switched = await switchLive();
-      if (switched.ok) { showMessage(`${reason}，已自动换成下一个预存号码。`); return; }
+      const switched = await switchLive({avoid: report.offline_phones || []});
+      if (switched.ok) {
+        if (report.switch === 'online') onlineHeld = true;
+        showMessage(`${reason}，已自动换成下一个预存号码。`);
+        return;
+      }
       alarm.hidden = false;
       alarmText.textContent = `${reason}。${switched.detail || '没有换成这个号码。'}`;
       beep();
@@ -144,7 +154,7 @@ export function createDesk({api, on, element, livePhone, switchLive}) {
     url.value = ''; name.value = ''; password.value = '';
     saveTickets(); renderTickets(); showMessage('已添加工单。');
   });
-  on(check, 'click', review);
+  on(check, 'click', () => review(true));
   on(buyerForm, 'submit', async event => {
     event.preventDefault();
     try {

@@ -49,6 +49,16 @@ def chrome_executable():
     return ''
 
 
+def readable_list(payload):
+    """A list response is usable once the page has actually returned the account list."""
+    if not isinstance(payload, dict) or payload.get('code') not in (None, 1):
+        return False
+    body = payload.get('data') if isinstance(payload.get('data'), dict) else payload
+    if not isinstance(body, dict):
+        return False
+    return isinstance(body.get('items'), list) or isinstance(body.get('accounts'), list) or 'online' in body or isinstance(body.get('shareStatistics'), dict)
+
+
 def _fill_script(password):
     return """(() => {
       const password = %s;
@@ -214,7 +224,8 @@ class WorkOrderWindow:
         self._ready_id = ''
         self._call('Page.navigate', {'url': url})
         deadline = time.time() + self.timeout
-        filled = False
+        fills = 0
+        next_fill = time.time()
         while time.time() < deadline:
             if self._ready_id:
                 request_id = self._ready_id
@@ -223,10 +234,12 @@ class WorkOrderWindow:
                     payload = self._body(request_id)
                 except DeskError:
                     payload = None
-                if isinstance(payload, dict):
+                if readable_list(payload):
                     return payload
-            if not filled and password:
-                filled = self._fill(password)
+            if password and fills < 4 and time.time() >= next_fill:
+                if self._fill(password):
+                    fills += 1
+                next_fill = time.time() + 2
             message = self._recv(min(deadline, time.time() + 0.4))
             if message and message.get('method'):
                 self._on_event(message)

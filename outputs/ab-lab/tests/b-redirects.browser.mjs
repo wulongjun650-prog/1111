@@ -640,3 +640,32 @@ test('work order over three online switches the published number and shows lead 
     assert.equal(fixture.numberApplies.length, 0);
   });
 });
+
+test('an online work order does not rotate the published number on the next automatic check', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [
+      ...occurrences('live-b'),
+      {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}
+    ];
+    fixture.numbers = [
+      {id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:10, phone:'85200002222', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}
+    ];
+    fixture.deskSwitch = 'online';
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    await page.locator('[data-tab="desk"]').click();
+    await page.locator('#desk-url').fill('https://admin.haiwangweb.com/web#/accountshow/sampleTicket');
+    await page.getByRole('button', {name:'添加工单', exact:true}).click();
+    const applied = page.waitForResponse(response => response.url().includes('/numbers/apply'));
+    await page.locator('#desk-check').click();
+    await applied;
+    await page.locator('.desk-message').getByText('已自动换成下一个预存号码').waitFor();
+    assert.equal(fixture.numberApplies.length, 1);
+    const reviewed = page.waitForResponse(response => response.url().includes('/desk/review'));
+    await page.clock.fastForward(30000);
+    await reviewed;
+    await page.locator('.desk-message').getByText('不再连续换').waitFor();
+    assert.equal(fixture.numberApplies.length, 1);
+  }, {clock:true});
+});
