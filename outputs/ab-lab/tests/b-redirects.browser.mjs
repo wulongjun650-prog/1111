@@ -114,6 +114,11 @@ async function withConsole(run, options = {}) {
       const phone=body.phone;
       const leads=phone==='85299990000'?2:0;
       response={rows:[{name:'鳄鱼-梵高', code:'sampleTicket', phone:phone||'85299990000', leads:String(leads)}], total:String(leads), switch:fixture.deskSwitch||'', online:fixture.deskSwitch==='online'?4:1, offline_phones:fixture.deskOffline||[]};
+    } else if(pathname===`/api/sites/${siteId}/desk/screen` && request.method()==='GET') {
+      await route.fulfill({status:204, body:''});
+      return;
+    } else if(pathname===`/api/sites/${siteId}/desk/screen/click` && request.method()==='POST') {
+      response={ok:true};
     } else if(pathname===`/api/sites/${siteId}/desk/quote` && request.method()==='POST') {
       response={text:'10/06\nHK项目\nAJ\n消耗：33.29\n进线：0.8\n成本：41.61', adjusted:'33.29', cost:'41.61', row:[]};
     } else if(pathname===`/api/sites/${siteId}/upload/B`) {
