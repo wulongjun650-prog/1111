@@ -197,6 +197,11 @@ class TrackingApply(StrictModel):
     expected_published: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
 
 
+class DirectEntry(StrictModel):
+    version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
+    expected_published: str | None = Field(pattern=r'^[a-f0-9]{32}$')
+
+
 class WhatsAppReception(StrictModel):
     phone: str = Field(min_length=1, max_length=40, strict=True)
     display_name: str = Field(min_length=1, max_length=40, strict=True)

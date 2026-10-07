@@ -1258,3 +1258,196 @@ def replace_bundle(root, version_id, occurrence_ids, url, pages, filename):
     if not changed_bytes:
         return None, 0
     return write_bundle(edited, filename, pages, digest.hexdigest()), len(selected)
+
+
+def _direct_message(indent):
+    """The two random lines. Indent follows the original buildMessage."""
+    body = indent + '  '
+    return '\n'.join([
+        f'{indent}function buildMessage(leadCode) {{',
+        f'{body}const RANDOM_POOL = {{',
+        f'{body}  interests: [',
+        f"{body}    '今日心水股名單',",
+        f"{body}    '近期潛力黑馬名單',",
+        f"{body}    '高息收息股名單'",
+        f'{body}  ],',
+        f'{body}  priorities: [',
+        f"{body}    '股票名稱＋今日值得留意原因',",
+        f"{body}    '近期資金／成交異動重點',",
+        f"{body}    '所屬板塊＋後續觀察重點'",
+        f'{body}  ]',
+        f'{body}}};',
+        f'{body}const interest = RANDOM_POOL.interests[Math.floor(Math.random() * RANDOM_POOL.interests.length)];',
+        f'{body}const priority = RANDOM_POOL.priorities[Math.floor(Math.random() * RANDOM_POOL.priorities.length)];',
+        f'{body}gateAnswers.interest = interest;',
+        f'{body}gateAnswers.priority = priority;',
+        f"{body}const code = leadCode ? `\\n（編號：${{leadCode}}）` : '';",
+        f'{body}return `你好，我想免費領取${{interest}}，麻煩發給我，謝謝。\\n今日最想睇：${{interest}} 比較重視：${{priority}}` + code;',
+        f'{indent}}}',
+    ])
+
+
+def _js_function_span(text, name):
+    """Byte span of one function, aware of strings so a template brace is not the end."""
+    marker = f'function {name}('
+    start = text.find(marker)
+    if start < 0:
+        return None
+    if text.find(marker, start + len(marker)) >= 0:
+        raise ValueError(f'{name} 出现了多次，没有改动')
+    line_start = text.rfind('\n', 0, start) + 1
+    brace = text.find('{', start)
+    if brace < 0:
+        raise ValueError(f'找不到 {name} 的函数体，没有改动')
+    index, depth, quote, line_comment, block_comment = brace, 0, '', False, False
+    interpolations = []
+    while index < len(text):
+        char = text[index]
+        nxt = text[index + 1] if index + 1 < len(text) else ''
+        if line_comment:
+            if char == '\n':
+                line_comment = False
+            index += 1
+            continue
+        if block_comment:
+            if char == '*' and nxt == '/':
+                block_comment = False
+                index += 2
+                continue
+            index += 1
+            continue
+        if quote == '`':
+            if char == '\\':
+                index += 2
+                continue
+            if char == '$' and nxt == '{':
+                interpolations.append(depth)
+                quote = ''
+                depth += 1
+                index += 2
+                continue
+            if char == '`':
+                quote = ''
+            index += 1
+            continue
+        if quote:
+            if char == '\\':
+                index += 2
+                continue
+            if char == quote:
+                quote = ''
+            index += 1
+            continue
+        if char == '/' and nxt == '/':
+            line_comment = True
+            index += 2
+            continue
+        if char == '/' and nxt == '*':
+            block_comment = True
+            index += 2
+            continue
+        if char in ('"', "'", '`'):
+            quote = char
+            index += 1
+            continue
+        if char == '{':
+            depth += 1
+        elif char == '}':
+            depth -= 1
+            if interpolations and depth == interpolations[-1]:
+                interpolations.pop()
+                quote = '`'
+            if depth == 0:
+                return line_start, index + 1
+        index += 1
+    raise ValueError(f'找不到 {name} 的结尾，没有改动')
+
+
+def _remove_id_element(text, element_id):
+    match = re.search(
+        rf'<([a-zA-Z0-9]+)(?=[^>]*\bid\s*=\s*(["\']){re.escape(element_id)}\2)[^>]*>',
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    tag = match.group(1)
+    start = match.start()
+    trimmed = text[:start].rstrip()
+    if trimmed.endswith('-->'):
+        end_comment = len(trimmed) - 3
+        comment = text.rfind('<!--', 0, end_comment)
+        gap = text[end_comment + 3:start]
+        blob = text[comment:end_comment + 3] if comment >= 0 else ''
+        if comment >= 0 and '-->' not in text[comment + 4:end_comment] and gap.strip() == '' and any(word in blob for word in ('两步', '兩步', '问卷', '問卷', 'lead-gate')):
+            start = comment
+            if start > 0 and text[start - 1] == '\n':
+                start -= 1
+    if match.group(0).endswith('/>'):
+        return text[:start] + text[match.end():]
+    depth, index = 1, match.end()
+    token = re.compile(rf'</?{tag}\b[^>]*>', re.IGNORECASE)
+    for item in token.finditer(text, index):
+        piece = item.group(0)
+        if piece.startswith('</'):
+            depth -= 1
+        elif not piece.endswith('/>'):
+            depth += 1
+        if depth == 0:
+            return text[:start] + text[item.end():]
+    return None
+
+
+def _guard_listener(text, name):
+    return re.sub(
+        rf'^([ \t]*){name}\.addEventListener\(',
+        rf'\1if ({name}) {name}.addEventListener(',
+        text,
+        flags=re.MULTILINE,
+    )
+
+
+def strip_lead_gate(text):
+    """Drop the two-step gate and fill its two lines at random. The jump switch stays."""
+    has_gate = bool(re.search(r'\bid\s*=\s*(["\'])lead-gate\1', text))
+    if not has_gate and 'RANDOM_POOL' in text:
+        raise ValueError('两步问卷已经拿掉，进线语已经是随机的。')
+    if not has_gate:
+        raise ValueError('当前 B 页没有两步问卷')
+    if _js_function_span(text, 'goWhatsApp') is None or 'switch (WA_ENV)' not in text:
+        raise ValueError('当前页面没有原来的跳转函数，没有改动')
+    if text.count('openLeadGate(btn.dataset.location)') != 1:
+        raise ValueError('当前页面的领取按钮不是原来的写法，没有改动')
+    if _js_function_span(text, 'buildMessage') is None:
+        raise ValueError('当前页面没有原来的进线语，没有改动')
+    kept = {}
+    for name in ('goWhatsApp', 'buildWhatsAppUrls', 'prepareFallback', 'openInHiddenFrame'):
+        span = _js_function_span(text, name)
+        kept[name] = text[span[0]:span[1]] if span else None
+    switch_at = text.find('switch (WA_ENV)')
+    had_fallback = bool(re.search(r'\bid\s*=\s*(["\'])wa-fallback\1', text))
+    removed = _remove_id_element(text, 'lead-gate')
+    if removed is None or re.search(r'\bid\s*=\s*(["\'])lead-gate\1', removed):
+        raise ValueError('当前 B 页的问卷框没能拿掉，没有改动')
+    if had_fallback and not re.search(r'\bid\s*=\s*(["\'])wa-fallback\1', removed):
+        raise ValueError('跳转代码发生了变化，已取消')
+    updated = removed.replace('openLeadGate(btn.dataset.location)', 'goWhatsApp(btn.dataset.location)', 1)
+    span = _js_function_span(updated, 'buildMessage')
+    indent = re.match(r'[ \t]*', updated[span[0]:span[1]]).group(0)
+    updated = updated[:span[0]] + _direct_message(indent) + updated[span[1]:]
+    for name in ('gateCancel', 'gateBack', 'leadGate', 'gateConfirm'):
+        updated = _guard_listener(updated, name)
+    updated = updated.replace(
+        "leadGate.classList.contains('show')",
+        "leadGate && leadGate.classList.contains('show')",
+        1,
+    )
+    for name, source in kept.items():
+        if source is None:
+            continue
+        span = _js_function_span(updated, name)
+        if span is None or updated[span[0]:span[1]] != source:
+            raise ValueError('跳转代码发生了变化，已取消')
+    if text[switch_at:][:400] != updated[updated.find('switch (WA_ENV)'):][:400]:
+        raise ValueError('跳转代码发生了变化，已取消')
+    return updated
