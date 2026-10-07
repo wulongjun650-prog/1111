@@ -529,3 +529,51 @@ test('trust recheck interval accepts 10 seconds or longer and waits that long', 
     assert.equal(await page.locator('#b-wa-interval').inputValue(), '30');
   }, {clock:true});
 });
+
+test('a trusted current number switches to the next spare, and a lone number alarms', async () => {
+  const wa = phone => ({id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:phone});
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [...occurrences('live-b'), wa('85299990000')];
+    fixture.numbers = [
+      {id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:10, phone:'85264150954', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}
+    ];
+    fixture.trustResults[9] = 'trust';
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    const applied = page.waitForResponse(response => response.url().includes('/numbers/apply'));
+    await page.locator('#b-redirect-numbers [data-number-id="9"]').getByRole('button', {name:'再测一次', exact:true}).click();
+    await applied;
+    await page.locator('.b-wa-status').getByText('已自动换成下一个').waitFor();
+    assert.equal(fixture.numberApplies.at(-1).body.number_id, 10);
+    assert.deepEqual(fixture.numberApplies.at(-1).body.occurrence_ids, ['wa-live-b']);
+    await page.locator('#b-redirect-numbers [data-number-id="10"] .b-redirect-active-badge').waitFor();
+    assert.equal(await page.locator('#wa-trust-alarm').isHidden(), true);
+  });
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [...occurrences('live-b'), wa('85299990000')];
+    fixture.numbers = [
+      {id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:10, phone:'85264150954', note:'', created:1, trust:{status:'trust', detail:'出现信任弹窗', checked_at:2}},
+      {id:11, phone:'85200003333', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}
+    ];
+    fixture.trustResults[9] = 'trust';
+    await page.locator('[data-tab="content"]').click();
+    const applied = page.waitForResponse(response => response.url().includes('/numbers/apply'));
+    await page.locator('#b-redirect-numbers [data-number-id="9"]').getByRole('button', {name:'再测一次', exact:true}).click();
+    await applied;
+    assert.equal(fixture.numberApplies.at(-1).body.number_id, 11);
+    assert.equal(await page.locator('#wa-trust-alarm').isHidden(), true);
+  });
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [...occurrences('live-b'), wa('85299990000')];
+    fixture.numbers = [{id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}];
+    fixture.trustResults[9] = 'trust';
+    await page.locator('[data-tab="content"]').click();
+    const recheck = page.waitForResponse(response => response.url().includes('/numbers/9/trust'));
+    await page.locator('#b-redirect-numbers [data-number-id="9"]').getByRole('button', {name:'再测一次', exact:true}).click();
+    await recheck;
+    await page.locator('#wa-trust-alarm').getByText('当前号码出现信任弹窗。').waitFor();
+    assert.equal(fixture.numberApplies.length, 0);
+  });
+});

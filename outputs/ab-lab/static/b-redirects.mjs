@@ -51,6 +51,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   waHead.append(element('strong', '', 'WS 号码'), element('p', 'b-wa-status', '只换号码。进线语、按钮和链接结构保持不动。'));
   const waNoteLine = element('p', 'b-wa-trust-note', ''); waNoteLine.id = 'b-wa-trust-note';
   waNoteLine.textContent = trustNote(false);
+  const waSwitchNote = element('p', 'b-wa-trust-note', '当前号码一旦变成信任弹窗，就自动换成下一个还没出现信任弹窗的预存号码。没有可换的就报警并发出声音。');
   const waIntervalRow = element('div', 'b-wa-interval');
   const waIntervalLabel = element('label', '', '复查间隔');
   const waInterval = element('input'); waInterval.id = 'b-wa-interval'; waInterval.type = 'number';
@@ -73,7 +74,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const waAdd = element('button', 'button secondary', '添加号码'); waAdd.id = 'b-wa-add'; waAdd.type = 'submit';
   waForm.append(waLabel, waNoteLabel, waAdd);
   waBox.dataset.trustSeconds = String(trustSeconds);
-  waBox.append(waHead, waNoteLine, waIntervalRow, waList, waForm);
+  waBox.append(waHead, waNoteLine, waSwitchNote, waIntervalRow, waList, waForm);
   waIntervalApply.addEventListener('click', applyTrustSeconds);
   waInterval.addEventListener('keydown', event => {
     if (event.key !== 'Enter') return;
@@ -179,7 +180,8 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       value.trustPoll = Boolean(result.poll_enabled);
       value.numbersRevision += 1;
       value.numbers = value.numbers.map(item => item.id === id ? result.number : item);
-      renderNumbers(value); paintTrustAlarm(value); syncTrustTimer(value);
+      const switched = !result.busy && await switchFromTrust(value, result.number);
+      if (!switched) {renderNumbers(value); paintTrustAlarm(value); syncTrustTimer(value);}
     } catch (error) {
       if (isCurrent(value) && !error.stale) showMessage(`信任检测未完成。${error.message}`, true);
     } finally {
@@ -451,6 +453,28 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     }
   }
 
+  function nextSpare(value, phone) {
+    const list = value?.numbers || [];
+    const start = list.findIndex(item => item.phone === phone);
+    if (start < 0) return null;
+    for (let step = 1; step < list.length; step += 1) {
+      const candidate = list[(start + step) % list.length];
+      if (candidate.phone !== phone && candidate.trust?.status !== 'trust') return candidate;
+    }
+    return null;
+  }
+
+  async function switchFromTrust(value, number) {
+    if (!number || number.trust?.status !== 'trust' || !liveNumbers(value).has(number.phone)) return false;
+    const next = nextSpare(value, number.phone);
+    const targets = value.occurrences.filter(item => item.kind === 'whatsapp_number' && item.url === number.phone);
+    if (!next || !targets.length) return false;
+    trustAudio.stop();
+    waAlarm.hidden = true;
+    waAlarmText.textContent = '';
+    return applyNumber(value, next, {occurrences: targets, automatic: true});
+  }
+
   function liveNumbers(value) {
     if (!value || value.versionId !== value.published) return new Set();
     return new Set(value.occurrences.filter(item => item.kind === 'whatsapp_number').map(item => item.url));
@@ -534,15 +558,15 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     }
   }
 
-  async function applyNumber(value, item) {
-    if (!isCurrent(value) || value.busy || value.loading || !value.versionId || !numberSelected(value).length) return;
-    const targets = numberSelected(value);
+  async function applyNumber(value, item, options = {}) {
+    const targets = options.occurrences || numberSelected(value);
+    if (!isCurrent(value) || value.busy || value.loading || !value.versionId || !targets.length) return false;
     if (targets.every(row => row.url === item.phone)) {
       renderNumbers(value);
       const text = '这个号码已经是当前号码。';
       showMessage(text); showNumberStatus(text);
-      try { await onApplied({changed:0}); } catch (error) { if (!isCurrent(value) || error.stale) return; }
-      return;
+      try { await onApplied({changed:0}); } catch (error) { if (!isCurrent(value) || error.stale) return false; }
+      return false;
     }
     const previous = value.occurrences.map(row => ({...row}));
     const targetIds = new Set(targets.map(row => row.id));
@@ -556,8 +580,8 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
         value.occurrences = previous; renderOccurrences(value); renderNumbers(value);
         const text = '这个号码已经是当前号码。';
         showMessage(text); showNumberStatus(text);
-        try { await onApplied({changed:0}); } catch (error) { if (!isCurrent(value) || error.stale) return; }
-        return;
+        try { await onApplied({changed:0}); } catch (error) { if (!isCurrent(value) || error.stale) return false; }
+        return false;
       }
       value.versionId = result.version.id; value.published = result.version.id;
       value.expectedPublished = result.version.id; value.selectionDirty = false;
@@ -571,8 +595,12 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       const cacheNote = result.cloudflare?.ok ? ' Cloudflare 缓存已清除。' : result.cloudflare ? ' 号码已换，但 Cloudflare 缓存没清掉。' : '';
       const done = refreshFailed
         ? '号码已更换并发布 B，但状态刷新失败。请刷新状态确认当前版本。进线语未改。' + cacheNote
+        : options.automatic
+        ? '当前号码出现信任弹窗，已自动换成下一个预存号码。进线语未改。' + cacheNote
         : `已换成 ${item.phone}。进线语未改。` + cacheNote;
-      if (isCurrent(value)) { showMessage(done, refreshFailed || Boolean(result.cloudflare && !result.cloudflare.ok)); showNumberStatus(`当前号码已换成 ${item.phone}。`); }
+      const statusText = options.automatic ? '当前号码出现信任弹窗，已自动换成下一个。' : `当前号码已换成 ${item.phone}。`;
+      if (isCurrent(value)) { showMessage(done, refreshFailed || Boolean(result.cloudflare && !result.cloudflare.ok)); showNumberStatus(statusText); }
+      return true;
     } catch (error) {
       if (isCurrent(value) && !error.stale) { value.occurrences = previous; renderOccurrences(value); renderNumbers(value); showNumberStatus('没有换成这个号码。'); }
       if (!isCurrent(value) || error.stale) return;
@@ -580,6 +608,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       if (isCurrent(value)) showMessage(error.status === 409
         ? '当前 B 发布版本已变化，号码选择仍保留。请刷新状态后再换。'
         : error.message, true);
+      return false;
     } finally {
       if (isCurrent(value)) {value.busy = false; updateControls();}
     }
