@@ -9,6 +9,7 @@ import { createSelection } from './selection.mjs';
 import { isAdmin, chooseSite, accountSitePath } from './account-ui.mjs';
 import { createSourceEditor } from './source-editor.mjs';
 import { createBRedirects } from './b-redirects.mjs';
+import { createDesk } from './desk.mjs';
 import { createTracking } from './tracking.mjs';
 import { createVisitWatch } from './visit-watch.mjs';
 
@@ -47,6 +48,7 @@ const bRedirects = createBRedirects({api, on, element, confirmAction, getSite:()
     await refreshState();
   },
 });
+const desk = createDesk({api, on, element, livePhone: () => bRedirects.livePhone(), switchLive: () => bRedirects.switchLive()});
 const reputationChecking = new Set();
 const cloudflareChecking = new Set();
 const latestReputation = new Map();
@@ -88,6 +90,7 @@ const labels = {
   domains: ['域名管理', '域名管理', '统一查看谷歌风险、接入状态、备注与访问状态。'],
   overview: ['流量总览', '流量总览', '查看访问数据、国家分布与各站点表现。'],
   content: ['A/B 内容', 'A/B 内容', '先看现在用的那一版，再换链接或发布。'],
+  desk: ['工单', '工单', '看在线人数和今天进线，并生成投手金额。'],
   rules: ['访问规则', '访问规则', '设置访问条件，保存后对当前站点生效。'],
   simulate: ['规则模拟', '规则模拟', '输入访问条件，检查已保存规则的判断结果。'],
   logs: ['访问日志', '访问日志', '查看文档请求、设备、国家与分流结果。'],
@@ -582,11 +585,12 @@ async function selectTab(name, {load = true} = {}) {
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
   $('#breadcrumb-current').textContent = labels[name][0];
-  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',accounts:'ACCOUNTS'}[name];
+  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',desk:'WORK ORDERS',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',accounts:'ACCOUNTS'}[name];
   $('#page-title').textContent = labels[name][1]; $('#page-subtitle').textContent = labels[name][2];
   if (name !== 'content') closePreview();
   else if (state) await tracking.load();
   await bRedirects.setActive(name === 'content');
+  desk.setActive(name === 'desk');
   if (name === 'logs') await loadLogs();
   if (name === 'domains' && load) await loadDomains();
   if (name === 'accounts') await loadAccounts();

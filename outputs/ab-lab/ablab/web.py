@@ -702,6 +702,9 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     app.state.link_checker = LinkChecker()
     app.state.trust_checker = TrustChecker(device_from_environ())
+    from .desk import DeskError, SheetWriter, buyer_quote, review_tickets, unavailable_reader
+    app.state.desk_reader = unavailable_reader
+    app.state.sheet_writer = SheetWriter(os.environ.get('AB_GOOGLE_SHEETS_TOKEN', ''))
 
     def redirect_commit_guard(request, store):
         site_id = request.path_params.get('site_id', 'default')
@@ -813,6 +816,36 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if result.get('busy'):
             return {'number':store.whatsapp_number(number_id), 'busy':True, 'poll_enabled':store.whatsapp_trust_poll_enabled()}
         return {'number':result['number'], 'busy':False, 'poll_enabled':store.whatsapp_trust_poll_enabled()}
+
+    @routes.post('/desk/review')
+    async def review_desk(request: Request):
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise HTTPException(400, '工单数据无法读取')
+        try:
+            return review_tickets(body.get('tickets'), str(body.get('phone') or ''), app.state.desk_reader)
+        except DeskError as error:
+            raise HTTPException(400, str(error)) from None
+
+    @routes.post('/desk/quote')
+    async def quote_desk(request: Request):
+        body = await request.json()
+        try:
+            return buyer_quote(body)
+        except DeskError as error:
+            raise HTTPException(400, str(error)) from None
+
+    @routes.post('/desk/sheet')
+    async def write_desk_sheet(request: Request):
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise HTTPException(400, '金额内容无法读取')
+        try:
+            quote = buyer_quote(body)
+            result = app.state.sheet_writer.append(str(body.get('spreadsheet') or ''), quote['row'])
+        except DeskError as error:
+            raise HTTPException(400, str(error)) from None
+        return {'ok': True, 'text': quote['text'], 'row': quote['row'], 'updated': result.get('updated', 1)}
 
     @routes.post('/b-redirects/numbers/apply')
     def apply_whatsapp_numbers(body: WhatsAppNumberApply, request: Request, store=Depends(site_store)):

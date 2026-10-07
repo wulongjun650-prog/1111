@@ -1,0 +1,17 @@
+.desk-message { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-soft); }
+.desk-message.error { color: var(--chart-block); }
+.desk-message[hidden], .desk-alarm[hidden] { display: none; }
+.desk-alarm { margin: 0 0 12px; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--chart-block) 18%, var(--surface)); color: var(--chart-block); }
+.desk-alarm p { margin: 0; font-weight: 650; }
+.desk-ticket-form, .desk-buyer-form, .desk-sheet-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: end; margin: 12px 0; }
+.desk-ticket-form button, .desk-buyer-form button, .desk-sheet-form button { height: 38px; }
+.desk-list { display: grid; gap: 8px; margin-bottom: 12px; }
+.desk-ticket, .desk-lead { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.desk-ticket small { color: var(--muted); overflow-wrap: anywhere; }
+.desk-ticket button, .desk-lead span:last-child { margin-left: auto; }
+.desk-stats { display: grid; gap: 8px; margin: 12px 0; }
+.desk-total { margin: 0; font-weight: 650; }
+.desk-preview { min-height: 8.5em; margin: 0 0 12px; padding: 12px 14px; white-space: pre-wrap; border-radius: 12px; background: var(--surface-soft); }
+@media (max-width: 900px) {
+  .desk-ticket-form, .desk-buyer-form, .desk-sheet-form { grid-template-columns: 1fr 1fr; }
+}
