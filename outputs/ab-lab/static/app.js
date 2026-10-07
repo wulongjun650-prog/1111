@@ -54,7 +54,7 @@ const cloudflareChecking = new Set();
 const latestReputation = new Map();
 const reputationAutoCheck = createReputationAutoCheck({
   check:async id=>(await api(`/api/sites/${id}/reputation/check`,{method:'POST',body:{}})).result,
-  isActive:()=>!isObserver(account) && activeTab === 'domains' && !document.hidden && Boolean(catalog?.google_reputation_configured),
+  isActive:()=>activeTab === 'domains' && !document.hidden && Boolean(catalog?.google_reputation_configured),
   onUpdate:(id,update)=>{
     if (update.checking === true) reputationChecking.add(id);
     if (update.checking === false) reputationChecking.delete(id);

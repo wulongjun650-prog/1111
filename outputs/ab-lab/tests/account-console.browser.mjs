@@ -308,7 +308,11 @@ test('observer can read domains and accounts while action buttons stay hidden', 
     await page.route('**/api/**', async route => {
       const pathname = new URL(route.request().url()).pathname;
       if (pathname === '/api/sites') {
-        await route.fulfill({json:{account:observer, sites:[{...site, owner_username:'viewer'}], google_reputation_configured:false, server_ip:'203.0.113.1'}});
+        await route.fulfill({json:{account:observer, sites:[{...site, owner_username:'viewer', google_reputation:{status:'expired', checked_at:1, expires_at:2, threats:[], detail:'检测结果已过期，请重新检测'}}], google_reputation_configured:true, server_ip:'203.0.113.1'}});
+        return;
+      }
+      if (pathname === `/api/sites/${siteId}/reputation/check` && route.request().method() === 'POST') {
+        await route.fulfill({json:{result:{status:'clean', checked_at:2_000, expires_at:9_999_999_999, threats:[], detail:'本次查询未命中指定风险列表'}}});
         return;
       }
       if (pathname === `/api/sites/${siteId}/state`) { await route.fulfill({json:siteState}); return; }
@@ -352,6 +356,7 @@ test('observer can read domains and accounts while action buttons stay hidden', 
     assert.equal(await page.getByRole('button', {name:'停用'}).count(), 0);
     assert.equal(await page.getByRole('button', {name:'重设密码'}).count(), 0);
     await page.locator('[data-tab="domains"]').click();
+    await page.getByText('未检出风险').waitFor();
     assert.match(await page.locator('.domain-table').innerText(), /归属：viewer/);
     assert.equal(await page.getByRole('button', {name:'分配'}).count(), 0);
     assert.equal(await page.getByRole('button', {name:'下线'}).count(), 0);

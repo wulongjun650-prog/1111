@@ -1,5 +1,6 @@
 import hashlib
 import time
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from ablab.auth import Auth
@@ -182,6 +183,15 @@ def test_observer_reads_every_domain_and_account_but_cannot_change_anything(acco
     analytics = watcher.get('/api/analytics?scope=all')
     assert analytics.status_code == 200, analytics.text
     assert analytics.json()['summary']['total'] == 1
+    app.state.reputation.key = 'test-key'
+    app.state.reputation.transport = httpx.MockTransport(lambda request: httpx.Response(200, json={}))
+    checked = watcher.post(f"/api/sites/{first['id']}/reputation/check", json={})
+    assert checked.status_code == 200, checked.text
+    assert checked.json()['result']['status'] == 'clean'
+    shown = next(site for site in watcher.get('/api/sites').json()['sites'] if site['id'] == first['id'])
+    assert shown['google_reputation']['status'] == 'clean'
+    assert app.state.registry.get(first['id'])['owner_id'] == one['id']
+    assert app.state.registry.get(first['id'])['enabled'] == 1
     before = app.state.registry.store(first['id']).logs(7, '', 1)['total']
     writes = [
         ('POST', '/api/sites', {'domain': 'watcher.test'}),
@@ -194,7 +204,8 @@ def test_observer_reads_every_domain_and_account_but_cannot_change_anything(acco
         ('POST', f"/api/sites/{first['id']}/desk/quote", {}),
         ('POST', f"/api/sites/{first['id']}/desk/sheet", {}),
         ('POST', f"/api/sites/{first['id']}/desk/screen/click", {'x': 1, 'y': 1}),
-        ('POST', f"/api/sites/{first['id']}/reputation/check", {}),
+        ('POST', f"/api/sites/{first['id']}/cloudflare/status", {}),
+        ('POST', f"/api/sites/{first['id']}/cloudflare/purge", {}),
         ('POST', f"/api/sites/{first['id']}/b-redirects/numbers/apply", {}),
         ('POST', '/api/accounts', {'username': 'another', 'password': 'watch-password-ok', 'role': 'agent'}),
         ('PATCH', f"/api/accounts/{one['id']}", {'enabled': False}),

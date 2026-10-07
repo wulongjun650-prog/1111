@@ -172,8 +172,12 @@ class LocalBoundary:
                     except KeyError:
                         await JSONResponse({'detail': '站点不存在'}, status_code=404)(scope, receive, send)
                         return
+                # The domains page refreshes Google's cached lookup. That write
+                # stays inside the reputation cache and does not change a site.
+                observer_may_refresh = scope['method'] == 'POST' and re.fullmatch(
+                    r'/api/sites/(?:[a-f0-9]{32}|default)/reputation/check', scope['path'])
                 if (session['role'] == 'observer' and scope['method'] not in ('GET', 'HEAD')
-                        and scope['path'] != '/api/logout'):
+                        and scope['path'] != '/api/logout' and not observer_may_refresh):
                     await JSONResponse({'detail': '观察号只能查看'}, status_code=403)(scope, receive, send)
                     return
         state['csrf'] = csrf
