@@ -72,6 +72,14 @@ def _server():
     return server
 
 
+def test_hardened_service_turns_off_the_chrome_sandbox():
+    from ablab.desk_window import sandbox_off
+
+    assert sandbox_off(0, '') is True
+    assert sandbox_off(999, 'Name:\tpython\nNoNewPrivs:\t1\n') is True
+    assert sandbox_off(999, 'NoNewPrivs:\t0\n') is False
+
+
 def test_a_rejected_list_is_not_treated_as_the_account_list():
     assert readable_list({'code': 0, 'msg': 'password', 'data': {}}) is False
     assert readable_list({'code': 1, 'data': {'items': [], 'shareStatistics': {}}}) is True

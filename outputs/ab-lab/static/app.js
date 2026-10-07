@@ -48,7 +48,7 @@ const bRedirects = createBRedirects({api, on, element, confirmAction, getSite:()
     await refreshState();
   },
 });
-const desk = createDesk({api, on, element, livePhone: () => bRedirects.livePhone(), switchLive: () => bRedirects.switchLive()});
+const desk = createDesk({api, on, element, livePhone: () => bRedirects.livePhone(), switchLive: (options) => bRedirects.switchLive(options)});
 const reputationChecking = new Set();
 const cloudflareChecking = new Set();
 const latestReputation = new Map();

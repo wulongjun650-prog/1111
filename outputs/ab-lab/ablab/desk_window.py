@@ -26,6 +26,16 @@ LIST_PATH = '/webApi/accountshow/list'
 MAX_FRAME = 8_000_000
 
 
+def sandbox_off(euid, status):
+    """Chrome cannot start its sandbox as root, or inside the hardened admin service."""
+    if euid == 0:
+        return True
+    for line in status.splitlines():
+        if line.startswith('NoNewPrivs:') and line.split(':', 1)[1].strip() == '1':
+            return True
+    return False
+
+
 def chrome_executable():
     chosen = os.environ.get('PLAYWRIGHT_CHROMIUM_EXECUTABLE', '').strip()
     if chosen:
@@ -83,6 +93,8 @@ class WorkOrderWindow:
         self.timeout = timeout
         self._lock = threading.Lock()
         self._proc = None
+        self._display_proc = None
+        self._display = ''
         self._sock = None
         self._buffer = b''
         self._ident = 0
@@ -138,13 +150,22 @@ class WorkOrderWindow:
         ]
         if self.headless:
             args.insert(-1, '--headless=new')
+        display = self._start_display()
         if os.name != 'nt':
             try:
-                if os.geteuid() == 0:
-                    args[1:1] = ['--no-sandbox', '--disable-dev-shm-usage']
+                status = Path('/proc/self/status').read_text(encoding='utf-8', errors='replace')
+            except OSError:
+                status = ''
+            try:
+                euid = os.geteuid()
             except AttributeError:
-                pass
-        self._proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                euid = -1
+            if sandbox_off(euid, status):
+                args[1:1] = ['--no-sandbox', '--disable-dev-shm-usage']
+        env = os.environ.copy()
+        if display:
+            env['DISPLAY'] = display
+        self._proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
         port_file = self.profile_dir / 'DevToolsActivePort'
         deadline = time.time() + 15
         while time.time() < deadline:
@@ -370,9 +391,40 @@ class WorkOrderWindow:
                 pass
         proc = self._proc
         self._proc = None
-        if proc and proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+        display = self._display_proc
+        self._display_proc = None
+        self._display = ''
+        for child in (proc, display):
+            if child and child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+
+    def _start_display(self):
+        if self.headless:
+            return ''
+        current = os.environ.get('DISPLAY', '').strip()
+        if current:
+            return current
+        if self._display_proc and self._display_proc.poll() is None and self._display:
+            return self._display
+        xvfb = shutil.which('Xvfb')
+        if not xvfb:
+            return ''
+        number = 99
+        socket_path = Path(f'/tmp/.X11-unix/X{number}')
+        self._display = f':{number}'
+        self._display_proc = subprocess.Popen(
+            [xvfb, self._display, '-screen', '0', '1100x800x24', '-nolisten', 'tcp', '-ac'],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            if self._display_proc.poll() is not None:
+                return ''
+            if socket_path.exists():
+                return self._display
+            time.sleep(0.05)
+        return self._display

@@ -113,7 +113,7 @@ async function withConsole(run, options = {}) {
       fixture.deskReviews.push(body);
       const phone=body.phone;
       const leads=phone==='85299990000'?2:0;
-      response={rows:[{name:'鳄鱼-梵高', code:'sampleTicket', phone:phone||'85299990000', leads:String(leads)}], total:String(leads), switch:fixture.deskSwitch||'', online:fixture.deskSwitch==='online'?4:1};
+      response={rows:[{name:'鳄鱼-梵高', code:'sampleTicket', phone:phone||'85299990000', leads:String(leads)}], total:String(leads), switch:fixture.deskSwitch||'', online:fixture.deskSwitch==='online'?4:1, offline_phones:fixture.deskOffline||[]};
     } else if(pathname===`/api/sites/${siteId}/desk/quote` && request.method()==='POST') {
       response={text:'10/06\nHK项目\nAJ\n消耗：33.29\n进线：0.8\n成本：41.61', adjusted:'33.29', cost:'41.61', row:[]};
     } else if(pathname===`/api/sites/${siteId}/upload/B`) {
@@ -668,4 +668,29 @@ test('an online work order does not rotate the published number on the next auto
     await page.locator('.desk-message').getByText('不再连续换').waitFor();
     assert.equal(fixture.numberApplies.length, 1);
   }, {clock:true});
+});
+
+test('an offline spare is skipped when the work order switches the published number', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [
+      ...occurrences('live-b'),
+      {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}
+    ];
+    fixture.numbers = [
+      {id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:10, phone:'85200002222', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:11, phone:'85200003333', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}
+    ];
+    fixture.deskSwitch = 'offline';
+    fixture.deskOffline = ['85200002222'];
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    await page.locator('[data-tab="desk"]').click();
+    await page.locator('#desk-url').fill('https://admin.haiwangweb.com/web#/accountshow/sampleTicket');
+    await page.getByRole('button', {name:'添加工单', exact:true}).click();
+    const applied = page.waitForResponse(response => response.url().includes('/numbers/apply'));
+    await page.locator('#desk-check').click();
+    await applied;
+    assert.equal(fixture.numberApplies.at(-1).body.number_id, 11);
+  });
 });
