@@ -5,17 +5,26 @@ Nothing taps 继续聊天, sends a message, or reads the address book.
 """
 
 import hashlib
+import hmac
+import ipaddress
 import json
 import os
 import re
+import socket
 import threading
 import time
+import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 
 HOST = 'https://api.vmoscloud.com'
+API_HOST = 'api.vmoscloud.com'
+SERVICE = 'armcloud-paas'
+PUBLIC_ORIGIN = 'https://hhucuq.top'
 WHATSAPP_PACKAGE = 'com.whatsapp'
 DUMP_PATH = '/sdcard/ab-wa-trust.xml'
 OPEN_TIMEOUT = 20
+SCREEN_WAIT = 45
 
 TRUST_TITLE = ('你信任此用户吗', '你信任此用戶嗎')
 CONTINUE_CHAT = ('继续聊天', '繼續聊天')
@@ -31,6 +40,28 @@ def v2_sign(secret, timestamp, path, body):
     return hashlib.sha256(f'{secret}{timestamp}{path}{body}'.encode()).hexdigest()
 
 
+def v4_authorization(access_key, secret_key, x_date, body):
+    """HMAC used by the live VMOS gateway. The published SHA-256 header is rejected there."""
+    content_type = 'application/json;charset=UTF-8'
+    signed_headers = 'content-type;host;x-content-sha256;x-date'
+    content_hash = hashlib.sha256(body.encode()).hexdigest()
+    canonical = (
+        f'host:{API_HOST}\n'
+        f'x-date:{x_date}\n'
+        f'content-type:{content_type}\n'
+        f'signedHeaders:{signed_headers}\n'
+        f'x-content-sha256:{content_hash}'
+    )
+    short_date = x_date[:8]
+    scope = f'{short_date}/{SERVICE}/request'
+    string_to_sign = 'HMAC-SHA256\n' + x_date + '\n' + scope + '\n' + hashlib.sha256(canonical.encode()).hexdigest()
+    key = hmac.new(secret_key.encode(), short_date.encode(), hashlib.sha256).digest()
+    key = hmac.new(key, SERVICE.encode(), hashlib.sha256).digest()
+    key = hmac.new(key, b'request', hashlib.sha256).digest()
+    signature = hmac.new(key, string_to_sign.encode(), hashlib.sha256).hexdigest()
+    return f'HMAC-SHA256 Credential={access_key}, SignedHeaders={signed_headers}, Signature={signature}'
+
+
 def send_url(phone):
     if not re.fullmatch(r'\d{8,15}', phone or ''):
         raise ValueError('WhatsApp 号码需为 8 到 15 位数字')
@@ -41,12 +72,33 @@ def _quote(value):
     return "'" + value.replace("'", "'\\''") + "'"
 
 
-def open_script(phone):
-    # One shell command. && stops a failed launch from dumping whatever was already on screen.
+def _resolve_arg(upload_url, resolve_ip):
+    host = urllib.parse.urlparse(upload_url).hostname or ''
+    if not host or not re.fullmatch(r'(?:\d{1,3}\.){3}\d{1,3}', resolve_ip or ''):
+        return ''
+    try:
+        if not ipaddress.ip_address(resolve_ip).is_global:
+            return ''
+    except ValueError:
+        return ''
+    return f' --resolve {_quote(f"{host}:443:{resolve_ip}")}'
+
+
+def open_script(phone, upload_url, resolve_ip=''):
+    # One shell command. && stops a failed launch from uploading whatever was already on screen.
+    # The dump is posted to the admin. The task API does not return shell output on this account.
     url = send_url(phone)
+    target = _quote(upload_url)
+    header = _quote('Content-Type: text/plain')
+    direct = _resolve_arg(upload_url, resolve_ip)
+    upload = (
+        f'(curl -fsS -m 20{direct} -o /dev/null -X POST --data-binary @{DUMP_PATH} -H {header} {target}'
+        f' || curl -fsS -m 20 -o /dev/null -X POST --data-binary @{DUMP_PATH} -H {header} {target}'
+        f' || wget -q -O /dev/null --post-file={DUMP_PATH} {target})'
+    )
     return (
         f'am start -a android.intent.action.VIEW -d {_quote(url)} -p {WHATSAPP_PACKAGE}'
-        f' && sleep 5 && uiautomator dump {DUMP_PATH} && cat {DUMP_PATH}'
+        f' && sleep 8 && uiautomator dump {DUMP_PATH} && {upload}'
     )
 
 
@@ -100,67 +152,87 @@ class VmosClient:
         self.clock = clock or time.time
         self.sleep = sleep or time.sleep
 
-    def post(self, path, payload, sign_body):
+    def post(self, path, payload):
         body = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
-        signed = body if sign_body else ''
-        timestamp = str(int(self.clock()))
+        x_date = datetime.fromtimestamp(int(self.clock()), timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         headers = {
-            'X-Access-Key': self.access_key,
-            'X-Timestamp': timestamp,
-            'X-Sign': v2_sign(self.secret_key, timestamp, path, signed),
-            'Content-Type': 'application/json',
+            'content-type': 'application/json;charset=UTF-8',
+            'x-date': x_date,
+            'x-host': API_HOST,
+            'authorization': v4_authorization(self.access_key, self.secret_key, x_date, body),
         }
         payload = self.transport('POST', self.host + path, headers, body)
         if not isinstance(payload, dict) or payload.get('code') != 200:
             raise VmosError('cloud phone request failed')
         return payload
 
-    def run_script(self, script, timeout=OPEN_TIMEOUT):
-        started = self.post('/vcpcloud/api/padApi/asyncCmd', {'padCodes': [self.pad_code], 'scriptContent': script}, False)
+    def submit(self, script):
+        started = self.post('/vcpcloud/api/padApi/asyncCmd', {'padCodes': [self.pad_code], 'scriptContent': script})
         rows = _rows(started)
         if not rows or not rows[0].get('taskId'):
             raise VmosError('cloud phone request failed')
         if _status(rows[0].get('vmStatus')) == 0:
             raise VmosError('cloud phone offline')
-        task_id = rows[0]['taskId']
-        deadline = self.clock() + timeout
-        while True:
-            detail = self.post('/vcpcloud/api/padApi/padTaskDetail', {'taskIds': [task_id]}, True)
-            found = _rows(detail)
-            row = next((item for item in found if item.get('taskId') == task_id), None)
-            if row is None and len(found) == 1:
-                row = found[0]
-            status = _status(row.get('taskStatus')) if row else None
-            if status == 3:
-                result = row.get('taskResult')
-                if result is None:
-                    result = row.get('cmdResult')
-                return '' if result is None else str(result)
-            if status in (-1, -2, -3, -4):
-                raise VmosError('cloud phone command failed')
-            if self.clock() > deadline:
-                raise VmosError('cloud phone command timed out')
-            self.sleep(1)
+        return rows[0]['taskId']
 
 
 class CloudPhone:
-    def __init__(self, client):
+    def __init__(self, client, origin=PUBLIC_ORIGIN, resolve_ip='', wait_timeout=SCREEN_WAIT):
         self.client = client
+        self.origin = origin.rstrip('/')
+        self.resolve_ip = resolve_ip
+        self.wait_timeout = wait_timeout
+        self._pending = {}
+        self._pending_lock = threading.Lock()
+
+    def __call__(self, phone):
+        return self.read(phone)
+
+    def deliver(self, token, text):
+        with self._pending_lock:
+            slot = self._pending.get(token)
+        if slot is None:
+            return False
+        slot['text'] = text
+        slot['event'].set()
+        return True
 
     def read(self, phone):
+        token = secrets_token()
+        slot = {'event': threading.Event(), 'text': None}
+        with self._pending_lock:
+            self._pending[token] = slot
         try:
-            return self.client.run_script(open_script(phone))
+            upload = f'{self.origin}/api/wa-trust/screen/{token}'
+            self.client.submit(open_script(phone, upload, self._ip()))
+            if not slot['event'].wait(self.wait_timeout):
+                raise VmosError('cloud phone command timed out')
+            return '' if slot['text'] is None else slot['text']
         finally:
+            with self._pending_lock:
+                self._pending.pop(token, None)
             try:
-                self.client.run_script(back_script())
+                self.client.submit(back_script())
             except Exception:
                 pass
+
+    def _ip(self):
+        if self.resolve_ip != 'auto':
+            return self.resolve_ip
+        self.resolve_ip = global_ip()
+        return self.resolve_ip
 
 
 class TrustChecker:
     def __init__(self, device=None):
         self.device = device
         self._lock = threading.Lock()
+
+    def deliver(self, token, text):
+        deliver = getattr(self.device, 'deliver', None)
+        if deliver is None:
+            return False
+        return deliver(token, text)
 
     def check(self, phone, persist):
         if not self._lock.acquire(blocking=False):
@@ -190,6 +262,28 @@ class TrustChecker:
         return {'status': status, 'reason': reason}
 
 
+def secrets_token():
+    import secrets
+    return secrets.token_urlsafe(24)
+
+
+def global_ip():
+    sock = socket.socket()
+    try:
+        sock.settimeout(2)
+        sock.connect(('1.1.1.1', 443))
+        text = sock.getsockname()[0]
+    except Exception:
+        return ''
+    finally:
+        sock.close()
+    try:
+        address = ipaddress.ip_address(text)
+    except ValueError:
+        return ''
+    return text if address.is_global else ''
+
+
 def device_from_environ(environ=None):
     environ = os.environ if environ is None else environ
     access = environ.get('AB_VMOS_ACCESS_KEY', '').strip()
@@ -198,4 +292,5 @@ def device_from_environ(environ=None):
     if not access or not secret or not pad:
         return None
     host = environ.get('AB_VMOS_API_HOST', HOST).strip() or HOST
-    return CloudPhone(VmosClient(access, secret, pad, host=host)).read
+    origin = environ.get('AB_TRUST_PUBLIC_ORIGIN', PUBLIC_ORIGIN).strip() or PUBLIC_ORIGIN
+    return CloudPhone(VmosClient(access, secret, pad, host=host), origin=origin, resolve_ip='auto')

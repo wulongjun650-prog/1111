@@ -106,6 +106,7 @@ class LocalBoundary:
         csrf = self.csrf
         state = scope.setdefault('state', {})
         site = None
+        is_ingest = self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/wa-trust/screen/[A-Za-z0-9_-]{20,80}', scope['path']) is not None
         if self.deployment:
             allowed_hosts = (self.deployment.host(self.admin),)
             if not self.admin and self.registry:
@@ -148,7 +149,7 @@ class LocalBoundary:
         if self.admin and self.auth:
             request = Request(scope)
             session = self.auth.session(request.cookies.get(COOKIE))
-            public = (scope['path'] == '/api/login' and scope['method'] == 'POST') or (scope['method'] in ('GET', 'HEAD') and scope['path'] in ('/login', '/static/login.js', '/static/app.css'))
+            public = is_ingest or (scope['path'] == '/api/login' and scope['method'] == 'POST') or (scope['method'] in ('GET', 'HEAD') and scope['path'] in ('/login', '/static/login.js', '/static/app.css'))
             if not public and session is None:
                 response = RedirectResponse('/login', status_code=307) if scope['path'] == '/' else JSONResponse({'detail': '请先登录'}, status_code=401)
                 response.headers['Cache-Control'] = 'no-store'
@@ -170,12 +171,14 @@ class LocalBoundary:
                         await JSONResponse({'detail': '站点不存在'}, status_code=404)(scope, receive, send)
                         return
         state['csrf'] = csrf
-        if self.admin and scope['method'] not in ('GET', 'HEAD'):
+        if self.admin and scope['method'] not in ('GET', 'HEAD') and not is_ingest:
             if origin != expected_origin.encode() or not secrets.compare_digest(headers.get(b'x-csrf-token', b''), csrf.encode()):
                 await JSONResponse({'detail': '请求校验失败，请刷新页面'}, status_code=403)(scope, receive, send)
                 return
         is_upload = re.fullmatch(r'/api/(?:sites/[a-f0-9]{32}/|sites/default/)?upload/[AB]', scope['path'])
         limit = MAX_ZIP if self.admin and is_upload else 256 * 1024
+        if is_ingest:
+            limit = 2_000_000
         if self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/(?:sites/(?:[a-f0-9]{32}|default)/)?b-redirects/(?:apply|numbers/apply)', scope['path']):
             limit = 512 * 1024  # Up to 5,000 selected SHA-256 occurrence IDs.
         if self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/(?:sites/(?:[a-f0-9]{32}|default)/)?source/[AB]/[a-f0-9]{32}', scope['path']):
@@ -789,6 +792,15 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def delete_whatsapp_number(number_id: int, store=Depends(site_store)):
         store.delete_whatsapp_number(number_id)
         return {'ok':True}
+
+    @routes.post('/wa-trust/screen/{token}')
+    async def ingest_whatsapp_screen(token: str, request: Request):
+        if not re.fullmatch(r'[A-Za-z0-9_-]{20,80}', token):
+            raise HTTPException(404, '检测已结束')
+        raw = await request.body()
+        if not app.state.trust_checker.deliver(token, raw.decode('utf-8', 'replace')):
+            raise HTTPException(404, '检测已结束')
+        return {'ok': True}
 
     @routes.post('/b-redirects/numbers/{number_id}/trust')
     def check_whatsapp_trust(number_id: int, store=Depends(site_store)):
