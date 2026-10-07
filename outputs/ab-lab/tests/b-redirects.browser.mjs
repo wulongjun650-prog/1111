@@ -113,7 +113,12 @@ async function withConsole(run, options = {}) {
       fixture.deskReviews.push(body);
       const phone=body.phone;
       const leads=phone==='85299990000'?2:0;
-      response={rows:[{name:'鳄鱼-梵高', code:'sampleTicket', phone:phone||'85299990000', leads:String(leads)}], total:String(leads), switch:fixture.deskSwitch||'', online:fixture.deskSwitch==='online'?4:1};
+      response={rows:[{name:'鳄鱼-梵高', code:'sampleTicket', phone:phone||'85299990000', leads:String(leads)}], total:String(leads), switch:fixture.deskSwitch||'', online:fixture.deskSwitch==='online'?4:1, offline_phones:fixture.deskOffline||[]};
+    } else if(pathname===`/api/sites/${siteId}/desk/screen` && request.method()==='GET') {
+      await route.fulfill({status:204, body:''});
+      return;
+    } else if(pathname===`/api/sites/${siteId}/desk/screen/click` && request.method()==='POST') {
+      response={ok:true};
     } else if(pathname===`/api/sites/${siteId}/desk/quote` && request.method()==='POST') {
       response={text:'10/06\nHK项目\nAJ\n消耗：33.29\n进线：0.8\n成本：41.61', adjusted:'33.29', cost:'41.61', row:[]};
     } else if(pathname===`/api/sites/${siteId}/upload/B`) {
@@ -600,6 +605,7 @@ test('work order over three online switches the published number and shows lead 
     await page.locator('[data-tab="content"]').click();
     await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
     await page.locator('[data-tab="desk"]').click();
+    await page.locator('#panel-desk').getByText('下面会出现服务器上的窗口画面').waitFor();
     await page.locator('#desk-url').fill('https://admin.haiwangweb.com/web#/accountshow/sampleTicket');
     await page.locator('#desk-name').fill('鳄鱼-梵高');
     await page.locator('#desk-password').fill('secret');
@@ -637,5 +643,59 @@ test('work order over three online switches the published number and shows lead 
     await page.locator('#desk-check').click();
     await page.locator('.desk-alarm').getByText('当前号码离线').waitFor();
     assert.equal(fixture.numberApplies.length, 0);
+  });
+});
+
+test('an online work order does not rotate the published number on the next automatic check', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [
+      ...occurrences('live-b'),
+      {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}
+    ];
+    fixture.numbers = [
+      {id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:10, phone:'85200002222', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}
+    ];
+    fixture.deskSwitch = 'online';
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    await page.locator('[data-tab="desk"]').click();
+    await page.locator('#desk-url').fill('https://admin.haiwangweb.com/web#/accountshow/sampleTicket');
+    await page.getByRole('button', {name:'添加工单', exact:true}).click();
+    const applied = page.waitForResponse(response => response.url().includes('/numbers/apply'));
+    await page.locator('#desk-check').click();
+    await applied;
+    await page.locator('.desk-message').getByText('已自动换成下一个预存号码').waitFor();
+    assert.equal(fixture.numberApplies.length, 1);
+    const reviewed = page.waitForResponse(response => response.url().includes('/desk/review'));
+    await page.clock.fastForward(30000);
+    await reviewed;
+    await page.locator('.desk-message').getByText('不再连续换').waitFor();
+    assert.equal(fixture.numberApplies.length, 1);
+  }, {clock:true});
+});
+
+test('an offline spare is skipped when the work order switches the published number', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [
+      ...occurrences('live-b'),
+      {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}
+    ];
+    fixture.numbers = [
+      {id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:10, phone:'85200002222', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:11, phone:'85200003333', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}
+    ];
+    fixture.deskSwitch = 'offline';
+    fixture.deskOffline = ['85200002222'];
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    await page.locator('[data-tab="desk"]').click();
+    await page.locator('#desk-url').fill('https://admin.haiwangweb.com/web#/accountshow/sampleTicket');
+    await page.getByRole('button', {name:'添加工单', exact:true}).click();
+    const applied = page.waitForResponse(response => response.url().includes('/numbers/apply'));
+    await page.locator('#desk-check').click();
+    await applied;
+    assert.equal(fixture.numberApplies.at(-1).body.number_id, 11);
   });
 });

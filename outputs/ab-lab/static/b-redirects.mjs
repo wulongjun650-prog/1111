@@ -453,13 +453,14 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     }
   }
 
-  function nextSpare(value, phone) {
+  function nextSpare(value, phone, avoid = new Set()) {
     const list = value?.numbers || [];
+    const blocked = avoid instanceof Set ? avoid : new Set(avoid || []);
     const start = list.findIndex(item => item.phone === phone);
     if (start < 0) return null;
     for (let step = 1; step < list.length; step += 1) {
       const candidate = list[(start + step) % list.length];
-      if (candidate.phone !== phone && candidate.trust?.status !== 'trust') return candidate;
+      if (candidate.phone !== phone && candidate.trust?.status !== 'trust' && !blocked.has(candidate.phone)) return candidate;
     }
     return null;
   }
@@ -767,14 +768,14 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     };
   }
 
-  async function switchLive() {
+  async function switchLive(options = {}) {
     const value = session;
     if (!isCurrent(value)) return {ok: false, detail: '号码池还没载入'};
     if (!value.scanned) await scan(value);
     if (!isCurrent(value) || !value.scanned) return {ok: false, detail: '号码池还没载入'};
     const phones = [...liveNumbers(value)];
     if (phones.length !== 1) return {ok: false, detail: '当前发布页没有唯一的 WhatsApp 号码'};
-    const next = nextSpare(value, phones[0]);
+    const next = nextSpare(value, phones[0], options.avoid || []);
     if (!next) return {ok: false, detail: '没有可换的预存号码'};
     const targets = value.occurrences.filter(item => item.kind === 'whatsapp_number' && item.url === phones[0]);
     const ok = await applyNumber(value, next, {occurrences: targets, automatic: true, statusText: '已自动换成下一个。', doneText: '已自动换成下一个预存号码。进线语未改。'});

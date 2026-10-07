@@ -32,6 +32,7 @@ def test_online_over_three_or_offline_switches():
     assert decision_for(crowded, PHONE) == 'online'
     assert decision_for(crowded, OTHER) == 'offline'
     assert decision_for(crowded, '85200003333') == ''
+    assert decision_for(crowded, '') == 'online'
     quiet = parse_ticket({'online': 2, 'accounts': [{'phone': PHONE, 'online_count': 1, 'leads': 0}]}, TICKET)
     assert decision_for(quiet, PHONE) == ''
     empty = parse_ticket({'online': 0, 'offline_apps': 4}, TICKET)
@@ -93,6 +94,10 @@ def test_lead_detail_names_the_work_order_and_number():
         {'name': '鳄鱼-梵高', 'code': 'sampleTicket', 'phone': OTHER, 'leads': '0.5'},
         {'name': '另一工单', 'code': 'secondTicket', 'phone': PHONE, 'leads': '1'},
     ]
+    quiet = parse_ticket({'online': 1, 'accounts': [{'phone': PHONE, 'leads': 0}, {'phone': OTHER, 'offline': True, 'leads': 2}]}, TICKET)
+    skipped = lead_report([quiet])
+    assert skipped['rows'] == [{'name': 'sampleTicket', 'code': 'sampleTicket', 'phone': OTHER, 'leads': '2'}]
+    assert skipped['total'] == '2'
 
 
 def test_buyer_quote_applies_fee_then_divides_by_leads():
@@ -106,7 +111,7 @@ def test_buyer_quote_applies_fee_then_divides_by_leads():
         '10/06',
         'HK项目',
         'AJ',
-        '187-027-3339 充值0     余额：1,447.93',
+        '187-027-3339 充值0 余额：1,447.93',
         '消耗：33.29',
         '进线：0.8',
         '成本：41.61',
@@ -189,3 +194,28 @@ def test_desk_routes_review_quote_and_sheet(tmp_path):
     })
     assert written.status_code == 200, written.text
     assert saved[0]['values'][0][3:6] == ['33.29', '0.8', '41.61']
+    empty = client.get('/api/desk/screen')
+    assert empty.status_code == 204
+    missing_window = client.post('/api/desk/screen/click', json={'x': 1, 'y': 2})
+    assert missing_window.status_code == 400 and '当前没有窗口' in missing_window.text
+
+    class Screen:
+        def __init__(self):
+            self.clicks = []
+            self.image = b'\x89PNG\r\n'
+
+        def snapshot(self):
+            return self.image
+
+        def pointer(self, x, y):
+            self.clicks.append((x, y))
+
+    app.state.desk_reader = Screen()
+    shot = client.get('/api/desk/screen')
+    assert shot.status_code == 200 and shot.content == b'\x89PNG\r\n'
+    assert shot.headers['content-type'].startswith('image/png')
+    clicked = client.post('/api/desk/screen/click', json={'x': 12, 'y': 40})
+    assert clicked.status_code == 200
+    assert app.state.desk_reader.clicks == [(12.0, 40.0)]
+    bad = client.post('/api/desk/screen/click', json={'x': True, 'y': 1})
+    assert bad.status_code == 400

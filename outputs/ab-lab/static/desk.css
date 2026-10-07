@@ -12,6 +12,10 @@
 .desk-stats { display: grid; gap: 8px; margin: 12px 0; }
 .desk-total { margin: 0; font-weight: 650; }
 .desk-preview { min-height: 8.5em; margin: 0 0 12px; padding: 12px 14px; white-space: pre-wrap; border-radius: 12px; background: var(--surface-soft); }
+.desk-screen { margin: 12px 0; }
+.desk-screen[hidden] { display: none; }
+.desk-screen p { margin: 0 0 8px; }
+.desk-screen img { width: min(100%, 1100px); height: auto; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; background: #000; }
 @media (max-width: 900px) {
   .desk-ticket-form, .desk-buyer-form, .desk-sheet-form { grid-template-columns: 1fr 1fr; }
 }

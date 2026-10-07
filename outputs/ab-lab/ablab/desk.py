@@ -192,7 +192,7 @@ def decision_for(ticket, phone):
     digits = _phone(phone) if phone else ''
     accounts = ticket.get('accounts') or []
     account = next((item for item in accounts if item['phone'] == digits), None) if digits else None
-    if accounts and account is None:
+    if digits and accounts and account is None:
         return ''
     if account and account['offline']:
         return 'offline'
@@ -212,6 +212,8 @@ def lead_report(tickets):
         for account in ticket.get('accounts') or []:
             leads = account['leads']
             total += leads
+            if leads == 0:
+                continue
             rows.append({
                 'name': ticket['name'],
                 'code': ticket['code'],
@@ -241,6 +243,12 @@ def review_tickets(tickets, phone, reader):
             raise DeskError('工单数据无法读取')
         parsed.append(parse_ticket(loaded, url, name))
     report = lead_report(parsed)
+    offline_phones = []
+    for ticket in parsed:
+        for account in ticket.get('accounts') or []:
+            if account.get('offline') and account['phone'] not in offline_phones:
+                offline_phones.append(account['phone'])
+    report['offline_phones'] = offline_phones
     switch = ''
     online = None
     for ticket in parsed:
@@ -281,7 +289,7 @@ def buyer_quote(fields):
         date,
         project,
         buyer,
-        f'{phone} 充值{recharge_text}     余额：{_grouped(balance)}',
+        f'{phone} 充值{recharge_text} 余额：{_grouped(balance)}',
         f'消耗：{adjusted:.2f}',
         f'进线：{_plain(leads)}',
         f'成本：{cost:.2f}' if cost is not None else '成本：—',
