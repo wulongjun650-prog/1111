@@ -63,7 +63,7 @@
     }
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     html{scroll-behavior:smooth;background:#e9e8e4;touch-action:manipulation}
-    body{margin:0;color:var(--ink);background:#e9e8e4;font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","PingFang HK","Microsoft JhengHei","Noto Sans TC",Arial,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;touch-action:manipulation}
+    body{margin:0;color:var(--ink);background:#e9e8e4;font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","PingFang HK","Microsoft JhengHei","Noto Sans TC",Arial,sans-serif;-webkit-font-smoothing:antialiased;touch-action:manipulation}
     a{color:inherit;text-decoration:none;-webkit-user-select:none;user-select:none}
     button{font:inherit;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-user-select:none;user-select:none}
     #method,#market,#trust,footer{content-visibility:auto;contain-intrinsic-size:1px 500px}
@@ -78,6 +78,18 @@
     .hero-sub{margin:11px 0 0;font-size:15px;line-height:1.68;color:#42516b;font-weight:650}.hero-proof{margin-top:9px;color:#6d7686;font-size:11px}
     .cta{width:100%;min-height:56px;border:0;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 18px;margin-top:16px;color:#fff;background:linear-gradient(135deg,#f59a2e,#e77c15);font-size:17px;font-weight:900;box-shadow:0 11px 22px rgba(229,124,21,.22);cursor:pointer;-webkit-tap-highlight-color:transparent}
     .cta:active,.gate-confirm:active{transform:scale(.98) translateY(1px);opacity:.94;transition:transform .06s ease,opacity .06s ease}
+    /* 領取按鈕動效：掃光 → 輕彈 → 箭頭前推，每 3 秒一輪。只動 transform（合成層），唔觸發重排、唔影響 CLS。
+       用偽元素實現，因為 setActive() 會用 textContent 改寫按鈕文字 */
+    button.cta[data-wa]{position:relative;overflow:hidden;isolation:isolate;animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite}
+    button.cta[data-wa]::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:-40%;width:28%;background:linear-gradient(105deg,rgba(255,255,255,0),rgba(255,255,255,.45) 50%,rgba(255,255,255,0));transform:skewX(-18deg);animation:cta-shine 3s ease-in-out 1.2s infinite;pointer-events:none}
+    button.cta[data-wa]::after{content:"";flex:none;width:8px;height:8px;margin-left:1px;border-top:2.5px solid currentColor;border-right:2.5px solid currentColor;transform:rotate(45deg);animation:cta-arrow 3s ease-in-out 1.2s infinite}
+    button.cta[data-wa]:active{animation:none}
+    .cta.cta-idle,.cta.cta-idle::before,.cta.cta-idle::after,
+    .floating-cta-wrap:not(.show) .cta,.floating-cta-wrap:not(.show) .cta::before,.floating-cta-wrap:not(.show) .cta::after{animation-play-state:paused}
+    @keyframes cta-bounce{0%,62%,100%{transform:none}68%{transform:translateY(-3px) scale(1.035)}74%{transform:scale(.985)}80%{transform:translateY(-1px) scale(1.015)}86%{transform:none}}
+    @keyframes cta-shine{0%,38%{transform:translateX(0) skewX(-18deg)}60%,100%{transform:translateX(520%) skewX(-18deg)}}
+    @keyframes cta-arrow{0%,62%,100%{transform:translateX(0) rotate(45deg)}70%{transform:translateX(4px) rotate(45deg)}78%{transform:translateX(0) rotate(45deg)}}
+    @media (prefers-reduced-motion:reduce){button.cta[data-wa],button.cta[data-wa]::before,button.cta[data-wa]::after{animation:none}}
     .gate-option:active{transform:scale(.985);background:#f7f9fc;transition:transform .06s ease}
     .gate-back:active,.gate-cancel:active{transform:scale(.97);background:#eae6de;transition:transform .06s ease}
     .cta-note{text-align:center;margin:8px 0 0;color:#737c8b;font-size:11px;line-height:1.5}
@@ -177,7 +189,7 @@
 </head>
 <body>
   <main class="page">
-    <img class="brand-banner" src="assets/econman-banner.webp" alt="講經MAN" width="1100" height="182" fetchpriority="high">
+    <img class="brand-banner" src="assets/econman-banner.webp" alt="講經MAN" width="1100" height="182" fetchpriority="high" decoding="async">
 
     <section class="hero" id="top">
       <div class="hero-inner">
@@ -256,7 +268,7 @@
       <div class="section-label">Why This Page Exists</div>
       <h2>你冇時間每日篩咁多資訊<br>我哋先幫你篩一次</h2>
       <div class="trust">
-        <img class="avatar" src="assets/econman-avatar.webp" alt="講經MAN" width="240" height="240" loading="lazy">
+        <img class="avatar" src="assets/econman-avatar.webp" alt="講經MAN" width="240" height="240" loading="lazy" decoding="async">
         <div>
           <h3>講經MAN</h3>
           <p>用貼地方式拆解市場資訊，把複雜內容講簡單一點；過往公開內容亦可以自行查看。</p>
@@ -844,16 +856,35 @@
     }, {threshold:.18});
     finalObserver.observe(finalCta);
 
+    // 滾動中只讀 scrollY；hero 高度只喺 resize 時讀，避免每次滾動強制排版，並用 rAF 合併同一幀內多次觸發
+    let heroThreshold = Math.max(180, heroSection.offsetHeight * .72);
+    let floatTicking = false;
+    function scheduleFloatingCTA(){
+      if (floatTicking) return;
+      floatTicking = true;
+      requestAnimationFrame(() => { floatTicking = false; updateFloatingCTA(); });
+    }
+
     function updateFloatingCTA(){
-      const pastHero = window.scrollY > Math.max(180, heroSection.offsetHeight * .72);
+      const pastHero = window.scrollY > heroThreshold;
       const show = pastHero && !finalVisible;
       floatingWrap.classList.toggle('show', show);
       floatingWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
     }
 
-    window.addEventListener('scroll',updateFloatingCTA,{passive:true});
-    window.addEventListener('resize',updateFloatingCTA,{passive:true});
+    window.addEventListener('scroll',scheduleFloatingCTA,{passive:true});
+    const refreshHeroThreshold = () => { heroThreshold = Math.max(180, heroSection.offsetHeight * .72); scheduleFloatingCTA(); };
+    window.addEventListener('resize', refreshHeroThreshold, {passive:true});
+    window.addEventListener('load', refreshHeroThreshold, {once:true});
     updateFloatingCTA();
+
+    // 按鈕離開畫面就暫停動效
+    if ('IntersectionObserver' in window) {
+      const ctaObserver = new IntersectionObserver(entries => {
+        entries.forEach(en => en.target.classList.toggle('cta-idle', !en.isIntersecting));
+      });
+      [heroCta, finalButton].forEach(btn => ctaObserver.observe(btn));
+    }
   </script>
 
 </body>
