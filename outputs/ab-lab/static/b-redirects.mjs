@@ -5,6 +5,17 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   let session = null, active = false, queueGeneration = 0, checkQueue = Promise.resolve(), trustQueue = Promise.resolve(), trustTimer = 0, trustFlight = false, splitTimer = 0, splitEpoch = 0;
   const TRUST_LABELS = {trust:'出现信任弹窗', clear:'正常', unconfirmed:'未确认', unchecked:'未检测'};
   const TRUST_CLASS = {trust:'abnormal', clear:'normal', unconfirmed:'unknown'};
+  const TRUST_MIN_SECONDS = 10;
+  const TRUST_MAX_SECONDS = 86400;
+  const TRUST_INTERVAL_KEY = 'ab-lab-wa-trust-seconds';
+  function storedTrustSeconds() {
+    try {
+      const saved = Number(localStorage.getItem(TRUST_INTERVAL_KEY));
+      if (Number.isInteger(saved) && saved >= TRUST_MIN_SECONDS && saved <= TRUST_MAX_SECONDS) return saved;
+    } catch { /* 浏览器不让保存时，继续用 10 秒 */ }
+    return TRUST_MIN_SECONDS;
+  }
+  let trustSeconds = storedTrustSeconds();
   const header = element('div', 'card-heading');
   const title = element('div'); title.append(element('h2', '', 'B 页换链'));
   const count = element('span', 'badge neutral', '尚未扫描'); count.id = 'b-redirect-count';
@@ -38,7 +49,17 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const waBox = element('section', 'b-wa'); waBox.id = 'b-wa';
   const waHead = element('div', 'b-wa-head');
   waHead.append(element('strong', '', 'WS 号码'), element('p', 'b-wa-status', '只换号码。进线语、按钮和链接结构保持不动。'));
-  const waNoteLine = element('p', 'b-wa-trust-note', '自动复查未开。要先分别看到一次信任弹窗和一次正常，才会每 10 秒看当前号码。');
+  const waNoteLine = element('p', 'b-wa-trust-note', ''); waNoteLine.id = 'b-wa-trust-note';
+  waNoteLine.textContent = trustNote(false);
+  const waIntervalRow = element('div', 'b-wa-interval');
+  const waIntervalLabel = element('label', '', '复查间隔');
+  const waInterval = element('input'); waInterval.id = 'b-wa-interval'; waInterval.type = 'number';
+  waInterval.min = String(TRUST_MIN_SECONDS); waInterval.max = String(TRUST_MAX_SECONDS); waInterval.step = '1';
+  waInterval.inputMode = 'numeric'; waInterval.value = String(trustSeconds);
+  waInterval.setAttribute('aria-describedby', 'b-wa-trust-note');
+  waIntervalLabel.append(waInterval);
+  const waIntervalApply = element('button', 'button secondary', '按这个时间'); waIntervalApply.id = 'b-wa-interval-apply'; waIntervalApply.type = 'button';
+  waIntervalRow.append(waIntervalLabel, element('span', 'b-wa-interval-unit', '秒'), waIntervalApply);
   const waAlarm = element('div', 'wa-trust-alarm'); waAlarm.id = 'wa-trust-alarm'; waAlarm.hidden = true; waAlarm.setAttribute('role', 'alert');
   const waAlarmText = element('p', '', ''); waAlarm.append(waAlarmText); document.body.append(waAlarm);
   const trustAudio = createTrustAlarm();
@@ -51,7 +72,14 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const waNote = element('input'); waNote.id = 'b-wa-note'; waNote.maxLength = 300; waNote.placeholder = '可选'; waNoteLabel.append(waNote);
   const waAdd = element('button', 'button secondary', '添加号码'); waAdd.id = 'b-wa-add'; waAdd.type = 'submit';
   waForm.append(waLabel, waNoteLabel, waAdd);
-  waBox.append(waHead, waNoteLine, waList, waForm);
+  waBox.dataset.trustSeconds = String(trustSeconds);
+  waBox.append(waHead, waNoteLine, waIntervalRow, waList, waForm);
+  waIntervalApply.addEventListener('click', applyTrustSeconds);
+  waInterval.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    applyTrustSeconds();
+  });
   const toolbar = element('div', 'b-redirect-toolbar');
   const versionLabel = element('label', '', '从这一版换');
   const version = element('select'); version.id = 'b-redirect-version'; versionLabel.append(version);
@@ -105,14 +133,41 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     if (alarming) trustAudio.start(); else trustAudio.stop();
   }
 
+  function trustNote(polling) {
+    return polling
+      ? `当前号码每 ${trustSeconds} 秒复查。出现信任弹窗会报警，直接进聊天会解除。`
+      : `自动复查未开。要先分别看到一次信任弹窗和一次正常，才会每 ${trustSeconds} 秒看当前号码。`;
+  }
+
+  function applyTrustSeconds() {
+    const raw = waInterval.value.trim();
+    const seconds = Number(raw);
+    if (!/^\d+$/.test(raw) || !Number.isInteger(seconds)) {
+      showMessage('请填写整数秒。', true);
+      return;
+    }
+    if (seconds < TRUST_MIN_SECONDS) {
+      showMessage('最短 10 秒。', true);
+      return;
+    }
+    if (seconds > TRUST_MAX_SECONDS) {
+      showMessage('最长 86400 秒。', true);
+      return;
+    }
+    trustSeconds = seconds;
+    waInterval.value = String(seconds);
+    try { localStorage.setItem(TRUST_INTERVAL_KEY, String(seconds)); } catch { /* 记不住也按这次填写的间隔走 */ }
+    syncTrustTimer(session);
+    showMessage(`已改为每 ${seconds} 秒复查。`);
+  }
+
   function syncTrustTimer(value) {
     clearInterval(trustTimer); trustTimer = 0;
     waBox.dataset.trustPoll = value?.trustPoll ? '1' : '0';
-    waNoteLine.textContent = value?.trustPoll
-      ? '当前号码每 10 秒复查。出现信任弹窗会报警，直接进聊天会解除。'
-      : '自动复查未开。要先分别看到一次信任弹窗和一次正常，才会每 10 秒看当前号码。';
+    waBox.dataset.trustSeconds = String(trustSeconds);
+    waNoteLine.textContent = trustNote(Boolean(value?.trustPoll));
     if (!value?.trustPoll || !isCurrent(value)) return;
-    trustTimer = setInterval(() => pollCurrent(session), 10000);
+    trustTimer = setInterval(() => pollCurrent(session), trustSeconds * 1000);
   }
 
   async function checkNumber(value, id) {
@@ -647,7 +702,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
 
   function clear() {
     clearTimeout(splitTimer); splitTimer = 0; ++splitEpoch; ++queueGeneration; clearInterval(trustTimer); trustTimer = 0; trustFlight = false; session = null;
-    waAlarm.hidden = true; trustAudio.stop(); waBox.dataset.trustPoll = '0';
+    waAlarm.hidden = true; trustAudio.stop(); waBox.dataset.trustPoll = '0'; waNoteLine.textContent = trustNote(false);
     urls.value = ''; note.value = ''; waNumbers.value = ''; waNote.value = ''; version.replaceChildren(); occurrences.replaceChildren(); warnings.replaceChildren(); presets.replaceChildren();
     renderNumbers(null); renderSplit(null);
     showMessage(); updateControls();
