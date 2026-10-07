@@ -346,7 +346,9 @@ test('observer can read domains and accounts while action buttons stay hidden', 
     assert.equal(await page.locator('#new-domain').isHidden(), true);
     assert.equal(await page.locator('#clear-logs').isHidden(), true);
     assert.equal(await page.locator('#clear-foreign-logs').isHidden(), true);
-    assert.equal(await page.locator('#desk-check').isHidden(), true);
+    assert.equal(await page.locator('[data-tab="desk"]').count(), 0);
+    assert.equal(await page.locator('#panel-desk').count(), 0);
+    assert.equal(await page.locator('#desk-check').count(), 0);
     assert.equal(await page.locator('#rules-form button[type="submit"]').isHidden(), true);
     assert.equal(await page.locator('#logout').count(), 0);
     await page.locator('[data-tab="accounts"]').click();

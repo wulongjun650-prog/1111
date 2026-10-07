@@ -1,5 +1,6 @@
 export function createDesk({api, on, element, livePhone, switchLive, screenPath = () => '/api/desk/screen', readOnly = false}) {
   const root = document.querySelector('#desk-root');
+  if (!root) return {setActive() {}};
   const TICKET_KEY = 'ab-lab-desk-tickets';
   const SHEET_KEY = 'ab-lab-desk-sheet';
   let tickets = loadTickets();

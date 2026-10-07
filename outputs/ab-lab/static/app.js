@@ -576,7 +576,7 @@ async function loadLogs(page = 1, {quiet = false} = {}) {
 }
 
 async function selectTab(name, {load = true} = {}) {
-  if (!labels[name]) name = 'overview';
+  if (!labels[name] || (name === 'desk' && isObserver(account))) name = 'overview';
   if (name === 'accounts' && !seesAll(account)) name = 'domains';
   if (!selectedSite && !['domains','accounts'].includes(name)) name = 'domains';
   activeTab = name;
