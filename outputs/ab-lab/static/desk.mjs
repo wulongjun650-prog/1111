@@ -1,4 +1,4 @@
-export function createDesk({api, on, element, livePhone, switchLive, screenPath = () => '/api/desk/screen'}) {
+export function createDesk({api, on, element, livePhone, switchLive, screenPath = () => '/api/desk/screen', readOnly = false}) {
   const root = document.querySelector('#desk-root');
   const TICKET_KEY = 'ab-lab-desk-tickets';
   const SHEET_KEY = 'ab-lab-desk-sheet';
@@ -85,7 +85,7 @@ export function createDesk({api, on, element, livePhone, switchLive, screenPath 
       const row = element('div', 'desk-ticket');
       row.append(element('strong', '', item.name || item.url), element('small', '', item.url));
       const remove = element('button', 'button quiet small', '移除'); remove.type = 'button';
-      on(remove, 'click', () => { tickets.splice(index, 1); saveTickets(); renderTickets(); });
+      on(remove, 'click', () => { if (readOnly) return; tickets.splice(index, 1); saveTickets(); renderTickets(); });
       row.append(remove); ticketList.append(row);
     });
   }
@@ -148,7 +148,7 @@ export function createDesk({api, on, element, livePhone, switchLive, screenPath 
   }
 
   async function review(manual = false) {
-    if (flight) return;
+    if (readOnly || flight) return;
     if (!tickets.length) { showMessage('先添加工单。', true); return; }
     flight = true; check.disabled = true;
     showScreen();
@@ -180,6 +180,7 @@ export function createDesk({api, on, element, livePhone, switchLive, screenPath 
 
   on(ticketForm, 'submit', event => {
     event.preventDefault();
+    if (readOnly) return;
     const link = url.value.trim();
     if (!link.includes('accountshow/')) { showMessage('工单链接不对。', true); return; }
     if (tickets.some(item => item.url === link)) { showMessage('这个工单已经在列表里。', true); return; }
@@ -189,13 +190,14 @@ export function createDesk({api, on, element, livePhone, switchLive, screenPath 
   });
   on(check, 'click', () => review(true));
   on(screenImg, 'click', event => {
-    if (!screenImg.naturalWidth || !screenImg.clientWidth) return;
+    if (readOnly || !screenImg.naturalWidth || !screenImg.clientWidth) return;
     const x = event.offsetX * screenImg.naturalWidth / screenImg.clientWidth;
     const y = event.offsetY * screenImg.naturalHeight / screenImg.clientHeight;
     api('/api/desk/screen/click', {method: 'POST', body: {x, y}}).catch(() => {});
   });
   on(buyerForm, 'submit', async event => {
     event.preventDefault();
+    if (readOnly) return;
     try {
       const quote = await api('/api/desk/quote', {method: 'POST', body: values()});
       preview.textContent = quote.text;
@@ -206,6 +208,7 @@ export function createDesk({api, on, element, livePhone, switchLive, screenPath 
   });
   on(sheetRow, 'submit', async event => {
     event.preventDefault();
+    if (readOnly) return;
     try { localStorage.setItem(SHEET_KEY, sheet.value.trim()); } catch { /* 记不住表格链接也继续提交 */ }
     try {
       const written = await api('/api/desk/sheet', {method: 'POST', body: {...values(), spreadsheet: sheet.value.trim()}, timeout: 60000});
@@ -226,7 +229,7 @@ export function createDesk({api, on, element, livePhone, switchLive, screenPath 
   function setActive(next) {
     active = next;
     clearInterval(timer); timer = 0;
-    if (!active) return;
+    if (!active || readOnly) return;
     timer = setInterval(() => { if (active && !document.hidden && tickets.length) review(); }, 30000);
   }
 

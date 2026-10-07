@@ -171,3 +171,22 @@ html.theme-morphing .advanced-panel, html.theme-morphing #hero-switch button {
 @media (prefers-reduced-motion: reduce) {
   html #theme-transition.is-active { opacity: 0 !important; visibility: hidden !important; }
 }
+body[data-account-role="observer"] :is(button, input[type="submit"]):not(
+  .nav-item,
+  #logout,
+  #refresh-state,
+  #refresh-analytics,
+  #refresh-domains,
+  #refresh-accounts,
+  #refresh-audit,
+  #logs-prev,
+  #logs-next,
+  #copy-domain,
+  #watch-silence,
+  #log-filters button[type="submit"],
+  #toast-region button,
+  dialog button,
+  [data-go]
+) {
+  display: none !important;
+}

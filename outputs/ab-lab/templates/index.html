@@ -28,10 +28,10 @@
       <button class="nav-item" data-tab="simulate"><span aria-hidden="true">⌘</span>规则模拟</button>
       <button class="nav-item" data-tab="logs"><span aria-hidden="true">≡</span>访问日志</button>
       <button class="nav-item" data-tab="domains"><span aria-hidden="true">◎</span>域名管理</button>
-      {% if account.role == 'admin' %}<button class="nav-item" data-tab="accounts"><span aria-hidden="true">◎</span>账号管理</button>{% endif %}
+      {% if account.role in ['admin', 'observer'] %}<button class="nav-item" data-tab="accounts"><span aria-hidden="true">◎</span>账号管理</button>{% endif %}
     </nav>
     <div class="sidebar-note"><span class="status-dot"></span> {{ '自用服务器环境' if deployment else '本地实验环境' }}<p><span id="sidebar-theme">正在读取主题</span><br>仅管理后台可见</p></div>
-    <div class="sidebar-footer"><span class="avatar">AB</span><div>{{ username }}<small>{{ '总管理员' if account.role == 'admin' else '代理账号' }} · {{ 'HTTPS' if deployment else '仅限本机访问' }}</small></div><span class="lock" aria-hidden="true">◇</span></div>
+    <div class="sidebar-footer"><span class="avatar">AB</span><div>{{ username }}<small>{{ '总管理员' if account.role == 'admin' else '观察账号' if account.role == 'observer' else '代理账号' }} · {{ 'HTTPS' if deployment else '仅限本机访问' }}</small></div><span class="lock" aria-hidden="true">◇</span></div>
   </aside>
   <div class="workspace">
     <header class="topbar">
@@ -73,12 +73,16 @@
       <div id="geoip-warning" class="notice error" hidden>{% if account.role == 'admin' %}国家数据库不可用：请检查安装包 resources/country.mmdb 或配置的 geoip_path。未识别国家的请求不会被伪造为已知国家。{% else %}国家识别暂不可用，请联系管理员。{% endif %}</div>
       <div id="no-sites" class="notice" hidden><p>还没有可管理的域名。添加域名后即可配置内容、访问规则和查看流量。</p><button id="empty-add-domain" class="button primary small">＋ 添加域名</button></div>
 
-      {% if account.role == 'admin' %}
+      {% if account.role in ['admin', 'observer'] %}
       <section id="panel-accounts" class="tab-panel" aria-label="账号管理" hidden>
-        <article class="card"><div class="card-heading"><div><p class="eyebrow">AGENT ACCOUNTS</p><h2>创建代理账号</h2></div></div><p class="muted">代理只能管理分配给自己的域名，也可以添加自己的域名。账号密码由你交给代理。</p>
-          <form id="account-form" class="account-entry"><label>用户名<input name="username" required maxlength="64" pattern="[A-Za-z0-9_.@\-]+" title="使用字母、数字或 _ . @ -，最多 64 位" autocomplete="off" spellcheck="false"></label><label>初始密码<input name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><button class="button primary" type="submit">创建代理账号</button></form><p class="subtle">密码为 12–256 位，创建成功后不再显示。停用账号会立即退出该代理的现有会话。</p>
+        {% if account.role == 'admin' %}
+        <article class="card"><div class="card-heading"><div><p class="eyebrow">AGENT ACCOUNTS</p><h2>创建账号</h2></div></div><p class="muted">代理只能管理分配给自己的域名。观察号可以看全部域名和账号名单，不能修改任何内容。密码由你交给对方。</p>
+          <form id="account-form" class="account-entry"><label>用户名<input name="username" required maxlength="64" pattern="[A-Za-z0-9_.@\-]+" title="使用字母、数字或 _ . @ -，最多 64 位" autocomplete="off" spellcheck="false"></label><label>角色<select name="role"><option value="agent">代理</option><option value="observer">观察号</option></select></label><label>初始密码<input name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><button class="button primary" type="submit">创建账号</button></form><p class="subtle">密码为 12–256 位，创建成功后不再显示。停用账号会立即退出该账号的现有会话。</p>
         </article>
-        <article class="card"><div class="card-heading"><div><h2>账号列表</h2><p class="card-caption">管理代理的访问权限与密码</p></div><button id="refresh-accounts" class="button secondary small">刷新</button></div><div id="account-list" class="table-scroll"><p class="empty-state">正在读取账号…</p></div></article>
+        {% else %}
+        <article class="card"><div class="card-heading"><div><p class="eyebrow">READ ONLY</p><h2>只能查看</h2></div></div><p class="muted">观察号可以看全部域名里的流量、内容和账号名单。不能发布、换号、检查工单或修改任何设置。密码不会显示。</p></article>
+        {% endif %}
+        <article class="card"><div class="card-heading"><div><h2>账号列表</h2><p class="card-caption">{{ '管理访问权限与密码' if account.role == 'admin' else '用户名、角色和名下域名' }}</p></div><button id="refresh-accounts" class="button secondary small">刷新</button></div><div id="account-list" class="table-scroll"><p class="empty-state">正在读取账号…</p></div></article>
       </section>
       {% endif %}
 

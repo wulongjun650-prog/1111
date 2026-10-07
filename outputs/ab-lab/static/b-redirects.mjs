@@ -1,6 +1,6 @@
 import {parseLinks} from './helpers.mjs';
 
-export function createBRedirects({api, on, element, confirmAction, getSite, onApplied}) {
+export function createBRedirects({api, on, element, confirmAction, getSite, onApplied, readOnly = false}) {
   const root = document.querySelector('#b-redirects');
   let session = null, active = false, queueGeneration = 0, checkQueue = Promise.resolve(), trustQueue = Promise.resolve(), trustTimer = 0, trustFlight = false, splitTimer = 0, splitEpoch = 0;
   const TRUST_LABELS = {trust:'出现信任弹窗', clear:'正常', unconfirmed:'未确认', unchecked:'未检测'};
@@ -167,12 +167,12 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     waBox.dataset.trustPoll = value?.trustPoll ? '1' : '0';
     waBox.dataset.trustSeconds = String(trustSeconds);
     waNoteLine.textContent = trustNote(Boolean(value?.trustPoll));
-    if (!value?.trustPoll || !isCurrent(value)) return;
+    if (readOnly || !value?.trustPoll || !isCurrent(value)) return;
     trustTimer = setInterval(() => pollCurrent(session), trustSeconds * 1000);
   }
 
   async function checkNumber(value, id) {
-    if (!isCurrent(value) || value.trustChecking.has(id)) return;
+    if (readOnly || !isCurrent(value) || value.trustChecking.has(id)) return;
     value.trustChecking.add(id); renderNumbers(value);
     try {
       const result = await api(`/api/b-redirects/numbers/${id}/trust`, {method:'POST', body:{}});
@@ -235,6 +235,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     if (!value) {count.textContent = '尚未扫描'; return;}
     count.textContent = value.loading ? '扫描中' : `${value.occurrences.length} 处`;
     summary.textContent = `跳转位置 · 已选 ${selected(value).length} / ${value.occurrences.length}`;
+    if (readOnly) root.querySelectorAll('button, input, select, textarea').forEach(node => { node.disabled = true; });
   }
 
   function renderNow(value) {
@@ -316,6 +317,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   }
 
   function queueSplitSave(value, immediate = false) {
+    if (readOnly) return;
     clearTimeout(splitTimer); splitTimer = 0;
     if (!isCurrent(value)) return;
     if (sameSplit(value.split, value.savedSplit || blankSplit())) {
@@ -432,7 +434,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   }
 
   async function checkPreset(value, id) {
-    if (!isCurrent(value) || value.checking.has(id)) return;
+    if (readOnly || !isCurrent(value) || value.checking.has(id)) return;
     value.checking.add(id); renderPresets(value);
     try {
       const result = await api(`/api/b-redirects/presets/${id}/check`, {method:'POST', body:{}});
@@ -526,7 +528,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   }
 
   async function apply(value, preset) {
-    if (!isCurrent(value) || value.busy || value.loading || value.checking.has(preset.id) || !value.versionId || !linkSelected(value).length) return;
+    if (readOnly || !isCurrent(value) || value.busy || value.loading || value.checking.has(preset.id) || !value.versionId || !linkSelected(value).length) return;
     const links = linkSelected(value);
     if (links.every(row => row.url === preset.url)) { showMessage('这些位置已经是这条链接，没有新版本。'); return; }
     value.busy = true; updateControls(); showMessage('正在检测，并换进 B 页…');
@@ -560,6 +562,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   }
 
   async function applyNumber(value, item, options = {}) {
+    if (readOnly) return false;
     const targets = options.occurrences || numberSelected(value);
     if (!isCurrent(value) || value.busy || value.loading || !value.versionId || !targets.length) return false;
     if (targets.every(row => row.url === item.phone)) {

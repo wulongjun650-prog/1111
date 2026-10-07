@@ -7,7 +7,13 @@ test('account management depends only on an explicit admin role', () => {
   assert.equal(typeof accounts.isAdmin, 'function');
   assert.equal(accounts.isAdmin({username:'admin888',role:'agent'}), false);
   assert.equal(accounts.isAdmin({username:'other',role:'admin'}), true);
+  assert.equal(accounts.isAdmin({username:'watch',role:'observer'}), false);
   assert.equal(accounts.isAdmin(null), false);
+  assert.equal(accounts.isObserver({role:'observer'}), true);
+  assert.equal(accounts.isObserver({role:'admin'}), false);
+  assert.equal(accounts.seesAll({role:'observer'}), true);
+  assert.equal(accounts.seesAll({role:'admin'}), true);
+  assert.equal(accounts.seesAll({role:'agent'}), false);
 });
 
 test('catalog loss chooses an owned site or no site, never a default fallback', () => {

@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import threading
 import uuid
 
@@ -258,6 +259,60 @@ def test_unknown_and_disabled_login_wait_for_password_hash(tmp_path, monkeypatch
         resume.set()
         thread.join(10)
     assert result == [(None, 401)]
+
+
+def test_observer_signs_in_and_admin_revokes_without_showing_the_password(tmp_path):
+    auth = Auth(Store(tmp_path))
+    auth.set_password('admin888', PASSWORD)
+    watcher = auth.create_observer('watcher', PASSWORD)
+    assert set(watcher) == {'id', 'username', 'role', 'enabled', 'created'}
+    assert watcher['role'] == 'observer' and watcher['enabled'] is True
+    token = signed_in(auth, 'watcher')
+    assert auth.session(token)['role'] == 'observer'
+    auth.set_enabled(watcher['id'], False)
+    assert auth.session(token) is None
+    assert auth.login('watcher', PASSWORD, '203.0.113.20') == (None, 401)
+    auth.set_enabled(watcher['id'], True)
+    replacement = signed_in(auth, 'watcher')
+    auth.reset_agent_password(watcher['id'], NEW_PASSWORD)
+    assert auth.session(replacement) is None
+    fresh = signed_in(auth, 'watcher', NEW_PASSWORD)
+    assert auth.session(fresh)['account_id'] == watcher['id']
+    with pytest.raises(Conflict):
+        auth.create_agent('watcher', PASSWORD)
+    with auth.store.connect() as db:
+        actions = [row[0] for row in db.execute('SELECT action FROM audit')]
+        detail = ' '.join(row[0] for row in db.execute('SELECT detail FROM audit'))
+    assert 'observer_created' in actions and 'observer_login' in actions and 'observer_password_reset' in actions
+    assert PASSWORD not in detail and NEW_PASSWORD not in detail
+
+
+def test_old_account_check_keeps_rows_and_sessions_when_observer_is_added(tmp_path):
+    store = Store(tmp_path)
+    with store.connect() as db:
+        db.execute('''CREATE TABLE accounts (
+            id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+            role TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+            created REAL NOT NULL, auth_epoch INTEGER NOT NULL DEFAULT 0,
+            CHECK((id='admin' AND role='admin') OR (id!='admin' AND role='agent')))''')
+        db.execute('''CREATE TABLE account_sessions (
+            token_hash TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id),
+            expires REAL NOT NULL)''')
+        db.execute('CREATE INDEX account_session_owner ON account_sessions(account_id)')
+        db.execute("INSERT INTO accounts(id,username,password_hash,role,enabled,created,auth_epoch) VALUES ('admin','boss','hash','admin',1,1,3)")
+        db.execute("INSERT INTO accounts(id,username,password_hash,role,enabled,created,auth_epoch) VALUES ('agentid','agent','hash','agent',1,2,4)")
+        db.execute("INSERT INTO account_sessions(token_hash,account_id,expires) VALUES ('kept','agentid',9999999999)")
+    auth = Auth(store)
+    watcher = auth.create_observer('watcher', PASSWORD)
+    assert watcher['role'] == 'observer'
+    assert auth.get_account('agentid')['username'] == 'agent'
+    assert auth.get_account('admin')['username'] == 'boss'
+    with store.connect() as db:
+        assert db.execute("SELECT token_hash FROM account_sessions WHERE account_id='agentid'").fetchone()[0] == 'kept'
+        assert 'observer' in db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='accounts'").fetchone()[0]
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO accounts(id,username,password_hash,role,created) VALUES ('nope','nope','h','guest',1)")
+    assert Auth(store).get_account(watcher['id'])['role'] == 'observer'
 
 
 @pytest.mark.parametrize('username,password', [
