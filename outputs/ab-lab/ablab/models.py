@@ -151,9 +151,32 @@ def normalize_whatsapp_phone(value):
     return digits
 
 
+def normalize_display_name(value):
+    name = re.sub(r'\s+', ' ', str(value).strip())
+    if not name:
+        raise ValueError('请填写接待名')
+    if len(name) > 40:
+        raise ValueError('接待名最多 40 个字')
+    if re.search(r'[<>&"\'\\]', name):
+        raise ValueError('接待名不能包含符号')
+    return name
+
+
+def reception_sentence(name):
+    return f'本次由助理{normalize_display_name(name)} 接待'
+
+
 class WhatsAppNumberInput(StrictModel):
     phones: list[str] = Field(min_length=1, max_length=30)
     note: str = Field(default='', max_length=300, strict=True)
+    display_name: str = Field(default='', max_length=40, strict=True)
+
+    @field_validator('display_name')
+    @classmethod
+    def optional_name(cls, value):
+        if not str(value).strip():
+            return ''
+        return normalize_display_name(value)
 
     @field_validator('phones')
     @classmethod
@@ -172,6 +195,41 @@ class TrackingApply(StrictModel):
     ga4_id: int | None = Field(default=None, gt=0)
     conversion_id: int | None = Field(default=None, gt=0)
     expected_published: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
+
+
+class WhatsAppReception(StrictModel):
+    phone: str = Field(min_length=1, max_length=40, strict=True)
+    display_name: str = Field(min_length=1, max_length=40, strict=True)
+    version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
+    expected_published: str | None = Field(pattern=r'^[a-f0-9]{32}$')
+
+    @field_validator('phone')
+    @classmethod
+    def public_phone(cls, value):
+        return normalize_whatsapp_phone(value)
+
+    @field_validator('display_name')
+    @classmethod
+    def required_name(cls, value):
+        return normalize_display_name(value)
+
+
+class WhatsAppSplitMember(StrictModel):
+    number_id: int = Field(gt=0, strict=True)
+    weight: int = Field(default=1, ge=1, le=100, strict=True)
+
+
+class WhatsAppSplit(StrictModel):
+    enabled: bool
+    mode: Literal['random', 'weighted']
+    members: list[WhatsAppSplitMember] = Field(default_factory=list, max_length=30)
+
+    @field_validator('members')
+    @classmethod
+    def unique_numbers(cls, values):
+        if len({item.number_id for item in values}) != len(values):
+            raise ValueError('分流号码重复')
+        return values
 
 
 class WhatsAppNumberApply(StrictModel):

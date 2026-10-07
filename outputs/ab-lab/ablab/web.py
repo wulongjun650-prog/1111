@@ -24,11 +24,11 @@ from pydantic import Field
 
 from .archives import EDITABLE_EXTENSIONS, MAX_FILE, MAX_ZIP, editable_file, import_content, read_source, resolve_file, source_files
 from .analytics import summarize
-from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput
+from .models import ConfigUpdate, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput, WhatsAppReception, WhatsAppSplit
 from .tracking import normalize_conversion, normalize_ga4
 from .linkcheck import LinkChecker
 from .watrust import TrustChecker, device_from_environ
-from .redirects import public_occurrences, rewrite_text, scan_bundle
+from .redirects import public_occurrences, rewrite_reception_bytes, rewrite_text, scan_bundle
 from .rules import decide
 from .cloudflare import Cloudflare
 from .provisioning import ProvisioningError
@@ -40,6 +40,7 @@ from .sites import Registry
 ROOT = Path(__file__).resolve().parent.parent
 LOGGER = logging.getLogger('ablab')
 SPLIT_COOKIE = 'ab_split'
+WA_COOKIE = 'ab_wa'
 _split_scans = {}
 _split_scan_lock = threading.Lock()
 Slot = Literal['A', 'B']
@@ -766,7 +767,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return {'version':base, 'published_version':published, 'occurrences':public_occurrences(occurrences),
                 'warnings':warnings, 'presets':store.redirect_presets(), 'numbers':store.whatsapp_numbers(),
                 'trust_poll':store.whatsapp_trust_poll_enabled(),
-                'active':store.redirect_active(), 'split':store.redirect_split()}
+                'active':store.redirect_active(), 'split':store.redirect_split(), 'number_split':store.whatsapp_split()}
 
     @routes.put('/b-redirects/split')
     def save_b_redirect_split(body: RedirectSplit, store=Depends(site_store)):
@@ -810,7 +811,21 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.post('/b-redirects/numbers')
     def add_whatsapp_numbers(body: WhatsAppNumberInput, store=Depends(site_store)):
-        return {'numbers':store.add_whatsapp_numbers(body.phones, body.note)}
+        return {'numbers':store.add_whatsapp_numbers(body.phones, body.note, body.display_name)}
+
+    @routes.post('/b-redirects/numbers/reception')
+    def publish_whatsapp_reception(body: WhatsAppReception, request: Request, store=Depends(site_store)):
+        guard = redirect_commit_guard(request, store)
+        number = store.upsert_whatsapp_name(body.phone, body.display_name)
+        base = source_version(store, 'B', body.version_id)
+        if store.slots()['B'] != body.expected_published:
+            raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
+        version, changed = store.publish_reception(base, body.display_name, body.expected_published, guard)
+        return {'number': number, 'version': version, 'changed': changed, 'sentence': f'本次由助理{body.display_name} 接待'}
+
+    @routes.put('/b-redirects/numbers/split')
+    def save_whatsapp_number_split(body: WhatsAppSplit, store=Depends(site_store)):
+        return {'number_split': store.save_whatsapp_split(body.enabled, body.mode, body.members)}
 
     @routes.delete('/b-redirects/numbers/{number_id}')
     def delete_whatsapp_number(number_id: int, store=Depends(site_store)):
@@ -1047,7 +1062,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if not sees_everything(principal(request)):
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted', 'whatsapp_trust_checked'}
+                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted', 'whatsapp_trust_checked', 'whatsapp_split_updated'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 
@@ -1092,6 +1107,35 @@ def cached_split_scan(root, version_id):
     return occurrences
 
 
+def assign_visitor_page(data, relative, occurrences, link_url, number):
+    """One pass so link offsets and number offsets stay on the original file."""
+    positions = [item for item in occurrences if item['path'] == relative]
+    chosen = []
+    for item in positions:
+        if number and item['kind'] == 'whatsapp_number':
+            chosen.append(dict(item, _assign=number['phone']))
+        elif link_url and item['kind'] != 'whatsapp_number':
+            chosen.append(dict(item, _assign=link_url))
+    if chosen:
+        data = rewrite_text(data, chosen, link_url or number['phone'])
+    if number and number.get('display_name'):
+        data = rewrite_reception_bytes(data, number['display_name'])
+    return data
+
+
+def prepare_number_split(store, request, version_id):
+    if not version_id or not store.whatsapp_split()['enabled']:
+        return None
+    token = request.cookies.get(WA_COOKIE, '')
+    is_new = not re.fullmatch(r'[a-f0-9]{64}', token)
+    if is_new:
+        token = secrets.token_hex(32)
+    number = store.whatsapp_split_destination(hmac.new(store.secret, token.encode(), hashlib.sha256).hexdigest())
+    if not number:
+        return None
+    return {'number': number, 'occurrences': cached_split_scan(store.pages / version_id, version_id), 'is_new': is_new, 'token': token}
+
+
 def prepare_split(store, request, version_id):
     if not version_id or not store.redirect_split()['enabled']:
         return None
@@ -1113,7 +1157,7 @@ def prepare_split(store, request, version_id):
         except ValueError:
             return data
 
-    return {'transform': transform, 'is_new': is_new, 'token': token}
+    return {'transform': transform, 'is_new': is_new, 'token': token, 'url': url}
 
 
 def content_response(store, version_id, path, method='GET', transform=None):
@@ -1196,9 +1240,22 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
             return HTMLResponse('<meta charset="utf-8"><h1>当前槽位尚未配置链接</h1>', status_code=503)
         version_id = store.slots()[slot]
         prepared = prepare_split(store, request, version_id) if slot == 'B' else None
-        response = content_response(store, version_id, path, request.method, prepared['transform'] if prepared else None)
+        numbered = prepare_number_split(store, request, version_id) if slot == 'B' else None
+
+        def visitor_transform(data, relative):
+            if numbered:
+                try:
+                    return assign_visitor_page(data, relative, numbered['occurrences'], prepared['url'] if prepared else None, numbered['number'])
+                except ValueError:
+                    return data
+            return prepared['transform'](data, relative)
+
+        transform = visitor_transform if (prepared or numbered) else None
+        response = content_response(store, version_id, path, request.method, transform)
         if prepared and prepared['is_new']:
             response.set_cookie(SPLIT_COOKIE, prepared['token'], max_age=365 * 24 * 3600, secure=bool(deployment), httponly=True, samesite='lax', path='/')
+        if numbered and numbered['is_new']:
+            response.set_cookie(WA_COOKIE, numbered['token'], max_age=365 * 24 * 3600, secure=bool(deployment), httponly=True, samesite='lax', path='/')
         return response
 
     return app

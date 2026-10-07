@@ -106,6 +106,124 @@ def test_deleting_a_b_version_uses_the_selected_domain(apps, tmp_path):
     assert any(item['id'] == kept.json()['version']['id'] for item in admin.get('/api/state').json()['versions'])
 
 
+RECEPTION_PAGE = '''<!doctype html>
+<div class="reception" id="reception-text">本次由助理 Chloe 接待</div>
+<script>
+const CONFIG = { whatsappNumber: '85264150954' };
+const VARIANTS = { blackhorse: { message: '你好，我想免費領取今日潛力黑馬名單，麻煩發給我，謝謝。' } };
+function buildWhatsAppUrl(message){
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\\D/g,'');
+  const params = new URLSearchParams();
+  params.set('phone', phone);
+  params.set('text', message);
+  params.set('type', 'phone_number');
+  params.set('app_absent', '0');
+  return `https://api.whatsapp.com/send?${params.toString()}`;
+}
+function go(){ window.location.assign(buildWhatsAppUrl(VARIANTS.blackhorse.message)); }
+</script>
+<a href="https://old.example/landing">go</a>
+<a href="https://www.youtube.com/@EconManBlog/shorts">YouTube</a>'''
+
+
+def published_page(admin):
+    store = admin.app.state.store
+    return next((store.pages / store.slots()['B']).rglob('*.html')).read_text(encoding='utf-8')
+
+
+def test_number_split_assigns_on_open_and_leaves_jump_links(apps):
+    admin, target = apps
+    upload(admin, 'B', RECEPTION_PAGE)
+    original = published_page(admin)
+    before = target.get('/')
+    assert '本次由助理 Chloe 接待' in before.text and '85264150954' in before.text
+    assert before.cookies.get('ab_wa') is None and before.cookies.get('ab_split') is None
+    vivian = admin.post('/api/b-redirects/numbers', json={'phones': ['85211112222'], 'note': '', 'display_name': 'Vivian 關詠怡'}).json()['numbers'][0]
+    chloe = admin.post('/api/b-redirects/numbers', json={'phones': ['85233334444'], 'note': '', 'display_name': 'Chloe 陳'}).json()['numbers'][0]
+    opened = admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': vivian['id'], 'weight': 1}]})
+    assert opened.status_code == 200, opened.text
+    assert admin.get('/api/b-redirects').json()['split']['enabled'] is False
+    first = target.get('/')
+    assert first.status_code == 200
+    assert first.cookies.get('ab_wa') and first.cookies.get('ab_split') is None
+    assert first.text.count('本次由助理Vivian 關詠怡 接待') == 1
+    assert first.text.count('Vivian') == 1 and 'Vivian 關詠怡本次由助理' not in first.text
+    assert '85211112222' in first.text and '85264150954' not in first.text and '85233334444' not in first.text
+    assert 'https://old.example/landing' in first.text and 'youtube.com' in first.text
+    assert '你好，我想免費領取今日潛力黑馬名單' in first.text
+    assert published_page(admin) == original
+    admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': chloe['id'], 'weight': 1}]})
+    sticky = target.get('/')
+    assert '85211112222' in sticky.text and '本次由助理Vivian 關詠怡 接待' in sticky.text
+    assert '85233334444' not in sticky.text and 'https://old.example/landing' in sticky.text
+    fresh = TestClient(target.app, base_url='http://127.0.0.1:8766', client=('127.0.0.1', 50002))
+    other = fresh.get('/')
+    assert other.text.count('本次由助理Chloe 陳 接待') == 1
+    assert '85233334444' in other.text and '85211112222' not in other.text
+    assert 'https://old.example/landing' in other.text and 'youtube.com' in other.text
+    assert '你好，我想免費領取今日潛力黑馬名單' in other.text
+    admin.put('/api/b-redirects/numbers/split', json={'enabled': False, 'mode': 'random', 'members': [{'number_id': chloe['id'], 'weight': 1}]})
+    plain = fresh.get('/')
+    assert '本次由助理 Chloe 接待' in plain.text and '85264150954' in plain.text
+    assert '85233334444' not in plain.text
+    preset = admin.post('/api/b-redirects/presets', json={'urls': ['https://split.example/landing'], 'note': ''})
+    assert preset.status_code == 200, preset.text
+    preset_id = preset.json()['presets'][0]['id']
+    admin.put('/api/b-redirects/split', json={'enabled': True, 'mode': 'random', 'members': [{'preset_id': preset_id, 'weight': 1}]})
+    admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'weighted', 'members': [{'number_id': vivian['id'], 'weight': 80}]})
+    both = TestClient(target.app, base_url='http://127.0.0.1:8766', client=('127.0.0.1', 50003))
+    mixed = both.get('/')
+    assert mixed.cookies.get('ab_split') and mixed.cookies.get('ab_wa')
+    assert 'https://split.example/landing' in mixed.text and 'old.example' not in mixed.text
+    assert '85211112222' in mixed.text and '85264150954' not in mixed.text
+    assert mixed.text.count('本次由助理Vivian 關詠怡 接待') == 1
+    assert '你好，我想免費領取今日潛力黑馬名單' in mixed.text
+    assert published_page(admin) == original
+    admin.put('/api/b-redirects/numbers/split', json={'enabled': False, 'mode': 'random', 'members': [{'number_id': vivian['id'], 'weight': 1}]})
+    links_only = TestClient(target.app, base_url='http://127.0.0.1:8766', client=('127.0.0.1', 50004)).get('/')
+    assert 'https://split.example/landing' in links_only.text and 'old.example' not in links_only.text
+    assert '本次由助理 Chloe 接待' in links_only.text and '85211112222' not in links_only.text
+    assert admin.get('/api/b-redirects').json()['split']['enabled'] is True
+
+
+def test_scripted_b_page_split_updates_the_name_the_browser_will_show(apps):
+    admin, target = apps
+    page = '''<!doctype html>
+<div class="reception" id="reception-text">本次由助理 Chloe 接待</div>
+<a href="https://www.youtube.com/@EconManBlog/shorts">YouTube</a>
+<script>
+const CONFIG = { whatsappNumber: "85265492837", receptionist: 'Chloe' };
+const receptionText = document.getElementById('reception-text');
+receptionText.textContent = `本次由助理 ${CONFIG.receptionist} 接待`;
+const message = '你好，我想免費領取今日潛力黑馬名單';
+function getWhatsAppUrls(message) {
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\\D/g, '');
+  const encodedMsg = encodeURIComponent(message);
+  return { universal: `https://wa.me/${phone}?text=${encodedMsg}` };
+}
+function goWhatsApp() {
+  const urls = getWhatsAppUrls(message);
+  window.location.href = urls.universal;
+}
+</script>'''
+    upload(admin, 'B', page)
+    vivian = admin.post('/api/b-redirects/numbers', json={'phones': ['85211112222'], 'note': '', 'display_name': 'Vivian 關詠怡'}).json()['numbers'][0]
+    other = admin.post('/api/b-redirects/numbers', json={'phones': ['85233334444'], 'note': '', 'display_name': 'Chloe 陳'}).json()['numbers'][0]
+    saved = admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': vivian['id'], 'weight': 1}]})
+    assert saved.status_code == 200, saved.text
+    first = target.get('/')
+    assert first.text.count('本次由助理Vivian 關詠怡 接待') == 1
+    assert "receptionist: 'Vivian 關詠怡'" in first.text
+    assert '本次由助理${CONFIG.receptionist} 接待' in first.text
+    assert '85211112222' in first.text and '85265492837' not in first.text
+    assert 'youtube.com' in first.text and '你好，我想免費領取今日潛力黑馬名單' in first.text
+    assert 'https://wa.me/' in first.text
+    admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': other['id'], 'weight': 1}]})
+    sticky = target.get('/')
+    assert '85211112222' in sticky.text and "receptionist: 'Vivian 關詠怡'" in sticky.text
+    assert '85233334444' not in sticky.text
+
+
 def test_b_split_rewrites_the_page_before_it_is_sent(apps):
     admin, target = apps
     upload(admin, 'B', '<a href="https://old.example/landing">go</a>')

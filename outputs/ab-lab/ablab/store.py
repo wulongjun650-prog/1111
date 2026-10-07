@@ -52,6 +52,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS redirect_active(id INTEGER PRIMARY KEY CHECK(id=1), url TEXT NOT NULL, preset_id INTEGER REFERENCES redirect_presets(id) ON DELETE SET NULL, version_id TEXT NOT NULL REFERENCES versions(id), updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_split(id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL, mode TEXT NOT NULL, members TEXT NOT NULL, updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_split_assign(visitor_hash TEXT PRIMARY KEY, preset_id INTEGER, url TEXT NOT NULL, created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS whatsapp_split(id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL, mode TEXT NOT NULL, members TEXT NOT NULL, updated REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS whatsapp_split_assign(visitor_hash TEXT PRIMARY KEY, number_id INTEGER, phone TEXT NOT NULL, display_name TEXT NOT NULL, created REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, created REAL NOT NULL, ip TEXT NOT NULL, country TEXT, device TEXT NOT NULL, slot TEXT NOT NULL, reason TEXT NOT NULL, path TEXT NOT NULL, mode TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS events_created ON events(created);
                 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, created REAL NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL);
@@ -63,6 +65,8 @@ class Store:
             number_columns = {row['name'] for row in db.execute('PRAGMA table_info(whatsapp_numbers)')}
             if 'trust_result' not in number_columns:
                 db.execute('ALTER TABLE whatsapp_numbers ADD COLUMN trust_result TEXT')
+            if 'display_name' not in number_columns:
+                db.execute("ALTER TABLE whatsapp_numbers ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
             db.execute('INSERT OR IGNORE INTO settings VALUES(1,?,0,?)', (Config().model_dump_json(), secrets.token_hex(32)))
             db.executemany('INSERT OR IGNORE INTO slots(slot) VALUES(?)', [('A',), ('B',)])
             self.secret = db.execute('SELECT secret FROM settings WHERE id=1').fetchone()[0].encode()
@@ -357,15 +361,33 @@ class Store:
         with self.connect() as db:
             return self._whatsapp_number(db.execute('SELECT * FROM whatsapp_numbers WHERE id=?', (number_id,)).fetchone())
 
-    def add_whatsapp_numbers(self, phones, note):
+    def add_whatsapp_numbers(self, phones, note, display_name=''):
+        if display_name and len(phones) != 1:
+            raise ValueError('写接待名时一次只填一个号码')
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             existing = {row['phone'] for row in db.execute('SELECT phone FROM whatsapp_numbers')}
             if len(existing | set(phones)) > 100:
                 raise ValueError('每个域名最多保存 100 个 WhatsApp 号码，请先删除不用的号码')
-            db.executemany('INSERT OR IGNORE INTO whatsapp_numbers(phone,note,created) VALUES(?,?,?)', [(phone, note, time.time()) for phone in phones])
+            db.executemany('INSERT OR IGNORE INTO whatsapp_numbers(phone,note,created,display_name) VALUES(?,?,?,?)', [(phone, note, time.time(), display_name if len(phones) == 1 else '') for phone in phones])
+            if display_name:
+                db.execute('UPDATE whatsapp_numbers SET display_name=? WHERE phone=?', (display_name, phones[0]))
             self._audit(db, 'whatsapp_numbers_added', {'count':len(phones)})
             return [self._whatsapp_number(db.execute('SELECT * FROM whatsapp_numbers WHERE phone=?', (phone,)).fetchone()) for phone in phones]
+
+    def upsert_whatsapp_name(self, phone, display_name):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT id FROM whatsapp_numbers WHERE phone=?', (phone,)).fetchone()
+            if row:
+                db.execute('UPDATE whatsapp_numbers SET display_name=? WHERE phone=?', (display_name, phone))
+            else:
+                if db.execute('SELECT COUNT(*) FROM whatsapp_numbers').fetchone()[0] >= 100:
+                    raise ValueError('每个域名最多保存 100 个 WhatsApp 号码，请先删除不用的号码')
+                db.execute('INSERT INTO whatsapp_numbers(phone,note,created,display_name) VALUES(?,?,?,?)', (phone, '', time.time(), display_name))
+            self._audit(db, 'whatsapp_numbers_added', {'phone': phone})
+            saved = self._whatsapp_number(db.execute('SELECT * FROM whatsapp_numbers WHERE phone=?', (phone,)).fetchone())
+        return saved
 
     def delete_whatsapp_number(self, number_id):
         with self.connect() as db:
@@ -396,11 +418,57 @@ class Store:
                     continue
             return 'trust' in found and 'clear' in found
 
+    def _reception_bundle(self, root_id, name, filename, required=False):
+        from .archives import MAX_TOTAL, read_source, source_files, validate_file, write_bundle
+        from .redirects import rewrite_reception_bytes
+        files, total, edited, digest, changed, found = source_files(self.pages / root_id), 0, [], hashlib.sha256(), False, False
+        for path, (file, _) in sorted(files.items()):
+            data = read_source(file, path)
+            rewritten = rewrite_reception_bytes(data, name)
+            if rewritten != data:
+                changed = True
+            try:
+                text = rewritten.decode('utf-8-sig')
+            except UnicodeError:
+                text = ''
+            if 'reception-text' in text or '本次由助理' in text:
+                found = True
+            validate_file(path, rewritten)
+            total += len(rewritten)
+            if total > MAX_TOTAL:
+                raise ValueError('源码目录超过总大小限制')
+            edited.append((path, rewritten))
+            digest.update(path.encode() + b'\0' + str(len(rewritten)).encode() + b'\0' + rewritten)
+        if required and not found:
+            raise ValueError('当前 B 页没有「本次由助理…接待」')
+        if not changed:
+            return None, 0
+        return write_bundle(edited, filename, self.pages, digest.hexdigest()), 1
+
+    def publish_reception(self, base, name, expected_published, commit_guard=None):
+        if base['slot'] != 'B':
+            raise KeyError('B 版本不存在')
+        version, changed = self._reception_bundle(base['id'], name, base['name'], required=True)
+        return self._commit_b_version(base, version, changed, expected_published, commit_guard, {'slot':'B', 'version': version['id'] if version else base['id'], 'reception': name, 'redirects_changed': changed})
+
     def apply_whatsapp_number(self, base, number, occurrence_ids, expected_published, commit_guard=None):
         from .redirects import replace_bundle
         if base['slot'] != 'B':
             raise KeyError('B 版本不存在')
         version, changed = replace_bundle(self.pages / base['id'], base['id'], occurrence_ids, number['phone'], self.pages, base['name'])
+        interim_id = None
+        if number.get('display_name'):
+            try:
+                root_id = version['id'] if version else base['id']
+                reception, reception_changed = self._reception_bundle(root_id, number['display_name'], base['name'])
+            except Exception:
+                if version is not None:
+                    shutil.rmtree(self.pages / version['id'], ignore_errors=True)
+                raise
+            if reception:
+                interim_id = version['id'] if version else None
+                version = reception
+                changed = (changed or 0) + reception_changed
         try:
             with self.connect() as db:
                 if commit_guard:
@@ -417,13 +485,93 @@ class Store:
                     return base | {'slot':'B'}, 0
                 db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], 'B', version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
                 db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
-                self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed, 'whatsapp_number':number['phone']})
+                self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed, 'whatsapp_number':number['phone'], 'reception': number.get('display_name') or ''})
                 self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
         except Exception:
             if version is not None:
-                shutil.rmtree(self.pages / version['id'])
+                shutil.rmtree(self.pages / version['id'], ignore_errors=True)
+            if interim_id:
+                shutil.rmtree(self.pages / interim_id, ignore_errors=True)
+            raise
+        if interim_id:
+            shutil.rmtree(self.pages / interim_id, ignore_errors=True)
+        return version | {'slot':'B'}, changed
+
+    def _commit_b_version(self, base, version, changed, expected_published, commit_guard, detail):
+        try:
+            with self.connect() as db:
+                if commit_guard:
+                    commit_guard(db)
+                else:
+                    db.execute('BEGIN IMMEDIATE')
+                current = db.execute("SELECT version_id FROM slots WHERE slot='B'").fetchone()[0]
+                if current != expected_published:
+                    raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
+                if version is None:
+                    return base | {'slot':'B'}, 0
+                db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], 'B', version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
+                db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
+                self._audit(db, 'content_imported', detail | {'source_version': base['id'], 'files': version['files']})
+                self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
+        except Exception:
+            if version is not None:
+                shutil.rmtree(self.pages / version['id'], ignore_errors=True)
             raise
         return version | {'slot':'B'}, changed
+
+    def whatsapp_split(self):
+        with self.connect() as db:
+            row = db.execute('SELECT enabled,mode,members,updated FROM whatsapp_split WHERE id=1').fetchone()
+            numbers = {item['id']: item for item in db.execute('SELECT id,phone,display_name FROM whatsapp_numbers')}
+        if not row:
+            return {'enabled': False, 'mode': 'random', 'members': [], 'updated': None}
+        members = []
+        for item in json.loads(row['members']):
+            number = numbers.get(item['number_id'])
+            if number and number['display_name']:
+                members.append({'number_id': number['id'], 'weight': item['weight'], 'phone': number['phone'], 'display_name': number['display_name']})
+        return {'enabled': bool(row['enabled']), 'mode': row['mode'], 'members': members, 'updated': row['updated']}
+
+    def save_whatsapp_split(self, enabled, mode, members):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            found = {row['id']: row['display_name'] for row in db.execute('SELECT id,display_name FROM whatsapp_numbers')}
+            if any(item.number_id not in found for item in members):
+                raise ValueError('分流号码不在号码池中，请刷新后再保存')
+            if any(not found[item.number_id] for item in members):
+                raise ValueError('参与分流的号码要先写接待名')
+            if enabled and not members:
+                raise ValueError('开启号码分流时至少选择一个号码')
+            payload = json.dumps([{'number_id': item.number_id, 'weight': item.weight} for item in members], ensure_ascii=False)
+            db.execute('''INSERT INTO whatsapp_split VALUES(1,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled, mode=excluded.mode, members=excluded.members, updated=excluded.updated''',
+                (int(enabled), mode, payload, time.time()))
+            self._audit(db, 'whatsapp_split_updated', {'enabled': enabled, 'mode': mode, 'count': len(members)})
+        return self.whatsapp_split()
+
+    def whatsapp_split_destination(self, visitor_hash):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            split = db.execute('SELECT enabled,mode,members FROM whatsapp_split WHERE id=1').fetchone()
+            if not split or not split['enabled']:
+                return None
+            existing = db.execute('SELECT number_id,phone,display_name FROM whatsapp_split_assign WHERE visitor_hash=?', (visitor_hash,)).fetchone()
+            if existing:
+                current = db.execute('SELECT phone,display_name FROM whatsapp_numbers WHERE id=?', (existing['number_id'],)).fetchone()
+                if current and current['display_name']:
+                    return {'number_id': existing['number_id'], 'phone': current['phone'], 'display_name': current['display_name']}
+                return {'number_id': existing['number_id'], 'phone': existing['phone'], 'display_name': existing['display_name']}
+            chosen = []
+            for item in json.loads(split['members']):
+                number = db.execute('SELECT id,phone,display_name FROM whatsapp_numbers WHERE id=?', (item['number_id'],)).fetchone()
+                if number and number['display_name']:
+                    chosen.append({'number_id': number['id'], 'phone': number['phone'], 'display_name': number['display_name'], 'weight': item['weight']})
+            if not chosen:
+                return None
+            pick = choose_split_member(chosen, split['mode'])
+            db.execute('INSERT OR IGNORE INTO whatsapp_split_assign(visitor_hash,number_id,phone,display_name,created) VALUES(?,?,?,?,?)', (visitor_hash, pick['number_id'], pick['phone'], pick['display_name'], time.time()))
+            saved = db.execute('SELECT number_id,phone,display_name FROM whatsapp_split_assign WHERE visitor_hash=?', (visitor_hash,)).fetchone()
+            return {'number_id': saved['number_id'], 'phone': saved['phone'], 'display_name': saved['display_name']}
 
     def published_tracking(self):
         from .archives import read_source, source_files

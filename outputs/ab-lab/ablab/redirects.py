@@ -1155,18 +1155,74 @@ def public_occurrences(occurrences):
     return [{key:value for key, value in item.items() if not key.startswith('_')} for item in occurrences]
 
 
+_RECEPTION_TAG = re.compile(
+    r'(<([a-zA-Z0-9]+)[^>]*\bid\s*=\s*(["\'])reception-text\3[^>]*>)(.*?)(</\2>)',
+    re.IGNORECASE | re.DOTALL,
+)
+_RECEPTION_SENTENCE = re.compile(r'本次由助理[\s\S]{0,120}?接待')
+_RECEPTIONIST_FIELD = re.compile(r'''(receptionist\s*:\s*)(['"])([^'"]*)\2''')
+_RECEPTION_JS = re.compile(r'本次由助理\s*(\$\{CONFIG\.receptionist\})\s*接待')
+
+
+def reception_line(name):
+    from .models import reception_sentence
+    return reception_sentence(name)
+
+
+def _replace_static_sentence(text, sentence):
+    for match in _RECEPTION_SENTENCE.finditer(text):
+        if '${' in match.group(0):
+            continue
+        return text[:match.start()] + sentence + text[match.end():]
+    return text
+
+
+def rewrite_reception(text, name):
+    """Replace the whole assistant sentence once. The name is not written twice.
+
+    Pages that copy CONFIG.receptionist into the line at load keep that field
+    and the template in agreement, without a space after 助理.
+    """
+    sentence = reception_line(name)
+    shown = sentence.removeprefix('本次由助理').removesuffix(' 接待')
+
+    def swap(match):
+        return match.group(1) + sentence + match.group(5)
+
+    updated, count = _RECEPTION_TAG.subn(swap, text, count=1)
+    if not count:
+        updated = _replace_static_sentence(text, sentence)
+    updated = _RECEPTIONIST_FIELD.sub(lambda match: match.group(1) + match.group(2) + shown + match.group(2), updated, count=1)
+    return _RECEPTION_JS.sub(lambda match: '本次由助理' + match.group(1) + ' 接待', updated)
+
+
+def rewrite_reception_bytes(data, name):
+    bom = data.startswith(b'\xef\xbb\xbf')
+    raw = data[3:] if bom else data
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeError:
+        return data
+    rewritten = rewrite_reception(text, name)
+    if rewritten == text:
+        return data
+    payload = rewritten.encode('utf-8')
+    return (b'\xef\xbb\xbf' + payload) if bom else payload
+
+
 def rewrite_text(data, positions, url):
     """Replace already-scanned spans in one file. The bytes stay on disk."""
     if not positions:
         return data
     text = data.decode('utf-8-sig')
     for item in sorted(positions, key=lambda span: span['_start'], reverse=True):
+        assigned = item.get('_assign', url)
         if item['_mode'] == 'html':
-            replacement = html.escape(item['_prefix'] + url + item['_suffix'], quote=True)
+            replacement = html.escape(item['_prefix'] + assigned + item['_suffix'], quote=True)
             if not item['_quote']:
                 replacement = '"' + replacement + '"'
         else:
-            replacement = json.dumps(url, ensure_ascii=True).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+            replacement = json.dumps(assigned, ensure_ascii=True).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
             if item['_mode'] == 'js_html':
                 replacement = html.escape(replacement, quote=True)
         text = text[:item['_start']] + replacement + text[item['_end']:]
