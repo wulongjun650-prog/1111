@@ -2,7 +2,9 @@ import {parseLinks} from './helpers.mjs';
 
 export function createBRedirects({api, on, element, confirmAction, getSite, onApplied}) {
   const root = document.querySelector('#b-redirects');
-  let session = null, active = false, queueGeneration = 0, checkQueue = Promise.resolve(), splitTimer = 0, splitEpoch = 0;
+  let session = null, active = false, queueGeneration = 0, checkQueue = Promise.resolve(), trustQueue = Promise.resolve(), trustTimer = 0, trustFlight = false, splitTimer = 0, splitEpoch = 0;
+  const TRUST_LABELS = {trust:'出现信任弹窗', clear:'正常', unconfirmed:'未确认', unchecked:'未检测'};
+  const TRUST_CLASS = {trust:'abnormal', clear:'normal', unconfirmed:'unknown'};
   const header = element('div', 'card-heading');
   const title = element('div'); title.append(element('h2', '', 'B 页换链'));
   const count = element('span', 'badge neutral', '尚未扫描'); count.id = 'b-redirect-count';
@@ -36,6 +38,10 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const waBox = element('section', 'b-wa'); waBox.id = 'b-wa';
   const waHead = element('div', 'b-wa-head');
   waHead.append(element('strong', '', 'WS 号码'), element('p', 'b-wa-status', '只换号码。进线语、按钮和链接结构保持不动。'));
+  const waNoteLine = element('p', 'b-wa-trust-note', '自动复查未开。要先分别看到一次信任弹窗和一次正常，才会每 10 秒看当前号码。');
+  const waAlarm = element('div', 'wa-trust-alarm'); waAlarm.id = 'wa-trust-alarm'; waAlarm.hidden = true; waAlarm.setAttribute('role', 'alert');
+  const waAlarmText = element('p', '', ''); waAlarm.append(waAlarmText); document.body.append(waAlarm);
+  const trustAudio = createTrustAlarm();
   const waList = element('div', 'b-wa-list'); waList.id = 'b-redirect-numbers';
   const waForm = element('form', 'b-redirect-add-form');
   const waLabel = element('label', 'grow', '添加号码');
@@ -45,7 +51,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const waNote = element('input'); waNote.id = 'b-wa-note'; waNote.maxLength = 300; waNote.placeholder = '可选'; waNoteLabel.append(waNote);
   const waAdd = element('button', 'button secondary', '添加号码'); waAdd.id = 'b-wa-add'; waAdd.type = 'submit';
   waForm.append(waLabel, waNoteLabel, waAdd);
-  waBox.append(waHead, waList, waForm);
+  waBox.append(waHead, waNoteLine, waList, waForm);
   const toolbar = element('div', 'b-redirect-toolbar');
   const versionLabel = element('label', '', '从这一版换');
   const version = element('select'); version.id = 'b-redirect-version'; versionLabel.append(version);
@@ -92,6 +98,62 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     if (status && text) status.textContent = text;
   }
 
+  function paintTrustAlarm(value) {
+    const alarming = Boolean(value && [...liveNumbers(value)].some(phone => value.numbers.find(row => row.phone === phone)?.trust?.status === 'trust'));
+    waAlarm.hidden = !alarming;
+    waAlarmText.textContent = alarming ? '当前号码出现信任弹窗。' : '';
+    if (alarming) trustAudio.start(); else trustAudio.stop();
+  }
+
+  function syncTrustTimer(value) {
+    clearInterval(trustTimer); trustTimer = 0;
+    waBox.dataset.trustPoll = value?.trustPoll ? '1' : '0';
+    waNoteLine.textContent = value?.trustPoll
+      ? '当前号码每 10 秒复查。出现信任弹窗会报警，直接进聊天会解除。'
+      : '自动复查未开。要先分别看到一次信任弹窗和一次正常，才会每 10 秒看当前号码。';
+    if (!value?.trustPoll || !isCurrent(value)) return;
+    trustTimer = setInterval(() => pollCurrent(session), 10000);
+  }
+
+  async function checkNumber(value, id) {
+    if (!isCurrent(value) || value.trustChecking.has(id)) return;
+    value.trustChecking.add(id); renderNumbers(value);
+    try {
+      const result = await api(`/api/b-redirects/numbers/${id}/trust`, {method:'POST', body:{}});
+      if (!isCurrent(value)) return;
+      value.trustPoll = Boolean(result.poll_enabled);
+      value.numbersRevision += 1;
+      value.numbers = value.numbers.map(item => item.id === id ? result.number : item);
+      renderNumbers(value); paintTrustAlarm(value); syncTrustTimer(value);
+    } catch (error) {
+      if (isCurrent(value) && !error.stale) showMessage(`信任检测未完成。${error.message}`, true);
+    } finally {
+      if (isCurrent(value)) {value.trustChecking.delete(id); renderNumbers(value); paintTrustAlarm(value);}
+    }
+  }
+
+  function checkAddedNumbers(value, ids) {
+    const generation = queueGeneration;
+    for (const id of ids) {
+      trustQueue = trustQueue.then(() => {
+        if (active && generation === queueGeneration && isCurrent(value)) return checkNumber(value, id);
+      });
+    }
+  }
+
+  async function pollCurrent(value) {
+    if (!value || !isCurrent(value) || !value.trustPoll || document.hidden || trustFlight || value.trustChecking.size) return;
+    const ids = value.numbers.filter(item => liveNumbers(value).has(item.phone)).map(item => item.id);
+    if (!ids.length) return;
+    trustFlight = true;
+    try {
+      for (const id of ids) {
+        if (!isCurrent(value) || !value.trustPoll) return;
+        await checkNumber(value, id);
+      }
+    } finally {trustFlight = false;}
+  }
+
   function updateControls() {
     const value = session, busy = !value || value.busy || value.loading;
     version.disabled = busy || !value?.versions.length;
@@ -110,7 +172,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     }
     for (const row of waList.querySelectorAll('[data-number-id]')) {
       row.querySelectorAll('button').forEach(button => {
-        button.disabled = busy || (button.dataset.action === 'apply-number' && (!value?.versionId || !numberSelected(value).length));
+        button.disabled = busy || (button.dataset.action === 'recheck' && Boolean(value?.trustChecking?.has(Number(row.dataset.numberId)))) || (button.dataset.action === 'apply-number' && (!value?.versionId || !numberSelected(value).length));
       });
     }
     if (!value) {count.textContent = '尚未扫描'; return;}
@@ -295,6 +357,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       if (!isCurrent(value) || request !== value.request) return;
       if (presetsRevision === value.presetsRevision) value.presets = result.presets;
       if (numbersRevision === value.numbersRevision) value.numbers = result.numbers || [];
+      value.trustPoll = Boolean(result.trust_poll);
       value.active = result.active;
       if (!value.splitDirty) {value.split = result.split || blankSplit(); value.savedSplit = value.split;}
       if (!presetsOnly) {
@@ -303,7 +366,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
         value.scanned = true;
         renderVersions(value); renderOccurrences(value);
       }
-      renderPresets(value); renderNumbers(value);
+      renderPresets(value); renderNumbers(value); syncTrustTimer(value);
     } catch (error) {
       if (isCurrent(value) && request === value.request && !error.stale) showMessage(`扫描失败，当前选择仍保留。${error.message}`, true);
     } finally {
@@ -352,15 +415,22 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       if (inUse) titleLine.append(element('span', 'b-redirect-active-badge', '当前号码'));
       info.append(titleLine);
       if (item.note) info.append(element('p', 'subtle', item.note));
+      const trust = item.trust || {status:'unchecked'};
+      const checking = Boolean(value?.trustChecking?.has(item.id));
+      const trustLine = element('div', 'b-redirect-check-line');
+      trustLine.append(element('span', `b-redirect-check ${checking ? 'unknown' : (TRUST_CLASS[trust.status] || '')}`, checking ? '正在检测…' : (TRUST_LABELS[trust.status] || '未检测')));
+      if (!checking && trust.detail) trustLine.append(element('small', 'b-redirect-check-detail', trust.detail));
+      info.append(trustLine);
       const actions = element('div', 'actions');
-      for (const [action, text, className] of [['delete','删除','button quiet small'],['apply-number','换成这个号码','button primary small']]) {
+      for (const [action, text, className] of [['recheck','再测一次','button secondary small'],['delete','删除','button quiet small'],['apply-number','换成这个号码','button primary small']]) {
         const button = element('button', className, text);
         button.type = 'button'; button.dataset.action = action;
-        on(button, 'click', () => action === 'apply-number' ? applyNumber(value, item) : deleteNumber(value, item));
+        on(button, 'click', () => action === 'apply-number' ? applyNumber(value, item) : action === 'recheck' ? checkNumber(value, item.id) : deleteNumber(value, item));
         actions.append(button);
       }
       row.append(info, actions); waList.append(row);
     }
+    paintTrustAlarm(value);
     updateControls();
   }
 
@@ -507,10 +577,13 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     try {
       const result = await api('/api/b-redirects/numbers', {method:'POST', body:{phones, note:waNote.value.trim()}});
       if (!isCurrent(value)) return;
+      const oldIds = new Set(value.numbers.map(item => item.id));
       value.numbersRevision += 1;
       value.numbers = [...value.numbers.filter(item => !result.numbers.some(saved => saved.id === item.id)), ...result.numbers];
       waNumbers.value = ''; waNote.value = ''; renderNumbers(value);
-      showMessage(`已添加 ${result.numbers.length} 个号码。勾选 WhatsApp 号码后点「换成这个号码」。`);
+      showMessage(`已添加 ${result.numbers.length} 个号码，正在检测信任弹窗。`);
+      value.busy = false; updateControls();
+      checkAddedNumbers(value, result.numbers.filter(item => !oldIds.has(item.id)).map(item => item.id));
     } finally {if (isCurrent(value)) {value.busy = false; updateControls();}}
   });
   on(splitToggle, 'click', () => {
@@ -539,7 +612,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     let value = session;
     if (value?.siteId !== state.site.id) {
       clear();
-      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], warnings:[], presets:[], numbers:[], presetsRevision:0, numbersRevision:0, active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
+      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], warnings:[], presets:[], numbers:[], presetsRevision:0, numbersRevision:0, trustPoll:false, trustChecking:new Set(), active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
       session = value;
     }
     if (value.busy) {
@@ -573,10 +646,41 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   }
 
   function clear() {
-    clearTimeout(splitTimer); splitTimer = 0; ++splitEpoch; ++queueGeneration; session = null;
+    clearTimeout(splitTimer); splitTimer = 0; ++splitEpoch; ++queueGeneration; clearInterval(trustTimer); trustTimer = 0; trustFlight = false; session = null;
+    waAlarm.hidden = true; trustAudio.stop(); waBox.dataset.trustPoll = '0';
     urls.value = ''; note.value = ''; waNumbers.value = ''; waNote.value = ''; version.replaceChildren(); occurrences.replaceChildren(); warnings.replaceChildren(); presets.replaceChildren();
     renderNumbers(null); renderSplit(null);
     showMessage(); updateControls();
+  }
+
+  function createTrustAlarm() {
+    let context = null, timer = 0;
+    function current() {
+      const Factory = window.AudioContext || window.webkitAudioContext;
+      if (!Factory) return null;
+      context = context || new Factory();
+      return context;
+    }
+    return {
+      start() {
+        const audio = current();
+        if (!audio || timer) return;
+        if (audio.state === 'suspended') audio.resume();
+        const beep = () => {
+          try {
+            const tone = audio.createOscillator(), gain = audio.createGain();
+            tone.type = 'square'; tone.frequency.value = 880;
+            gain.gain.setValueAtTime(0.0001, audio.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.05, audio.currentTime + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.28);
+            tone.connect(gain).connect(audio.destination);
+            tone.start(); tone.stop(audio.currentTime + 0.3);
+          } catch { /* A blocked sound still leaves the banner up. */ }
+        };
+        beep(); timer = window.setInterval(beep, 700);
+      },
+      stop() {clearInterval(timer); timer = 0;}
+    };
   }
 
   renderNumbers(null);
