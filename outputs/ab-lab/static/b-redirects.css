@@ -50,6 +50,10 @@
 .b-wa-head strong { display: block; font-size: 13px; }
 .b-wa-status { margin: 2px 0 10px; color: var(--muted); font-size: 12px; }
 .b-wa-trust-note { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+.b-wa-interval { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 10px; margin: 0 0 12px; }
+.b-wa-interval label { margin: 0; width: 132px; }
+.b-wa-interval input { width: 100%; }
+.b-wa-interval-unit { margin: 0 0 9px; color: var(--muted); font-size: 12px; }
 .wa-trust-alarm { position: fixed; z-index: 80; top: 12px; left: 16px; right: 16px; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--chart-block) 18%, var(--surface)); color: var(--chart-block); box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 12%, transparent); }
 .wa-trust-alarm[hidden] { display: none; }
 .wa-trust-alarm p { margin: 0; font-weight: 650; }

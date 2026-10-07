@@ -20,7 +20,7 @@ const occurrences = suffix => [
   {id:`script-${suffix}`,key:'assets/main.js:location:1',path:'assets/main.js',line:1,kind:'js_location',url:'https://old.example/landing'}
 ];
 
-async function withConsole(run) {
+async function withConsole(run, options = {}) {
   const browser = await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE});
   const server = http.createServer(async (req,res)=>{
     if(req.url==='/') {res.setHeader('Content-Type','text/html; charset=utf-8');res.end(document);return;}
@@ -34,6 +34,7 @@ async function withConsole(run) {
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
+  if(options.clock) await page.clock.install();
   const fixture={sites:[site],published:{A:'live-a',B:'live-b'},versions:[version('A','live-a'),version('B','live-b'),version('B','import-b')],
     scans:[],byVersion:{'live-b':occurrences('live-b'),'import-b':occurrences('import-b')},
     presets:[{id:1,url:'https://safe.example/landing',note:'<img src=x onerror="window.presetExecuted=true">',created:1,check:check('normal')},
@@ -492,4 +493,39 @@ test('current number shows trust, clear, and unconfirmed without polling until b
     await recheck;
     assert.deepEqual(fixture.trustChecks, [9]);
   });
+});
+
+test('trust recheck interval accepts 10 seconds or longer and waits that long', async () => {
+  const base = [
+    ...occurrences('live-b'),
+    {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}
+  ];
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = base;
+    fixture.trust_poll = true;
+    fixture.numbers = [{id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}];
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-wa-trust-note').getByText('每 10 秒复查').waitFor();
+    assert.equal(await page.locator('#b-wa-interval').inputValue(), '10');
+    await page.locator('#b-wa-interval').fill('9');
+    await page.getByRole('button', {name:'按这个时间', exact:true}).click();
+    await page.locator('#b-redirect-message').getByText('最短 10 秒。').waitFor();
+    assert.equal(await page.locator('#b-wa').getAttribute('data-trust-seconds'), '10');
+    await page.locator('#b-wa-interval').fill('30');
+    await page.getByRole('button', {name:'按这个时间', exact:true}).click();
+    await page.locator('#b-wa-trust-note').getByText('每 30 秒复查').waitFor();
+    await page.locator('#b-redirect-message').getByText('已改为每 30 秒复查。').waitFor();
+    assert.equal(await page.locator('#b-wa').getAttribute('data-trust-seconds'), '30');
+    await page.clock.fastForward(10000);
+    assert.deepEqual(fixture.trustChecks, []);
+    const seen = page.waitForResponse(response => response.url().includes('/numbers/9/trust'));
+    await page.clock.fastForward(20000);
+    await seen;
+    assert.deepEqual(fixture.trustChecks, [9]);
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#rules-fields').disabled === false);
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-wa-trust-note').getByText('每 30 秒复查').waitFor();
+    assert.equal(await page.locator('#b-wa-interval').inputValue(), '30');
+  }, {clock:true});
 });
