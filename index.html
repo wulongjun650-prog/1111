@@ -167,8 +167,8 @@
     .gate-actions{display:flex;gap:10px;margin-top:18px}
     .gate-back,.gate-cancel,.gate-confirm{min-height:52px;border-radius:15px;font-size:15px;font-weight:950;cursor:pointer}
     .gate-back,.gate-cancel{border:1px solid #dfdad1;background:#f3f1ec;color:#556177;padding:0 16px}
-    .gate-confirm{flex:1;border:0;background:linear-gradient(135deg,#f2a552,#e98a25);color:#fff;box-shadow:0 10px 22px rgba(229,124,21,.18)}
-    .gate-confirm:disabled{opacity:.72;box-shadow:none;cursor:not-allowed;filter:saturate(.75)}
+    .gate-confirm{flex:1;border:0;display:flex;align-items:center;justify-content:center;text-align:center;background:linear-gradient(135deg,#f2a552,#e98a25);color:#fff;box-shadow:0 10px 22px rgba(229,124,21,.18)}
+    .gate-confirm[aria-disabled="true"]{opacity:.72;box-shadow:none;cursor:not-allowed;filter:saturate(.75);pointer-events:none}
     .gate-trust{margin-top:12px;text-align:center;color:#8e95a0;font-size:10px;line-height:1.55}
     .wa-fallback{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
     .wa-fallback.show{display:flex}
@@ -179,6 +179,8 @@
     .wa-alt button,.wa-alt a{flex:1;min-height:46px;display:flex;align-items:center;justify-content:center;border:1px solid #dfdad1;background:#fff;color:#33435f;border-radius:13px;font-size:13px;font-weight:900;cursor:pointer}
     .wa-alt button:active,.wa-alt a:active{transform:scale(.97);background:#f3f1ec}
     .wa-number{margin-top:10px;font-size:12px;color:#5d6a7d;font-weight:800}
+    .wa-web-link{display:none;margin-top:10px;color:var(--navy2);font-size:12px;font-weight:900;text-decoration:underline;text-underline-offset:3px;padding:6px}
+    .wa-web-link.show{display:inline-block}
     .wa-browser-tip{display:none;margin-top:10px;padding:9px 11px;border-radius:12px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:11px;line-height:1.5;font-weight:800}
     .wa-browser-tip.show{display:block}
     .wa-close{margin-top:12px;border:0;background:none;color:#8e95a0;font-size:12px;font-weight:800;padding:8px;cursor:pointer}
@@ -344,7 +346,7 @@
         </div>
         <div class="gate-actions">
           <button class="gate-back" type="button" id="gate-back">返回</button>
-          <button class="gate-confirm" type="button" id="gate-confirm" disabled>立即查看我揀嘅名單 →</button>
+          <a class="gate-confirm" href="https://wa.me/85257980601?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" id="gate-confirm" role="button" aria-disabled="true">立即查看我揀嘅名單 →</a>
         </div>
       </div>
 
@@ -364,6 +366,7 @@
         <button type="button" id="wa-copy-msg">複製留言內容</button>
       </div>
       <div class="wa-number" id="wa-number-text"></div>
+      <a class="wa-web-link" id="wa-fallback-web" href="#">改用網頁連結開啟 WhatsApp →</a>
       <div class="wa-browser-tip" id="wa-browser-tip">如仍未能開啟：請按右上角「⋯」，選擇「在瀏覽器中開啟」，再按一次領取按鈕。</div>
       <button class="wa-close" type="button" id="wa-fallback-close">關閉</button>
     </div>
@@ -379,7 +382,8 @@
       autoJumpOnStep2: false,
       // 喚起後多少毫秒頁面仍在前台，就彈出兜底面板
       fallbackDelay: 1600,
-      // 離線轉化回傳：填入 apps-script/Code.gs 部署後的 Web App 網址（.../exec）；留空則只生成編號、不上報
+      // 離線轉化回傳：填入 apps-script/Code.gs 部署後的 Web App 網址（.../exec）；留空則唔上報，留言亦唔加編號
+      // 注意：問卷確認按鈕 <a href> 入面亦寫死咗號碼作為 JS 失效時嘅保底，換號時一併改
       leadEndpoint: ''
     };
 
@@ -551,6 +555,8 @@
     const gateAnswers = { interest:'', priority:'' };
     const defaultInterestMap = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
 
+    function setConfirmEnabled(on){ gateConfirm.setAttribute('aria-disabled', on ? 'false' : 'true'); }
+
     function setGateStep(step){
       gateStep = step;
       gateSteps.forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
@@ -571,7 +577,7 @@
         el.classList.toggle('active', el.dataset.value === gateAnswers.interest);
       });
       if (gateSelectedInterest) gateSelectedInterest.textContent = gateAnswers.interest;
-      gateConfirm.disabled = true;
+      setConfirmEnabled(false);
       setGateStep(1);
       leadGate.classList.add('show');
       leadGate.setAttribute('aria-hidden','false');
@@ -598,11 +604,11 @@
           setTimeout(() => setGateStep(2), 130);
         }
         if (q === 'priority') {
-          gateConfirm.disabled = false;
+          setConfirmEnabled(true);
           try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'priority'}); } catch(e){}
           if (CONFIG.autoJumpOnStep2) {
             closeLeadGate();
-            goWhatsApp(pendingLocation);
+            goWhatsApp(null, pendingLocation);
           }
         }
       });
@@ -647,11 +653,38 @@
       return (data.message || '你好，我想免費領取今日精選名單，麻煩發給我，謝謝。') + extra + code;
     }
 
+    // ====== 打點：gtag.js 已載入就即時發；未載入（網絡慢 / 用戶極快點擊）就先存本地，之後或下次打開頁面補報 ======
+    const PENDING_KEY = 'econman_pending_events';
+    function gtagReady() { return typeof gtag === 'function' && !!window.google_tag_manager; }
+
     function track(name, params) {
+      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV }, params);
+      if (gtagReady()) { try { gtag('event', name, payload); } catch (e) {} return; }
       try {
-        if (typeof gtag === 'function') gtag('event', name, Object.assign({ transport_type: 'beacon', wa_env: WA_ENV }, params));
-      } catch (e) {}
+        const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+        list.push({ name, params: payload, ts: Date.now() });
+        localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(-50)));
+      } catch (e) {
+        try { gtag('event', name, payload); } catch (e2) {}
+      }
     }
+
+    function flushPendingEvents(force) {
+      if (!gtagReady() && !(force && typeof gtag === 'function')) return;
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) {}
+      if (!list.length) return;
+      try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
+      const cutoff = Date.now() - 7 * 86400000;
+      list.filter(ev => ev && ev.ts > cutoff).forEach(ev => {
+        try { gtag('event', ev.name, Object.assign({}, ev.params, { deferred: 1 })); } catch (e) {}
+      });
+    }
+    ['load', 'pageshow'].forEach(evt => window.addEventListener(evt, flushPendingEvents));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) flushPendingEvents(); });
+    const flushPoll = setInterval(() => { flushPendingEvents(); if (gtagReady()) clearInterval(flushPoll); }, 800);
+    // 30 秒後仍偵測唔到 gtag.js 就緒：直接推入 gtag 隊列，等佢載入後自行發送，避免事件一直積壓
+    setTimeout(() => { clearInterval(flushPoll); flushPendingEvents(true); }, 30000);
 
     // 宿主唔處理自訂 scheme 時，只係 iframe 失敗；主頁面唔會變成 ERR_UNKNOWN_URL_SCHEME 錯誤頁，兜底面板仍然可用
     function openInHiddenFrame(url) {
@@ -664,6 +697,7 @@
 
     const waFallback = document.getElementById('wa-fallback');
     const waFallbackOpen = document.getElementById('wa-fallback-open');
+    const waFallbackWeb = document.getElementById('wa-fallback-web');
     const waCopyNumber = document.getElementById('wa-copy-number');
     const waCopyMsg = document.getElementById('wa-copy-msg');
     const waNumberText = document.getElementById('wa-number-text');
@@ -682,6 +716,8 @@
         desktop: urls.universal
       };
       waFallbackOpen.href = hrefByEnv[WA_ENV];
+      waFallbackWeb.href = urls.universal;
+      waFallbackWeb.classList.toggle('show', WA_ENV !== 'ios_browser' && WA_ENV !== 'desktop');
       waNumberText.textContent = `WhatsApp 號碼：+${urls.phone}`;
       waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
     }
@@ -727,74 +763,72 @@
     });
     window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
 
-    function goWhatsApp(locationName) {
-      if (redirecting) return;
+    // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
+    // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
+    function goWhatsApp(e, locationName) {
+      const anchor = e && e.currentTarget && e.currentTarget.tagName === 'A' ? e.currentTarget : null;
+      if (redirecting) return; // 2 秒內重複點擊：href 仍然係上次嘅正確連結，預設導航照跳
       redirecting = true;
+      setTimeout(() => { redirecting = false; }, 2000);
 
-      const leadCode = makeLeadCode();
+      const leadCode = CONFIG.leadEndpoint ? makeLeadCode() : '';
       const message = buildMessage(leadCode);
       const urls = buildWhatsAppUrls(message);
-      prepareFallback(urls, message);
 
-      sendLead({
-        code: leadCode,
-        gclid: CLICK_IDS.gclid || '',
-        gbraid: CLICK_IDS.gbraid || '',
-        wbraid: CLICK_IDS.wbraid || '',
-        utm_source: CLICK_IDS.utm_source || '',
-        utm_medium: CLICK_IDS.utm_medium || '',
-        utm_campaign: CLICK_IDS.utm_campaign || '',
-        utm_content: CLICK_IDS.utm_content || '',
-        utm_term: CLICK_IDS.utm_term || '',
-        interest: gateAnswers.interest,
-        priority: gateAnswers.priority,
-        variant: currentKey,
-        placement: locationName || 'unknown',
-        wa_env: WA_ENV,
-        number: CONFIG.whatsappNumber,
-        receptionist: CONFIG.receptionist,
-        page: location.origin + location.pathname,
-        ua: UA.slice(0, 300)
-      });
+      let target = urls.universal;
+      if (WA_ENV === 'ios_webview') target = urls.scheme;
+      else if (WA_ENV === 'android_browser') target = urls.intent;
 
-      // 打點只係同步入隊 + beacon 發送，唔會阻塞下面嘅跳轉；切去 WhatsApp 後 beacon 由瀏覽器繼續送出
+      if (WA_ENV === 'android_webview') {
+        if (e) e.preventDefault();
+        openInHiddenFrame(urls.scheme);
+      } else if (anchor) {
+        anchor.href = target;
+        if (WA_ENV === 'desktop') { anchor.target = '_blank'; anchor.rel = 'noopener'; }
+      } else if (WA_ENV === 'desktop') {
+        window.open(target, '_blank');
+      } else {
+        window.location.href = target;
+      }
+
+      // ---------- 以下全部喺跳轉已交俾瀏覽器之後先執行 ----------
+      waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false };
+      try {
+        prepareFallback(urls, message);
+        if (WA_ENV !== 'desktop') armFallback(CONFIG.fallbackDelay);
+      } catch (err) {}
+
+      try {
+        sendLead({
+          code: leadCode,
+          gclid: CLICK_IDS.gclid || '',
+          gbraid: CLICK_IDS.gbraid || '',
+          wbraid: CLICK_IDS.wbraid || '',
+          utm_source: CLICK_IDS.utm_source || '',
+          utm_medium: CLICK_IDS.utm_medium || '',
+          utm_campaign: CLICK_IDS.utm_campaign || '',
+          utm_content: CLICK_IDS.utm_content || '',
+          utm_term: CLICK_IDS.utm_term || '',
+          interest: gateAnswers.interest,
+          priority: gateAnswers.priority,
+          variant: currentKey,
+          placement: locationName || 'unknown',
+          wa_env: WA_ENV,
+          number: CONFIG.whatsappNumber,
+          receptionist: CONFIG.receptionist,
+          page: location.origin + location.pathname,
+          ua: UA.slice(0, 300)
+        });
+      } catch (err) {}
+
       try {
         if (typeof fbq === 'function') {
           fbq('track', 'Contact', { content_name: 'WhatsApp', content_category: 'Lead' });
           fbq('trackCustom', 'WhatsAppClick', { placement: locationName || 'unknown', variant: currentKey, wa_env: WA_ENV });
         }
-      } catch (e) {}
+      } catch (err) {}
       track('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
-      try {
-        if (typeof gtag === 'function') gtag('event', 'conversion', { send_to: CONFIG.googleSendTo, transport_type: 'beacon' });
-      } catch (e) {}
-
-      waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false };
-
-      // 全部喺用戶點擊嘅同一個調用棧內同步執行
-      switch (WA_ENV) {
-        case 'ios_browser':
-          // Universal Link：已安裝直接開 App、冇確認框；未安裝落到 WhatsApp 官方網頁，唔會彈「網址無效」
-          window.location.href = urls.universal;
-          break;
-        case 'ios_webview':
-          // WKWebView 唔會觸發 Universal Link，只能靠宿主轉交 scheme；失敗頁面保持原狀，由兜底面板接手
-          window.location.href = urls.scheme;
-          break;
-        case 'android_browser':
-          window.location.href = urls.intent;
-          break;
-        case 'android_webview':
-          openInHiddenFrame(urls.scheme);
-          break;
-        default:
-          window.open(urls.universal, '_blank');
-          redirecting = false;
-          return;
-      }
-
-      armFallback(CONFIG.fallbackDelay);
-      setTimeout(() => { redirecting = false; }, 2000);
+      track('conversion', { send_to: CONFIG.googleSendTo });
     }
 
     function legacyCopy(text) {
@@ -823,6 +857,10 @@
       waAttempt = { t: Date.now(), placement: 'fallback', left: false };
       track('wa_fallback_click', {});
     });
+    waFallbackWeb.addEventListener('click', () => {
+      waAttempt = { t: Date.now(), placement: 'fallback_web', left: false };
+      track('wa_fallback_click', { via: 'web' });
+    });
     waCopyNumber.addEventListener('click', () => {
       copyText(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
       track('wa_copy_number', {});
@@ -838,10 +876,10 @@
       btn.addEventListener('click', () => openLeadGate(btn.dataset.location));
     });
 
-    gateConfirm.addEventListener('click', () => {
-      if (!gateAnswers.interest || !gateAnswers.priority) return;
+    gateConfirm.addEventListener('click', e => {
+      if (!gateAnswers.interest || !gateAnswers.priority) { e.preventDefault(); return; }
       closeLeadGate();
-      goWhatsApp(pendingLocation);
+      goWhatsApp(e, pendingLocation);
     });
 
     // Mobile floating CTA: show after hero, hide at final CTA.
