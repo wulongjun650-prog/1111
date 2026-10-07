@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -35,6 +37,48 @@ def test_online_over_three_or_offline_switches():
     empty = parse_ticket({'online': 0, 'offline_apps': 4}, TICKET)
     assert empty['offline'] is True
     assert decision_for(empty, PHONE) == 'offline'
+
+
+def test_haiwang_list_uses_share_statistics_not_online_num():
+    live = '85200001111'
+    offline_phone = '85200002222'
+    quiet_phone = '85200003333'
+    payload = {
+        'code': 1,
+        'msg': 'success',
+        'data': {
+            'online_num': 0,
+            'remark': '鳄鱼-梵高',
+            'total': 3,
+            'items': [
+                {'acclist_account': live, 'acclist_status': 2, 'account_statistics_today_effective': 2, 'account_statistics_today_total': 2},
+                {'acclist_account': offline_phone, 'acclist_status': 0, 'account_statistics_today_effective': 3, 'account_statistics_today_total': 3},
+                {'acclist_account': quiet_phone, 'acclist_status': 2, 'account_statistics_today_effective': 0, 'account_statistics_today_total': 0},
+            ],
+            'shareStatistics': {
+                'sharecode_statistics_online_account': 4,
+                'sharecode_statistics_total_account': 6,
+                'sharecode_statistics_applist': [{'account_total': 6, 'account_total_online': 4, 'today_effective': 5}],
+            },
+        },
+    }
+    ticket = parse_ticket(payload, TICKET)
+    assert ticket['name'] == '鳄鱼-梵高'
+    assert ticket['online'] == 4
+    assert ticket['offline_apps'] == 2
+    assert ticket['accounts'][0]['offline'] is False
+    assert ticket['accounts'][1] == {'phone': offline_phone, 'offline': True, 'online': 0, 'leads': Decimal('3')}
+    assert decision_for(ticket, live) == 'online'
+    assert decision_for(ticket, offline_phone) == 'offline'
+    assert decision_for(ticket, '85200004444') == ''
+    assert lead_report([ticket])['total'] == '5'
+    named = parse_ticket(payload, TICKET, '手填名称')
+    assert named['name'] == '手填名称'
+    partial = {'code': 1, 'data': {'total': 2, 'items': payload['data']['items'][:1], 'shareStatistics': payload['data']['shareStatistics']}}
+    with pytest.raises(DeskError, match='没有读全'):
+        parse_ticket(partial, TICKET)
+    with pytest.raises(DeskError, match='无法读取'):
+        parse_ticket({'code': 0, 'msg': 'no', 'data': {}}, TICKET)
 
 
 def test_lead_detail_names_the_work_order_and_number():
