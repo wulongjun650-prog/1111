@@ -4,7 +4,7 @@
 
 仓库：`github.com/wulongjun650-prog/1111`。产品代码在 `outputs/ab-lab`。后台对外是 `https://hhucuq.top/`。这是付费流量用的 A/B 落地页系统（用户口头叫双子星）。
 
-最新代码在分支 `cursor/purge-landing-cache-e8f4`（草稿 PR #29）。不要从 `main` 接着改 AB Lab，`main` 上没有这套功能。
+最新代码在分支 `cursor/allow-landing-popups-e8f4`（草稿 PR #31）。不要从 `main` 接着改 AB Lab，`main` 上没有这套功能。
 
 ## 现在不要做的事
 
@@ -166,7 +166,9 @@
 
 | PR | 头分支 | 基分支 | 内容 |
 | --- | --- | --- | --- |
-| #29 | `cursor/purge-landing-cache-e8f4` | #28 的分支 | 保存配置或发布时清该域名 CF 缓存。本文档也在这条分支上 |
+| #31 | `cursor/allow-landing-popups-e8f4` | #30 的分支 | 落地页 sandbox 允许新落地 `window.open` 和 `whatsapp://`。本文档也在这条分支上 |
+| #30 | `cursor/detect-whatsapp-object-e8f4` | #29 的分支 | 扫描返回对象上的 WhatsApp 跳转 |
+| #29 | `cursor/purge-landing-cache-e8f4` | #28 的分支 | 保存配置或发布时清该域名 CF 缓存 |
 | #28 | `cursor/visit-country-flags-e8f4` | #27 | 国家列国旗和更大的中文 |
 | #27 | `cursor/exact-visit-ip-e8f4` | #26 | 新访问记完整 IP 和该 IP 的国家；nginx 转发 `CF-Connecting-IP` |
 | #26 | `cursor/clear-non-hk-visits-e8f4` | #25 | 一键清除非投放地区 |
