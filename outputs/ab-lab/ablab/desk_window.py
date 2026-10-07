@@ -36,6 +36,16 @@ def sandbox_off(euid, status):
     return False
 
 
+def clear_browser_locks(profile_dir):
+    """Drop the previous window's port file and singleton lock before starting again."""
+    root = Path(profile_dir)
+    for name in ('DevToolsActivePort', 'SingletonLock', 'SingletonCookie', 'SingletonSocket'):
+        try:
+            (root / name).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def chrome_executable():
     chosen = os.environ.get('PLAYWRIGHT_CHROMIUM_EXECUTABLE', '').strip()
     if chosen:
@@ -185,6 +195,7 @@ class WorkOrderWindow:
         env = os.environ.copy()
         if display:
             env['DISPLAY'] = display
+        clear_browser_locks(self.profile_dir)
         self._proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
         port_file = self.profile_dir / 'DevToolsActivePort'
         deadline = time.time() + 15
@@ -207,7 +218,13 @@ class WorkOrderWindow:
     def _page_target(self, port):
         deadline = time.time() + 10
         while time.time() < deadline:
-            targets = self._http_json(port, 'GET', '/json/list')
+            if self._proc and self._proc.poll() is not None:
+                raise DeskError('工单窗口打不开')
+            try:
+                targets = self._http_json(port, 'GET', '/json/list')
+            except OSError:
+                time.sleep(0.1)
+                continue
             page = next((item for item in targets if item.get('type') == 'page' and item.get('webSocketDebuggerUrl')), None)
             if page:
                 return page

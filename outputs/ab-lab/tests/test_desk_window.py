@@ -80,6 +80,18 @@ def test_hardened_service_turns_off_the_chrome_sandbox():
     assert sandbox_off(999, 'NoNewPrivs:\t0\n') is False
 
 
+def test_a_new_window_does_not_reuse_the_previous_debug_port(tmp_path):
+    from ablab.desk_window import clear_browser_locks
+
+    profile = tmp_path / 'profile'
+    profile.mkdir()
+    (profile / 'DevToolsActivePort').write_text('9999\n/devtools/browser/old\n', encoding='utf-8')
+    (profile / 'SingletonLock').symlink_to('old-host-1')
+    clear_browser_locks(profile)
+    assert not (profile / 'DevToolsActivePort').exists()
+    assert not (profile / 'SingletonLock').exists()
+
+
 def test_a_click_on_the_server_window_is_kept_until_the_page_can_use_it(tmp_path):
     window = WorkOrderWindow(tmp_path / 'profile', executable='/bin/false', headless=True, timeout=5)
     window.pointer(12, 40)
