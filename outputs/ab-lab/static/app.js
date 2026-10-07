@@ -202,6 +202,7 @@ async function api(path, { method = 'GET', body, raw = false, timeout } = {}) {
 if ($('#logout')) on($('#logout'), 'click', async () => {
   if (!await confirmAction('退出管理后台？未保存的修改不会保留。')) return;
   await api('/api/logout', { method: 'POST', body: {} });
+  sessionStorage.removeItem('ab-observer-entered');
   window.location.replace('/login');
 });
 

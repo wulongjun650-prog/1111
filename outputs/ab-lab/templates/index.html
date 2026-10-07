@@ -16,6 +16,32 @@
   <script type="module" src="/static/app.js"></script>
 </head>
 <body data-account-role="{{ account.role | e }}">
+  {% if account.role == 'observer' %}
+  <div id="observer-welcome" class="observer-welcome" role="dialog" aria-modal="true" aria-labelledby="observer-welcome-title">
+    <div class="observer-welcome-card">
+      <p class="observer-kicker">GEMINI · AB SYSTEM</p>
+      <div class="observer-mark" aria-hidden="true"><svg viewBox="0 0 40 40" width="54" height="54" fill="none"><path d="M20 2 25 15 38 20 25 25 20 38 15 25 2 20 15 15Z" fill="currentColor"/><circle cx="32" cy="7" r="2.4" fill="currentColor"/></svg></div>
+      <h1 id="observer-welcome-title">欢迎登录</h1>
+      <p class="observer-boast">全网功能最多，最牛B，最强大的<br>AB 系统 · 双子星系统</p>
+      <p class="observer-seal">观察号</p>
+      <p class="observer-limit">此为观察号。只有看，<br class="observer-break">没有更改任何功能选项的权利。</p>
+      <button id="observer-enter" class="observer-enter" type="button" autofocus>确定</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var gate = document.getElementById('observer-welcome');
+      if (!gate) return;
+      if (sessionStorage.getItem('ab-observer-entered') === '1') { gate.remove(); return; }
+      document.body.classList.add('observer-gated');
+      document.getElementById('observer-enter').addEventListener('click', function () {
+        sessionStorage.setItem('ab-observer-entered', '1');
+        document.body.classList.remove('observer-gated');
+        gate.remove();
+      });
+    })();
+  </script>
+  {% endif %}
   <a class="skip-link" href="#main">跳到主要内容</a>
   <aside class="sidebar">
     <a class="brand" href="#overview" aria-label="双子星 概览"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40" width="35" height="35" fill="none"><path d="M20 3 24 16 37 20 24 24 20 37 16 24 3 20 16 16Z" fill="currentColor"/><circle cx="30" cy="9" r="3" fill="currentColor"/><path d="M5 29 8 32 5 35 2 32Z" fill="currentColor"/></svg></span><span>双子星<small>GEMINI · TRAFFIC</small></span></a>

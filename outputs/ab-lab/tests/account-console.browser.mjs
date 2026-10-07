@@ -321,6 +321,16 @@ test('observer can read domains and accounts while action buttons stay hidden', 
       throw new Error(`Unexpected endpoint ${pathname}`);
     });
     await page.goto(url);
+    const welcome = page.locator('#observer-welcome');
+    await welcome.waitFor();
+    assert.match(await welcome.innerText(), /欢迎登录/);
+    assert.match(await welcome.innerText(), /全网功能最多，最牛B，最强大的/);
+    assert.match(await welcome.innerText(), /双子星系统/);
+    assert.match(await welcome.innerText(), /此为观察号。只有看，没有更改任何功能选项的权利/);
+    await page.locator('#observer-enter').click();
+    await welcome.waitFor({state:'detached'});
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#observer-welcome') === null);
     await page.waitForFunction(() => document.querySelector('#site-selector').value === 'a'.repeat(32));
     assert.match(await page.locator('.sidebar-footer').innerText(), /观察账号/);
     assert.equal(await page.locator('#account-form').count(), 0);
