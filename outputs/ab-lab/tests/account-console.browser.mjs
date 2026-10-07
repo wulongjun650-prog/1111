@@ -22,7 +22,12 @@ const analytics = {period:'today',end:new Date().toISOString(),tz_offset:0,summa
 async function withConsole(role, run) {
   const browser = await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE});
   const server = http.createServer(async (req,res)=>{
-    if(req.url==='/') {res.setHeader('Content-Type','text/html; charset=utf-8');res.end(documents[role]);return;}
+    if(req.url==='/') {
+      res.setHeader('Content-Type','text/html; charset=utf-8');
+      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'");
+      res.end(documents[role]);
+      return;
+    }
     if(req.url.startsWith('/static/')) {
       const file=path.join(root,req.url);
       try {res.setHeader('Content-Type',/\.(js|mjs)$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'image/png');res.end(await fs.readFile(file));}

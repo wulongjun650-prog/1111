@@ -28,19 +28,7 @@
       <button id="observer-enter" class="observer-enter" type="button" autofocus>确定</button>
     </div>
   </div>
-  <script>
-    (function () {
-      var gate = document.getElementById('observer-welcome');
-      if (!gate) return;
-      if (sessionStorage.getItem('ab-observer-entered') === '1') { gate.remove(); return; }
-      document.body.classList.add('observer-gated');
-      document.getElementById('observer-enter').addEventListener('click', function () {
-        sessionStorage.setItem('ab-observer-entered', '1');
-        document.body.classList.remove('observer-gated');
-        gate.remove();
-      });
-    })();
-  </script>
+  <script src="/static/observer-welcome.js"></script>
   {% endif %}
   <a class="skip-link" href="#main">跳到主要内容</a>
   <aside class="sidebar">
