@@ -91,9 +91,70 @@ def should_switch(online, offline):
     return ''
 
 
+def _haiwang_body(payload):
+    """Return the Haiwang list body, or None when this is the simple local shape.
+
+    Status 2 is the green 在线 row. The account list's online_num stays 0 on a
+    live ticket, so the online APP count comes from share statistics instead.
+    """
+    if not isinstance(payload, dict):
+        return None
+    body = payload
+    if 'data' in payload or 'code' in payload:
+        if payload.get('code') not in (None, 1):
+            raise DeskError('工单数据无法读取')
+        data = payload.get('data')
+        if not isinstance(data, dict):
+            raise DeskError('工单数据无法读取')
+        body = data
+    items = body.get('items')
+    stats = body.get('shareStatistics')
+    if not isinstance(items, list) or not isinstance(stats, dict):
+        return None
+    if items and not isinstance(items[0], dict):
+        raise DeskError('工单号码无法读取')
+    if items and 'acclist_account' not in items[0]:
+        return None
+    return body
+
+
+def _from_haiwang(body):
+    stats = body.get('shareStatistics') or {}
+    apps = stats.get('sharecode_statistics_applist') or []
+    app = next((item for item in apps if isinstance(item, dict)), {})
+    items = body.get('items') or []
+    listed = body.get('total')
+    if listed is not None and _whole(listed, '账号数') > len(items):
+        raise DeskError('工单号码没有读全')
+    online_value = stats.get('sharecode_statistics_online_account', app.get('account_total_online'))
+    online = _whole(online_value if online_value is not None else sum(item.get('acclist_status') == 2 for item in items), '在线人数')
+    total_value = stats.get('sharecode_statistics_total_account', app.get('account_total', body.get('total', len(items))))
+    total_accounts = _whole(total_value, '账号数')
+    accounts = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise DeskError('工单号码无法读取')
+        offline = item.get('acclist_status') != 2
+        accounts.append({
+            'phone': item.get('acclist_account'),
+            'offline': offline,
+            'online_count': 0 if offline else 1,
+            'leads': item.get('account_statistics_today_effective', item.get('account_statistics_today_total', 0)),
+        })
+    return {
+        'online': online,
+        'offline_apps': max(total_accounts - online, 0),
+        'name': str(body.get('remark') or '').strip(),
+        'accounts': accounts,
+    }
+
+
 def parse_ticket(payload, url, name=''):
     if not isinstance(payload, dict):
         raise DeskError('工单数据无法读取')
+    haiwang = _haiwang_body(payload)
+    if haiwang is not None:
+        payload = _from_haiwang(haiwang)
     code = ticket_code(url)
     online = _whole(payload.get('online', payload.get('在线APP', 0)), '在线人数')
     offline_apps = _whole(payload.get('offline_apps', payload.get('离线APP', 0)), '离线人数')
