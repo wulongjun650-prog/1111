@@ -100,7 +100,26 @@ class WorkOrderWindow:
         self._ident = 0
         self._list_ids = set()
         self._ready_id = ''
+        self._ui = threading.Lock()
+        self._picture = b''
+        self._clicks = []
         atexit.register(self.close)
+
+    def snapshot(self):
+        with self._ui:
+            return self._picture
+
+    def pointer(self, x, y):
+        if isinstance(x, bool) or isinstance(y, bool):
+            raise DeskError('点击位置不对')
+        try:
+            point = (float(x), float(y))
+        except (TypeError, ValueError):
+            raise DeskError('点击位置不对') from None
+        if not (0 <= point[0] <= 4000 and 0 <= point[1] <= 4000):
+            raise DeskError('点击位置不对')
+        with self._ui:
+            self._clicks.append(point)
 
     def close(self):
         with self._lock:
@@ -145,6 +164,7 @@ class WorkOrderWindow:
             '--no-first-run',
             '--no-default-browser-check',
             '--disable-sync',
+            '--force-device-scale-factor=1',
             '--window-size=1100,800',
             'about:blank',
         ]
@@ -243,10 +263,14 @@ class WorkOrderWindow:
     def _read(self, url, password):
         self._list_ids.clear()
         self._ready_id = ''
+        with self._ui:
+            self._picture = b''
+            self._clicks.clear()
         self._call('Page.navigate', {'url': url})
         deadline = time.time() + self.timeout
         fills = 0
         next_fill = time.time()
+        next_shot = time.time() + 0.4
         while time.time() < deadline:
             if self._ready_id:
                 request_id = self._ready_id
@@ -264,7 +288,30 @@ class WorkOrderWindow:
             message = self._recv(min(deadline, time.time() + 0.4))
             if message and message.get('method'):
                 self._on_event(message)
-        raise DeskError('工单窗口里还没读到数据，请在弹出的窗口完成验证')
+            with self._ui:
+                pending = bool(self._clicks)
+            if pending or time.time() >= next_shot:
+                try:
+                    self._show()
+                except DeskError:
+                    pass
+                next_shot = time.time() + 0.8
+        raise DeskError('工单窗口里还没读到数据。请在下面的画面里点验证。')
+
+    def _show(self):
+        with self._ui:
+            clicks = list(self._clicks)
+            self._clicks.clear()
+        for x, y in clicks:
+            self._call('Input.dispatchMouseEvent', {'type': 'mousePressed', 'x': x, 'y': y, 'button': 'left', 'clickCount': 1})
+            self._call('Input.dispatchMouseEvent', {'type': 'mouseReleased', 'x': x, 'y': y, 'button': 'left', 'clickCount': 1})
+        result = self._call('Page.captureScreenshot', {'format': 'png'})
+        encoded = result.get('data') or ''
+        if not encoded:
+            return
+        raw = base64.b64decode(encoded)
+        with self._ui:
+            self._picture = raw
 
     def _fill(self, password):
         result = self._call('Runtime.evaluate', {'expression': _fill_script(password), 'returnByValue': True})

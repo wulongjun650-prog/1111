@@ -80,6 +80,17 @@ def test_hardened_service_turns_off_the_chrome_sandbox():
     assert sandbox_off(999, 'NoNewPrivs:\t0\n') is False
 
 
+def test_a_click_on_the_server_window_is_kept_until_the_page_can_use_it(tmp_path):
+    window = WorkOrderWindow(tmp_path / 'profile', executable='/bin/false', headless=True, timeout=5)
+    window.pointer(12, 40)
+    assert window.snapshot() == b''
+    with window._ui:
+        assert window._clicks == [(12.0, 40.0)]
+    with pytest.raises(DeskError, match='点击位置不对'):
+        window.pointer(-1, 3)
+    window.close()
+
+
 def test_a_rejected_list_is_not_treated_as_the_account_list():
     assert readable_list({'code': 0, 'msg': 'password', 'data': {}}) is False
     assert readable_list({'code': 1, 'data': {'items': [], 'shareStatistics': {}}}) is True

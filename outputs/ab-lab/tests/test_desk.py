@@ -194,3 +194,28 @@ def test_desk_routes_review_quote_and_sheet(tmp_path):
     })
     assert written.status_code == 200, written.text
     assert saved[0]['values'][0][3:6] == ['33.29', '0.8', '41.61']
+    empty = client.get('/api/desk/screen')
+    assert empty.status_code == 204
+    missing_window = client.post('/api/desk/screen/click', json={'x': 1, 'y': 2})
+    assert missing_window.status_code == 400 and '当前没有窗口' in missing_window.text
+
+    class Screen:
+        def __init__(self):
+            self.clicks = []
+            self.image = b'\x89PNG\r\n'
+
+        def snapshot(self):
+            return self.image
+
+        def pointer(self, x, y):
+            self.clicks.append((x, y))
+
+    app.state.desk_reader = Screen()
+    shot = client.get('/api/desk/screen')
+    assert shot.status_code == 200 and shot.content == b'\x89PNG\r\n'
+    assert shot.headers['content-type'].startswith('image/png')
+    clicked = client.post('/api/desk/screen/click', json={'x': 12, 'y': 40})
+    assert clicked.status_code == 200
+    assert app.state.desk_reader.clicks == [(12.0, 40.0)]
+    bad = client.post('/api/desk/screen/click', json={'x': True, 'y': 1})
+    assert bad.status_code == 400

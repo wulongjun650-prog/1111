@@ -705,7 +705,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     app.state.trust_checker = TrustChecker(device_from_environ())
     from .desk import DeskError, SheetWriter, buyer_quote, review_tickets
     from .desk_window import WorkOrderWindow
-    app.state.desk_reader = WorkOrderWindow(Path(data_dir) / 'desk-browser')
+    app.state.desk_reader = WorkOrderWindow(Path(data_dir) / 'desk-browser', timeout=180)
     app.state.sheet_writer = SheetWriter(os.environ.get('AB_GOOGLE_SHEETS_TOKEN', ''))
 
     def redirect_commit_guard(request, store):
@@ -828,6 +828,35 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             return await asyncio.to_thread(review_tickets, body.get('tickets'), str(body.get('phone') or ''), app.state.desk_reader)
         except DeskError as error:
             raise HTTPException(400, str(error)) from None
+
+    @routes.get('/desk/screen')
+    def desk_screen():
+        snap = getattr(app.state.desk_reader, 'snapshot', None)
+        frame = snap() if snap else b''
+        if not frame:
+            return Response(status_code=204)
+        return Response(frame, media_type='image/png', headers={'Cache-Control': 'no-store'})
+
+    @routes.post('/desk/screen/click')
+    async def desk_screen_click(request: Request):
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise HTTPException(400, '点击位置不对')
+        x, y = body.get('x'), body.get('y')
+        if isinstance(x, bool) or isinstance(y, bool):
+            raise HTTPException(400, '点击位置不对')
+        try:
+            point = (float(x), float(y))
+        except (TypeError, ValueError):
+            raise HTTPException(400, '点击位置不对') from None
+        pointer = getattr(app.state.desk_reader, 'pointer', None)
+        if pointer is None:
+            raise HTTPException(400, '当前没有窗口')
+        try:
+            pointer(point[0], point[1])
+        except DeskError as error:
+            raise HTTPException(400, str(error)) from None
+        return {'ok': True}
 
     @routes.post('/desk/quote')
     async def quote_desk(request: Request):
