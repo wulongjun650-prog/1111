@@ -1564,17 +1564,31 @@ def strip_lead_gate(text):
 _DIRECT_MODE = re.compile(r"(directMode\s*:\s*)(['\"])(.*?)\2")
 
 
-def set_direct_mode_abc(text):
-    """Fill the page's own directMode switch with ABC. Nothing else moves."""
+def read_direct_mode(text):
+    """ABC skips the popup. CBA, blank, and every other value bring the choices back."""
+    if not isinstance(text, str) or not re.search(r'directMode\s*:', text):
+        return None
+    matches = list(_DIRECT_MODE.finditer(text))
+    if not matches:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+    if any(match.group(3).strip().upper() == 'ABC' for match in matches):
+        return 'ABC'
+    return 'CBA'
+
+
+def set_direct_mode(text, mode):
+    """Write ABC or CBA into the page's own switch. Nothing else moves."""
+    if mode not in ('ABC', 'CBA'):
+        raise ValueError('开关只能是 ABC 或 CBA')
     if not re.search(r'directMode\s*:', text):
         return None
     if not _DIRECT_MODE.search(text):
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
 
     def repl(match):
-        if match.group(3).strip().upper() == 'ABC':
+        if match.group(3) == mode:
             return match.group(0)
-        return f"{match.group(1)}{match.group(2)}ABC{match.group(2)}"
+        return f"{match.group(1)}{match.group(2)}{mode}{match.group(2)}"
 
     updated = _DIRECT_MODE.sub(repl, text)
 

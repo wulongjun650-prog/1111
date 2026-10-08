@@ -676,6 +676,7 @@ def test_secret_weapon_fills_abc_and_leaves_the_rest_of_the_page(console):
     assert wrote.json()['changed'] == 1
     text = published_html(app)
     assert text == ABC_PAGE.replace("directMode: '',", "directMode: 'ABC',", 1)
+    assert client.get('/api/state').json()['direct_mode'] == 'ABC'
     assert 'id="lead-gate"' in text
     assert 'openLeadGate(btn.dataset.location)' in text
     assert "填 'ABC'" in text
@@ -684,9 +685,17 @@ def test_secret_weapon_fills_abc_and_leaves_the_rest_of_the_page(console):
     assert css == 'body{color:red}\n'
     again = client.post('/api/b-redirects/direct-entry', json={
         'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
-    assert again.status_code == 400, again.text
-    assert '已经是 ABC' in again.json()['detail']
-    assert app.state.store.slots()['B'] == wrote.json()['version']['id']
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    restored = published_html(app)
+    assert restored == ABC_PAGE.replace("directMode: '',", "directMode: 'CBA',", 1)
+    assert client.get('/api/state').json()['direct_mode'] == 'CBA'
+    third = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': again.json()['version']['id'], 'expected_published': again.json()['version']['id']})
+    assert third.status_code == 200, third.text
+    assert third.json()['kind'] == 'abc'
+    assert published_html(app) == text
+    assert app.state.store.slots()['B'] == third.json()['version']['id']
     assert app.state.store.slots()['B'] != base
 
 

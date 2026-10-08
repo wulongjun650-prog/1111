@@ -430,7 +430,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         config, revision = store.config()
         site = registry.get(site_id)
         visit_url = target_url if site_id == 'default' else (f'https://{site["domain"]}' if deployment else f'{target_url}/_sites/{site_id}/')
-        return {'config': config.model_dump(), 'revision': revision, 'versions': store.versions(), 'slots': store.slots(), 'links': store.links(), 'stats': store.stats(), 'health': {'geoip': geo_ready(), 'geoip_detail': geo_status(), 'local_only': deployment is None}, 'site': site, 'target_url': visit_url, 'preview_origin': target_url}
+        return {'config': config.model_dump(), 'revision': revision, 'versions': store.versions(), 'slots': store.slots(), 'links': store.links(), 'stats': store.stats(), 'health': {'geoip': geo_ready(), 'geoip_detail': geo_status(), 'local_only': deployment is None}, 'site': site, 'target_url': visit_url, 'preview_origin': target_url, 'direct_mode': store.published_direct_mode()}
 
     def purge_site_cache(site):
         """Drop the cached landing page so a slot change is what visitors see."""
