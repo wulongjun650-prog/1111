@@ -771,8 +771,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 'active':store.redirect_active(), 'split':store.redirect_split(), 'number_split':store.whatsapp_split()}
 
     @routes.put('/b-redirects/split')
-    def save_b_redirect_split(body: RedirectSplit, store=Depends(site_store)):
-        return {'split': store.save_redirect_split(body.enabled, body.mode, body.members)}
+    def save_b_redirect_split(body: RedirectSplit, request: Request, store=Depends(site_store)):
+        result = {'split': store.save_redirect_split(body.enabled, body.mode, body.members)}
+        # The link-split picker is added when the page is served, so drop the
+        # cached copy or visitors keep the previous split for up to the edge TTL.
+        purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+        if purged is not None:
+            result['cloudflare'] = purged
+        return result
 
     @routes.post('/b-redirects/presets')
     def add_b_redirect_presets(body: RedirectPresetInput, store=Depends(site_store)):
@@ -808,7 +814,12 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if result['status'] == 'abnormal':
             raise ValueError('此链接不正常：' + result['detail'])
         version, changed = store.apply_redirects(base, preset, body.occurrence_ids, body.expected_published, guard)
-        return {'version':version, 'check':result, 'changed':changed}
+        response = {'version': version, 'check': result, 'changed': changed}
+        if changed:
+            purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+            if purged is not None:
+                response['cloudflare'] = purged
+        return response
 
     @routes.post('/b-redirects/numbers')
     def add_whatsapp_numbers(body: WhatsAppNumberInput, store=Depends(site_store)):
@@ -822,7 +833,12 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if store.slots()['B'] != body.expected_published:
             raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
         version, changed = store.publish_reception(base, body.display_name, body.expected_published, guard)
-        return {'number': number, 'version': version, 'changed': changed, 'sentence': f'本次由助理{body.display_name} 接待'}
+        response = {'number': number, 'version': version, 'changed': changed, 'sentence': f'本次由助理{body.display_name} 接待'}
+        if changed:
+            purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+            if purged is not None:
+                response['cloudflare'] = purged
+        return response
 
     @routes.post('/b-redirects/direct-entry')
     def publish_direct_entry(body: DirectEntry, request: Request, store=Depends(site_store)):
@@ -853,9 +869,16 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return result
 
     @routes.delete('/b-redirects/numbers/{number_id}')
-    def delete_whatsapp_number(number_id: int, store=Depends(site_store)):
+    def delete_whatsapp_number(number_id: int, request: Request, store=Depends(site_store)):
         store.delete_whatsapp_number(number_id)
-        return {'ok':True}
+        result = {'ok': True}
+        # A deleted number drops out of the served split picker, so refresh the
+        # cached page when a split is live.
+        if store.whatsapp_split()['enabled']:
+            purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+            if purged is not None:
+                result['cloudflare'] = purged
+        return result
 
     @routes.post('/wa-trust/screen/{token}')
     async def ingest_whatsapp_screen(token: str, request: Request):
