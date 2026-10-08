@@ -2,6 +2,7 @@
 import ipaddress
 import re
 from .models import Config, Visitor
+from .crawlers import is_crawler_ip
 from .devices import describe_device, ios_major
 
 
@@ -19,6 +20,9 @@ _CRAWLER_MARKERS = (
     'ia_archiver', 'archive.org_bot', 'sogou web spider', 'sogou pic spider',
     'sogou inst spider', '360spider', 'yisouspider',
     'haosouspider', 'tiktokspider', 'dataforseobot', 'blexbot', 'megaindex',
+    'googleother', 'google-inspectiontool', 'google-cloudvertexbot', 'google-safety',
+    'duckassistbot', 'claude-searchbot', 'meta-externalagent', 'meta-webindexer',
+    'amzn-searchbot', 'imagesiftbot', 'omgilibot', 'diffbot',
     'crawler', 'spider', 'headlesschrome', 'phantomjs', 'selenium',
     'puppeteer', 'playwright', 'curl/', 'wget/', 'python-requests',
     'python-urllib', 'scrapy', 'go-http-client', 'httpclient', 'libwww',
@@ -41,13 +45,19 @@ def device_info(ua):
     return device, int(android[1]) if android else None, ios_major(ua)
 
 
+def named_crawler(ua):
+    """A crawler that names itself. Phone brands such as Cubot are not crawlers."""
+    text = ua.lower()
+    if any(marker in text for marker in _CRAWLER_MARKERS):
+        return True
+    return any(match.group(1) not in _BOT_NAMES for match in _BOT_TOKEN.finditer(text))
+
+
 def strict_crawler(ua, device):
     text = ua.lower()
     if not text.strip() or device == 'unknown':
         return True
-    if any(marker in text for marker in _CRAWLER_MARKERS):
-        return True
-    return any(match.group(1) not in _BOT_NAMES for match in _BOT_TOKEN.finditer(text))
+    return named_crawler(text)
 
 
 def accepted_languages(header):
@@ -87,7 +97,9 @@ def decide(config: Config, visitor: Visitor):
     trace.append({'rule': 'blacklist', 'status': 'pass', 'detail': '未命中黑名单'})
     if matches(rules.whitelist):
         return result(config.allowed_slot, 'whitelist', f'命中白名单，跳过其余规则；放行后展示 {config.allowed_slot}', 'pass')
+    crawler_hit = rules.super_bots and (named_crawler(visitor.ua) or is_crawler_ip(address))
     checks = [
+        ('super_bot', rules.super_bots, crawler_hit, '超级防爬虫：官方爬虫地址，或爬虫自己的身份标识'),
         ('strict_bot', rules.strict_bots, strict_crawler(visitor.ua, device), '严格防爬虫：爬虫、脚本或没有正常浏览器标识的访问'),
         ('bot_marker', rules.block_bots, any(marker in visitor.ua.lower() for marker in rules.bot_markers), 'UA 命中爬虫特征；仅为可伪造的声明'),
         ('ipv4', rules.block_ipv4, address.version == 4, 'IPv4 访问被限制'),
