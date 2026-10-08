@@ -649,7 +649,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         def login(body: dict, request: Request):
             token, status = auth.login(body.get('username'), body.get('password'), request.state.visitor_ip)
             if token is None:
-                return JSONResponse({'detail': '登录尝试过多，请稍后重试' if status == 429 else '账号或密码错误'}, status_code=status)
+                return JSONResponse({'detail': '账号或密码错误'}, status_code=status)
             response = JSONResponse({'ok': True, 'csrf': auth.session(token)['csrf']})
             response.set_cookie(COOKIE, token, max_age=SESSION_SECONDS, secure=True, httponly=True, samesite='strict', path='/')
             return response

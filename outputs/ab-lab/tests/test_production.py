@@ -92,17 +92,17 @@ def test_target_uses_real_proxy_ip_and_cannot_serve_admin(prod):
     assert settings.admin_origin in target.get('/').headers['content-security-policy']
 
 
-def test_login_throttling_and_password_reset_revokes(prod):
+def test_password_reset_revokes_session_and_login_stays_open(prod):
     _, _, auth, client = prod
     login(client)
     old_token = client.cookies.get('__Host-ab_session')
     auth.set_password('owner', 'another-long-password-456')
     assert auth.session(old_token) is None
     client.headers['X-CSRF-Token'] = client.app.state.csrf
-    for _ in range(5):
+    for _ in range(8):
         response = client.post('/api/login', json={'username': 'owner', 'password': 'wrong'})
         assert response.status_code == 401
-    assert client.post('/api/login', json={'username': 'owner', 'password': 'wrong'}).status_code == 429
+        assert response.json()['detail'] == '账号或密码错误'
 
 
 def test_password_never_stored_and_sessions_expire(prod):
