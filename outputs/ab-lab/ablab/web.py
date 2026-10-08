@@ -708,14 +708,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             result['cloudflare'] = purged
         return result
 
-    @routes.delete('/versions/B/{version_id}')
-    def delete_b_version(version_id: VersionId, store=Depends(site_store)):
-        store.delete_version(version_id)
+    @routes.delete('/versions/{slot}/{version_id}')
+    def delete_slot_version(slot: Slot, version_id: VersionId, store=Depends(site_store)):
+        store.delete_version(version_id, slot)
         return {'ok': True}
 
-    @routes.post('/versions/B/cleanup')
-    def cleanup_b_versions(store=Depends(site_store)):
-        return {'deleted': len(store.delete_unpublished_b_versions())}
+    @routes.post('/versions/{slot}/cleanup')
+    def cleanup_slot_versions(slot: Slot, store=Depends(site_store)):
+        return {'deleted': len(store.delete_unpublished_versions(slot))}
 
     def source_version(store, slot, version_id):
         version = store.version(version_id)
@@ -1119,7 +1119,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if not sees_everything(principal(request)):
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted', 'whatsapp_trust_checked', 'whatsapp_split_updated'}
+                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'a_version_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted', 'whatsapp_trust_checked', 'whatsapp_split_updated'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 

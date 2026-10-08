@@ -36,4 +36,6 @@ test('empty accounts can use catalog and account routes but cannot call site API
   assert.equal(accounts.accountSitePath('/api/desk/review', 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/desk/review`);
   assert.equal(accounts.accountSitePath('/api/versions/B/' + 'b'.repeat(32), 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/versions/B/${'b'.repeat(32)}`);
   assert.equal(accounts.accountSitePath('/api/versions/B/cleanup', 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/versions/B/cleanup`);
+  assert.equal(accounts.accountSitePath('/api/versions/A/' + 'c'.repeat(32), 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/versions/A/${'c'.repeat(32)}`);
+  assert.equal(accounts.accountSitePath('/api/versions/A/cleanup', 'a'.repeat(32)), `/api/sites/${'a'.repeat(32)}/versions/A/cleanup`);
 });

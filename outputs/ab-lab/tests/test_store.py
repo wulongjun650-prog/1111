@@ -58,6 +58,29 @@ def test_delete_unpublished_b_version_removes_files_and_stale_active_link(tmp_pa
     assert any(item['action'] == 'b_version_deleted' for item in store.audit())
 
 
+def test_delete_unpublished_a_version_leaves_the_published_page(tmp_path):
+    store = Store(tmp_path)
+    live = _add_version(store, 'A', 'live-a')
+    old = _add_version(store, 'A', 'old-a')
+    other = _add_version(store, 'B', 'beta')
+    store.publish('A', live)
+    assert store.delete_version(old, 'A') == old
+    assert store.version(old) is None
+    assert not (store.pages / old).exists()
+    assert store.slots()['A'] == live
+    assert (store.pages / live / 'index.html').is_file()
+    with pytest.raises(ValueError, match='当前发布的 A'):
+        store.delete_version(live, 'A')
+    with pytest.raises(ValueError, match='只能删除未发布的 A'):
+        store.delete_version(other, 'A')
+    extra = _add_version(store, 'A', 'extra-a')
+    assert store.delete_unpublished_versions('A') == [extra]
+    assert store.version(extra) is None
+    assert store.version(live)['slot'] == 'A'
+    assert store.version(other)['slot'] == 'B'
+    assert any(item['action'] == 'a_version_deleted' for item in store.audit())
+
+
 def _member(preset, weight=1):
     return SimpleNamespace(preset_id=preset['id'], weight=weight)
 
