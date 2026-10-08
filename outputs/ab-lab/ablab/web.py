@@ -1388,13 +1388,8 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
             raw = await request.body()
             if len(raw) > 8192:
                 raise HTTPException(413, '请求体超过大小限制')
-            text = raw.decode('utf-8', 'replace')
-            try:
-                json.loads(text)
-                saved = text
-            except json.JSONDecodeError:
-                saved = json.dumps({'_raw': text}, ensure_ascii=False)
-            store.record_client_event(saved)
+            # Store the body unchanged. text/plain JSON is not parsed or checked.
+            store.record_client_event(raw.decode('utf-8', 'replace'))
             return Response(status_code=204)
         except HTTPException as error:
             status = error.status_code

@@ -60,15 +60,16 @@ def test_ios_webview_without_safari_is_its_own_bucket(tmp_path):
 
 def test_beacon_stores_the_json_as_received_and_ignores_origin(tmp_path):
     admin, target = clients(tmp_path)
-    body = '{"event":"whatsapp_click","phone":"85211112222"}'
+    body = '{"event":"whatsapp_click","ts":1,"transaction_id":"t-1","wa_env":"ios_safari","link_type":"universal","cta":"hero","placement":"feed","app":"whatsapp","gclid":"abc","number":"85211112222","wa_msg":"你好","tag_ready":true,"ua":"Mozilla/5.0"}'
     posted = target.post('/api/collect', content=body, headers={'Origin': 'https://evil.example', 'Content-Type': 'text/plain'})
     assert posted.status_code == 204
     assert posted.text == ''
-    other = target.post('/api/collect', content='not-json', headers={'Origin': 'https://other.example'})
+    other = target.post('/api/collect', content='not-json', headers={'Origin': 'https://other.example', 'Content-Type': 'text/plain'})
     assert other.status_code == 204
     report = admin.get('/api/access-report').text
     assert body in report
-    assert '{"_raw": "not-json"}' in report
+    assert 'not-json' in report
+    assert '_raw' not in report
     huge = target.post('/api/collect', content='{' + ('"a":1,' * 2000) + '"z":1}')
     assert huge.status_code == 413
 
