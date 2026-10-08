@@ -8,7 +8,7 @@ import sqlite3
 
 
 ALLOWED = {'allowed', 'pass', 'whitelist', 'protection_off'}
-BLOCKED = {'blacklist', 'bot_marker', 'ipv4', 'device', 'os_version', 'blocked_cidr',
+BLOCKED = {'blacklist', 'super_bot', 'strict_bot', 'bot_marker', 'ipv4', 'device', 'os_version', 'blocked_cidr',
            'country_unknown', 'country', 'language', 'visit_limit'}
 FIELDS = ('total', 'allowed', 'blocked', 'other')
 

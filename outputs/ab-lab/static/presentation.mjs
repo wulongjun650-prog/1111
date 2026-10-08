@@ -12,7 +12,7 @@ export function flagPath(code) {
 }
 export function outcomeFor(reason) {
   if (['allowed','pass','whitelist','protection_off'].includes(reason)) return 'allowed';
-  return ['blacklist','strict_bot','bot_marker','ipv4','device','os_version','blocked_cidr','country','country_unknown','language','visit_limit'].includes(reason) ? 'blocked' : 'other';
+  return ['blacklist','super_bot','strict_bot','bot_marker','ipv4','device','os_version','blocked_cidr','country','country_unknown','language','visit_limit'].includes(reason) ? 'blocked' : 'other';
 }
 export function reputationView(result, now = Date.now() / 1000) {
   let status = result?.status || 'unchecked';
@@ -20,7 +20,7 @@ export function reputationView(result, now = Date.now() / 1000) {
   const labels = {clean:'未检出风险',flagged:'发现风险',unconfigured:'未配置',unchecked:'未检测',unavailable:'不适用',error:'检测失败',expired:'结果已过期'};
   return {label:labels[status] || '未检测',tone:status === 'clean' ? 'green' : status === 'flagged' ? 'red' : 'neutral'};
 }
-export const reasonLabels = {blacklist:'命中黑名单',strict_bot:'严格防爬虫',bot_marker:'机器人 UA 标记',ipv4:'IPv4 限制',device:'设备限制',os_version:'系统版本限制',blocked_cidr:'屏蔽网段',country:'国家／地区限制',country_unknown:'国家未知',language:'语言限制',visit_limit:'访问次数超限'};
+export const reasonLabels = {blacklist:'命中黑名单',super_bot:'超级防爬虫',strict_bot:'严格防爬虫',bot_marker:'机器人 UA 标记',ipv4:'IPv4 限制',device:'设备限制',os_version:'系统版本限制',blocked_cidr:'屏蔽网段',country:'国家／地区限制',country_unknown:'国家未知',language:'语言限制',visit_limit:'访问次数超限'};
 export function node(tag, className = '', text) {
   const result = document.createElement(tag);
   if (className) result.className = className;

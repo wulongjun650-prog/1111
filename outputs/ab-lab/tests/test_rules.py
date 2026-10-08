@@ -90,6 +90,22 @@ def test_strict_crawler_blocks_bots_empty_and_unrecognized_clients(ua):
     assert result['reason'] == 'strict_bot'
 
 
+def test_super_crawler_blocks_official_ranges_and_named_bots_only_when_enabled():
+    iphone = IPHONE.format(os='18_7', safari='18.7.5')
+    googlebot = 'Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36 (compatible; Googlebot/2.1)'
+    assert decide(Config(), visit(ip='66.249.66.1', ua=iphone))['reason'] == 'allowed'
+    disguised = decide(Config(rules={'super_bots': True}), visit(ip='66.249.66.1', ua=iphone))
+    assert disguised['slot'] == 'A'
+    assert disguised['reason'] == 'super_bot'
+    named = decide(Config(rules={'super_bots': True}), visit(ua=googlebot))
+    assert named['reason'] == 'super_bot'
+    assert decide(Config(rules={'super_bots': True}), visit(ip='157.55.39.5', ua=iphone))['reason'] == 'super_bot'
+    assert decide(Config(rules={'super_bots': True}), visit(ua=iphone))['reason'] == 'allowed'
+    assert decide(Config(rules={'super_bots': True}), visit(ua=CUBOT))['reason'] == 'allowed'
+    assert decide(Config(rules={'super_bots': True}), visit(ip='8.8.8.8', ua=iphone))['reason'] == 'allowed'
+    assert decide(Config(rules={'super_bots': True, 'whitelist': ['66.249.66.1']}), visit(ip='66.249.66.1', ua=iphone))['reason'] == 'whitelist'
+
+
 def test_strict_crawler_leaves_normal_phones_and_stays_off_by_default():
     iphone = IPHONE.format(os='18_7', safari='18.7.5')
     assert decide(Config(rules={'strict_bots': True}), visit(ua=iphone))['reason'] == 'allowed'

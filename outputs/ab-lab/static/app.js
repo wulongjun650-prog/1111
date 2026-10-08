@@ -98,13 +98,13 @@ const labels = {
   analysis: ['数据深度分析', '数据深度分析', '汇总所有域名的香港访客请求和落地页事件。'],
   accounts: ['账号管理', '账号管理', isObserver(account) ? '查看用户名、角色和名下域名。密码不会显示。' : '创建代理或观察号，管理访问权限与域名归属。'],
 };
-const reasons = { blacklist: '命中黑名单', whitelist: '命中白名单', strict_bot: '严格防爬虫', bot_marker: '匹配机器人标记', ipv4: 'IPv4 限制', device: '设备限制', os_version: '系统版本限制', blocked_cidr: '命中屏蔽网段', country: '国家 / 地区限制', country_unknown: '国家未知', language: '语言限制', visit_limit: '超过访问次数', allowed: '规则通过', pass: '规则通过', force_a: '强制 A', force_b: '强制 B', protection_off: '防护已关闭' };
+const reasons = { blacklist: '命中黑名单', whitelist: '命中白名单', super_bot: '超级防爬虫', strict_bot: '严格防爬虫', bot_marker: '匹配机器人标记', ipv4: 'IPv4 限制', device: '设备限制', os_version: '系统版本限制', blocked_cidr: '命中屏蔽网段', country: '国家 / 地区限制', country_unknown: '国家未知', language: '语言限制', visit_limit: '超过访问次数', allowed: '规则通过', pass: '规则通过', force_a: '强制 A', force_b: '强制 B', protection_off: '防护已关闭' };
 const formatDate = value => {
   const date = new Date(Number(value) * 1000);
   return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleString('zh-CN', { hour12: false });
 };
 reasons.manual = '手动指定';
-const traceLabels = { blacklist: '黑名单检查', whitelist: '白名单检查', strict_bot: '严格防爬虫', bot_marker: 'UA 特征检查', ipv4: 'IPv4 检查', device: '设备检查', os_version: '系统版本检查', blocked_cidr: '自定义网段检查', country: '国家检查', country_unknown: '国家检查', language: '语言检查', visit_limit: '访问次数检查' };
+const traceLabels = { blacklist: '黑名单检查', whitelist: '白名单检查', super_bot: '超级防爬虫', strict_bot: '严格防爬虫', bot_marker: 'UA 特征检查', ipv4: 'IPv4 检查', device: '设备检查', os_version: '系统版本检查', blocked_cidr: '自定义网段检查', country: '国家检查', country_unknown: '国家检查', language: '语言检查', visit_limit: '访问次数检查' };
 const number = value => Number(value ?? 0).toLocaleString('zh-CN');
 const bytes = value => Number(value) < 1024 * 1024 ? `${(Number(value) / 1024).toFixed(1)} KiB` : `${(Number(value) / 1024 / 1024).toFixed(1)} MiB`;
 
@@ -730,7 +730,7 @@ on(rulesForm, 'submit', async event => {
   if (!state || configBusy) return;
   Object.values(selections).forEach(selection => selection.flush());
   const values = Object.fromEntries(new FormData(rulesForm));
-  for (const key of ['strict_bots', 'block_bots', 'block_pc', 'block_ipv4']) values[key] = rulesForm.elements.namedItem(key).checked;
+  for (const key of ['super_bots', 'strict_bots', 'block_bots', 'block_pc', 'block_ipv4']) values[key] = rulesForm.elements.namedItem(key).checked;
   await busy(event.submitter, () => saveConfig(rulesConfig(state.config, values), true));
 });
 on($('#discard-rules'), 'click', async () => {
