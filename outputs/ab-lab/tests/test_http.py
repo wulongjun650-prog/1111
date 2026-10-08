@@ -345,6 +345,45 @@ function goWhatsApp() {
     assert _run_picker(weighted_script, {}, 0.95)['phone'] == '85265445264'
 
 
+def test_link_split_leaves_whatsapp_numbers_intact(apps):
+    admin, target = apps
+    page = ('<!doctype html><body>'
+            '<a class="gate-confirm" href="https://wa.me/85265454191?text=hi">go</a>'
+            '<a href="https://old.example/landing">more</a>'
+            '<script>const CONFIG = { whatsappNumber: "85265454191" };</script>'
+            '</body>')
+    upload(admin, 'B', page)
+    preset = admin.post('/api/b-redirects/presets', json={'urls': ['https://split.example/landing'], 'note': ''})
+    assert preset.status_code == 200, preset.text
+    saved = admin.put('/api/b-redirects/split', json={'enabled': True, 'mode': 'random', 'members': [{'preset_id': preset.json()['presets'][0]['id'], 'weight': 1}]})
+    assert saved.status_code == 200, saved.text
+    served = target.get('/')
+    assert 'https://split.example/landing' in served.text and 'old.example' not in served.text
+    assert 'wa.me/85265454191' in served.text and 'whatsappNumber: "85265454191"' in served.text
+    assert 'wa.me/https' not in served.text and 'wa.me/"' not in served.text
+
+
+def test_split_script_injects_before_an_uppercase_body_tag(apps):
+    admin, target = apps
+    page = ('<!doctype html><BODY>'
+            '<div id="reception-text">本次由助理 Chloe 接待</div>'
+            '<a class="gate-confirm" href="https://wa.me/85265454191?text=hi">go</a>'
+            '<script>const CONFIG = { whatsappNumber: "85265454191", receptionist: "Chloe" };</script>'
+            '</BODY>')
+    upload(admin, 'B', page)
+    vivian = admin.post('/api/b-redirects/numbers', json={'phones': ['85211112222'], 'note': '', 'display_name': 'Vivian 關詠怡'}).json()['numbers'][0]
+    other = admin.post('/api/b-redirects/numbers', json={'phones': ['85233334444'], 'note': '', 'display_name': 'Chloe 陳'}).json()['numbers'][0]
+    saved = admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': vivian['id'], 'weight': 1}, {'number_id': other['id'], 'weight': 1}]})
+    assert saved.status_code == 200, saved.text
+    served = target.get('/')
+    assert served.text.count('<script id="ab-number-split">') == 1
+    body_close = served.text.rfind('</BODY>')
+    picker = served.text.find('<script id="ab-number-split">')
+    assert 0 < picker < body_close
+    assert '</BOD' not in served.text[picker:picker + 40]
+    assert 'ody>' not in served.text[picker:picker + 40]
+
+
 def test_b_split_rewrites_the_page_before_it_is_sent(apps):
     admin, target = apps
     upload(admin, 'B', '<a href="https://old.example/landing">go</a>')

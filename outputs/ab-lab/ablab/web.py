@@ -1216,7 +1216,10 @@ def inject_number_split(data, members, mode):
         return data
     if 'id="ab-number-split"' in text:
         return data
-    index = text.lower().rfind('</body>')
+    match = None
+    for found in re.finditer(r'</body\s*>', text, re.IGNORECASE):
+        match = found
+    index = match.start() if match else -1
     updated = text + script if index < 0 else text[:index] + script + text[index:]
     payload = updated.encode('utf-8')
     return (b'\xef\xbb\xbf' + payload) if bom else payload
@@ -1256,7 +1259,7 @@ def prepare_split(store, request, version_id):
     occurrences = cached_split_scan(store.pages / version_id, version_id)
 
     def transform(data, relative):
-        positions = [item for item in occurrences if item['path'] == relative]
+        positions = [item for item in occurrences if item['path'] == relative and item['kind'] != 'whatsapp_number']
         if not positions:
             return data
         try:

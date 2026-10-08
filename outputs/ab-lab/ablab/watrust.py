@@ -30,6 +30,11 @@ TRUST_TITLE = ('你信任此用户吗', '你信任此用戶嗎')
 CONTINUE_CHAT = ('继续聊天', '繼續聊天')
 CANCEL_CHAT = ('取消聊天',)
 COMPOSER = ('com.whatsapp:id/entry', '输入消息', '輸入訊息', 'Type a message', 'type a message')
+# English UI equivalents, matched case-insensitively so an English phone still
+# flags the "trust this user" popup instead of reading it as a clear chat.
+TRUST_TITLE_EN = ('do you trust this contact', 'do you trust this user')
+CONTINUE_CHAT_EN = ('continue chat', 'continue to chat')
+CANCEL_CHAT_EN = ('cancel chat',)
 
 
 class VmosError(Exception):
@@ -109,7 +114,10 @@ def back_script():
 def classify_screen(text):
     if not isinstance(text, str) or not text.strip():
         return 'unconfirmed'
-    if any(title in text for title in TRUST_TITLE) or (any(word in text for word in CONTINUE_CHAT) and any(word in text for word in CANCEL_CHAT)):
+    lowered = text.lower()
+    trust_zh = any(title in text for title in TRUST_TITLE) or (any(word in text for word in CONTINUE_CHAT) and any(word in text for word in CANCEL_CHAT))
+    trust_en = any(title in lowered for title in TRUST_TITLE_EN) or (any(word in lowered for word in CONTINUE_CHAT_EN) and any(word in lowered for word in CANCEL_CHAT_EN))
+    if trust_zh or trust_en:
         return 'trust'
     if any(marker in text for marker in COMPOSER):
         return 'clear'

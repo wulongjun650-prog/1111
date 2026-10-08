@@ -40,6 +40,15 @@ def test_screen_phrases_distinguish_trust_clear_and_unconfirmed():
     assert classify_screen(None) == 'unconfirmed'
 
 
+def test_english_trust_popup_is_not_read_as_a_clear_chat():
+    english_trust = ('<node text="Do you trust this contact?" />'
+                     '<node text="Continue chat" /><node text="Cancel chat" />'
+                     '<node resource-id="com.whatsapp:id/entry" text="Type a message" />')
+    assert classify_screen(english_trust) == 'trust'
+    assert classify_screen('<node text="CONTINUE CHAT" /><node text="CANCEL CHAT" />') == 'trust'
+    assert classify_screen('<node resource-id="com.whatsapp:id/entry" text="Type a message" />') == 'clear'
+
+
 def test_open_script_only_views_the_send_link_and_back_is_the_return_key():
     upload = 'https://hhucuq.top/api/wa-trust/screen/tokenvalue1234567890abcd'
     script = open_script(PHONE_A, upload, '1.2.3.4')
