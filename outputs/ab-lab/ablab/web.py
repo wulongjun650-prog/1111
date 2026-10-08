@@ -1326,10 +1326,10 @@ def _clip(value, limit):
 
 
 def _request_country(request, country):
-    if not getattr(request.state, 'access_country_ready', False):
-        ip = getattr(request.state, 'visitor_ip', request.client.host if request.client else '')
-        country = geo_country(ip) if ip else None
-    return country
+    if getattr(request.state, 'access_country_ready', False):
+        return getattr(request.state, 'access_country', country)
+    ip = getattr(request.state, 'visitor_ip', request.client.host if request.client else '')
+    return geo_country(ip) if ip else None
 
 
 _access_jobs = queue.Queue(maxsize=2000)

@@ -80,6 +80,9 @@ def test_beacon_stores_the_json_as_received_and_ignores_origin(tmp_path):
     assert body in report
     assert 'not-json' in report
     assert '_raw' not in report
+    with admin.app.state.store.connect() as db:
+        paths = [row[0] for row in db.execute("SELECT path FROM access_log WHERE path='/api/collect'")]
+    assert paths == ['/api/collect', '/api/collect']
     huge = target.post('/api/collect', content='{' + ('"a":1,' * 2000) + '"z":1}')
     assert huge.status_code == 413
 
