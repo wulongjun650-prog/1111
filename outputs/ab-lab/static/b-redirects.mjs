@@ -144,10 +144,22 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   }
 
   function paintTrustAlarm(value) {
-    const alarming = Boolean(value && [...liveNumbers(value)].some(phone => value.numbers.find(row => row.phone === phone)?.trust?.status === 'trust'));
+    const watched = new Map();
+    for (const phone of liveNumbers(value)) {
+      const found = (value?.numbers || []).find(row => row.phone === phone);
+      if (found) watched.set(found.id, found);
+    }
+    for (const found of splitMemberNumbers(value)) watched.set(found.id, found);
+    const alarming = [...watched.values()].some(row => row?.trust?.status === 'trust');
     waAlarm.hidden = !alarming;
     waAlarmText.textContent = alarming ? '当前号码出现信任弹窗。' : '';
     if (alarming) trustAudio.start(); else trustAudio.stop();
+  }
+
+  function splitMemberNumbers(value) {
+    if (!value || !value.numberSplit?.enabled) return [];
+    const ids = new Set((value.numberSplit.members || []).map(member => member.number_id));
+    return (value.numbers || []).filter(row => ids.has(row.id));
   }
 
   function trustNote(polling) {
@@ -215,9 +227,11 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   }
 
   async function pollCurrent(value) {
-    if (!value || !isCurrent(value) || !value.trustPoll || document.hidden || trustFlight || value.trustChecking.size) return;
-    const ids = value.numbers.filter(item => liveNumbers(value).has(item.phone)).map(item => item.id);
-    if (!ids.length) return;
+    if (!value || !isCurrent(value) || !value.trustPoll || trustFlight || value.trustChecking.size) return;
+    const ids = new Set();
+    for (const item of value.numbers) if (liveNumbers(value).has(item.phone)) ids.add(item.id);
+    for (const member of splitMemberNumbers(value)) ids.add(member.id);
+    if (!ids.size) return;
     trustFlight = true;
     try {
       for (const id of ids) {
@@ -518,6 +532,9 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       if (!presetsOnly) {
         value.versionId = result.version?.id || null; value.expectedPublished = result.published_version;
         value.occurrences = result.occurrences; value.warnings = result.warnings;
+        // Keep the published page's spans so the alarm, polling and auto-switch
+        // keep working even while the operator is viewing an older draft version.
+        if (value.versionId && value.versionId === value.expectedPublished) value.liveOccurrences = result.occurrences;
         value.scanned = true;
         renderVersions(value); renderOccurrences(value);
       }
@@ -566,17 +583,16 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   async function switchFromTrust(value, number) {
     if (!number || number.trust?.status !== 'trust' || !liveNumbers(value).has(number.phone)) return false;
     const next = nextSpare(value, number.phone);
-    const targets = value.occurrences.filter(item => item.kind === 'whatsapp_number' && item.url === number.phone);
+    const targets = (value.liveOccurrences || []).filter(item => item.kind === 'whatsapp_number' && item.url === number.phone);
     if (!next || !targets.length) return false;
     trustAudio.stop();
     waAlarm.hidden = true;
     waAlarmText.textContent = '';
-    return applyNumber(value, next, {occurrences: targets, automatic: true});
+    return applyNumber(value, next, {occurrences: targets, automatic: true, baseVersionId: value.expectedPublished});
   }
 
   function liveNumbers(value) {
-    if (!value || value.versionId !== value.published) return new Set();
-    return new Set(value.occurrences.filter(item => item.kind === 'whatsapp_number').map(item => item.url));
+    return new Set((value?.liveOccurrences || []).filter(item => item.kind === 'whatsapp_number').map(item => item.url));
   }
 
   function renderNumbers(value) {
@@ -671,7 +687,10 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   async function applyNumber(value, item, options = {}) {
     if (readOnly) return false;
     const targets = options.occurrences || numberSelected(value);
-    if (!isCurrent(value) || value.busy || value.loading || !value.versionId || !targets.length) return false;
+    // Automatic switches act on the published page even when the operator is
+    // looking at an older draft, so they base off the published version.
+    const baseVersionId = options.baseVersionId || value.versionId;
+    if (!isCurrent(value) || value.busy || value.loading || !baseVersionId || !targets.length) return false;
     if (targets.every(row => row.url === item.phone) && !item.display_name) {
       renderNumbers(value);
       const text = '这个号码已经是当前号码。';
@@ -685,7 +704,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     renderOccurrences(value); renderNumbers(value);
     value.busy = true; updateControls(); showMessage('正在更换 WhatsApp 号码…'); showNumberStatus('正在把当前号码换成 ' + item.phone + '…');
     try {
-      const result = await api('/api/b-redirects/numbers/apply', {method:'POST', body:{version_id:value.versionId, number_id:item.id, occurrence_ids:targets.map(row => row.id), expected_published:value.expectedPublished}});
+      const result = await api('/api/b-redirects/numbers/apply', {method:'POST', body:{version_id:baseVersionId, number_id:item.id, occurrence_ids:targets.map(row => row.id), expected_published:value.expectedPublished}});
       if (!isCurrent(value)) return;
       if (!result.changed) {
         value.occurrences = previous; renderOccurrences(value); renderNumbers(value);
@@ -696,6 +715,9 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       }
       value.versionId = result.version.id; value.published = result.version.id;
       value.expectedPublished = result.version.id; value.selectionDirty = false;
+      // The applied version is the new published page, so update the live spans
+      // right away; the trailing rescan may be skipped if the view moves on.
+      value.liveOccurrences = (value.liveOccurrences || []).map(row => targetIds.has(row.id) ? {...row, url:item.phone} : row);
       if (!value.versions.some(saved => saved.id === result.version.id)) value.versions.push(result.version);
       renderVersions(value); renderOccurrences(value); renderNumbers(value);
       let refreshFailed = false;
@@ -867,7 +889,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     let value = session;
     if (value?.siteId !== state.site.id) {
       clear();
-      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], warnings:[], presets:[], numbers:[], presetsRevision:0, numbersRevision:0, trustPoll:false, trustChecking:new Set(), active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, numberSplit:blankSplit(), savedNumberSplit:blankSplit(), numberSplitDirty:false, numberSplitSaving:false, numberSplitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
+      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], liveOccurrences:[], warnings:[], presets:[], numbers:[], presetsRevision:0, numbersRevision:0, trustPoll:false, trustChecking:new Set(), active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, numberSplit:blankSplit(), savedNumberSplit:blankSplit(), numberSplitDirty:false, numberSplitSaving:false, numberSplitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
       session = value;
     }
     if (value.busy) {
@@ -947,14 +969,14 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     if (phones.length !== 1) return {ok: false, detail: '当前发布页没有唯一的 WhatsApp 号码'};
     const next = nextSpare(value, phones[0], options.avoid || []);
     if (!next) return {ok: false, detail: '没有可换的预存号码'};
-    const targets = value.occurrences.filter(item => item.kind === 'whatsapp_number' && item.url === phones[0]);
-    const ok = await applyNumber(value, next, {occurrences: targets, automatic: true, statusText: '已自动换成下一个。', doneText: '已自动换成下一个预存号码。进线语未改。'});
+    const targets = (value.liveOccurrences || []).filter(item => item.kind === 'whatsapp_number' && item.url === phones[0]);
+    const ok = await applyNumber(value, next, {occurrences: targets, automatic: true, baseVersionId: value.expectedPublished, statusText: '已自动换成下一个。', doneText: '已自动换成下一个预存号码。进线语未改。'});
     return {ok: Boolean(ok), detail: ok ? '已换号' : '没有换成这个号码'};
   }
 
   function livePhone() {
     const value = session;
-    if (!value || value.versionId !== value.published) return '';
+    if (!value) return '';
     const phones = [...liveNumbers(value)];
     return phones.length === 1 ? phones[0] : '';
   }
