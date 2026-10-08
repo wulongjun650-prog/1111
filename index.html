@@ -624,9 +624,10 @@
       };
     }
 
-    // 進線語由四段隨機拼出（5×3×6×6 = 540 種），同上一次唔同；{d} = 日期、{n} = 名單名
+    // 進線語由四段隨機拼出（5×3×6×6 = 540 種），同上一次唔同；{r} = 接待助理（CONFIG.receptionist）、{d} = 日期、{n} = 名單名
     const MSG_PARTS = {
-      greet: ['你好，', '您好，', '你好呀，', 'Hi，', 'Hello，'],
+      greet: ['{r} 助理你好，', '{r} 助理您好，', '{r} 你好，', '你好 {r} 助理，', '{r} 助理，你好呀，'],
+      greetNoName: ['你好，', '您好，', '你好呀，'],
       lead: ['', '', '睇到你哋嘅港股分享，', '啱啱睇到講經MAN，'],
       ask: ['我想睇{d}嘅{n}', '想要一份{d}{n}', '可唔可以發{d}嘅{n}俾我', '我想免費領取{d}{n}', '想了解下{d}嘅{n}', '麻煩發一份{d}{n}俾我'],
       close: ['，唔該晒。', '，唔該。', '，謝謝。', '，唔該你。', '，多謝！', '。']
@@ -638,11 +639,12 @@
       const pick = arr => arr[Math.floor(Math.random() * arr.length)];
       const d = CONFIG.listDate || '今日';
       const n = LIST_NAMES[key] || '精選名單';
+      const r = String(CONFIG.receptionist || '').trim();
       let last = '';
       try { last = localStorage.getItem(LAST_MSG_KEY) || ''; } catch (e) {}
       let msg = '';
       for (let i = 0; i < 6 && (!msg || msg === last); i++) {
-        msg = pick(MSG_PARTS.greet) + pick(MSG_PARTS.lead) + pick(MSG_PARTS.ask).replace('{d}', d).replace('{n}', n) + pick(MSG_PARTS.close);
+        msg = (r ? pick(MSG_PARTS.greet).replace('{r}', r) : pick(MSG_PARTS.greetNoName)) + pick(MSG_PARTS.lead) + pick(MSG_PARTS.ask).replace('{d}', d).replace('{n}', n) + pick(MSG_PARTS.close);
       }
       try { localStorage.setItem(LAST_MSG_KEY, msg); } catch (e) {}
       return msg;
