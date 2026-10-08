@@ -103,6 +103,9 @@ def test_super_crawler_blocks_official_ranges_and_named_bots_only_when_enabled()
     assert decide(Config(rules={'super_bots': True}), visit(ua=iphone))['reason'] == 'allowed'
     assert decide(Config(rules={'super_bots': True}), visit(ua=CUBOT))['reason'] == 'allowed'
     assert decide(Config(rules={'super_bots': True}), visit(ip='8.8.8.8', ua=iphone))['reason'] == 'allowed'
+    assert decide(Config(rules={'super_bots': True}), visit(ip='3.81.245.78', ua=iphone))['reason'] == 'super_bot'
+    assert decide(Config(rules={'super_bots': True}), visit(ua='Mozilla/5.0 (compatible; Perplexity-User/1.0)'))['reason'] == 'super_bot'
+    assert decide(Config(), visit(ip='3.81.245.78', ua=iphone))['reason'] == 'allowed'
     assert decide(Config(rules={'super_bots': True, 'whitelist': ['66.249.66.1']}), visit(ip='66.249.66.1', ua=iphone))['reason'] == 'whitelist'
 
 
