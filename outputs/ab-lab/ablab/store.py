@@ -54,6 +54,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS redirect_split_assign(visitor_hash TEXT PRIMARY KEY, preset_id INTEGER, url TEXT NOT NULL, created REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS whatsapp_split(id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL, mode TEXT NOT NULL, members TEXT NOT NULL, updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS whatsapp_split_assign(visitor_hash TEXT PRIMARY KEY, number_id INTEGER, phone TEXT NOT NULL, display_name TEXT NOT NULL, created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS whatsapp_trust_state(id INTEGER PRIMARY KEY CHECK(id=1), seen_trust INTEGER NOT NULL DEFAULT 0, seen_clear INTEGER NOT NULL DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, created REAL NOT NULL, ip TEXT NOT NULL, country TEXT, device TEXT NOT NULL, slot TEXT NOT NULL, reason TEXT NOT NULL, path TEXT NOT NULL, mode TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS events_created ON events(created);
                 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, created REAL NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL);
@@ -403,11 +404,21 @@ class Store:
             db.execute('BEGIN IMMEDIATE')
             if not db.execute('UPDATE whatsapp_numbers SET trust_result=? WHERE id=?', (payload, number_id)).rowcount:
                 raise KeyError('WhatsApp 号码不存在')
+            # Once both a trust popup and a clear screen have ever been seen, polling
+            # stays on. Otherwise an auto-switch that leaves no number currently
+            # 'clear' would turn polling off and stop watching the new number.
+            if status in ('trust', 'clear'):
+                column = 'seen_trust' if status == 'trust' else 'seen_clear'
+                db.execute(f'INSERT INTO whatsapp_trust_state(id,{column}) VALUES(1,1) '
+                           f'ON CONFLICT(id) DO UPDATE SET {column}=1')
             self._audit(db, 'whatsapp_trust_checked', {'id':number_id, 'status':status})
         return self.whatsapp_number(number_id)
 
     def whatsapp_trust_poll_enabled(self):
         with self.connect() as db:
+            state = db.execute('SELECT seen_trust,seen_clear FROM whatsapp_trust_state WHERE id=1').fetchone()
+            if state and state['seen_trust'] and state['seen_clear']:
+                return True
             found = set()
             for row in db.execute('SELECT trust_result FROM whatsapp_numbers'):
                 if not row['trust_result']:
@@ -598,7 +609,9 @@ class Store:
                 current = db.execute('SELECT phone,display_name FROM whatsapp_numbers WHERE id=?', (existing['number_id'],)).fetchone()
                 if current and current['display_name']:
                     return {'number_id': existing['number_id'], 'phone': current['phone'], 'display_name': current['display_name']}
-                return {'number_id': existing['number_id'], 'phone': existing['phone'], 'display_name': existing['display_name']}
+                # The number was deleted or lost its reception name: drop this stale
+                # assignment and pick a fresh one so a retired number leaves rotation.
+                db.execute('DELETE FROM whatsapp_split_assign WHERE visitor_hash=?', (visitor_hash,))
             chosen = []
             for item in json.loads(split['members']):
                 number = db.execute('SELECT id,phone,display_name FROM whatsapp_numbers WHERE id=?', (item['number_id'],)).fetchone()
@@ -607,7 +620,7 @@ class Store:
             if not chosen:
                 return None
             pick = choose_split_member(chosen, split['mode'])
-            db.execute('INSERT OR IGNORE INTO whatsapp_split_assign(visitor_hash,number_id,phone,display_name,created) VALUES(?,?,?,?,?)', (visitor_hash, pick['number_id'], pick['phone'], pick['display_name'], time.time()))
+            db.execute('INSERT OR REPLACE INTO whatsapp_split_assign(visitor_hash,number_id,phone,display_name,created) VALUES(?,?,?,?,?)', (visitor_hash, pick['number_id'], pick['phone'], pick['display_name'], time.time()))
             saved = db.execute('SELECT number_id,phone,display_name FROM whatsapp_split_assign WHERE visitor_hash=?', (visitor_hash,)).fetchone()
             return {'number_id': saved['number_id'], 'phone': saved['phone'], 'display_name': saved['display_name']}
 

@@ -56,7 +56,7 @@ async function withConsole(run, options = {}) {
     else if(pathname===`/api/sites/${siteId}/b-redirects`) {
       fixture.scans.push(url.searchParams.get('version_id'));
       const selected=url.searchParams.get('version_id')||fixture.published.B;
-      response=structuredClone({version:fixture.versions.find(item=>item.id===selected),published_version:fixture.published.B,occurrences:fixture.byVersion[selected]||[],warnings:[],presets:fixture.presets,numbers:fixture.numbers,trust_poll:Boolean(fixture.trust_poll),active:fixture.active});
+      response=structuredClone({version:fixture.versions.find(item=>item.id===selected),published_version:fixture.published.B,occurrences:fixture.byVersion[selected]||[],warnings:[],presets:fixture.presets,numbers:fixture.numbers,trust_poll:Boolean(fixture.trust_poll),active:fixture.active,number_split:fixture.numberSplitState||null});
       status=fixture.scanStatus;
       if(status!==200) response={detail:'无法读取此版本'};
       if(selected===fixture.delayVersion) await new Promise(resolve=>{fixture.releaseScan=resolve;});
@@ -598,6 +598,53 @@ test('a trusted current number switches to the next spare, and a lone number ala
     assert.equal(fixture.numberApplies.length, 0);
   });
 });
+
+test('a split-pool number raises the alarm even when it is not the page number', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [...occurrences('live-b'), {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}];
+    fixture.numbers = [
+      {id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:10, phone:'85264150954', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}
+    ];
+    fixture.trust_poll = true;
+    fixture.numberSplitState = {enabled:true, mode:'random', members:[{number_id:9, weight:1},{number_id:10, weight:1}], updated:1};
+    fixture.trustResults[10] = 'trust';
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-wa-trust-note').getByText('复查').waitFor();
+    const polled = page.waitForResponse(response => response.url().includes('/numbers/10/trust'));
+    await page.clock.fastForward(30000);
+    await polled;
+    await page.locator('#wa-trust-alarm').getByText('当前号码出现信任弹窗。').waitFor();
+    assert.ok(fixture.trustChecks.includes(10));
+    assert.equal(fixture.numberApplies.length, 0);
+  }, {clock:true});
+});
+
+test('viewing an older version still alarms and switches off the published page', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [...occurrences('live-b'), {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}];
+    fixture.byVersion['import-b'] = [...occurrences('import-b'), {id:'wa-import-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85277776666'}];
+    fixture.numbers = [
+      {id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:10, phone:'85264150954', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}
+    ];
+    fixture.trust_poll = true;
+    fixture.trustResults[9] = 'trust';
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    const viewed = page.waitForResponse(response => response.url().includes('/b-redirects?') && response.url().includes('import-b'));
+    await page.locator('#b-redirect-version').selectOption('import-b');
+    await viewed;
+    const applied = page.waitForResponse(response => response.url().includes('/numbers/apply'));
+    await page.locator('#b-redirect-numbers [data-number-id="9"]').getByRole('button', {name:'再测一次', exact:true}).click();
+    await applied;
+    assert.equal(fixture.numberApplies.at(-1).body.version_id, 'live-b');
+    assert.equal(fixture.numberApplies.at(-1).body.number_id, 10);
+    assert.deepEqual(fixture.numberApplies.at(-1).body.occurrence_ids, ['wa-live-b']);
+    await page.locator('.b-wa-status').getByText('已自动换成下一个').waitFor();
+  });
+});
+
 
 test('work order over three online switches the published number and shows lead detail', async () => {
   await withConsole(async (page, fixture) => {

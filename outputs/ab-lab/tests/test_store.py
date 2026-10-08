@@ -84,6 +84,42 @@ def test_split_assignment_sticks_to_the_first_destination(tmp_path, monkeypatch)
         store.save_redirect_split(True, 'random', [])
 
 
+def _wa_member(number_id, weight=1):
+    return SimpleNamespace(number_id=number_id, weight=weight)
+
+
+def test_retired_number_leaves_the_split_rotation(tmp_path, monkeypatch):
+    store = Store(tmp_path)
+    keep = store.add_whatsapp_numbers(['85211112222'], '', 'Vivian')[0]
+    drop = store.add_whatsapp_numbers(['85233334444'], '', 'Chloe')[0]
+    monkeypatch.setattr(store_module, 'choose_split_member', lambda members, mode: next(m for m in members if m['number_id'] == drop['id']))
+    store.save_whatsapp_split(True, 'random', [_wa_member(keep['id']), _wa_member(drop['id'])])
+    first = store.whatsapp_split_destination('c' * 64)
+    assert first['phone'] == '85233334444'
+    # Pin the only remaining pick to the kept number, then retire the assigned one.
+    monkeypatch.setattr(store_module, 'choose_split_member', lambda members, mode: next(m for m in members if m['number_id'] == keep['id']))
+    store.save_whatsapp_split(True, 'random', [_wa_member(keep['id'])])
+    store.delete_whatsapp_number(drop['id'])
+    again = store.whatsapp_split_destination('c' * 64)
+    assert again['phone'] == '85211112222' and again['number_id'] == keep['id']
+
+
+def test_trust_polling_stays_on_after_both_screens_were_seen(tmp_path):
+    store = Store(tmp_path)
+    a = store.add_whatsapp_numbers(['85211112222'], '', 'Vivian')[0]
+    b = store.add_whatsapp_numbers(['85233334444'], '', 'Chloe')[0]
+    assert store.whatsapp_trust_poll_enabled() is False
+    store.save_whatsapp_trust(a['id'], 'trust', 'trust')
+    assert store.whatsapp_trust_poll_enabled() is False
+    store.save_whatsapp_trust(b['id'], 'clear', 'clear')
+    assert store.whatsapp_trust_poll_enabled() is True
+    # Both now show a trust popup: the old live-status rule would turn polling off,
+    # but once both screens were ever seen it must keep watching.
+    store.save_whatsapp_trust(a['id'], 'trust', 'trust')
+    store.save_whatsapp_trust(b['id'], 'trust', 'trust')
+    assert store.whatsapp_trust_poll_enabled() is True
+
+
 def test_link_round_robin_and_equal_distribution(tmp_path):
     db = Store(tmp_path)
     db.add_links('B', ['https://example.com/1', 'https://example.com/2'])

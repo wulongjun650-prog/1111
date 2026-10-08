@@ -286,6 +286,72 @@ def test_saving_the_visible_slot_purges_that_domains_cache(tmp_path):
     assert len(finished) == len(after) + 1
 
 
+class _OkChecker:
+    def check(self, url):
+        return {'status': 'normal', 'platform': '网站', 'detail': 'ok',
+                'checked_at': 1.0, 'http_status': 200, 'final_url': url}
+
+
+def test_b_page_number_and_link_edits_each_purge_the_cache(tmp_path):
+    api = Api()
+    http = session(tmp_path, client(api))
+    http.app.state.link_checker = _OkChecker()
+    added = http.post('/api/sites', json={'domain': 'new.example.com', 'cloudflare': True})
+    assert added.status_code == 200, added.text
+    site_id = added.json()['site']['id']
+    base = f'/api/sites/{site_id}'
+
+    page = ('<!doctype html><body>'
+            '<a href="https://wa.me/85200000001">wa</a>'
+            '<a href="https://old.test/go">link</a>'
+            '</body>')
+    up = http.post(f'{base}/upload/B?name=index.html', content=page.encode())
+    assert up.status_code == 200, up.text
+    version_id = up.json()['version']['id']
+    assert http.post(f'{base}/publish/B', json={'version_id': version_id}).status_code == 200
+
+    def purges():
+        return [path for _, path in api.calls if path.endswith('/purge_cache')]
+
+    number = http.post(f'{base}/b-redirects/numbers',
+                       json={'phones': ['85200000002'], 'note': '', 'display_name': '小美'})
+    assert number.status_code == 200, number.text
+    number_id = number.json()['numbers'][0]['id']
+
+    before = len(purges())
+    split_on = http.put(f'{base}/b-redirects/numbers/split',
+                        json={'enabled': True, 'mode': 'random', 'members': [{'number_id': number_id, 'weight': 1}]})
+    assert split_on.status_code == 200, split_on.text
+    assert split_on.json()['cloudflare'] == {'ok': True}
+    assert len(purges()) == before + 1
+
+    before = len(purges())
+    removed = http.delete(f'{base}/b-redirects/numbers/{number_id}')
+    assert removed.status_code == 200, removed.text
+    assert removed.json()['cloudflare'] == {'ok': True}
+    assert len(purges()) == before + 1
+
+    before = len(purges())
+    link_split = http.put(f'{base}/b-redirects/split', json={'enabled': False, 'mode': 'random', 'members': []})
+    assert link_split.status_code == 200, link_split.text
+    assert link_split.json()['cloudflare'] == {'ok': True}
+    assert len(purges()) == before + 1
+
+    scan = http.get(f'{base}/b-redirects').json()
+    anchor = next(item for item in scan['occurrences'] if item['kind'] == 'anchor')
+    preset = http.post(f'{base}/b-redirects/presets', json={'urls': ['https://safe.example/new'], 'note': ''})
+    assert preset.status_code == 200, preset.text
+    preset_id = preset.json()['presets'][0]['id']
+    before = len(purges())
+    applied = http.post(f'{base}/b-redirects/apply', json={
+        'version_id': scan['version']['id'], 'preset_id': preset_id,
+        'occurrence_ids': [anchor['id']], 'expected_published': scan['published_version']})
+    assert applied.status_code == 200, applied.text
+    assert applied.json()['changed'] == 1
+    assert applied.json()['cloudflare'] == {'ok': True}
+    assert len(purges()) == before + 1
+
+
 def test_open_page_checks_pending_nameservers_until_the_zone_is_active(tmp_path):
     api = Api(zones={'new.example.com': [zone('new.example.com', status='pending')]}, records={
         ZONE: [{'id': RECORD, 'type': 'A', 'name': 'new.example.com', 'content': ORIGIN, 'proxied': True}],

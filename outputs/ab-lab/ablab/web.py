@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import io
 import ipaddress
+import json
 import logging
 import mimetypes
 import os
@@ -770,8 +771,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 'active':store.redirect_active(), 'split':store.redirect_split(), 'number_split':store.whatsapp_split()}
 
     @routes.put('/b-redirects/split')
-    def save_b_redirect_split(body: RedirectSplit, store=Depends(site_store)):
-        return {'split': store.save_redirect_split(body.enabled, body.mode, body.members)}
+    def save_b_redirect_split(body: RedirectSplit, request: Request, store=Depends(site_store)):
+        result = {'split': store.save_redirect_split(body.enabled, body.mode, body.members)}
+        # The link-split picker is added when the page is served, so drop the
+        # cached copy or visitors keep the previous split for up to the edge TTL.
+        purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+        if purged is not None:
+            result['cloudflare'] = purged
+        return result
 
     @routes.post('/b-redirects/presets')
     def add_b_redirect_presets(body: RedirectPresetInput, store=Depends(site_store)):
@@ -807,7 +814,12 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if result['status'] == 'abnormal':
             raise ValueError('此链接不正常：' + result['detail'])
         version, changed = store.apply_redirects(base, preset, body.occurrence_ids, body.expected_published, guard)
-        return {'version':version, 'check':result, 'changed':changed}
+        response = {'version': version, 'check': result, 'changed': changed}
+        if changed:
+            purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+            if purged is not None:
+                response['cloudflare'] = purged
+        return response
 
     @routes.post('/b-redirects/numbers')
     def add_whatsapp_numbers(body: WhatsAppNumberInput, store=Depends(site_store)):
@@ -821,7 +833,12 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if store.slots()['B'] != body.expected_published:
             raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
         version, changed = store.publish_reception(base, body.display_name, body.expected_published, guard)
-        return {'number': number, 'version': version, 'changed': changed, 'sentence': f'本次由助理{body.display_name} 接待'}
+        response = {'number': number, 'version': version, 'changed': changed, 'sentence': f'本次由助理{body.display_name} 接待'}
+        if changed:
+            purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+            if purged is not None:
+                response['cloudflare'] = purged
+        return response
 
     @routes.post('/b-redirects/direct-entry')
     def publish_direct_entry(body: DirectEntry, request: Request, store=Depends(site_store)):
@@ -841,13 +858,27 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return {'version': version, 'changed': changed, 'cloudflare': purged}
 
     @routes.put('/b-redirects/numbers/split')
-    def save_whatsapp_number_split(body: WhatsAppSplit, store=Depends(site_store)):
-        return {'number_split': store.save_whatsapp_split(body.enabled, body.mode, body.members)}
+    def save_whatsapp_number_split(body: WhatsAppSplit, request: Request, store=Depends(site_store)):
+        saved = store.save_whatsapp_split(body.enabled, body.mode, body.members)
+        result = {'number_split': saved}
+        # The landing stays cached for the speed rule. Drop that copy so the
+        # shared picker script lists the pool that was just saved.
+        purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+        if purged is not None:
+            result['cloudflare'] = purged
+        return result
 
     @routes.delete('/b-redirects/numbers/{number_id}')
-    def delete_whatsapp_number(number_id: int, store=Depends(site_store)):
+    def delete_whatsapp_number(number_id: int, request: Request, store=Depends(site_store)):
         store.delete_whatsapp_number(number_id)
-        return {'ok':True}
+        result = {'ok': True}
+        # A deleted number drops out of the served split picker, so refresh the
+        # cached page when a split is live.
+        if store.whatsapp_split()['enabled']:
+            purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+            if purged is not None:
+                result['cloudflare'] = purged
+        return result
 
     @routes.post('/wa-trust/screen/{token}')
     async def ingest_whatsapp_screen(token: str, request: Request):
@@ -1140,8 +1171,86 @@ def assign_visitor_page(data, relative, occurrences, link_url, number):
     return data
 
 
+_NUMBER_SPLIT_SCRIPT = (
+    '<script id="ab-number-split">(function(){'
+    'var spec=__SPEC__;'
+    'var pool=spec.pool||[];'
+    'if(!pool.length)return;'
+    'var key="ab_wa_pick",saved="",pick=null,i;'
+    'try{saved=localStorage.getItem(key)||"";}catch(e){}'
+    'for(i=0;i<pool.length;i++){if(pool[i].phone===saved){pick=pool[i];break;}}'
+    'if(!pick){'
+    'if(spec.mode==="weighted"){'
+    'var total=0,j,draw,covered=0;'
+    'for(j=0;j<pool.length;j++)total+=pool[j].weight||0;'
+    'if(total>0){draw=Math.floor(Math.random()*total);'
+    'for(j=0;j<pool.length;j++){covered+=pool[j].weight||0;if(draw<covered){pick=pool[j];break;}}}'
+    '}'
+    'if(!pick)pick=pool[Math.floor(Math.random()*pool.length)];'
+    'try{localStorage.setItem(key,pick.phone);}catch(e){}'
+    '}'
+    'var phone=String(pick.phone||"").replace(/\\D/g,"");'
+    'var name=pick.name||"";'
+    'try{if(typeof CONFIG==="object"&&CONFIG){CONFIG.whatsappNumber=phone;if(name)CONFIG.receptionist=name;}}catch(e){}'
+    'var links=document.querySelectorAll("a[href]");'
+    'for(var n=0;n<links.length;n++){'
+    'var href=links[n].getAttribute("href")||"";'
+    'var next=href.replace(/wa\\.me\\/\\d{8,15}/g,"wa.me/"+phone).replace(/([?&]phone=)\\d{8,15}/g,"$1"+phone);'
+    'if(next!==href)links[n].setAttribute("href",next);'
+    '}'
+    'if(name){var node=document.getElementById("reception-text");'
+    'if(node)node.textContent="\\u672c\\u6b21\\u7531\\u52a9\\u7406"+name+" \\u63a5\\u5f85";}'
+    '})();</script>'
+)
+
+
+def number_split_script(members, mode):
+    """One script for every visitor. The cached page can still give each phone its own jump."""
+    pool = []
+    for item in members:
+        phone = re.sub(r'\D', '', str(item.get('phone') or ''))
+        if not phone:
+            continue
+        try:
+            weight = int(item.get('weight') or 1)
+        except (TypeError, ValueError):
+            weight = 1
+        pool.append({'phone': phone, 'name': str(item.get('display_name') or ''), 'weight': weight if weight > 0 else 1})
+    if not pool:
+        return ''
+    spec = json.dumps(
+        {'mode': 'weighted' if mode == 'weighted' else 'random', 'pool': pool},
+        ensure_ascii=False, separators=(',', ':'),
+    )
+    spec = spec.replace('<', r'\u003c').replace('>', r'\u003e').replace('&', r'\u0026')
+    spec = spec.replace('\u2028', r'\u2028').replace('\u2029', r'\u2029')
+    return _NUMBER_SPLIT_SCRIPT.replace('__SPEC__', spec)
+
+
+def inject_number_split(data, members, mode):
+    script = number_split_script(members, mode)
+    if not script:
+        return data
+    bom = data.startswith(b'\xef\xbb\xbf')
+    raw = data[3:] if bom else data
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeError:
+        return data
+    if 'id="ab-number-split"' in text:
+        return data
+    match = None
+    for found in re.finditer(r'</body\s*>', text, re.IGNORECASE):
+        match = found
+    index = match.start() if match else -1
+    updated = text + script if index < 0 else text[:index] + script + text[index:]
+    payload = updated.encode('utf-8')
+    return (b'\xef\xbb\xbf' + payload) if bom else payload
+
+
 def prepare_number_split(store, request, version_id):
-    if not version_id or not store.whatsapp_split()['enabled']:
+    split = store.whatsapp_split()
+    if not version_id or not split['enabled']:
         return None
     token = request.cookies.get(WA_COOKIE, '')
     is_new = not re.fullmatch(r'[a-f0-9]{64}', token)
@@ -1150,7 +1259,14 @@ def prepare_number_split(store, request, version_id):
     number = store.whatsapp_split_destination(hmac.new(store.secret, token.encode(), hashlib.sha256).hexdigest())
     if not number:
         return None
-    return {'number': number, 'occurrences': cached_split_scan(store.pages / version_id, version_id), 'is_new': is_new, 'token': token}
+    return {
+        'number': number,
+        'occurrences': cached_split_scan(store.pages / version_id, version_id),
+        'is_new': is_new,
+        'token': token,
+        'members': split['members'],
+        'mode': split['mode'],
+    }
 
 
 def prepare_split(store, request, version_id):
@@ -1166,7 +1282,7 @@ def prepare_split(store, request, version_id):
     occurrences = cached_split_scan(store.pages / version_id, version_id)
 
     def transform(data, relative):
-        positions = [item for item in occurrences if item['path'] == relative]
+        positions = [item for item in occurrences if item['path'] == relative and item['kind'] != 'whatsapp_number']
         if not positions:
             return data
         try:
@@ -1262,9 +1378,12 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
         def visitor_transform(data, relative):
             if numbered:
                 try:
-                    return assign_visitor_page(data, relative, numbered['occurrences'], prepared['url'] if prepared else None, numbered['number'])
+                    data = assign_visitor_page(data, relative, numbered['occurrences'], prepared['url'] if prepared else None, numbered['number'])
                 except ValueError:
-                    return data
+                    pass
+                if Path(relative).suffix.lower() in ('.html', '.htm'):
+                    data = inject_number_split(data, numbered['members'], numbered['mode'])
+                return data
             return prepared['transform'](data, relative)
 
         transform = visitor_transform if (prepared or numbered) else None
