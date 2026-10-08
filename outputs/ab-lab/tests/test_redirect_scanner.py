@@ -320,6 +320,79 @@ function goWhatsApp() {
     assert again is None and copied == 0
 
 
+def test_long_assignment_still_reaches_the_jump(tmp_path):
+    pieces = ' + '.join(f'"{index}"' for index in range(160))
+    source = f'const noise = ({pieces});\nlocation.href = "https://actual.example/";'
+    root, _ = bundle(tmp_path, '<script src="app.js"></script>', source)
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == ['https://actual.example/']
+    assert not warnings
+
+
+def test_shorthand_targets_and_wa_links_are_one_number(tmp_path):
+    page = r'''<a class="cta" href="https://wa.me/85257980601?text=hello%20list">领取</a>
+<a href="https://api.whatsapp.com/send?phone=85257980601&amp;text=hello">备用</a>
+<a href="https://chat.whatsapp.com/InviteCode">群</a>
+<a href="https://www.youtube.com/@EconManBlog/shorts">YouTube</a>
+<script>
+const CONFIG = { whatsappNumber: '85257980601', receptionist: 'Chloe' };
+function buildWhatsAppUrls(message) {
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+  const text = encodeURIComponent(message);
+  const universal = `https://wa.me/${phone}?text=${text}`;
+  return {
+    phone,
+    universal,
+    scheme: `whatsapp://send?phone=${phone}&text=${text}`,
+    intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;end`
+  };
+}
+function goWhatsApp(e, locationName) {
+  const anchor = e && e.currentTarget;
+  const urls = buildWhatsAppUrls('hi');
+  let target = urls.universal;
+  if (WA_ENV === 'ios_webview') target = urls.scheme;
+  else if (WA_ENV === 'android_browser' && ANDROID_INTENT_OK) target = urls.intent;
+  if (anchor) anchor.href = target;
+  else if (WA_ENV === 'desktop') window.open(target, '_blank');
+  else window.location.href = target;
+}
+</script>'''
+    root, pages = bundle(tmp_path, page)
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    numbers = [item for item in occurrences if item['kind'] == 'whatsapp_number']
+    others = [(item['kind'], item['url']) for item in occurrences if item['kind'] != 'whatsapp_number']
+    assert [item['url'] for item in numbers] == ['85257980601', '85257980601', '85257980601']
+    assert others == [
+        ('anchor', 'https://chat.whatsapp.com/InviteCode'),
+        ('anchor', 'https://www.youtube.com/@EconManBlog/shorts')]
+    assert not warnings
+    version, count = redirects.replace_bundle(root, 'original', [item['id'] for item in numbers],
+                                              '85211112222', pages, 'changed.zip')
+    assert count == 3
+    rewritten = (pages / version['id'] / 'index.html').read_text(encoding='utf-8')
+    assert '85257980601' not in rewritten and rewritten.count('85211112222') == 3
+    assert 'href="https://wa.me/85211112222?text=hello%20list"' in rewritten
+    assert 'href="https://api.whatsapp.com/send?phone=85211112222&amp;text=hello"' in rewritten
+    assert 'https://wa.me/${phone}?text=${text}' in rewritten
+    assert 'whatsapp://send?phone=${phone}' in rewritten
+    assert 'intent://send?phone=${phone}' in rewritten
+    assert 'function goWhatsApp(e, locationName)' in rewritten
+    assert 'youtube.com/@EconManBlog/shorts' in rewritten
+    assert 'chat.whatsapp.com/InviteCode' in rewritten
+
+
+def test_repeated_targets_that_disagree_stay_a_warning(tmp_path):
+    source = ('let target = "https://one.example/";\n'
+              'target = "https://two.example/";\n'
+              'location.href = target;\n'
+              'window.location.href = "https://actual.example/";')
+    root, _ = bundle(tmp_path, '<script src="app.js"></script>', source)
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert [item['url'] for item in occurrences] == ['https://actual.example/']
+    assert warnings and '无法静态解析' in warnings[0]
+
+
 def test_dom_anchor_href_and_setattribute_are_navigation(tmp_path):
     source = '''const destination="https://old.example/";
 document.querySelector("#destination").href=destination;

@@ -14,6 +14,9 @@ from .archives import MAX_TOTAL, read_source, source_files, validate_file, write
 MAX_OCCURRENCES = 5000
 MAX_SCAN_TOKENS = 100000
 MAX_EXPRESSION_TOKENS = 128
+# A click-id helper can be one assignment of a few hundred tokens. Member
+# chains and parameter lists stay on the tighter cap above.
+MAX_ASSIGNMENT_TOKENS = 360
 NAVIGATION = {'location', 'window.location', 'document.location', 'top.location', 'self.location', 'parent.location'}
 DOM_LOOKUPS = {'document.querySelector', 'document.getElementById', 'document.createElement'}
 ATTR = re.compile(r'''(?<!\S)([^\s=<>/'"]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))''')
@@ -118,7 +121,7 @@ def _member(tokens, start):
 def _expression_end(tokens, start, text):
     depth, index = 0, start
     while index < len(tokens):
-        if index - start >= MAX_EXPRESSION_TOKENS:
+        if index - start >= MAX_ASSIGNMENT_TOKENS:
             raise ValueError('源码表达式过于复杂；请使用源码编辑器核对')
         value = tokens[index].value
         if not depth and (value in (';', ',', ')', '}', ']') or (index > start and '\n' in text[tokens[index-1].end:tokens[index].start] and value not in ('+', '?', ':') and tokens[index-1].value not in ('+', '?', ':'))):
@@ -286,6 +289,43 @@ def _phone_digits(token):
         return None
     digits = re.sub(r'\D', '', raw)
     return digits if 8 <= len(digits) <= 15 else None
+
+
+def _whatsapp_phone_at(url):
+    """Offsets of the phone token inside a WhatsApp URL, plus its digits."""
+    if not isinstance(url, str) or not _whatsapp_url(url):
+        return None
+    try:
+        parts = urlsplit(url if '://' in url else '//' + url)
+    except ValueError:
+        return None
+    host = parts.netloc.lower().split('@')[-1].split(':')[0]
+    if host.startswith('www.'):
+        host = host[4:]
+    if host == 'wa.me':
+        segment = parts.path.lstrip('/').split('/', 1)[0]
+        if re.fullmatch(r'\d{8,15}', segment):
+            host_at = url.lower().find('wa.me')
+            found = url.find(segment, host_at + len('wa.me') if host_at >= 0 else 0)
+            if found >= 0:
+                return found, found + len(segment), segment
+    if parts.scheme.lower() == 'whatsapp' or host in ('wa.me', 'whatsapp.com') or host.endswith('.whatsapp.com'):
+        match = re.search(r'(?i)(?:^|[?&])phone=(\d{8,15})(?=&|#|$)', url)
+        if match:
+            return match.start(1), match.end(1), match.group(1)
+    return None
+
+
+def _attribute_phone(raw):
+    """Map a WhatsApp phone inside an attribute value back to the raw source."""
+    decoded, starts, ends = _decoded(raw)
+    found = _whatsapp_phone_at(decoded)
+    if not found:
+        return None
+    begin, finish, digits = found
+    if begin >= len(starts) or finish <= begin or finish - 1 >= len(ends):
+        return None
+    return starts[begin], ends[finish - 1], digits
 
 
 def _decoded(raw):
@@ -544,6 +584,17 @@ class Scanner:
             visible_cache[initial] = result, shadows
             return result, shadows
 
+        def assigned_values(name, scope):
+            """Every static assignment of name in the nearest scope that writes it."""
+            while scope is not None:
+                values = definitions[scope].get(name)
+                if values:
+                    return values
+                if name in bindings[scope]:
+                    return []
+                scope = parents[scope]
+            return []
+
         def dom_reference(expression):
             if not expression:
                 return False
@@ -575,12 +626,24 @@ class Scanner:
             body, fields, index = expression[1:-1], {}, 0
             while index < len(body):
                 key_token = body[index]
-                key = key_token.value if key_token.kind == 'identifier' else _string(key_token.value) if key_token.kind == 'string' else None
-                if key is None or index + 1 >= len(body) or body[index + 1].value != ':':
+                # Spreads, methods, and computed keys are not a static phone field.
+                if key_token.value in ('...', '[') or key_token.kind not in ('identifier', 'string'):
                     break
-                finish = _expression_end(body, index + 2, text)
-                fields[key] = body[index + 2:finish]
-                index = finish + 1 if finish < len(body) and body[finish].value == ',' else finish
+                key = key_token.value if key_token.kind == 'identifier' else _string(key_token.value)
+                if not key:
+                    break
+                nxt = body[index + 1].value if index + 1 < len(body) else ''
+                if nxt == ':':
+                    finish = _expression_end(body, index + 2, text)
+                    fields[key] = body[index + 2:finish]
+                    index = finish + 1 if finish < len(body) and body[finish].value == ',' else finish
+                    continue
+                # { phone, universal } names the identifier itself.
+                if key_token.kind == 'identifier' and nxt in (',', ''):
+                    fields[key] = [key_token]
+                    index = index + 2 if nxt == ',' else len(body)
+                    continue
+                break
             return fields
 
         def split_or(expression):
@@ -995,6 +1058,27 @@ class Scanner:
                 defined = constants.get(name)
                 if defined:
                     return collect(defined, kind, scope_of(defined, scope), (*seen, name), extra)
+                many = assigned_values(name, scope)
+                if len(many) > 1:
+                    # let target = universal; target = scheme; target = intent.
+                    # Keep the jump when every resolved alternative is the same phone.
+                    mark, before = len(self.warnings), len(self.spans)
+                    found = False
+                    for item in many:
+                        found = collect(item, kind, scope_of(item, scope), (*seen, name), extra) or found
+                    added = self.spans[before:]
+                    same_phone = bool(added) and all(span['kind'] == 'whatsapp_number' for span in added) and len({span['url'] for span in added}) == 1
+                    if not same_phone and found and not added:
+                        same_phone = True
+                    if same_phone:
+                        del self.warnings[mark:]
+                        return True
+                    for span in added:
+                        self.positions.discard((span['_start'], span['_end']))
+                    del self.spans[before:]
+                    del self.warnings[mark:]
+                    self.warnings.append(f'{self.path}:{bisect.bisect_right(self.lines, offset + expression[0].start)} 有无法静态解析的跳转，请在源码编辑器核对。')
+                    return False
             name = call_name(expression)
             if name and name not in seen and len(seen) < 8:
                 body = lookup_function(name, scope)
@@ -1091,7 +1175,13 @@ class PageParser(HTMLParser):
                 decoded, starts, ends = _decoded(value)
                 self.scanner.javascript(decoded, start, (starts, ends))
             elif (tag in ('a', 'area') and name == 'href') or (tag == 'form' and name == 'action') or (tag in ('button', 'input') and name == 'formaction'):
-                self.scanner.add(start, end, html.unescape(value), 'anchor', 'html', quote=quoted)
+                phone = _attribute_phone(value) if tag in ('a', 'area') and name == 'href' else None
+                if phone:
+                    local_start, local_end, digits = phone
+                    # Only the digits move. The wa.me path and ?text= stay put.
+                    self.scanner.add(start + local_start, start + local_end, digits, 'whatsapp_number', 'html', quote=True)
+                else:
+                    self.scanner.add(start, end, html.unescape(value), 'anchor', 'html', quote=quoted)
             elif name.startswith('on'):
                 decoded, starts, ends = _decoded(value)
                 self.scanner.javascript(decoded, start, (starts, ends))
