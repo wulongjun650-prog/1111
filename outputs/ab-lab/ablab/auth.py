@@ -191,18 +191,11 @@ class Auth:
 
     def login(self, username, password, ip):
         now = time.time()
-        ip_key = hmac.new(self.store.secret, ip.encode(), hashlib.sha256).hexdigest()
+        del ip
+        if (not isinstance(username, str) or not re.fullmatch(r'[A-Za-z0-9_.@-]{1,64}', username)
+                or not isinstance(password, str) or not 12 <= len(password) <= 256):
+            return None, 401
         with self.store.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
-            db.execute('DELETE FROM login_attempts WHERE created<?', (now - 900,))
-            attempts = db.execute('SELECT COUNT(*) FROM login_attempts WHERE ip_key=?', (ip_key,)).fetchone()[0]
-            total = db.execute('SELECT COUNT(*) FROM login_attempts WHERE created>?', (now - 60,)).fetchone()[0]
-            if attempts >= 5 or total >= 30:
-                return None, 429
-            db.execute('INSERT INTO login_attempts VALUES (?,?)', (ip_key, now))
-            if (not isinstance(username, str) or not re.fullmatch(r'[A-Za-z0-9_.@-]{1,64}', username)
-                    or not isinstance(password, str) or not 12 <= len(password) <= 256):
-                return None, 401
             row = db.execute('SELECT * FROM accounts WHERE username=? AND enabled=1', (username,)).fetchone()
         # Unknown and disabled accounts do the same work as a wrong password.
         encoded = row['password_hash'] if row else f'scrypt${"0" * 32}${"0" * 64}'
@@ -218,7 +211,6 @@ class Auth:
             if not current or not current['enabled'] or current['password_hash'] != row['password_hash'] or current['auth_epoch'] != row['auth_epoch']:
                 return None, 401
             db.execute('DELETE FROM account_sessions WHERE expires<?', (now,))
-            db.execute('DELETE FROM login_attempts WHERE ip_key=?', (ip_key,))
             db.execute('INSERT INTO account_sessions VALUES (?,?,?)', (self.key(token), row['id'], now + SESSION_SECONDS))
             action = {'admin': 'admin_login', 'agent': 'agent_login', 'observer': 'observer_login'}[row['role']]
             self.store._audit(db, action, {'username': username, 'account_id': row['id']})

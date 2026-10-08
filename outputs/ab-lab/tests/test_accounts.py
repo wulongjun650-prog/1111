@@ -200,16 +200,15 @@ def test_login_during_account_change_cannot_issue_session(tmp_path, monkeypatch,
     assert result == [(None, 401)]
 
 
-def test_session_reads_current_enabled_and_login_rate_limit(tmp_path):
+def test_session_reads_current_enabled_and_login_is_not_limited(tmp_path):
     auth = Auth(Store(tmp_path))
     agent = auth.create_agent('agent', PASSWORD)
     token = signed_in(auth, 'agent')
     with auth.store.connect() as db:
         db.execute('UPDATE accounts SET enabled=0 WHERE id=?', (agent['id'],))
     assert auth.session(token) is None
-    for _ in range(5):
+    for _ in range(8):
         assert auth.login('missing', PASSWORD, '203.0.113.12') == (None, 401)
-    assert auth.login('missing', PASSWORD, '203.0.113.12') == (None, 429)
 
 
 def test_session_secret_hash_csrf_and_expiry(tmp_path):
@@ -228,11 +227,10 @@ def test_session_secret_hash_csrf_and_expiry(tmp_path):
     assert auth.session(token) is None
 
 
-def test_global_login_rate_limit_covers_different_ips(tmp_path):
+def test_login_is_not_limited_across_addresses(tmp_path):
     auth = Auth(Store(tmp_path))
-    for suffix in range(30):
+    for suffix in range(31):
         assert auth.login('missing', PASSWORD, f'203.0.113.{suffix}') == (None, 401)
-    assert auth.login('missing', PASSWORD, '203.0.113.31') == (None, 429)
 
 
 @pytest.mark.parametrize('disabled', [False, True])
