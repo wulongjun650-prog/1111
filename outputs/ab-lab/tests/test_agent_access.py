@@ -87,6 +87,28 @@ def test_legacy_default_aliases_do_not_expose_owner_to_empty_agent(accounts):
     assert 'data-tab="accounts"' not in a.get('/').text
 
 
+def test_analysis_panel_hides_another_agents_domains(accounts):
+    app, auth, owner, a, b, one, two = accounts
+    mine, theirs = add(a, 'mine.test'), add(b, 'theirs.test')
+    for site, marker in ((mine, 'mine-only'), (theirs, 'their-secret')):
+        store = app.state.registry.store(site['id'])
+        store.record_access(marker, '', '', '"18.0.0"', '?1', '', 'gclid=1', '85299998888', '', 'HK', '', 200, 1, '/')
+        store.record_client_event('{"event":"' + marker + '"}')
+    data = a.get('/api/analysis?days=7')
+    assert data.status_code == 200, data.text
+    payload = data.json()
+    assert {item['domain'] for item in payload['requests']['items']} == {'mine.test'}
+    assert payload['requests']['total'] == 1
+    assert payload['events']['items'][0]['body'] == '{"event":"mine-only"}'
+    assert 'their-secret' not in data.text and 'theirs.test' not in data.text
+    report = a.get('/api/analysis/report?days=7').text
+    assert '===== mine.test =====' in report
+    assert 'theirs.test' not in report and 'their-secret' not in report
+    owner_domains = {item['domain'] for item in owner.get('/api/analysis?days=7').json()['requests']['items']}
+    assert {'mine.test', 'theirs.test'} <= owner_domains
+    assert '数据深度分析' in a.get('/').text
+
+
 def test_all_analytics_never_reads_another_agents_data(accounts):
     app, auth, owner, a, b, one, two = accounts
     first, second = add(a, 'one.test'), add(b, 'two.test')

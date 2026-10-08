@@ -84,7 +84,7 @@ const cloudflareAutoCheck = createCloudflareAutoCheck({
   },
 });
 const rulesForm = $('#rules-form');
-$$('[data-tab]').forEach(button => button.querySelector('span').replaceChildren(icon(button.dataset.tab === 'accounts' ? 'logs' : button.dataset.tab)));
+$$('[data-tab]').forEach(button => button.querySelector('span').replaceChildren(icon(button.dataset.tab === 'accounts' || button.dataset.tab === 'analysis' ? 'logs' : button.dataset.tab)));
 const selections = Object.fromEntries(['countries','languages'].map(kind => [kind,createSelection(rulesForm.elements.namedItem(kind),kind)]));
 const labels = {
   domains: ['域名管理', '域名管理', '统一查看谷歌风险、接入状态、备注与访问状态。'],
@@ -94,6 +94,7 @@ const labels = {
   rules: ['访问规则', '访问规则', '设置访问条件，保存后对当前站点生效。'],
   simulate: ['规则模拟', '规则模拟', '输入访问条件，检查已保存规则的判断结果。'],
   logs: ['访问日志', '访问日志', '查看文档请求、设备、国家与分流结果。'],
+  analysis: ['数据深度分析', '数据深度分析', '汇总所有域名的香港访客请求和落地页事件。'],
   accounts: ['账号管理', '账号管理', isObserver(account) ? '查看用户名、角色和名下域名。密码不会显示。' : '创建代理或观察号，管理访问权限与域名归属。'],
 };
 const reasons = { blacklist: '命中黑名单', whitelist: '命中白名单', strict_bot: '严格防爬虫', bot_marker: '匹配机器人标记', ipv4: 'IPv4 限制', device: '设备限制', os_version: '系统版本限制', blocked_cidr: '命中屏蔽网段', country: '国家 / 地区限制', country_unknown: '国家未知', language: '语言限制', visit_limit: '超过访问次数', allowed: '规则通过', pass: '规则通过', force_a: '强制 A', force_b: '强制 B', protection_off: '防护已关闭' };
@@ -575,10 +576,72 @@ async function loadLogs(page = 1, {quiet = false} = {}) {
   }
 }
 
+const siteFreeTabs = ['domains', 'accounts', 'analysis'];
+const alwaysOpenPanels = ['panel-domains', 'panel-accounts', 'panel-analysis'];
+let analysisRequest = 0;
+
+function clipCell(text, className = 'path-cell') {
+  const value = text || '';
+  const cell = element('td', className, value || '—');
+  cell.title = value;
+  return cell;
+}
+
+async function loadAnalysis() {
+  const request = ++analysisRequest;
+  const days = $('#analysis-days').value || '7';
+  $('#analysis-download').href = `/api/analysis/report?days=${days}`;
+  try {
+    const data = await api(`/api/analysis?days=${days}`);
+    if (request !== analysisRequest) return;
+    $('#analysis-summary').textContent = `${number(data.domains)} 个域名 · 香港请求 ${number(data.requests.total)} 条，下面显示最近 ${number(data.requests.items.length)} 条`;
+    $('#analysis-events-summary').textContent = `落地页事件 ${number(data.events.total)} 条，下面显示最近 ${number(data.events.items.length)} 条`;
+    const requests = $('#analysis-requests');
+    requests.replaceChildren();
+    if (!data.requests.items.length) {
+      const row = element('tr');
+      const cell = element('td', 'empty-state', '这段时间没有香港访客请求。');
+      cell.colSpan = 9;
+      row.append(cell);
+      requests.append(row);
+    } else for (const item of data.requests.items) {
+      const row = element('tr');
+      row.append(
+        element('td', 'visit-time', formatDate(item.created)),
+        element('td', '', item.domain),
+        element('td', '', item.status),
+        element('td', '', item.wa_number || '—'),
+        element('td', '', item.cf_cache_status || '—'),
+        element('td', '', item.ch_platform_version || '—'),
+        clipCell(item.referer),
+        clipCell(item.query),
+        clipCell(item.ua),
+      );
+      requests.append(row);
+    }
+    const events = $('#analysis-events');
+    events.replaceChildren();
+    if (!data.events.items.length) {
+      const row = element('tr');
+      const cell = element('td', 'empty-state', '这段时间没有落地页事件。');
+      cell.colSpan = 3;
+      row.append(cell);
+      events.append(row);
+    } else for (const item of data.events.items) {
+      const row = element('tr');
+      row.append(element('td', 'visit-time', formatDate(item.created)), element('td', '', item.domain), clipCell(item.body, 'analysis-wide'));
+      events.append(row);
+    }
+  } catch (error) {
+    if (request === analysisRequest) $('#analysis-summary').textContent = '加载失败，请再查询一次。';
+    throw error;
+  }
+}
+
 async function selectTab(name, {load = true} = {}) {
   if (!labels[name] || (name === 'desk' && isObserver(account))) name = 'overview';
   if (name === 'accounts' && !seesAll(account)) name = 'domains';
-  if (!selectedSite && !['domains','accounts'].includes(name)) name = 'domains';
+  if (!selectedSite && !siteFreeTabs.includes(name)) name = 'domains';
   activeTab = name;
   document.body.dataset.tab = name;
   $$('.tab-panel').forEach(panel => { panel.hidden = panel.id !== `panel-${name}`; });
@@ -587,18 +650,20 @@ async function selectTab(name, {load = true} = {}) {
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
   $('#breadcrumb-current').textContent = labels[name][0];
-  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',desk:'WORK ORDERS',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',accounts:'ACCOUNTS'}[name];
+  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',desk:'WORK ORDERS',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',analysis:'DEEP ANALYSIS',accounts:'ACCOUNTS'}[name];
   $('#page-title').textContent = labels[name][1]; $('#page-subtitle').textContent = labels[name][2];
   if (name !== 'content') closePreview();
   else if (state) await tracking.load();
   await bRedirects.setActive(name === 'content');
   desk.setActive(name === 'desk');
   if (name === 'logs') await loadLogs();
+  if (name === 'analysis') await loadAnalysis();
   if (name === 'domains' && load) await loadDomains();
   if (name === 'accounts') await loadAccounts();
   if (name === 'overview' && state) dashboard.refresh();
 }
 
+on($('#analysis-filters'), 'submit', event => { event.preventDefault(); return loadAnalysis(); });
 $$('[data-tab]').forEach(button => on(button, 'click', () => selectTab(button.dataset.tab)));
 $$('[data-go]').forEach(button => on(button, 'click', () => selectTab(button.dataset.go)));
 on($('.brand'), 'click', event => { event.preventDefault(); return selectTab('overview'); });
@@ -606,6 +671,7 @@ on($('#refresh-state'), 'click', event => busy(event.currentTarget, async () => 
   await loadDomains();
   await refreshState();
   if (activeTab === 'logs') await loadLogs(logPage);
+  if (activeTab === 'analysis') await loadAnalysis();
   if ($('#audit-details').open) await loadAudit();
 }));
 $$('[data-routing]').forEach(button => on(button, 'click', () => saveConfig(patchConfig(state.config, { routing: button.dataset.routing }))));
@@ -962,7 +1028,7 @@ async function loadDomains({refreshSelection = true} = {}) {
   $('#refresh-state').disabled = !next;
   $$('[data-tab], [data-go]').forEach(button => {
     const tab = button.dataset.tab || button.dataset.go;
-    button.disabled = (!next && !['domains','accounts'].includes(tab)) || (tab === 'accounts' && !seesAll(account));
+    button.disabled = (!next && !siteFreeTabs.includes(tab)) || (tab === 'accounts' && !seesAll(account));
   });
   $('#site-selector-label').textContent = seesAll(account) ? '当前管理站点' : '我的域名';
   $('#analytics-scope').querySelector('[value="all"]').textContent = seesAll(account) ? '所有域名' : '我的域名';
@@ -995,7 +1061,7 @@ async function loadDomains({refreshSelection = true} = {}) {
   reputationAutoCheck.refresh(catalog).catch(()=>{});
   cloudflareAutoCheck.refresh(catalog).catch(()=>{});
   updateSiteLock();
-  if (!next && !['domains','accounts'].includes(activeTab)) await selectTab('domains',{load:false});
+  if (!next && !siteFreeTabs.includes(activeTab)) await selectTab('domains',{load:false});
   if (changed && next && refreshSelection) {
     await refreshState();
     if (activeTab === 'logs') await loadLogs();
@@ -1025,7 +1091,7 @@ function clearCurrentSite(next) {
   $('#hero-title').textContent=next ? '正在切换站点' : '添加你的第一个域名';
   $('#hero-description').textContent=''; $('#sidebar-theme').textContent=next ? '主题加载中' : '等待添加域名';
   $('#site-context').textContent=next ? '正在加载独立配置…' : '添加域名后即可管理内容与访问规则。';
-  $$('.tab-panel').forEach(panel=>{panel.inert=!['panel-domains','panel-accounts'].includes(panel.id);});
+  $$('.tab-panel').forEach(panel=>{panel.inert=!alwaysOpenPanels.includes(panel.id);});
   updateConfigControls();
 }
 
@@ -1073,7 +1139,7 @@ async function switchSite(next) {
     if ($('#audit-details').open) await loadAudit();
   } finally {
     siteLoading = false; updateSiteLock();
-    $$('.tab-panel').forEach(panel => { panel.inert = !state && !['panel-domains','panel-accounts'].includes(panel.id); });
+    $$('.tab-panel').forEach(panel => { panel.inert = !state && !alwaysOpenPanels.includes(panel.id); });
     if (!state && selectedSite) { $('#open-target').removeAttribute('href'); $('#site-context').textContent = '当前站点加载失败，请刷新状态或切换其他站点。'; }
   }
 }
@@ -1124,7 +1190,7 @@ on($('#domain-form'), 'submit', async event => {
 
 if (isObserver(account)) {
   document.addEventListener('submit', event => {
-    if (event.target?.id === 'log-filters') return;
+    if (event.target?.id === 'log-filters' || event.target?.id === 'analysis-filters') return;
     event.preventDefault();
     event.stopPropagation();
   }, true);

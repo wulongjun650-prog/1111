@@ -516,6 +516,7 @@ html[data-theme="demon"] .country-rank:nth-child(6) circle { fill: #675b72; }
 html[data-theme="demon"] .outcome.allowed { background: #29432f; color: #b5e2b8; }
 html[data-theme="demon"] .outcome.blocked { background: #49262d; color: #ffb4ad; }
 .visit-domain { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.analysis-wide { max-width: 520px; overflow: hidden; text-overflow: ellipsis; }
 .visit-time, .visit-ip { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* The advanced controls remain available without occupying the first screen. */

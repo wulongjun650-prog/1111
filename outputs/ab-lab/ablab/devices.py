@@ -100,6 +100,19 @@ def describe_device(ua):
     else:
         if 'Safari/' in ua and (value := version(r'Version/([\d.]+)')):
             browser = 'Safari ' + value
+    if not brand and re.search(r'Android', ua, re.I):
+        for pattern, name in (
+            (r'SamsungBrowser/', 'Samsung'),
+            (r'MiuiBrowser/', 'Xiaomi'),
+            (r'HuaweiBrowser/', 'Huawei'),
+            (r'HeyTapBrowser/', 'OPPO'),
+            (r'VivoBrowser/', 'vivo'),
+        ):
+            if re.search(pattern, ua, re.I):
+                brand = name
+                if device == 'Android 移动设备':
+                    device = f'{name} 手机'
+                break
     if not device:
         device = '手机'
     if not system:
