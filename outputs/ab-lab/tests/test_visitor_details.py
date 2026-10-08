@@ -30,6 +30,18 @@ def test_android_ua_model_and_reduced_ua():
     assert decide(Config(), Visitor(ip='1.1.1.1', ua=reduced)).get('device_details', {}).get('model') == ''
 
 
+def test_vendor_browser_names_the_brand_when_the_model_is_hidden():
+    from ablab.devices import describe_device
+    samsung = describe_device('Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 SamsungBrowser/30.0 Chrome/120.0.0.0 Mobile Safari/537.36')
+    assert samsung['brand'] == 'Samsung'
+    assert samsung['device'] == 'Samsung 手机'
+    assert samsung['browser'] == 'Samsung Internet 30.0'
+    assert samsung['model'] == ''
+    xiaomi = describe_device('Mozilla/5.0 (Linux; Android 12; K) AppleWebKit/537.36 MiuiBrowser/14.0 Chrome/110.0.0.0 Mobile Safari/537.36')
+    assert xiaomi['brand'] == 'Xiaomi'
+    assert xiaomi['device'] == 'Xiaomi 手机'
+
+
 def test_edge_is_not_chrome_and_unknown_stays_unknown():
     result = decide(Config(), Visitor(ip='1.1.1.1', ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.2210.91'))
     assert result.get('device_details', {}).get('browser') == 'Edge 120.0.2210.91'

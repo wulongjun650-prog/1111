@@ -14,7 +14,7 @@ import secrets
 import threading
 import time
 from typing import Annotated, Literal
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path as PathParameter, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -1078,6 +1078,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', page: int = Query(default=1, ge=1, le=10000), store=Depends(site_store)):
         return _present_logs(store.logs(days, slot, page))
 
+    @routes.get('/access-report')
+    def access_report(days: int = Query(default=7, ge=1, le=90), country: str = '', store=Depends(site_store)):
+        code = country.strip().upper()
+        if code and not re.fullmatch(r'[A-Z]{2}', code):
+            raise HTTPException(400, '国家代码应为两位字母')
+        text = store.access_report(days, code or None)
+        return Response(text, media_type='text/plain; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="access-report.txt"'})
+
     @routes.get('/logs/rate')
     def log_rate(store=Depends(site_store)):
         return {'count': store.recent_count(60), 'seconds': 60}
@@ -1312,6 +1320,37 @@ def content_response(store, version_id, path, method='GET', transform=None):
     return Response(payload, media_type=mime, headers={'Content-Length': str(length)})
 
 
+def _clip(value, limit):
+    return (value or '')[:limit]
+
+
+def record_visit_access(store, request, status, started, wa_number, country):
+    """Persist one visitor request. Never let a log failure change the response."""
+    try:
+        if not getattr(request.state, 'access_country_ready', False):
+            ip = getattr(request.state, 'visitor_ip', request.client.host if request.client else '')
+            country = geo_country(ip) if ip else None
+        city = ''.join(ch for ch in unquote(request.headers.get('cf-ipcity', '')) if ch.isprintable())
+        store.record_access(
+            ua=_clip(request.headers.get('user-agent', ''), 2048),
+            ch_ua=_clip(request.headers.get('sec-ch-ua', ''), 300),
+            ch_platform=_clip(request.headers.get('sec-ch-ua-platform', ''), 80),
+            ch_platform_version=_clip(request.headers.get('sec-ch-ua-platform-version', ''), 40),
+            ch_mobile=_clip(request.headers.get('sec-ch-ua-mobile', ''), 16),
+            referer=_clip(request.headers.get('referer', ''), 2048),
+            query=_clip(request.url.query, 4096),
+            wa_number=_clip(wa_number, 32),
+            cf_cache_status=_clip(request.headers.get('cf-cache-status', ''), 32),
+            country=country,
+            city=_clip(city, 80),
+            status=int(status),
+            duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
+            path=_clip(request.url.path, 512),
+        )
+    except Exception:
+        LOGGER.error('access log write failed')
+
+
 def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
     app, store = base_app(), Store(data_dir)
     account_store = store
@@ -1339,8 +1378,55 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
             return redirect
         return content_response(store, version_id, path, request.method)
 
+    @app.post('/api/collect')
+    async def collect_client_event(request: Request, store=Depends(site_store)):
+        # The landing page posts click events with sendBeacon. No origin check:
+        # the page is sandboxed and the body is stored exactly as received.
+        started = time.perf_counter()
+        status = 204
+        try:
+            raw = await request.body()
+            if len(raw) > 8192:
+                raise HTTPException(413, '请求体超过大小限制')
+            text = raw.decode('utf-8', 'replace')
+            try:
+                json.loads(text)
+                saved = text
+            except json.JSONDecodeError:
+                saved = json.dumps({'_raw': text}, ensure_ascii=False)
+            store.record_client_event(saved)
+            return Response(status_code=204)
+        except HTTPException as error:
+            status = error.status_code
+            raise
+        finally:
+            record_visit_access(store, request, status, started, '', None)
+
     @app.api_route('/{path:path}', methods=['GET', 'HEAD'])
     def target(path: str, request: Request, store=Depends(site_store)):
+        started = time.perf_counter()
+        status = 500
+        wa_number = ''
+        country = None
+        try:
+            return _serve_target(path, request, store, lambda value: _remember(request, value))
+        except HTTPException as error:
+            status = error.status_code
+            raise
+        finally:
+            record_visit_access(store, request, getattr(request.state, 'access_status', status), started, getattr(request.state, 'access_wa', wa_number), getattr(request.state, 'access_country', country))
+
+    def _remember(request, value):
+        request.state.access_status = value['status']
+        request.state.access_wa = value['wa']
+        request.state.access_country = value['country']
+        request.state.access_country_ready = value['ready']
+
+    def _serve_target(path, request, store, remember):
+        def finish(response, wa='', seen_country=None, ready=False):
+            remember({'status': response.status_code, 'wa': wa, 'country': seen_country, 'ready': ready})
+            return response
+
         if path.startswith(('api/', 'data/', '_preview/', '_sites/')) or path in ('docs', 'openapi.json', 'redoc', '_sites'):
             raise HTTPException(404, '资源不存在')
         # ASGI already decodes the URL once. Do not unquote again.
@@ -1353,7 +1439,7 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
         if config.content_mode == 'PAGE':
             redirect = directory_redirect(store, store.slots().values(), path, request)
             if redirect is not None:
-                return redirect
+                return finish(redirect)
         document = not path or path.endswith('/') or Path(path).suffix.lower() in ('.html', '.htm') or request.headers.get('sec-fetch-dest') == 'document'
         increment = document and request.method == 'GET'
         ip = getattr(request.state, 'visitor_ip', request.client.host)
@@ -1369,11 +1455,12 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
                 raise HTTPException(404, '资源不存在')
             link = store.choose_link(slot, config.distribution, consume=increment)
             if link:
-                return RedirectResponse(link['url'], status_code=302)
-            return HTMLResponse('<meta charset="utf-8"><h1>当前槽位尚未配置链接</h1>', status_code=503)
+                return finish(RedirectResponse(link['url'], status_code=302), seen_country=country, ready=True)
+            return finish(HTMLResponse('<meta charset="utf-8"><h1>当前槽位尚未配置链接</h1>', status_code=503), seen_country=country, ready=True)
         version_id = store.slots()[slot]
         prepared = prepare_split(store, request, version_id) if slot == 'B' else None
         numbered = prepare_number_split(store, request, version_id) if slot == 'B' else None
+        wa_number = (numbered['number'].get('phone') or '') if numbered and numbered.get('number') else ''
 
         def visitor_transform(data, relative):
             if numbered:
@@ -1392,6 +1479,6 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
             response.set_cookie(SPLIT_COOKIE, prepared['token'], max_age=365 * 24 * 3600, secure=bool(deployment), httponly=True, samesite='lax', path='/')
         if numbered and numbered['is_new']:
             response.set_cookie(WA_COOKIE, numbered['token'], max_age=365 * 24 * 3600, secure=bool(deployment), httponly=True, samesite='lax', path='/')
-        return response
+        return finish(response, wa_number, country, True)
 
     return app

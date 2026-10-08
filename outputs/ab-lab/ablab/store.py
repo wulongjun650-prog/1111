@@ -4,7 +4,7 @@ import ipaddress
 import json
 import re
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import secrets
 import shutil
@@ -57,6 +57,10 @@ class Store:
                 CREATE TABLE IF NOT EXISTS whatsapp_trust_state(id INTEGER PRIMARY KEY CHECK(id=1), seen_trust INTEGER NOT NULL DEFAULT 0, seen_clear INTEGER NOT NULL DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, created REAL NOT NULL, ip TEXT NOT NULL, country TEXT, device TEXT NOT NULL, slot TEXT NOT NULL, reason TEXT NOT NULL, path TEXT NOT NULL, mode TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS events_created ON events(created);
+                CREATE TABLE IF NOT EXISTS access_log(id INTEGER PRIMARY KEY, created REAL NOT NULL, ua TEXT NOT NULL, ch_ua TEXT NOT NULL, ch_platform TEXT NOT NULL, ch_platform_version TEXT NOT NULL, ch_mobile TEXT NOT NULL, referer TEXT NOT NULL, query TEXT NOT NULL, wa_number TEXT NOT NULL, cf_cache_status TEXT NOT NULL, country TEXT, city TEXT NOT NULL, status INTEGER NOT NULL, duration_ms INTEGER NOT NULL, path TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS access_log_created ON access_log(created);
+                CREATE TABLE IF NOT EXISTS client_events(id INTEGER PRIMARY KEY, created REAL NOT NULL, body TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS client_events_created ON client_events(created);
                 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, created REAL NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
@@ -779,3 +783,64 @@ class Store:
     def audit(self):
         with self.connect() as db:
             return [dict(row) for row in db.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100')]
+
+    def record_access(self, ua, ch_ua, ch_platform, ch_platform_version, ch_mobile, referer, query, wa_number, cf_cache_status, country, city, status, duration_ms, path):
+        """One row per visitor request. A failure here must not break the page."""
+        with self.connect() as db:
+            db.execute('''INSERT INTO access_log(created,ua,ch_ua,ch_platform,ch_platform_version,ch_mobile,referer,query,wa_number,cf_cache_status,country,city,status,duration_ms,path)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+                time.time(), ua, ch_ua, ch_platform, ch_platform_version, ch_mobile, referer, query, wa_number, cf_cache_status, country, city, status, duration_ms, path))
+            latest = db.execute('SELECT MAX(id) FROM access_log').fetchone()[0]
+            if latest and latest % 200 == 0:
+                db.execute('DELETE FROM access_log WHERE created<?', (time.time() - 90 * 86400,))
+
+    def record_client_event(self, body):
+        with self.connect() as db:
+            db.execute('INSERT INTO client_events(created,body) VALUES(?,?)', (time.time(), body))
+            latest = db.execute('SELECT MAX(id) FROM client_events').fetchone()[0]
+            if latest and latest % 200 == 0:
+                db.execute('DELETE FROM client_events WHERE created<?', (time.time() - 90 * 86400,))
+
+    def access_report(self, days=7, country=None):
+        """Plain-text weekly export. Days are Hong Kong dates. Counts are requests."""
+        since = time.time() - days * 86400
+        where, args = 'created>=?', [since]
+        if country:
+            where += ' AND country=?'
+            args.append(country)
+        with self.connect() as db:
+            ua_rows = db.execute(f'SELECT ua, COUNT(*) n FROM access_log WHERE {where} GROUP BY ua ORDER BY n DESC, ua', args).fetchall()
+            cross = db.execute(f'''SELECT date(created, 'unixepoch', '+8 hours') day,
+                    CASE WHEN instr(ua, 'wv)')>0 THEN 1 ELSE 0 END wv,
+                    CASE WHEN (instr(lower(ua), 'iphone')>0 OR instr(lower(ua), 'ipad')>0 OR instr(lower(ua), 'ipod')>0) AND instr(ua, 'Safari/')=0 THEN 1 ELSE 0 END ios_no_safari,
+                    CASE WHEN instr(lower(query), 'gclid=')>0 THEN 1 ELSE 0 END gclid,
+                    CASE WHEN instr(lower(query), 'placement=')>0 THEN 1 ELSE 0 END placement,
+                    COUNT(*) n
+                FROM access_log WHERE {where} GROUP BY 1,2,3,4,5 ORDER BY 1,2,3,4,5''', args).fetchall()
+            events = db.execute('SELECT created, body FROM client_events WHERE created>=? ORDER BY id', (since,)).fetchall()
+        scope = country or '全部'
+        lines = [
+            '访问日志周报',
+            f'范围：最近 {days} 天，日期按香港时间',
+            f'国家筛选：{scope}',
+            '条数按请求计，页面上的每个资源各算一条。边缘缓存命中不到源站，不会出现在这里。',
+            'cf-cache-status 只记录请求头里实际带来的值；Cloudflare 默认不把这个响应头回传源站。',
+            '',
+            '# 1 去重后的完整 User-Agent，按条数降序',
+            '条数\tUser-Agent',
+        ]
+        lines.extend(f'{row["n"]}\t{row["ua"]}' for row in ua_rows)
+        lines.extend([
+            '',
+            '# 2 按日 × 含 wv) × iOS且不含 Safari/ × 带 gclid × 带 placement',
+            '日期\t含wv)\tiOS且不含Safari/\t带gclid\t带placement\t请求数',
+        ])
+        lines.extend(f'{row["day"]}\t{row["wv"]}\t{row["ios_no_safari"]}\t{row["gclid"]}\t{row["placement"]}\t{row["n"]}' for row in cross)
+        lines.extend([
+            '',
+            '# 3 事件端点收到的全部记录（不受国家筛选，每行一条收到的 JSON）',
+        ])
+        for row in events:
+            stamp = datetime.fromtimestamp(row['created'], timezone(timedelta(hours=8))).isoformat(timespec='seconds')
+            lines.append(f'{stamp}\t{row["body"]}')
+        return '\n'.join(lines) + '\n'
