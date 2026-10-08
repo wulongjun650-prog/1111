@@ -336,6 +336,18 @@ setTimeout(() => { clearInterval(flushPoll); flushPendingEvents(true); }, 30000)
 - 事件统一带 `wa_env`、`ad_placement`；新增 `wa_app_opened`（页面转后台时）、`wa_fallback_shown`、`wa_fallback_click`。
 - 广告点击 ID（`gclid` / `gbraid` / `wbraid` / `utm_*` / `placement` / `creative` / `device`）首次进入时存 localStorage 90 天，为离线转化回传准备。
 
+### 5.4 跳转事件流：自家服务器接收，不依赖 GA4
+
+GA4 有采样、延迟、ITP 丢失，且自定义维度要先注册、不追溯。诊断"为什么点了没进来"最可靠的数据源是**页面直接把每一步发回自己（或分流系统）的服务器**。
+
+- `CONFIG.eventEndpoint`：留空不发；填上后每一步各发一条 `POST`，`Content-Type: text/plain`，body 为 JSON（`text/plain` 不触发 CORS 预检）。优先 `navigator.sendBeacon`，失败退 `fetch keepalive`。全部排在跳转之后、`try/catch` 包住，端点不可达也不影响跳转（已验证）。
+- 事件：`whatsapp_click` → `wa_app_opened`（成功）或 `wa_fallback_shown` → `wa_fallback_click` / `wa_copy_number` / `wa_copy_message`（失败后用户的动作）。
+- 每条共有字段：`event`、`ts`、`since_load_ms`（加载到此刻）、`wa_env`、`link_type`（universal / scheme / intent / iframe / retry）、`cta`（hero / final / floating / fallback）、`transaction_id`（同一次点击的所有事件共用，与 Google Ads 转化一致）、`placement_app` / `creative` / `device` / `gclid` / `gbraid` / `wbraid`、`number`、`visible`、`page`、`ua`。
+- `whatsapp_click` 另带：`lead_code`、`variant`、`interest`、`priority`、`gtag_ready`（点击瞬间 gtag 是否已就绪——用来量化"点得太快、转化靠补发"的比例）。
+- `wa_app_opened` / `wa_fallback_shown` 另带 `wa_ms`：点击到页面切后台 / 到面板弹出的毫秒数。
+- 服务器端要求：接受 `POST text/plain`，返回 `204`，不校验来源，每条原样落库。
+- 分析方法：按 `transaction_id` 串起同一次点击的事件；`wa_app_opened / whatsapp_click` 就是真实唤起率，按 `wa_env` × `link_type` × `placement_app` × 系统版本（从 `ua` 解析）分组，掉得多的那一格就是问题所在；再和 WhatsApp 每日新对话数对账，分出"没拉起"和"拉起了没发送"。
+
 ---
 
 ## 6. 性能改造清单（按优先级）
@@ -436,7 +448,8 @@ const CONFIG = {
   googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq',
   fallbackDelay: 1600,
   fallbackDelayInApp: 1200,
-  leadEndpoint: ''
+  leadEndpoint: '',
+  eventEndpoint: ''
 };
 ```
 
