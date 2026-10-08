@@ -847,7 +847,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         base = source_version(store, 'B', body.version_id)
         if store.slots()['B'] != body.expected_published:
             raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
-        version, changed = store.publish_direct_entry(base, body.expected_published, guard)
+        version, changed, kind = store.publish_direct_entry(base, body.expected_published, guard)
         site = registry.get(request.path_params.get('site_id', 'default'))
         purged = None
         if changed and site.get('cf_zone_id') and cloudflare.configured:
@@ -856,7 +856,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 purged = {'ok': True}
             except ProvisioningError as error:
                 purged = {'ok': False, 'detail': str(error)[:180]}
-        return {'version': version, 'changed': changed, 'cloudflare': purged}
+        return {'version': version, 'changed': changed, 'kind': kind, 'cloudflare': purged}
 
     @routes.put('/b-redirects/numbers/split')
     def save_whatsapp_number_split(body: WhatsAppSplit, request: Request, store=Depends(site_store)):

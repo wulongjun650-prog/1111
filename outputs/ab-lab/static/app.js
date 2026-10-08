@@ -683,10 +683,11 @@ on($('#secret-weapon'), 'click', event => busy(event.currentTarget, async () => 
     toast('还没有发布 B 页。', true);
     return;
   }
-  if (!await confirmAction('拿掉两步问卷？领取按钮会直接打开 WhatsApp，进线语改成随机两句。跳转方式不变。')) return;
+  if (!await confirmAction('去掉领取前的弹窗？领取按钮会直接打开 WhatsApp。这页如果有 ABC 开关，只把开关填成 ABC，其余代码不动。跳转方式不变，并清除 Cloudflare 缓存。')) return;
   const result = await api('/api/b-redirects/direct-entry', { method: 'POST', body: { version_id: state.slots.B, expected_published: state.slots.B } });
   const cache = result.cloudflare?.ok ? ' Cloudflare 缓存已清除。' : result.cloudflare ? ' 页面已发布，但 Cloudflare 缓存没清掉。' : '';
-  toast(`两步问卷已拿掉，进线语改为随机。${cache}`, Boolean(result.cloudflare && !result.cloudflare.ok));
+  const done = result.kind === 'abc' ? '已填上 ABC，弹窗已去掉。' : '两步问卷已拿掉，进线语改为随机。';
+  toast(`${done}${cache}`, Boolean(result.cloudflare && !result.cloudflare.ok));
   await refreshState();
 }));
 on($('#distribution'), 'change', event => saveConfig(patchConfig(state.config, { distribution: event.target.value })));

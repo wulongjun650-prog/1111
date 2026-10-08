@@ -626,6 +626,83 @@ def test_secret_weapon_removes_the_gate_and_keeps_the_jump(console):
     assert app.state.store.slots()['B'] != base
 
 
+ABC_PAGE = r'''<!doctype html>
+<div class="lead-gate" id="lead-gate">问卷选择</div>
+<script>
+const CONFIG = {
+  whatsappNumber: '85257980601',
+  // 填 'ABC' = 唔彈窗，按領取按鈕直接跳 WhatsApp；留空 = 照常彈窗
+  directMode: '',
+  listDate: '10月9日'
+};
+function goWhatsApp(event, locationName) {
+  const target = 'https://wa.me/85257980601';
+  return target + locationName;
+}
+const DIRECT_MODE = String(CONFIG.directMode || '').trim().toUpperCase() === 'ABC';
+document.querySelectorAll('[data-wa]').forEach(btn => {
+  btn.addEventListener('click', e => {
+    if (!DIRECT_MODE) { e.preventDefault(); openLeadGate(btn.dataset.location); return; }
+    goWhatsApp(e, btn.dataset.location);
+  });
+});
+</script>
+'''
+
+
+def _upload_html(client, html, extra=None):
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, 'w') as bundle:
+        bundle.writestr('index.html', html)
+        bundle.writestr('style.css', 'body{color:red}\n')
+        if extra:
+            for name, content in extra.items():
+                bundle.writestr(name, content)
+    result = client.post('/api/upload/B?name=abc.zip', content=archive.getvalue())
+    assert result.status_code == 200, result.text
+    version = result.json()['version']['id']
+    assert client.post('/api/publish/B', json={'version_id': version}).status_code == 200
+    return version
+
+
+def test_secret_weapon_fills_abc_and_leaves_the_rest_of_the_page(console):
+    client, app = console
+    base = _upload_html(client, ABC_PAGE)
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    assert wrote.json()['changed'] == 1
+    text = published_html(app)
+    assert text == ABC_PAGE.replace("directMode: '',", "directMode: 'ABC',", 1)
+    assert 'id="lead-gate"' in text
+    assert 'openLeadGate(btn.dataset.location)' in text
+    assert "填 'ABC'" in text
+    _same_function(ABC_PAGE, text, 'goWhatsApp')
+    css = (app.state.store.pages / app.state.store.slots()['B'] / 'style.css').read_text(encoding='utf-8')
+    assert css == 'body{color:red}\n'
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 400, again.text
+    assert '已经是 ABC' in again.json()['detail']
+    assert app.state.store.slots()['B'] == wrote.json()['version']['id']
+    assert app.state.store.slots()['B'] != base
+
+
+def test_secret_weapon_does_not_rewrite_an_unrecognized_abc_switch(console):
+    client, app = console
+    page = ABC_PAGE.replace("directMode: '',", 'directMode: true,')
+    base = _upload_html(client, page)
+    scan = client.get('/api/b-redirects').json()
+    refused = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert refused.status_code == 400, refused.text
+    assert '没有改动' in refused.json()['detail']
+    assert app.state.store.slots()['B'] == base
+    assert published_html(app) == page
+
+
 def test_secret_weapon_refuses_a_page_without_the_gate(console):
     client, app = console
     base = upload_reception(client)

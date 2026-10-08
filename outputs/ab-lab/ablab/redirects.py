@@ -1559,3 +1559,33 @@ def strip_lead_gate(text):
     if switch_at >= 0 and text[switch_at:][:400] != updated[updated.find('switch (WA_ENV)'):][:400]:
         raise ValueError('跳转代码发生了变化，已取消')
     return updated
+
+
+_DIRECT_MODE = re.compile(r"(directMode\s*:\s*)(['\"])(.*?)\2")
+
+
+def set_direct_mode_abc(text):
+    """Fill the page's own directMode switch with ABC. Nothing else moves."""
+    if not re.search(r'directMode\s*:', text):
+        return None
+    if not _DIRECT_MODE.search(text):
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+
+    def repl(match):
+        if match.group(3).strip().upper() == 'ABC':
+            return match.group(0)
+        return f"{match.group(1)}{match.group(2)}ABC{match.group(2)}"
+
+    updated = _DIRECT_MODE.sub(repl, text)
+
+    def blanked(value):
+        return _DIRECT_MODE.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(2)}", value)
+
+    if blanked(text) != blanked(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    for name in ('goWhatsApp', 'buildWhatsAppUrls', 'prepareFallback', 'openInHiddenFrame'):
+        old = _js_function_span(text, name)
+        new = _js_function_span(updated, name)
+        if (old is None) != (new is None) or (old and text[old[0]:old[1]] != updated[new[0]:new[1]]):
+            raise ValueError('跳转代码发生了变化，已取消')
+    return updated
