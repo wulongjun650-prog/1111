@@ -183,6 +183,8 @@ const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
 | 9 | etnet.com.hk（网站） | 87 | 4.60% | 手机浏览器，随 UA | 随 UA | 已覆盖 |
 | 10 | aastocks.com（网站） | 84 | 4.76% | 手机浏览器，随 UA | 随 UA | 已覆盖 |
 
+**对应的验证 UA（已加入第 7 章矩阵）**：Chrome Custom Tabs（= Chrome UA）、SFSafariViewController（= Safari UA）、Samsung / Firefox Custom Tabs、华为 / 小米 / Edge 浏览器、宿主 App 内嵌 WebView（Android `; wv)` / iOS 无 `Safari/`）打开 `aastocks.com` / `etnet.com.hk` 的情形。全部按预期：Chromium 系 → `intent://`，Safari 系 → `wa.me`，Firefox → `wa.me`，WebView → `whatsapp://` / 隐藏 iframe。
+
 **结论**：前 10 行 100% 落在 `ios_browser` / `android_browser` 两条最强路径，无需新增分支。**唯一值得行动的信号是 iOS 转化率系统性偏低**（两组 App 都是 Android 的 1/3 ~ 1/2，不像自然差异）。动作：① 确认 `ad_placement` 已挂到所有事件；② 在 GA4 按 `ad_placement` 看 iOS 行的 `wa_app_opened / whatsapp_click`；③ 比例正常则是统计丢失，考虑 Enhanced Conversions 或离线转化回传；比例低则 iOS 真机复现。
 
 ### 3.5 让报表和落地页数据对得上
@@ -295,6 +297,8 @@ function gtagReady() { return typeof gtag === 'function' && !!window.google_tag_
 function track(name, params) {
   const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
   if (gtagReady()) { try { gtag('event', name, payload); } catch (e) {} return; }
+  // 帶 transaction_id 的事件（Google Ads 轉化）：即時推入 gtag 隊列 + 本地暫存雙保險，補發的同一 transaction_id 由 Google Ads 去重
+  if (payload.transaction_id) { try { gtag('event', name, payload); } catch (e) {} }
   try {
     const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
     list.push({ name, params: payload, ts: Date.now() });
@@ -324,6 +328,7 @@ setTimeout(() => { clearInterval(flushPoll); flushPendingEvents(true); }, 30000)
 - 补发带 `deferred: 1`，GA4 里能区分即时和补发。
 - 从 WhatsApp 返回（`pageshow` / `visibilitychange`）、下次打开页面（`load`）都会补发；保留 7 天，最多 50 条。
 - 30 秒仍未就绪：强制推入 `dataLayer`，避免事件积压。
+- **Google Ads 转化走"双保险"**：`track('conversion', { send_to, transaction_id })` 带唯一 `transaction_id`（如 `Date.now().toString(36) + '-' + 随机 6 位`）。gtag 未就绪时**同时**推入 gtag 队列和本地暂存。为什么：用户跳去 WhatsApp 后页面转入后台，`setInterval` 轮询被系统暂停，纯暂存方案要等用户回来或下次访问才能补发——很多人不会回来；而 gtag.js 的加载完成回调在后台仍会执行，队列里的转化能马上发出。之后补发的副本带同一 `transaction_id`，Google Ads 自动去重，不会重复计算。GA4 事件不这样做（GA4 不按 `transaction_id` 去重，会重复计数），仍走纯暂存。
 
 ### 5.3 必备配置
 - `gtag('config', 'G-XXXX')` **和** `gtag('config', 'AW-XXXX')` 都要有。

@@ -661,6 +661,10 @@
     function track(name, params) {
       const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
       if (gtagReady()) { try { gtag('event', name, payload); } catch (e) {} return; }
+      // 帶 transaction_id 嘅事件（Google Ads 轉化）：即時推入 gtag 隊列 + 本地暫存雙保險。
+      // 用戶跳去 WhatsApp 後頁面轉入後台、定時器被暫停，但 gtag.js 載入完成嘅回調仍會執行並即時發出；
+      // 之後補發嘅同一 transaction_id 由 Google Ads 自動去重，唔會重複計算
+      if (payload.transaction_id) { try { gtag('event', name, payload); } catch (e) {} }
       try {
         const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
         list.push({ name, params: payload, ts: Date.now() });
@@ -770,6 +774,7 @@
       setTimeout(() => { redirecting = false; }, 2000);
 
       const leadCode = CONFIG.leadEndpoint ? makeLeadCode() : '';
+      const txId = Date.now().toString(36) + '-' + makeLeadCode();
       const message = buildMessage(leadCode);
       const urls = buildWhatsAppUrls(message);
 
@@ -828,7 +833,7 @@
         }
       } catch (err) {}
       track('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
-      track('conversion', { send_to: CONFIG.googleSendTo });
+      track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
     }
 
     function legacyCopy(text) {
