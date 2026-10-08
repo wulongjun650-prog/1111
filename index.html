@@ -1,0 +1,968 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f6f4ef">
+  <meta name="format-detection" content="telephone=no">
+
+  <!-- 移动端极速网络连接预热与关键渲染资产预加载 -->
+  <!-- gtag.js 是 no-cors 腳本請求，preconnect 不能帶 crossorigin，否則建立的連線用不上 -->
+  <link rel="preconnect" href="https://www.googletagmanager.com">
+  <link rel="dns-prefetch" href="https://www.google-analytics.com">
+  <link rel="dns-prefetch" href="https://www.googleadservices.com">
+  <link rel="dns-prefetch" href="https://googleads.g.doubleclick.net">
+  <link rel="dns-prefetch" href="https://connect.facebook.net">
+  <link rel="preload" as="image" href="assets/econman-banner.webp" type="image/webp" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/hero-bg.webp" type="image/webp" fetchpriority="low">
+
+  <title>講經MAN｜10月7日港股精選名單</title>
+  <meta name="description" content="講經MAN整理10月7日最新港股午市數據：恒指守住24000點之上、科技股普遍回吐，北水今日仍暫停並於10月8日恢復；配合今日最新觀察名單。">
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-Q6YP0DZLSY"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-Q6YP0DZLSY');
+    // 沒有 config AW-，send_to: 'AW-...' 的轉化事件可能根本不會發出
+    gtag('config', 'AW-11421360067');
+  </script>
+
+  <!-- Meta Pixel：先建隊列，腳本延後到 load 之後或首次互動才載入，所有 fbq() 呼叫照常排隊 -->
+  <script>
+    !function(f){if(f.fbq)return;var n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];}(window);
+    fbq('init', '1055025880503308');
+    fbq('track', 'PageView');
+    (function(){
+      var loaded = false;
+      function loadPixel(){
+        if (loaded) return; loaded = true;
+        var s = document.createElement('script'); s.async = true;
+        s.src = 'https://connect.facebook.net/en_US/fbevents.js';
+        document.head.appendChild(s);
+      }
+      window.addEventListener('load', function(){ setTimeout(loadPixel, 1200); }, {once:true});
+      ['pointerdown','touchstart','scroll'].forEach(function(evt){
+        window.addEventListener(evt, loadPixel, {once:true, passive:true});
+      });
+    })();
+  </script>
+  <noscript><img height="1" width="1" style="display:none" alt=""
+    src="https://www.facebook.com/tr?id=1055025880503308&ev=PageView&noscript=1"/></noscript>
+
+  <style>
+    :root{
+      --paper:#f6f4ef;--white:#fff;--ink:#17233a;--navy:#243968;--navy2:#315489;
+      --orange:#f28b24;--orange2:#d96e12;--yellow:#ffd94a;--blue:#edf6fb;
+      --muted:#697386;--border:#e7e5df;--green:#1f9d62;--red:#c94b3f;--shadow:0 8px 26px rgba(35,57,104,.08)
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html{scroll-behavior:smooth;background:#e9e8e4;touch-action:manipulation}
+    body{margin:0;color:var(--ink);background:#e9e8e4;font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","PingFang HK","Microsoft JhengHei","Noto Sans TC",Arial,sans-serif;-webkit-font-smoothing:antialiased;touch-action:manipulation}
+    a{color:inherit;text-decoration:none;-webkit-user-select:none;user-select:none}
+    button{font:inherit;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+    #method,#market,#trust,footer{content-visibility:auto;contain-intrinsic-size:1px 500px}
+    .page{width:100%;max-width:520px;margin:0 auto;background:var(--paper);min-height:100vh;overflow:hidden;box-shadow:0 0 30px rgba(0,0,0,.04)}
+    .brand-banner{display:block;width:100%;height:auto;background:#f6f6f3}
+    .hero{position:relative;padding:20px 20px 22px;background:linear-gradient(180deg,rgba(255,255,255,.20),rgba(246,244,239,.10)),url('assets/hero-bg.webp') center/cover no-repeat;border-bottom:1px solid rgba(36,57,104,.08)}
+    .hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(246,244,239,.04),rgba(246,244,239,.45));pointer-events:none}.hero-inner{position:relative;z-index:1}
+    .eyebrow{display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.84);border:1px solid rgba(36,57,104,.10);color:var(--navy);font-size:12px;font-weight:850;box-shadow:0 5px 16px rgba(36,57,104,.05)}
+    .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--orange)}
+    h1{margin:12px 0 8px;font-size:38px;line-height:1.08;letter-spacing:-.035em;color:#15233d;font-weight:950} h1 .accent{color:var(--orange2)}
+    .hero-kickers{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 0}.hero-kickers span{font-size:12px;font-weight:800;color:#334a6b;background:rgba(255,255,255,.72);border:1px solid rgba(36,57,104,.09);padding:6px 9px;border-radius:999px}
+    .hero-sub{margin:11px 0 0;font-size:15px;line-height:1.68;color:#42516b;font-weight:650}.hero-proof{margin-top:9px;color:#6d7686;font-size:11px}
+    .cta{width:100%;min-height:56px;border:0;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 18px;margin-top:16px;color:#fff;background:linear-gradient(135deg,#f59a2e,#e77c15);font-size:17px;font-weight:900;box-shadow:0 11px 22px rgba(229,124,21,.22);cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .cta:active,.gate-confirm:active{transform:scale(.98) translateY(1px);opacity:.94;transition:transform .06s ease,opacity .06s ease}
+    /* 領取按鈕動效：掃光 → 輕彈 → 箭頭前推，每 3 秒一輪。只動 transform（合成層），唔觸發重排、唔影響 CLS。
+       用偽元素實現，因為 setActive() 會用 textContent 改寫按鈕文字 */
+    button.cta[data-wa]{position:relative;overflow:hidden;isolation:isolate;animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite}
+    button.cta[data-wa]::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:-40%;width:28%;background:linear-gradient(105deg,rgba(255,255,255,0),rgba(255,255,255,.45) 50%,rgba(255,255,255,0));transform:skewX(-18deg);animation:cta-shine 3s ease-in-out 1.2s infinite;pointer-events:none}
+    button.cta[data-wa]::after{content:"";flex:none;width:8px;height:8px;margin-left:1px;border-top:2.5px solid currentColor;border-right:2.5px solid currentColor;transform:rotate(45deg);animation:cta-arrow 3s ease-in-out 1.2s infinite}
+    button.cta[data-wa]:active{animation:none}
+    .cta.cta-idle,.cta.cta-idle::before,.cta.cta-idle::after,
+    .floating-cta-wrap:not(.show) .cta,.floating-cta-wrap:not(.show) .cta::before,.floating-cta-wrap:not(.show) .cta::after{animation-play-state:paused}
+    @keyframes cta-bounce{0%,62%,100%{transform:none}68%{transform:translateY(-3px) scale(1.035)}74%{transform:scale(.985)}80%{transform:translateY(-1px) scale(1.015)}86%{transform:none}}
+    @keyframes cta-shine{0%,38%{transform:translateX(0) skewX(-18deg)}60%,100%{transform:translateX(520%) skewX(-18deg)}}
+    @keyframes cta-arrow{0%,62%,100%{transform:translateX(0) rotate(45deg)}70%{transform:translateX(4px) rotate(45deg)}78%{transform:translateX(0) rotate(45deg)}}
+    @media (prefers-reduced-motion:reduce){button.cta[data-wa],button.cta[data-wa]::before,button.cta[data-wa]::after{animation:none}}
+    .gate-option:active{transform:scale(.985);background:#f7f9fc;transition:transform .06s ease}
+    .gate-back:active,.gate-cancel:active{transform:scale(.97);background:#eae6de;transition:transform .06s ease}
+    .cta-note{text-align:center;margin:8px 0 0;color:#737c8b;font-size:11px;line-height:1.5}
+    section{padding:28px 20px}.section-white{background:#fff}.section-blue{background:linear-gradient(180deg,#f1f8fc,#edf5f9)}
+    .section-label{display:inline-block;font-size:10px;font-weight:900;letter-spacing:.12em;color:var(--orange2);text-transform:uppercase;margin-bottom:7px}
+    h2{margin:0;font-size:24px;line-height:1.27;letter-spacing:-.02em;color:#17243e;font-weight:950}.section-intro{margin:8px 0 0;font-size:13px;line-height:1.62;color:var(--muted)}
+    .method-card{margin-top:17px;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 5px 18px rgba(41,74,119,.04)}
+    .method-row{display:grid;grid-template-columns:42px 1fr;gap:10px;padding:14px 14px;border-bottom:1px solid #eeeae3}.method-row:last-child{border-bottom:0}
+    .method-icon{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:#fff4d6;color:#b66b09;font-size:18px;font-weight:900}.method-row strong{display:block;font-size:14px;color:#1f2d47;margin-bottom:3px}.method-row p{margin:0;color:#697386;font-size:12px;line-height:1.55}.method-result{margin-top:12px;padding:11px 13px;border-radius:12px;background:#fff7da;border:1px solid #f3df9a;color:#42516b;font-size:12px;font-weight:800;text-align:center}
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:17px}.stat{background:#fbfbf9;border:1px solid var(--border);border-radius:13px;padding:13px 12px;min-height:92px}.stat-label{font-size:11px;color:#667186;font-weight:750}.stat-value{font-size:22px;line-height:1.05;font-weight:950;color:#192640;margin-top:7px;letter-spacing:-.025em}.stat-change{font-size:11px;font-weight:900;margin-top:5px}.up{color:var(--green)}.down{color:var(--red)}.neutral{color:var(--navy2)}
+    .market-points{margin-top:15px;border-top:1px solid #ece9e3}.market-point{display:grid;grid-template-columns:31px 1fr;gap:9px;padding:13px 0;border-bottom:1px solid #ece9e3}.num{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#fff4d6;color:#b66b09;font-size:11px;font-weight:900}.market-point strong{display:block;font-size:14px;color:#1f2d47;margin-bottom:3px}.market-point p{margin:0;color:#697386;font-size:12px;line-height:1.55}.source-line{margin-top:11px;font-size:10px;color:#858d99;line-height:1.6}.source-line a{text-decoration:underline;text-underline-offset:2px}
+    .category-list{display:grid;gap:10px;margin-top:17px}.category-card{background:#fff;border:1px solid rgba(36,57,104,.11);border-radius:15px;padding:15px;box-shadow:0 5px 18px rgba(41,74,119,.04)}.category-top{display:flex;align-items:center;justify-content:space-between;gap:9px}.category-num{font-size:11px;font-weight:900;color:#fff;background:var(--navy);padding:5px 7px;border-radius:7px}.category-badge{font-size:10px;font-weight:900;color:#a86107;background:#fff2c6;padding:5px 7px;border-radius:7px}.category-card h3{margin:9px 0 5px;font-size:17px;color:#182640}.category-card p{margin:0;color:#657287;font-size:12px;line-height:1.6}.category-card.active{border-color:#f1c877;box-shadow:0 8px 22px rgba(229,124,21,.08)}
+    .list-note{margin-top:12px;padding:12px 13px;border-radius:13px;background:rgba(255,255,255,.65);border:1px dashed #bfd2e1}.list-note strong{display:block;font-size:12px;color:#283957;margin-bottom:7px}.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{font-size:10px;font-weight:800;color:#4b5c73;background:#fff;border:1px solid #dce6ee;padding:5px 7px;border-radius:999px}
+    .trust{display:flex;gap:13px;align-items:center;margin-top:16px;padding:15px;background:#fff;border:1px solid var(--border);border-radius:15px}.avatar{width:66px;height:66px;border-radius:15px;object-fit:cover;border:1px solid #e8e5de;background:#fff;flex:none}.trust h3{margin:0 0 4px;font-size:17px;color:#1a2741}.trust p{margin:0;color:#657287;font-size:12px;line-height:1.55}.yt-link{display:inline-flex;align-items:center;gap:4px;margin-top:7px;color:var(--navy2);font-weight:850;font-size:11px}
+    .final-card{margin-top:17px;padding:21px 17px 18px;border-radius:17px;background:linear-gradient(155deg,#fffaf0,#fff 68%);border:1px solid #f0dfba;box-shadow:var(--shadow);text-align:center}.mini-label{font-size:10px;font-weight:900;color:#b56b0d;letter-spacing:.08em}.final-card h2{font-size:24px;margin-top:6px}.final-card p{font-size:12px;line-height:1.58;color:#657287;margin:8px 0 0}.reception{margin-top:9px;font-size:10px;line-height:1.5;color:#7b8390}
+    footer{padding:15px 18px calc(88px + env(safe-area-inset-bottom));text-align:center;color:#99938a;background:#f6f4ef;font-size:9px;line-height:1.6;border-top:1px solid #ebe8e0}
+    .floating-cta-wrap{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(520px,100%);z-index:30;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(246,244,239,0),rgba(246,244,239,.96) 28%,rgba(246,244,239,.99));opacity:0;pointer-events:none;transition:opacity .2s ease}.floating-cta-wrap.show{opacity:1;pointer-events:auto}.floating-cta{width:100%;min-height:52px;margin:0;border-radius:14px;box-shadow:0 10px 24px rgba(229,124,21,.24);font-size:16px}
+
+    .hero-heading{margin:12px 0 5px;font-size:30px;line-height:1.1;letter-spacing:-.035em;color:#15233d;font-weight:950}
+    .hero-heading .accent{color:var(--orange2)}
+    .hero-lead{margin:7px 0 12px;color:#5d6a7d;font-size:13px;line-height:1.55;font-weight:650}
+    .slider-wrap{position:relative;margin:6px -20px 0;padding-left:20px;overflow:hidden}
+    .slider{position:relative;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:3px 48px 8px 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .slider::-webkit-scrollbar{display:none}
+    .hero-card{flex:0 0 calc(100% - 44px);scroll-snap-align:start;min-height:180px;border-radius:17px;padding:16px 15px 15px;background:rgba(255,255,255,.90);border:1px solid rgba(36,57,104,.12);box-shadow:0 9px 26px rgba(36,57,104,.08);position:relative;overflow:hidden}
+    .hero-card:before{content:"";position:absolute;width:126px;height:126px;border-radius:50%;right:-54px;top:-54px;background:rgba(237,246,251,.95)}
+    .hero-card:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,var(--orange),var(--yellow))}
+    .hero-card.active{border-color:rgba(242,139,36,.45);box-shadow:0 10px 28px rgba(229,124,21,.12)}
+    .card-tag{display:inline-flex;align-items:center;gap:6px;position:relative;z-index:1;padding:5px 8px;border-radius:999px;background:#fff2c6;color:#9d5b07;font-size:10px;font-weight:950;letter-spacing:.04em}
+    .card-tag i{display:block;width:6px;height:6px;border-radius:50%;background:var(--orange)}
+    .hero-card h3{position:relative;z-index:1;margin:11px 0 7px;font-size:23px;line-height:1.15;letter-spacing:-.025em;color:#17243e;font-weight:950}
+    .hero-card p{position:relative;z-index:1;margin:0;color:#5f6d80;font-size:12px;line-height:1.58;font-weight:650}
+    .card-meta{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+    .card-meta span{font-size:10px;font-weight:850;color:#40536f;background:#f4f7fa;border:1px solid #e3eaf0;padding:5px 7px;border-radius:999px}
+    .slider-dots{display:flex;justify-content:center;gap:6px;margin-top:4px}
+    .slider-dot{width:7px;height:7px;border:0;border-radius:50%;padding:0;background:#cfd7e2;transition:.2s;cursor:pointer}
+    .slider-dot.active{width:19px;border-radius:10px;background:var(--orange)}
+    .hero-choice{margin-top:9px;text-align:center;color:#7b8390;font-size:10px;line-height:1.45}
+    .hero-qualify-note{text-align:center;margin:8px 0 0;color:#8a7361;font-size:11px;line-height:1.45;font-weight:700}
+
+    /* 问卷抽屉样式：100% 完整保留 */
+    .lead-gate{position:fixed;inset:0;z-index:60;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .lead-gate.show{display:flex}
+    .gate-panel{width:100%;max-width:520px;background:linear-gradient(180deg,#fcfbf8 0%,#f6f3ed 100%);border-radius:28px 28px 0 0;box-shadow:0 -16px 42px rgba(13,23,39,.18);padding:14px 18px calc(18px + env(safe-area-inset-bottom));overflow:hidden;border:1px solid rgba(255,255,255,.55)}
+    .gate-handle{width:54px;height:5px;border-radius:999px;background:#d8d2c7;margin:0 auto 13px}
+    .gate-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .gate-kicker{font-size:11px;font-weight:900;color:var(--orange2);letter-spacing:.04em}
+    .gate-step-text{font-size:11px;font-weight:850;color:#7e8795}
+    .gate-progress{height:5px;border-radius:999px;background:#e8e3da;overflow:hidden;margin-bottom:16px}
+    .gate-progress-bar{height:100%;width:50%;border-radius:inherit;background:linear-gradient(90deg,#f0a04a,#f6c979);transition:width .22s ease}
+    .gate-intro{padding:13px 14px;border:1px solid #ebe5db;border-radius:18px;background:linear-gradient(180deg,#fffdfa,#f8f5ef);box-shadow:inset 0 1px 0 rgba(255,255,255,.82)}
+    .gate-intro strong{display:block;font-size:14px;color:#202f49;margin-bottom:4px}
+    .gate-intro p{margin:0;color:#6d7686;font-size:12px;line-height:1.55}
+    .gate-chip-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+    .gate-chip{display:inline-flex;align-items:center;padding:6px 9px;border-radius:999px;background:#fff;border:1px solid #e7e2d9;color:#5c6778;font-size:10px;font-weight:850;box-shadow:0 1px 0 rgba(255,255,255,.7) inset}
+    .gate-selected-tip{margin-top:10px;padding:9px 11px;border-radius:13px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:11px;font-weight:800;display:none}
+    .gate-selected-tip.show{display:block}
+    .gate-selected-tip b{color:#bc6d12}
+    .gate-step{display:none}
+    .gate-step.active{display:block}
+    .gate-title{margin:14px 0 0;font-size:22px;line-height:1.32;color:#1b2943;font-weight:950;letter-spacing:-.02em}
+    .gate-desc{margin:7px 0 0;color:#747d8c;font-size:12px;line-height:1.55}
+    .gate-options{display:grid;gap:11px;margin-top:17px}
+    .gate-option{position:relative;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 15px;border:1px solid #e4dfd6;border-radius:18px;background:#fff;color:#30415f;font-size:15px;font-weight:900;text-align:left;cursor:pointer;box-shadow:0 4px 14px rgba(36,57,104,.03);transition:.16s ease}
+    .gate-option:before{content:'';position:absolute;left:0;top:12px;bottom:12px;width:4px;border-radius:999px;background:transparent;transition:.16s ease}
+    .gate-option-main{display:flex;align-items:center;gap:12px;min-width:0}
+    .gate-option-icon{width:38px;height:38px;border-radius:12px;background:linear-gradient(180deg,#fff6e7,#fff1d5);color:#b96809;display:flex;align-items:center;justify-content:center;flex:none;font-size:15px;font-weight:950;border:1px solid #f2dfb9}
+    .gate-option-title{display:block;color:#253550;line-height:1.25}
+    .gate-option small{display:block;margin-top:4px;color:#8b93a0;font-size:10px;line-height:1.4;font-weight:700}
+    .gate-option-arrow{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;color:#aeb7c4;flex:none;background:#f7f8fa;border:1px solid #edf0f4}
+    .gate-option.active{border-color:#edc27d;background:linear-gradient(180deg,#fffdfa,#fff7eb);box-shadow:0 9px 22px rgba(229,124,21,.10)}
+    .gate-option.active:before{background:linear-gradient(180deg,#f0a04a,#f6c979)}
+    .gate-option.active .gate-option-arrow{color:#e8881f;background:#fff1dc;border-color:#f7d9aa}
+    .gate-option.active .gate-option-title{color:#1d2c45}
+    .gate-actions{display:flex;gap:10px;margin-top:18px}
+    .gate-back,.gate-cancel,.gate-confirm{min-height:52px;border-radius:15px;font-size:15px;font-weight:950;cursor:pointer}
+    .gate-back,.gate-cancel{border:1px solid #dfdad1;background:#f3f1ec;color:#556177;padding:0 16px}
+    .gate-confirm{flex:1;border:0;display:flex;align-items:center;justify-content:center;text-align:center;background:linear-gradient(135deg,#f2a552,#e98a25);color:#fff;box-shadow:0 10px 22px rgba(229,124,21,.18)}
+    .gate-confirm[aria-disabled="true"]{opacity:.72;box-shadow:none;cursor:not-allowed;filter:saturate(.75);pointer-events:none}
+    .gate-trust{margin-top:12px;text-align:center;color:#8e95a0;font-size:10px;line-height:1.55}
+    .wa-fallback{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .wa-fallback.show{display:flex}
+    .wa-fallback .gate-panel{text-align:center}
+    .wa-fallback .gate-title{margin-top:4px}
+    .wa-fallback .cta{margin-top:14px}
+    .wa-alt{display:flex;gap:9px;margin-top:10px}
+    .wa-alt button,.wa-alt a{flex:1;min-height:46px;display:flex;align-items:center;justify-content:center;border:1px solid #dfdad1;background:#fff;color:#33435f;border-radius:13px;font-size:13px;font-weight:900;cursor:pointer}
+    .wa-alt button:active,.wa-alt a:active{transform:scale(.97);background:#f3f1ec}
+    .wa-number{margin-top:10px;font-size:12px;color:#5d6a7d;font-weight:800}
+    .wa-browser-tip{display:none;margin-top:10px;padding:9px 11px;border-radius:12px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:11px;line-height:1.5;font-weight:800}
+    .wa-browser-tip.show{display:block}
+    .wa-close{margin-top:12px;border:0;background:none;color:#8e95a0;font-size:12px;font-weight:800;padding:8px;cursor:pointer}
+    @media(min-width:521px){.lead-gate,.wa-fallback{align-items:center;padding:18px}.gate-panel{border-radius:26px;padding-bottom:20px}}
+
+    @media(max-width:360px){h1{font-size:34px}.hero-heading{font-size:28px}.hero-card h3{font-size:21px}.hero{padding-left:17px;padding-right:17px}section{padding-left:17px;padding-right:17px}.stat-value{font-size:20px}.gate-title{font-size:20px}.gate-option{font-size:14px;padding:14px}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <img class="brand-banner" src="assets/econman-banner.webp" alt="講經MAN" width="1100" height="182" fetchpriority="high" decoding="async">
+
+    <section class="hero" id="top">
+      <div class="hero-inner">
+        <div class="eyebrow"><span class="dot"></span><span>講經MAN · 07 OCT 午市更新</span></div>
+        <h1 class="hero-heading">今日港股精選名單<br><span class="accent">已更新</span></h1>
+        <p class="hero-lead">三種方向，一次睇清。左右滑動揀你最想睇嗰類。</p>
+
+        <div class="slider-wrap">
+          <div class="slider" id="hero-slider" aria-label="今日精選分類">
+            <article class="hero-card" data-slide="blackhorse" tabindex="0">
+              <span class="card-tag"><i></i>潛力黑馬</span>
+              <h3>今日潛力黑馬名單</h3>
+              <p>從資金異動、板塊升溫及公開消息中，先篩出近期值得再跟進的方向。</p>
+              <div class="card-meta"><span>資金異動</span><span>熱門方向</span><span>公開消息</span></div>
+            </article>
+
+            <article class="hero-card" data-slide="picks" tabindex="0">
+              <span class="card-tag"><i></i>今日心水</span>
+              <h3>今日心水股名單</h3>
+              <p>配合今日盤面、資金方向與重點觀察，整理當日值得再睇清楚的名單。</p>
+              <div class="card-meta"><span>今日盤面</span><span>資金方向</span><span>重點觀察</span></div>
+            </article>
+
+            <article class="hero-card" data-slide="income" tabindex="0">
+              <span class="card-tag"><i></i>高息收息</span>
+              <h3>高息收息精選</h3>
+              <p>集中睇派息表現、現金流及相對穩定方向，方便偏收息型股民快速篩選。</p>
+              <div class="card-meta"><span>派息表現</span><span>現金流</span><span>穩定方向</span></div>
+            </article>
+          </div>
+        </div>
+
+        <div class="slider-dots" aria-label="切換分類">
+          <button class="slider-dot" type="button" data-dot="blackhorse" aria-label="潛力黑馬"></button>
+          <button class="slider-dot" type="button" data-dot="picks" aria-label="今日心水"></button>
+          <button class="slider-dot" type="button" data-dot="income" aria-label="高息收息"></button>
+        </div>
+
+        <button class="cta" type="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</button>
+        <div class="hero-choice" id="hero-choice">目前選擇：潛力黑馬 · 可左右滑動切換</div>
+        <div class="hero-qualify-note">領取前先揀 2 個偏好 · 約 10 秒完成</div>
+        <div class="hero-proof">07 OCT 午市更新 · 已納入今日最新半日數據 · 過往內容可查</div>
+      </div>
+    </section>
+
+    <section class="section-white" id="method">
+      <div class="section-label">How We Filter</div>
+      <h2>每日咁多消息<br>點樣先篩到值得睇嘅？</h2>
+      <p class="section-intro">唔係靠一句「我覺得」。先睇成交、再睇盤面、再對公開消息，最後先整理成今日名單。</p>
+      <div class="method-card">
+        <div class="method-row"><div class="method-icon">01</div><div><strong>睇成交</strong><p>成交異動、活躍股份、資金集中方向。</p></div></div>
+        <div class="method-row"><div class="method-icon">02</div><div><strong>睇市場</strong><p>板塊強弱、熱點切換、盤面結構變化。</p></div></div>
+        <div class="method-row"><div class="method-icon">03</div><div><strong>睇消息</strong><p>公司公告、業績及重要公開市場資訊。</p></div></div>
+      </div>
+      <div class="method-result">三方面交叉整理 → 再做成今日港股精選名單</div>
+    </section>
+
+    <section class="section-blue" id="market">
+      <div class="section-label">07 OCT Midday · Today Focus</div>
+      <h2>恒指守住24,000點<br>北水明日回歸</h2>
+      <p class="section-intro">截至10月7日午市，恒指跌128.66點，報24,151.90點，跌0.53%，早市低見24,071.41點但仍守在24,000點之上；恒生科技指數跌約38點至4,184點，跌0.91%。半日主板成交約517.72億港元。重磅科技股普遍回吐，阿里巴巴跌約3.05%、騰訊跌1.92%、小米跌1.57%，京東則逆市升約0.87%。港股通南向今日仍暫停，將於10月8日恢復，今日下半場重點留意24,000點承接、科技權重跌幅會否收窄，以及北水回歸前的板塊預先部署。</p>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">恒生指數</div><div class="stat-value">24,151.90</div><div class="stat-change down">-128.66點 · -0.53%</div></div>
+        <div class="stat"><div class="stat-label">恒生科技指數</div><div class="stat-value">4,184</div><div class="stat-change down">約 -38點 · -0.91%</div></div>
+        <div class="stat"><div class="stat-label">主板成交</div><div class="stat-value">517.72億</div><div class="stat-change neutral">07 OCT 半日成交</div></div>
+        <div class="stat"><div class="stat-label">港股通</div><div class="stat-value">今日暫停</div><div class="stat-change neutral">08 OCT 北水回歸</div></div>
+      </div>
+      <div class="market-points">
+        <div class="market-point"><div class="num">01</div><div><strong>24,000點早市有承接，下半場先睇守唔守得住</strong><p>恒指早市曾低見24,071.41點，其後跌幅收窄，午市報24,151.90點。連升兩日後出現回吐並不意外，但24,000點仍是今日最直接的市場分水嶺；如果午後能守住，盤面情緒相對穩定，若再失守則要留意科技權重進一步拖累。</p></div></div>
+        <div class="market-point"><div class="num">02</div><div><strong>科技權重回吐，北水明日回歸成下一個焦點</strong><p>午市阿里巴巴跌約3.05%、騰訊跌1.92%、小米跌1.57%，藥明生物亦回吐；京東逆市微升，濰柴動力則升逾5%。10月8日南向交易恢復後，北水重新入場可能改變短線資金分布，所以今日更值得觀察哪些股份在北水回歸前已經率先出現承接。</p></div></div>
+      </div>
+      <div class="source-line">07 OCT 2026 午市更新 · 恒指 24,151.90（-0.53%）· 恒生科技約 4,184（-0.91%）· 半日成交約 517.72 億港元 · 07 OCT 港股通南向仍暫停，08 OCT 恢復 · 午市數據按公開市場資訊整理</div>
+    </section>
+
+    <section class="section-blue" id="trust">
+      <div class="section-label">Why This Page Exists</div>
+      <h2>你冇時間每日篩咁多資訊<br>我哋先幫你篩一次</h2>
+      <div class="trust">
+        <img class="avatar" src="assets/econman-avatar.webp" alt="講經MAN" width="240" height="240" loading="lazy" decoding="async">
+        <div>
+          <h3>講經MAN</h3>
+          <p>用貼地方式拆解市場資訊，把複雜內容講簡單一點；過往公開內容亦可以自行查看。</p>
+          <a class="yt-link" href="https://www.youtube.com/@EconManBlog/shorts" target="_blank" rel="noopener">查看過往 YouTube 內容 →</a>
+        </div>
+      </div>
+      <div class="final-card" id="final-cta">
+        <div class="mini-label">今日已整理</div>
+        <h2 id="final-title">今日完整精選名單<br>已經整理好</h2>
+        <p id="final-copy">揀好你想睇嘅方向，開啟 WhatsApp 後直接按「發送」，即可領取完整名單。</p>
+        <button class="cta" type="button" data-wa data-location="final" id="final-button">免費領取今日潛力黑馬名單</button>
+        <div class="reception" id="reception-text">本次由助理 Chloe 接待</div>
+      </div>
+    </section>
+
+    <footer>講經MAN · 市場內容整理<br>內容按公開市場資料整理，市場情況會变動。</footer>
+  </main>
+
+  <div class="floating-cta-wrap" id="floating-cta-wrap" aria-hidden="true">
+    <button class="cta floating-cta" type="button" data-wa data-location="floating" id="floating-button">免費領取今日潛力黑馬名單</button>
+  </div>
+
+  <!-- 两步意向筛选抽屉：100% 完整保留原代码 -->
+  <div class="lead-gate" id="lead-gate" aria-hidden="true">
+    <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="gate-title-1">
+      <div class="gate-handle"></div>
+      <div class="gate-top">
+        <div class="gate-kicker">今日港股資料已整理</div>
+        <div class="gate-step-text" id="gate-step-text">1 / 2</div>
+      </div>
+      <div class="gate-progress"><div class="gate-progress-bar" id="gate-progress-bar"></div></div>
+
+      <div class="gate-step active" data-step="1">
+        <div class="gate-intro">
+          <strong>先揀你想領取邊份股票資料</strong>
+          <p>只需揀兩步，之後會直接帶你去 WhatsApp 領取對應名單。</p>
+          <div class="gate-chip-row"><span class="gate-chip">今日心水</span><span class="gate-chip">潛力黑馬</span><span class="gate-chip">高息收息</span></div>
+        </div>
+        <h3 class="gate-title" id="gate-title-1">你今日最想先收到邊份港股資料？</h3>
+        <p class="gate-desc">揀一份你而家最想睇嘅名單。</p>
+        <div class="gate-options">
+          <button class="gate-option" type="button" data-question="interest" data-value="今日心水股名單">
+            <span class="gate-option-main"><span class="gate-option-icon">今</span><span><span class="gate-option-title">今日心水股名單</span><small>想先睇今日較值得留意嘅幾隻股份</small></span></span><span class="gate-option-arrow">›</span>
+          </button>
+          <button class="gate-option" type="button" data-question="interest" data-value="近期潛力黑馬名單">
+            <span class="gate-option-main"><span class="gate-option-icon">黑</span><span><span class="gate-option-title">近期潛力黑馬名單</span><small>想先睇近期有機會被資金留意嘅方向</small></span></span><span class="gate-option-arrow">›</span>
+          </button>
+          <button class="gate-option" type="button" data-question="interest" data-value="高息收息股名單">
+            <span class="gate-option-main"><span class="gate-option-icon">息</span><span><span class="gate-option-title">高息收息股名單</span><small>偏向想睇派息、現金流較穩定嘅方向</small></span></span><span class="gate-option-arrow">›</span>
+          </button>
+        </div>
+        <div class="gate-actions"><button class="gate-cancel" type="button" id="gate-cancel">取消</button></div>
+      </div>
+
+      <div class="gate-step" data-step="2">
+        <div class="gate-intro">
+          <strong>你揀嘅資料會附上以下重點</strong>
+          <p>再揀一項你最想一齊睇到的內容，我們就按這個方向發給你。</p>
+          <div class="gate-selected-tip" id="gate-selected-tip">目前選擇：<b id="gate-selected-interest">今日心水股名單</b></div>
+        </div>
+        <h3 class="gate-title">名單入面，你最想一齊睇到咩資料？</h3>
+        <p class="gate-desc">揀一個你最關心嘅重點，方便直接對應內容。</p>
+        <div class="gate-options">
+          <button class="gate-option" type="button" data-question="priority" data-value="股票名稱＋今日值得留意原因">
+            <span class="gate-option-main"><span class="gate-option-icon">01</span><span><span class="gate-option-title">股票名稱＋今日值得留意原因</span><small>想先知道係邊幾隻，以及點解今日值得睇</small></span></span><span class="gate-option-arrow">›</span>
+          </button>
+          <button class="gate-option" type="button" data-question="priority" data-value="近期資金／成交異動重點">
+            <span class="gate-option-main"><span class="gate-option-icon">02</span><span><span class="gate-option-title">近期資金／成交異動重點</span><small>想先睇資金流向、成交變化同近期異動</small></span></span><span class="gate-option-arrow">›</span>
+          </button>
+          <button class="gate-option" type="button" data-question="priority" data-value="所屬板塊＋後續觀察重點">
+            <span class="gate-option-main"><span class="gate-option-icon">03</span><span><span class="gate-option-title">所屬板塊＋後續觀察重點</span><small>想知道板塊位置，以及之後應該再觀察咩</small></span></span><span class="gate-option-arrow">›</span>
+          </button>
+        </div>
+        <div class="gate-actions">
+          <button class="gate-back" type="button" id="gate-back">返回</button>
+          <a class="gate-confirm" href="https://wa.me/85257980601?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" id="gate-confirm" role="button" aria-disabled="true">立即查看我揀嘅名單 →</a>
+        </div>
+      </div>
+
+      <div class="gate-trust">只為對應你想睇嘅內容方向 · 不需要填姓名、電話或其他資料</div>
+    </div>
+  </div>
+
+  <!-- 喚起失敗兜底：App 內置瀏覽器攔截跳轉時，用戶仍有路可走 -->
+  <div class="wa-fallback" id="wa-fallback" aria-hidden="true">
+    <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="wa-fallback-title">
+      <div class="gate-handle"></div>
+      <h3 class="gate-title" id="wa-fallback-title">未自動開啟 WhatsApp？</h3>
+      <p class="gate-desc">按下面按鈕再試一次，打開後直接按「發送」即可領取名單。</p>
+      <a class="cta" id="wa-fallback-open" href="#">開啟 WhatsApp 領取名單</a>
+      <div class="wa-alt">
+        <button type="button" id="wa-copy-number">複製 WhatsApp 號碼</button>
+        <button type="button" id="wa-copy-msg">複製留言內容</button>
+      </div>
+      <div class="wa-number" id="wa-number-text"></div>
+      <div class="wa-browser-tip" id="wa-browser-tip">如仍未能開啟：請按右上角「⋯」，選擇「在瀏覽器中開啟」，再按一次領取按鈕。</div>
+      <button class="wa-close" type="button" id="wa-fallback-close">關閉</button>
+    </div>
+  </div>
+
+  <script>
+    // ====== 日常設定區：換號 / 換接待只改這裡 ======
+    const CONFIG = {
+      whatsappNumber: '85257980601',
+      receptionist: 'Chloe',
+      googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq',
+      // true = 第 2 題揀完即直接跳 WhatsApp（少一次點擊，可做 A/B）；false = 需再按「立即查看」
+      autoJumpOnStep2: false,
+      // 喚起後多少毫秒頁面仍在前台，就彈出兜底面板；App 內置瀏覽器由宿主即時決定放唔放行，可以更快彈
+      fallbackDelay: 1600,
+      fallbackDelayInApp: 1200,
+      // 離線轉化回傳：填入 apps-script/Code.gs 部署後的 Web App 網址（.../exec）；留空則唔上報，留言亦唔加編號
+      // 注意：問卷確認按鈕 <a href> 入面亦寫死咗號碼作為 JS 失效時嘅保底，換號時一併改
+      leadEndpoint: '',
+      // 跳轉事件流（分流系統 / 自家伺服器接收）：點擊、已喚起、兜底顯示等每一步都會以 sendBeacon 送出一條 text/plain JSON；留空則唔送
+      eventEndpoint: ''
+    };
+
+    // ====== 廣告點擊 ID：首次帶參數進入時保存 90 日，之後冇參數再訪問都能對返 ======
+    const CLICK_IDS = (() => {
+      const KEY = 'econman_click_ids';
+      const TTL = 90 * 24 * 3600 * 1000;
+      const q = new URLSearchParams(location.search);
+      const fresh = {};
+      // placement / creative / device 由 Google Ads 最終網址後綴 {placement} {creative} {device} 帶入，用嚟分辨 AASTOCKS、etnet 等來源 App
+      ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'placement', 'creative', 'device'].forEach(k => {
+        const v = q.get(k);
+        if (v) fresh[k] = v.slice(0, 300);
+      });
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+      if (!stored.ts || Date.now() - stored.ts > TTL) stored = {};
+      if (fresh.gclid || fresh.gbraid || fresh.wbraid) {
+        stored = Object.assign({}, fresh, { ts: Date.now() });
+        try { localStorage.setItem(KEY, JSON.stringify(stored)); } catch (e) {}
+      }
+      return Object.assign({}, stored, fresh);
+    })();
+
+    // 6 位編號，去掉 0/O/1/I/L 等易混字元，方便客服肉眼核對
+    function makeLeadCode() {
+      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+      const bytes = new Uint8Array(6);
+      (window.crypto || window.msCrypto).getRandomValues(bytes);
+      return Array.from(bytes, b => chars[b % chars.length]).join('');
+    }
+
+    function sendLead(payload) {
+      if (!CONFIG.leadEndpoint) return;
+      // text/plain 唔會觸發 CORS 預檢；Apps Script 只需收到請求，回應內容唔重要
+      const body = JSON.stringify(payload);
+      try {
+        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.leadEndpoint, new Blob([body], { type: 'text/plain' }))) return;
+      } catch (e) {}
+      try { fetch(CONFIG.leadEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true }); } catch (e) {}
+    }
+
+    // 每一步都獨立送一條；全部排喺跳轉之後、各自 try/catch，任何失敗都唔影響跳轉
+    const PAGE_START = Date.now();
+    function sendEvent(name, extra) {
+      if (!CONFIG.eventEndpoint) return;
+      try {
+        const body = JSON.stringify(Object.assign({
+          event: name,
+          ts: Date.now(),
+          since_load_ms: Date.now() - PAGE_START,
+          wa_env: WA_ENV,
+          link_type: waAttempt ? waAttempt.linkType : '',
+          cta: waAttempt ? waAttempt.placement : '',
+          transaction_id: waAttempt ? (waAttempt.txId || '') : '',
+          placement_app: CLICK_IDS.placement || '',
+          creative: CLICK_IDS.creative || '',
+          device: CLICK_IDS.device || '',
+          gclid: CLICK_IDS.gclid || '',
+          gbraid: CLICK_IDS.gbraid || '',
+          wbraid: CLICK_IDS.wbraid || '',
+          number: CONFIG.whatsappNumber,
+          visible: !document.hidden,
+          page: location.origin + location.pathname,
+          ua: UA.slice(0, 300)
+        }, extra || {}));
+        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.eventEndpoint, new Blob([body], { type: 'text/plain' }))) return;
+        fetch(CONFIG.eventEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true });
+      } catch (e) {}
+    }
+
+    // ====== 首屏三張卡：廣告參數決定預設卡，但用戶可自由左右滑 ======
+    const VARIANTS = {
+      blackhorse: {
+        key:'blackhorse',
+        label:'潛力黑馬',
+        button:'免費領取今日潛力黑馬名單',
+        message:'你好，我想免費領取今日潛力黑馬名單，麻煩發給我，謝謝。'
+      },
+      picks: {
+        key:'picks',
+        label:'今日心水',
+        button:'免費領取今日心水股名單',
+        message:'你好，我想免費領取今日心水股名單，麻煩發給我，謝謝。'
+      },
+      income: {
+        key:'income',
+        label:'高息收息',
+        button:'免費領取高息收息精選名單',
+        message:'你好，我想免費領取今日高息收息精選名單，麻煩發給我，謝謝。'
+      }
+    };
+
+    const ORDER = ['blackhorse','picks','income'];
+    const params = new URLSearchParams(location.search);
+    const hadExplicitFocus = Boolean(params.get('focus') || params.get('utm_content'));
+    let rawFocus = (params.get('focus') || params.get('utm_content') || '').toLowerCase();
+
+    if (rawFocus.includes('black') || rawFocus.includes('horse') || rawFocus.includes('黑馬')) rawFocus = 'blackhorse';
+    else if (rawFocus.includes('pick') || rawFocus.includes('心水')) rawFocus = 'picks';
+    else if (rawFocus.includes('income') || rawFocus.includes('dividend') || rawFocus.includes('高息') || rawFocus.includes('收息')) rawFocus = 'income';
+    else rawFocus = 'blackhorse';
+
+    let currentKey = VARIANTS[rawFocus] ? rawFocus : 'blackhorse';
+    let userInteracted = false;
+    let autoHintDone = false;
+
+    const slider = document.getElementById('hero-slider');
+    const cards = [...document.querySelectorAll('.hero-card')];
+    const dots = [...document.querySelectorAll('.slider-dot')];
+    const heroCta = document.getElementById('hero-cta');
+    const finalButton = document.getElementById('final-button');
+    const floatingButton = document.getElementById('floating-button');
+    const heroChoice = document.getElementById('hero-choice');
+    const receptionText = document.getElementById('reception-text');
+
+    receptionText.textContent = `本次由助理 ${CONFIG.receptionist} 接待`;
+
+    function setActive(key, {scroll=false, track=true} = {}) {
+      if (!VARIANTS[key]) return;
+      currentKey = key;
+      const data = VARIANTS[key];
+
+      cards.forEach(card => card.classList.toggle('active', card.dataset.slide === key));
+      dots.forEach(dot => dot.classList.toggle('active', dot.dataset.dot === key));
+
+      heroCta.textContent = data.button;
+      finalButton.textContent = data.button;
+      floatingButton.textContent = data.button;
+      heroChoice.textContent = `目前選擇：${data.label} · 開啟 WhatsApp 後直接按「發送」即可`;
+
+      if (scroll) {
+        const card = cards.find(c => c.dataset.slide === key);
+        if (card) slider.scrollTo({left: card.offsetLeft - slider.offsetLeft, behavior:'smooth'});
+      }
+
+      if (track) {
+        try {
+          if (typeof fbq === 'function') fbq('trackCustom','LandingVariantView',{variant:key});
+        } catch(e){}
+      }
+    }
+
+    // Initial slide follows ad parameter
+    setActive(currentKey, {scroll:false, track:true});
+    requestAnimationFrame(() => {
+      const card = cards.find(c => c.dataset.slide === currentKey);
+      if (card) slider.scrollLeft = card.offsetLeft - slider.offsetLeft;
+    });
+
+    // Detect which card is nearest the left edge after swiping
+    let scrollTimer;
+    slider.addEventListener('scroll', () => {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        const left = slider.scrollLeft;
+        let nearest = cards[0], min = Infinity;
+        cards.forEach(card => {
+          const d = Math.abs((card.offsetLeft - slider.offsetLeft) - left);
+          if (d < min) { min = d; nearest = card; }
+        });
+        if (nearest && nearest.dataset.slide !== currentKey) setActive(nearest.dataset.slide, {scroll:false, track:true});
+      }, 90);
+    }, {passive:true});
+
+    // Any touch/drag stops the one-time auto hint
+    ['touchstart','pointerdown','wheel'].forEach(evt => {
+      slider.addEventListener(evt, () => { userInteracted = true; }, {passive:true});
+    });
+
+    dots.forEach(dot => dot.addEventListener('click', () => {
+      userInteracted = true;
+      setActive(dot.dataset.dot, {scroll:true, track:true});
+    }));
+
+    // One gentle automatic nudge to show there are multiple cards, then stop.
+    // If the ad already opened on card 2 or 3, nudge to the next card; never loops continuously.
+    setTimeout(() => {
+      if (hadExplicitFocus || userInteracted || autoHintDone || document.visibilityState !== 'visible') return;
+      autoHintDone = true;
+      const i = ORDER.indexOf(currentKey);
+      const next = ORDER[Math.min(i + 1, ORDER.length - 1)];
+      if (next !== currentKey) setActive(next, {scroll:true, track:true});
+    }, 3000);
+
+    let redirecting = false;
+    let pendingLocation = 'hero';
+    let gateStep = 1;
+    const leadGate = document.getElementById('lead-gate');
+    const gateSteps = [...document.querySelectorAll('.gate-step')];
+    const gateOptions = [...document.querySelectorAll('.gate-option')];
+    const gateCancel = document.getElementById('gate-cancel');
+    const gateBack = document.getElementById('gate-back');
+    const gateConfirm = document.getElementById('gate-confirm');
+    const gateStepText = document.getElementById('gate-step-text');
+    const gateProgressBar = document.getElementById('gate-progress-bar');
+    const gateSelectedTip = document.getElementById('gate-selected-tip');
+    const gateSelectedInterest = document.getElementById('gate-selected-interest');
+    const gateAnswers = { interest:'', priority:'' };
+    const defaultInterestMap = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
+
+    function setConfirmEnabled(on){ gateConfirm.setAttribute('aria-disabled', on ? 'false' : 'true'); }
+
+    function setGateStep(step){
+      gateStep = step;
+      gateSteps.forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
+      gateStepText.textContent = `${step} / 2`;
+      gateProgressBar.style.width = step === 1 ? '50%' : '100%';
+      if (gateSelectedTip) gateSelectedTip.classList.toggle('show', step === 2 && !!gateAnswers.interest);
+      if (step === 2) {
+        try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateStep2',{variant:currentKey}); } catch(e){}
+      }
+    }
+
+    function openLeadGate(locationName){
+      pendingLocation = locationName || 'hero';
+      gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
+      gateAnswers.priority = '';
+      gateOptions.forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.gate-option[data-question="interest"]').forEach(el => {
+        el.classList.toggle('active', el.dataset.value === gateAnswers.interest);
+      });
+      if (gateSelectedInterest) gateSelectedInterest.textContent = gateAnswers.interest;
+      setConfirmEnabled(false);
+      setGateStep(1);
+      leadGate.classList.add('show');
+      leadGate.setAttribute('aria-hidden','false');
+      document.body.style.overflow = 'hidden';
+      try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateOpen',{placement:pendingLocation,variant:currentKey}); } catch(e){}
+    }
+
+    function closeLeadGate(){
+      leadGate.classList.remove('show');
+      leadGate.setAttribute('aria-hidden','true');
+      document.body.style.overflow = '';
+    }
+
+    gateOptions.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const q = btn.dataset.question;
+        const v = btn.dataset.value;
+        gateAnswers[q] = v;
+        document.querySelectorAll(`.gate-option[data-question="${q}"]`).forEach(el => el.classList.toggle('active', el === btn));
+        if (q === 'interest') {
+          if (gateSelectedInterest) gateSelectedInterest.textContent = v;
+          if (gateSelectedTip) gateSelectedTip.classList.add('show');
+          try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'interest'}); } catch(e){}
+          setTimeout(() => setGateStep(2), 130);
+        }
+        if (q === 'priority') {
+          setConfirmEnabled(true);
+          try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'priority'}); } catch(e){}
+          if (CONFIG.autoJumpOnStep2) {
+            closeLeadGate();
+            goWhatsApp(null, pendingLocation);
+          }
+        }
+      });
+    });
+
+    gateCancel.addEventListener('click', closeLeadGate);
+    gateBack.addEventListener('click', () => setGateStep(1));
+    leadGate.addEventListener('click', e => { if (e.target === leadGate) closeLeadGate(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) closeLeadGate(); });
+
+    // ====== WhatsApp 跳轉：先判斷打開環境，再揀喚起方式 ======
+    const UA = navigator.userAgent || '';
+    const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const IS_ANDROID = /Android/i.test(UA);
+    const IN_APP_RE = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|musical_ly|Bytedance|Snapchat|Pinterest|LinkedInApp/i;
+    // iOS：Safari / SFSafariViewController / Chrome / Google App 的 UA 都帶 "Safari/"，宿主 App 自建的 WKWebView 不帶
+    const IOS_WEBVIEW = IS_IOS && (!/Safari\//.test(UA) || IN_APP_RE.test(UA));
+    // Android：系統 WebView 的 UA 帶 "; wv)"；Chrome Custom Tabs（AdMob / YouTube / Gmail 常用）與 Chrome 相同
+    const ANDROID_WEBVIEW = IS_ANDROID && (/; wv\)/.test(UA) || IN_APP_RE.test(UA));
+    // intent:// 只有 Chromium 內核（Chrome / Samsung / 小米 / 華為 / Edge 等）穩定支援；Firefox、UC、QQ 瀏覽器等改用 wa.me
+    const ANDROID_INTENT_OK = IS_ANDROID && /Chrome\/\d+/.test(UA) && !/UCBrowser|Quark|MQQBrowser|Opera Mini|Firefox|FxiOS/i.test(UA);
+    const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
+                 : IS_ANDROID ? (ANDROID_WEBVIEW ? 'android_webview' : 'android_browser')
+                 : 'desktop';
+
+    function buildWhatsAppUrls(message) {
+      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+      const text = encodeURIComponent(message);
+      const universal = `https://wa.me/${phone}?text=${text}`;
+      return {
+        phone,
+        universal,
+        scheme: `whatsapp://send?phone=${phone}&text=${text}`,
+        // 冇裝普通版（或只裝 Business 版）時 Chrome 會自動轉去 fallback，wa.me 再交俾已安裝嘅 App
+        intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end`
+      };
+    }
+
+    function buildMessage(leadCode) {
+      const interestKey = Object.keys(defaultInterestMap).find(k => defaultInterestMap[k] === gateAnswers.interest);
+      const data = VARIANTS[interestKey] || VARIANTS[currentKey] || VARIANTS.blackhorse;
+      const extra = `\n\n今日最想睇：${gateAnswers.interest || '今日精選名單'}\n比較重視：${gateAnswers.priority || '股票名稱＋今日值得留意原因'}`;
+      const code = leadCode ? `\n（編號：${leadCode}）` : '';
+      return (data.message || '你好，我想免費領取今日精選名單，麻煩發給我，謝謝。') + extra + code;
+    }
+
+    // ====== 打點：gtag.js 已載入就即時發；未載入（網絡慢 / 用戶極快點擊）就先存本地，之後或下次打開頁面補報 ======
+    const PENDING_KEY = 'econman_pending_events';
+    function gtagReady() { return typeof gtag === 'function' && !!window.google_tag_manager; }
+
+    function track(name, params) {
+      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
+      if (gtagReady()) { try { gtag('event', name, payload); } catch (e) {} return; }
+      // 帶 transaction_id 嘅事件（Google Ads 轉化）：即時推入 gtag 隊列 + 本地暫存雙保險。
+      // 用戶跳去 WhatsApp 後頁面轉入後台、定時器被暫停，但 gtag.js 載入完成嘅回調仍會執行並即時發出；
+      // 之後補發嘅同一 transaction_id 由 Google Ads 自動去重，唔會重複計算
+      if (payload.transaction_id) { try { gtag('event', name, payload); } catch (e) {} }
+      try {
+        const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+        list.push({ name, params: payload, ts: Date.now() });
+        localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(-50)));
+      } catch (e) {
+        try { gtag('event', name, payload); } catch (e2) {}
+      }
+    }
+
+    function flushPendingEvents(force) {
+      if (!gtagReady() && !(force && typeof gtag === 'function')) return;
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) {}
+      if (!list.length) return;
+      try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
+      const cutoff = Date.now() - 7 * 86400000;
+      list.filter(ev => ev && ev.ts > cutoff).forEach(ev => {
+        try { gtag('event', ev.name, Object.assign({}, ev.params, { deferred: 1 })); } catch (e) {}
+      });
+    }
+    ['load', 'pageshow'].forEach(evt => window.addEventListener(evt, flushPendingEvents));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) flushPendingEvents(); });
+    const flushPoll = setInterval(() => { flushPendingEvents(); if (gtagReady()) clearInterval(flushPoll); }, 800);
+    // 30 秒後仍偵測唔到 gtag.js 就緒：直接推入 gtag 隊列，等佢載入後自行發送，避免事件一直積壓
+    setTimeout(() => { clearInterval(flushPoll); flushPendingEvents(true); }, 30000);
+
+    // 宿主唔處理自訂 scheme 時，只係 iframe 失敗；主頁面唔會變成 ERR_UNKNOWN_URL_SCHEME 錯誤頁，兜底面板仍然可用
+    function openInHiddenFrame(url) {
+      const frame = document.createElement('iframe');
+      frame.style.display = 'none';
+      frame.src = url;
+      document.body.appendChild(frame);
+      setTimeout(() => frame.remove(), 3000);
+    }
+
+    const waFallback = document.getElementById('wa-fallback');
+    const waFallbackOpen = document.getElementById('wa-fallback-open');
+    const waCopyNumber = document.getElementById('wa-copy-number');
+    const waCopyMsg = document.getElementById('wa-copy-msg');
+    const waNumberText = document.getElementById('wa-number-text');
+    const waBrowserTip = document.getElementById('wa-browser-tip');
+    let waAttempt = null;
+    let fallbackTimer = 0;
+    let fallbackPayload = { phone: '', message: '' };
+
+    function prepareFallback(urls, message) {
+      fallbackPayload = { phone: urls.phone, message };
+      const hrefByEnv = {
+        ios_browser: urls.universal,
+        ios_webview: urls.scheme,
+        android_browser: ANDROID_INTENT_OK ? urls.intent : urls.universal,
+        android_webview: urls.scheme,
+        desktop: urls.universal
+      };
+      waFallbackOpen.href = hrefByEnv[WA_ENV];
+      waNumberText.textContent = `WhatsApp 號碼：+${urls.phone}`;
+      waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
+    }
+
+    function showFallback() {
+      if (!waAttempt || waAttempt.left || document.hidden) return;
+      waFallback.classList.add('show');
+      waFallback.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      track('wa_fallback_shown', { placement: waAttempt.placement });
+      sendEvent('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+    }
+
+    function hideFallback() {
+      if (!waFallback.classList.contains('show')) return;
+      waFallback.classList.remove('show');
+      waFallback.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function armFallback(delay) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(showFallback, delay);
+    }
+
+    function markLeft() {
+      if (!waAttempt || waAttempt.left) return;
+      waAttempt.left = true;
+      clearTimeout(fallbackTimer);
+      hideFallback();
+      track('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
+      sendEvent('wa_app_opened', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+    }
+
+    // 頁面轉入後台 = WhatsApp 已被喚起
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) markLeft();
+      else redirecting = false;
+    });
+    window.addEventListener('pagehide', () => clearTimeout(fallbackTimer));
+    // 系統確認框（Android 揀 App、iOS「喺 WhatsApp 開啟？」）會令頁面失焦但仍然可見，期間唔好彈兜底
+    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) armFallback(3500); });
+    window.addEventListener('focus', () => {
+      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) armFallback(900);
+    });
+    window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
+
+    // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
+    // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
+    function goWhatsApp(e, locationName) {
+      const anchor = e && e.currentTarget && e.currentTarget.tagName === 'A' ? e.currentTarget : null;
+      if (redirecting) return; // 2 秒內重複點擊：href 仍然係上次嘅正確連結，預設導航照跳
+      redirecting = true;
+      setTimeout(() => { redirecting = false; }, 2000);
+
+      const leadCode = CONFIG.leadEndpoint ? makeLeadCode() : '';
+      const txId = Date.now().toString(36) + '-' + makeLeadCode();
+      const message = buildMessage(leadCode);
+      const urls = buildWhatsAppUrls(message);
+
+      let target = urls.universal, linkType = 'universal';
+      if (WA_ENV === 'ios_webview') { target = urls.scheme; linkType = 'scheme'; }
+      else if (WA_ENV === 'android_browser' && ANDROID_INTENT_OK) { target = urls.intent; linkType = 'intent'; }
+      if (WA_ENV === 'android_webview') linkType = 'iframe';
+
+      if (WA_ENV === 'android_webview') {
+        if (e) e.preventDefault();
+        openInHiddenFrame(urls.scheme);
+      } else if (anchor) {
+        anchor.href = target;
+        if (WA_ENV === 'desktop') { anchor.target = '_blank'; anchor.rel = 'noopener'; }
+      } else if (WA_ENV === 'desktop') {
+        window.open(target, '_blank');
+      } else {
+        window.location.href = target;
+      }
+
+      // ---------- 以下全部喺跳轉已交俾瀏覽器之後先執行 ----------
+      waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false, linkType, txId };
+      try {
+        prepareFallback(urls, message);
+        if (WA_ENV !== 'desktop') armFallback((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
+      } catch (err) {}
+
+      try {
+        sendLead({
+          code: leadCode,
+          gclid: CLICK_IDS.gclid || '',
+          gbraid: CLICK_IDS.gbraid || '',
+          wbraid: CLICK_IDS.wbraid || '',
+          utm_source: CLICK_IDS.utm_source || '',
+          utm_medium: CLICK_IDS.utm_medium || '',
+          utm_campaign: CLICK_IDS.utm_campaign || '',
+          utm_content: CLICK_IDS.utm_content || '',
+          utm_term: CLICK_IDS.utm_term || '',
+          placement_app: CLICK_IDS.placement || '',
+          creative: CLICK_IDS.creative || '',
+          interest: gateAnswers.interest,
+          priority: gateAnswers.priority,
+          variant: currentKey,
+          placement: locationName || 'unknown',
+          wa_env: WA_ENV,
+          number: CONFIG.whatsappNumber,
+          receptionist: CONFIG.receptionist,
+          page: location.origin + location.pathname,
+          ua: UA.slice(0, 300)
+        });
+      } catch (err) {}
+
+      try {
+        if (typeof fbq === 'function') {
+          fbq('track', 'Contact', { content_name: 'WhatsApp', content_category: 'Lead' });
+          fbq('trackCustom', 'WhatsAppClick', { placement: locationName || 'unknown', variant: currentKey, wa_env: WA_ENV });
+        }
+      } catch (err) {}
+      track('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
+      track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
+      sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: gateAnswers.interest, priority: gateAnswers.priority, gtag_ready: gtagReady() });
+    }
+
+    function legacyCopy(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      return ok;
+    }
+
+    function copyText(text, btn, okLabel) {
+      const original = btn.textContent;
+      const done = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
+      // 先試同步方法：部分 WebView 冇 clipboard API，而且 await 之後會失去用戶手勢
+      if (legacyCopy(text)) { done(); return; }
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => {});
+    }
+
+    waFallbackOpen.addEventListener('click', () => {
+      waAttempt = { t: Date.now(), placement: 'fallback', left: false, linkType: 'retry', txId: waAttempt ? waAttempt.txId : '' };
+      track('wa_fallback_click', {});
+      sendEvent('wa_fallback_click', {});
+    });
+    waCopyNumber.addEventListener('click', () => {
+      copyText(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
+      track('wa_copy_number', {});
+      sendEvent('wa_copy_number', {});
+    });
+    waCopyMsg.addEventListener('click', () => {
+      copyText(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
+      track('wa_copy_message', {});
+      sendEvent('wa_copy_message', {});
+    });
+    document.getElementById('wa-fallback-close').addEventListener('click', hideFallback);
+    waFallback.addEventListener('click', e => { if (e.target === waFallback) hideFallback(); });
+
+    document.querySelectorAll('[data-wa]').forEach(btn => {
+      btn.addEventListener('click', () => openLeadGate(btn.dataset.location));
+    });
+
+    gateConfirm.addEventListener('click', e => {
+      if (!gateAnswers.interest || !gateAnswers.priority) { e.preventDefault(); return; }
+      closeLeadGate();
+      goWhatsApp(e, pendingLocation);
+    });
+
+    // Mobile floating CTA: show after hero, hide at final CTA.
+    const floatingWrap = document.getElementById('floating-cta-wrap');
+    const heroSection = document.getElementById('top');
+    const finalCta = document.getElementById('final-cta');
+    let finalVisible = false;
+
+    const finalObserver = new IntersectionObserver(entries => {
+      finalVisible = entries[0] && entries[0].isIntersecting;
+      updateFloatingCTA();
+    }, {threshold:.18});
+    finalObserver.observe(finalCta);
+
+    // 滾動中只讀 scrollY；hero 高度只喺 resize 時讀，避免每次滾動強制排版，並用 rAF 合併同一幀內多次觸發
+    let heroThreshold = Math.max(180, heroSection.offsetHeight * .72);
+    let floatTicking = false;
+    function scheduleFloatingCTA(){
+      if (floatTicking) return;
+      floatTicking = true;
+      requestAnimationFrame(() => { floatTicking = false; updateFloatingCTA(); });
+    }
+
+    function updateFloatingCTA(){
+      const pastHero = window.scrollY > heroThreshold;
+      const show = pastHero && !finalVisible;
+      floatingWrap.classList.toggle('show', show);
+      floatingWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+
+    window.addEventListener('scroll',scheduleFloatingCTA,{passive:true});
+    const refreshHeroThreshold = () => { heroThreshold = Math.max(180, heroSection.offsetHeight * .72); scheduleFloatingCTA(); };
+    window.addEventListener('resize', refreshHeroThreshold, {passive:true});
+    window.addEventListener('load', refreshHeroThreshold, {once:true});
+    updateFloatingCTA();
+
+    // 按鈕離開畫面就暫停動效
+    if ('IntersectionObserver' in window) {
+      const ctaObserver = new IntersectionObserver(entries => {
+        entries.forEach(en => en.target.classList.toggle('cta-idle', !en.isIntersecting));
+      });
+      [heroCta, finalButton].forEach(btn => ctaObserver.observe(btn));
+    }
+  </script>
+
+</body>
+</html>
