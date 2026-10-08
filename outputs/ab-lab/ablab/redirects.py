@@ -1559,3 +1559,47 @@ def strip_lead_gate(text):
     if switch_at >= 0 and text[switch_at:][:400] != updated[updated.find('switch (WA_ENV)'):][:400]:
         raise ValueError('跳转代码发生了变化，已取消')
     return updated
+
+
+_DIRECT_MODE = re.compile(r"(directMode\s*:\s*)(['\"])(.*?)\2")
+
+
+def read_direct_mode(text):
+    """ABC skips the popup. CBA, blank, and every other value bring the choices back."""
+    if not isinstance(text, str) or not re.search(r'directMode\s*:', text):
+        return None
+    matches = list(_DIRECT_MODE.finditer(text))
+    if not matches:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+    if any(match.group(3).strip().upper() == 'ABC' for match in matches):
+        return 'ABC'
+    return 'CBA'
+
+
+def set_direct_mode(text, mode):
+    """Write ABC or CBA into the page's own switch. Nothing else moves."""
+    if mode not in ('ABC', 'CBA'):
+        raise ValueError('开关只能是 ABC 或 CBA')
+    if not re.search(r'directMode\s*:', text):
+        return None
+    if not _DIRECT_MODE.search(text):
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+
+    def repl(match):
+        if match.group(3) == mode:
+            return match.group(0)
+        return f"{match.group(1)}{match.group(2)}{mode}{match.group(2)}"
+
+    updated = _DIRECT_MODE.sub(repl, text)
+
+    def blanked(value):
+        return _DIRECT_MODE.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(2)}", value)
+
+    if blanked(text) != blanked(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    for name in ('goWhatsApp', 'buildWhatsAppUrls', 'prepareFallback', 'openInHiddenFrame'):
+        old = _js_function_span(text, name)
+        new = _js_function_span(updated, name)
+        if (old is None) != (new is None) or (old and text[old[0]:old[1]] != updated[new[0]:new[1]]):
+            raise ValueError('跳转代码发生了变化，已取消')
+    return updated

@@ -467,22 +467,60 @@ class Store:
         return self._commit_b_version(base, version, changed, expected_published, commit_guard, {'slot':'B', 'version': version['id'] if version else base['id'], 'reception': name, 'redirects_changed': changed})
 
     def publish_direct_entry(self, base, expected_published, commit_guard=None):
-        """Publish the current B page with the two-step gate removed."""
+        """Publish the current B page with the popup skipped."""
         from .archives import MAX_TOTAL, read_source, source_files, validate_file, write_bundle
-        from .redirects import strip_lead_gate
+        from .redirects import read_direct_mode, set_direct_mode, strip_lead_gate
         if base['slot'] != 'B':
             raise KeyError('B 版本不存在')
-        files, total, edited, digest = source_files(self.pages / base['id']), 0, [], hashlib.sha256()
-        saw_gate, saw_pool = False, False
+        files = source_files(self.pages / base['id'])
+        decoded = []
+        saw_direct = False
+        index_mode = None
+        fallback_mode = None
         for path, (file, _) in sorted(files.items()):
             data = read_source(file, path)
+            bom, text = False, None
             if Path(path).suffix.lower() in ('.html', '.htm'):
                 bom = data.startswith(b'\xef\xbb\xbf')
                 raw = data[3:] if bom else data
                 try:
                     text = raw.decode('utf-8')
                 except UnicodeError:
-                    text = ''
+                    text = None
+                mode = read_direct_mode(text) if text is not None else None
+                if mode:
+                    saw_direct = True
+                    if Path(path).name.lower() in ('index.html', 'index.htm') and index_mode is None:
+                        index_mode = mode
+                    elif fallback_mode is None:
+                        fallback_mode = mode
+            decoded.append((path, data, bom, text))
+        if saw_direct:
+            target = 'CBA' if (index_mode or fallback_mode) == 'ABC' else 'ABC'
+            total, edited, digest = 0, [], hashlib.sha256()
+            changed_any = False
+            for path, data, bom, text in decoded:
+                if text is not None and read_direct_mode(text):
+                    rewritten = set_direct_mode(text, target)
+                    if rewritten != text:
+                        changed_any = True
+                        payload = rewritten.encode('utf-8')
+                        data = (b'\xef\xbb\xbf' + payload) if bom else payload
+                validate_file(path, data)
+                total += len(data)
+                if total > MAX_TOTAL:
+                    raise ValueError('源码目录超过总大小限制')
+                edited.append((path, data))
+                digest.update(path.encode() + b'\0' + str(len(data)).encode() + b'\0' + data)
+            if not changed_any:
+                raise ValueError('开关没有变化，没有改动')
+            version = write_bundle(edited, base['name'], self.pages, digest.hexdigest())
+            committed, changed = self._commit_b_version(base, version, 1, expected_published, commit_guard, {'slot':'B', 'version': version['id'], 'direct_entry': True, 'redirects_changed': 1})
+            return committed, changed, target.lower()
+        total, edited, digest = 0, [], hashlib.sha256()
+        saw_gate, saw_pool = False, False
+        for path, data, bom, text in decoded:
+            if text is not None:
                 has_gate = bool(re.search(r'\bid\s*=\s*(["\'])lead-gate\1', text))
                 if has_gate:
                     saw_gate = True
@@ -502,7 +540,37 @@ class Store:
                 raise ValueError('两步问卷已经拿掉，进线语已经是随机的。')
             raise ValueError('当前 B 页没有两步问卷')
         version = write_bundle(edited, base['name'], self.pages, digest.hexdigest())
-        return self._commit_b_version(base, version, 1, expected_published, commit_guard, {'slot':'B', 'version': version['id'], 'direct_entry': True, 'redirects_changed': 1})
+        committed, changed = self._commit_b_version(base, version, 1, expected_published, commit_guard, {'slot':'B', 'version': version['id'], 'direct_entry': True, 'redirects_changed': 1})
+        return committed, changed, 'gate'
+
+    def published_direct_mode(self):
+        """ABC, CBA, or None for the B page visitors are being served."""
+        from .redirects import read_direct_mode
+        version_id = self.slots()['B']
+        if not version_id:
+            return None
+        root = self.pages / version_id
+        if not root.is_dir():
+            return None
+        index_mode = None
+        fallback = None
+        for path in sorted(root.rglob('*')):
+            if not path.is_file() or path.suffix.lower() not in ('.html', '.htm'):
+                continue
+            try:
+                data = path.read_bytes()
+                if data.startswith(b'\xef\xbb\xbf'):
+                    data = data[3:]
+                mode = read_direct_mode(data.decode('utf-8'))
+            except (OSError, UnicodeError, ValueError):
+                continue
+            if not mode:
+                continue
+            if path.name.lower() in ('index.html', 'index.htm') and index_mode is None:
+                index_mode = mode
+            elif fallback is None:
+                fallback = mode
+        return index_mode or fallback
 
     def apply_whatsapp_number(self, base, number, occurrence_ids, expected_published, commit_guard=None):
         from .redirects import replace_bundle
