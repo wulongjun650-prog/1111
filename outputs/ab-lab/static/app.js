@@ -34,6 +34,7 @@ let siteEventsSite = null;
 let logPage = 1;
 let logPages = 1;
 let activeTab = 'overview';
+let weaponSite = null;
 const dashboard = createDashboard(api, () => seesAll(account) ? '所有域名' : '我的域名');
 const sourceEditor = createSourceEditor({api, on, element, confirmAction, getSite:() => state?.site,
   onSaved:async result => {toast(`${result.version.slot} 源码已保存并发布，旧版本已保留。`); await refreshState();},
@@ -241,7 +242,10 @@ function updateConfigControls() {
   $('#protection-toggle').disabled = locked || !state || configBusy;
   $('#hero-switch').disabled = locked || !state || configBusy;
   applyTheme(themeFor(state?.config));
-  if (!state) return;
+  if (!state) {
+    paintSecretWeapon(null);
+    return;
+  }
   const angel = themeFor(state.config) === 'angel';
   const forced = state.config.routing !== 'RULES';
   $('#hero-title').textContent = `放行配置 · 内容 ${angel ? 'A' : 'B'}`;
@@ -272,7 +276,7 @@ function updateConfigControls() {
   $('#content-mode').value = state.config.content_mode;
   $('#distribution').value = state.config.distribution;
   $('#distribution').disabled = state.config.content_mode !== 'LINK';
-  paintSecretWeapon(state.direct_mode);
+  if (weaponSite !== state.site?.id) paintSecretWeapon(null);
 }
 
 function paintSecretWeapon(mode) {
@@ -714,7 +718,8 @@ on($('#secret-weapon'), 'click', event => busy(event.currentTarget, async () => 
   const result = await api('/api/b-redirects/direct-entry', { method: 'POST', body: { version_id: state.slots.B, expected_published: state.slots.B } });
   const cache = result.cloudflare?.ok ? ' Cloudflare 缓存已清除。' : result.cloudflare ? ' 页面已发布，但 Cloudflare 缓存没清掉。' : '';
   const done = result.kind === 'abc' ? '已填上 ABC，弹窗已去掉。' : result.kind === 'cba' ? '已填上 CBA，选择框已换回。' : '两步问卷已拿掉，进线语改为随机。';
-  paintSecretWeapon(result.kind === 'abc' ? 'ABC' : result.kind === 'cba' ? 'CBA' : state.direct_mode);
+  weaponSite = state.site?.id || null;
+  paintSecretWeapon(result.kind === 'abc' ? 'ABC' : result.kind === 'cba' ? 'CBA' : null);
   toast(`${done}${cache}`, Boolean(result.cloudflare && !result.cloudflare.ok));
   await refreshState();
 }));
