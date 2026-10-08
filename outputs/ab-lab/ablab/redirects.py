@@ -310,7 +310,7 @@ def _whatsapp_phone_at(url):
             if found >= 0:
                 return found, found + len(segment), segment
     if parts.scheme.lower() == 'whatsapp' or host in ('wa.me', 'whatsapp.com') or host.endswith('.whatsapp.com'):
-        match = re.search(r'(?i)(?:^|[?&])phone=(\d{8,15})(?=&|#|$)', url)
+        match = re.search(r'(?i)(?:^|[?&])phone=\+?(\d{8,15})(?=&|#|$)', url)
         if match:
             return match.start(1), match.end(1), match.group(1)
     return None

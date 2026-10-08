@@ -382,6 +382,24 @@ function goWhatsApp(e, locationName) {
     assert 'chat.whatsapp.com/InviteCode' in rewritten
 
 
+def test_plus_prefixed_phone_argument_is_a_number(tmp_path):
+    page = ('<a href="https://api.whatsapp.com/send?phone=+85257980601&amp;text=hi">去</a>'
+            '<a href="https://wa.me/85257980601">备</a>')
+    root, pages = bundle(tmp_path, page)
+    occurrences, warnings = redirects.scan_bundle(root, 'original')
+    assert [(item['kind'], item['url']) for item in occurrences] == [
+        ('whatsapp_number', '85257980601'),
+        ('whatsapp_number', '85257980601')]
+    assert not warnings
+    version, count = redirects.replace_bundle(root, 'original', [item['id'] for item in occurrences],
+                                              '85211112222', pages, 'changed.zip')
+    assert count == 2
+    rewritten = (pages / version['id'] / 'index.html').read_text(encoding='utf-8')
+    assert '85257980601' not in rewritten
+    assert 'phone=+85211112222&amp;text=hi' in rewritten
+    assert 'href="https://wa.me/85211112222"' in rewritten
+
+
 def test_repeated_targets_that_disagree_stay_a_warning(tmp_path):
     source = ('let target = "https://one.example/";\n'
               'target = "https://two.example/";\n'
