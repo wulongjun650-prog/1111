@@ -364,8 +364,9 @@
       leadEndpoint: '',
       // 跳轉事件流（分流系統 / 自家伺服器接收）：點擊、已喚起、兜底顯示等每一步都會以 sendBeacon 送出一條 text/plain JSON；留空則唔送
       eventEndpoint: '',
-      // 填 'ABC' = 唔彈窗，按領取按鈕直接跳 WhatsApp（同彈窗綠色按鈕一樣由 <a> 預設導航跳轉）；留空 = 照常彈窗
-      directMode: '',
+      // 'ABC' = 取消選擇框，按領取按鈕直接跳 WhatsApp（同彈窗綠色按鈕一樣由 <a> 預設導航跳轉）
+      // 'CBA' = 換回選擇框（填其他值或留空都當 'CBA'）
+      directMode: 'CBA',
       // 進線語入面嘅日期，每日更新數據時一併改
       listDate: '10月9日'
     };
