@@ -1,6 +1,13 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from ablab import web
 from ablab.web import create_admin, create_target
+
+
+@pytest.fixture(autouse=True)
+def hong_kong(monkeypatch):
+    monkeypatch.setattr(web, 'geo_country', lambda ip: 'HK')
 
 
 def clients(tmp_path):
@@ -24,6 +31,7 @@ def test_each_request_keeps_the_raw_ua_query_and_client_hints(tmp_path):
         'CF-IPCity': 'Hong%20Kong',
     })
     assert response.status_code == 503
+    web.flush_access_log()
     report = admin.get('/api/access-report').text
     assert response.headers['content-type'].startswith('text/html')
     assert report.startswith('访问日志周报')
@@ -52,6 +60,7 @@ def test_ios_webview_without_safari_is_its_own_bucket(tmp_path):
     target.get('/?placement=reels', headers={'User-Agent': webview})
     target.get('/', headers={'User-Agent': webview + ' Safari/604.1'})
     target.get('/app?gclid=1', headers={'User-Agent': 'Mozilla/5.0 (Linux; Android 10; wv) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36'})
+    web.flush_access_log()
     report = admin.get('/api/access-report').text
     assert f'1\t{webview}' in report
     assert '\t0\t1\t0\t1\t1' in report
@@ -66,6 +75,7 @@ def test_beacon_stores_the_json_as_received_and_ignores_origin(tmp_path):
     assert posted.text == ''
     other = target.post('/api/collect', content='not-json', headers={'Origin': 'https://other.example', 'Content-Type': 'text/plain'})
     assert other.status_code == 204
+    web.flush_access_log()
     report = admin.get('/api/access-report').text
     assert body in report
     assert 'not-json' in report
@@ -85,8 +95,22 @@ def test_assigned_whatsapp_number_is_recorded_with_the_request(tmp_path):
     assert admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': number['id'], 'weight': 1}]}).status_code == 200
     opened = target.get('/')
     assert opened.status_code == 200
+    web.flush_access_log()
     assert '85211112222' in opened.text
     with admin.app.state.store.connect() as db:
-        row = db.execute('SELECT wa_number, status FROM access_log ORDER BY id DESC LIMIT 1').fetchone()
+        row = db.execute('SELECT wa_number, status, country FROM access_log ORDER BY id DESC LIMIT 1').fetchone()
     assert row['wa_number'] == '85211112222'
     assert row['status'] == 200
+    assert row['country'] == 'HK'
+
+
+def test_visitors_outside_hong_kong_are_not_stored(tmp_path, monkeypatch):
+    monkeypatch.setattr(web, 'geo_country', lambda ip: 'US')
+    admin, target = clients(tmp_path)
+    assert target.get('/').status_code == 503
+    posted = target.post('/api/collect', content='{"event":"whatsapp_click"}', headers={'Content-Type': 'text/plain'})
+    assert posted.status_code == 204
+    web.flush_access_log()
+    with admin.app.state.store.connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM access_log').fetchone()[0] == 0
+        assert db.execute('SELECT COUNT(*) FROM client_events').fetchone()[0] == 0

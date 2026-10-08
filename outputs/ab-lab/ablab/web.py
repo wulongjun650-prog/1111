@@ -9,6 +9,7 @@ import logging
 import mimetypes
 import os
 from pathlib import Path
+import queue
 import re
 import secrets
 import threading
@@ -1324,29 +1325,75 @@ def _clip(value, limit):
     return (value or '')[:limit]
 
 
-def record_visit_access(store, request, status, started, wa_number, country):
-    """Persist one visitor request. Never let a log failure change the response."""
+def _request_country(request, country):
+    if not getattr(request.state, 'access_country_ready', False):
+        ip = getattr(request.state, 'visitor_ip', request.client.host if request.client else '')
+        country = geo_country(ip) if ip else None
+    return country
+
+
+_access_jobs = queue.Queue(maxsize=2000)
+_access_writer_started = False
+_access_writer_lock = threading.Lock()
+
+
+def _access_writer():
+    while True:
+        job = _access_jobs.get()
+        try:
+            job()
+        except Exception:
+            LOGGER.error('access log write failed')
+        finally:
+            _access_jobs.task_done()
+
+
+def _ensure_access_writer():
+    global _access_writer_started
+    with _access_writer_lock:
+        if not _access_writer_started:
+            threading.Thread(target=_access_writer, name='access-log', daemon=True).start()
+            _access_writer_started = True
+
+
+def flush_access_log():
+    """Wait until queued visitor rows are stored. Used by tests."""
+    _access_jobs.join()
+
+
+def _enqueue_access(job):
+    _ensure_access_writer()
     try:
-        if not getattr(request.state, 'access_country_ready', False):
-            ip = getattr(request.state, 'visitor_ip', request.client.host if request.client else '')
-            country = geo_country(ip) if ip else None
+        _access_jobs.put_nowait(job)
+    except queue.Full:
+        LOGGER.error('access log queue full')
+
+
+def record_visit_access(store, request, status, started, wa_number, country):
+    """Queue one Hong Kong visitor request. The page is not waiting on this write."""
+    try:
+        country = _request_country(request, country)
+        if country != 'HK':
+            return
         city = ''.join(ch for ch in unquote(request.headers.get('cf-ipcity', '')) if ch.isprintable())
-        store.record_access(
-            ua=_clip(request.headers.get('user-agent', ''), 2048),
-            ch_ua=_clip(request.headers.get('sec-ch-ua', ''), 300),
-            ch_platform=_clip(request.headers.get('sec-ch-ua-platform', ''), 80),
-            ch_platform_version=_clip(request.headers.get('sec-ch-ua-platform-version', ''), 40),
-            ch_mobile=_clip(request.headers.get('sec-ch-ua-mobile', ''), 16),
-            referer=_clip(request.headers.get('referer', ''), 2048),
-            query=_clip(request.url.query, 4096),
-            wa_number=_clip(wa_number, 32),
-            cf_cache_status=_clip(request.headers.get('cf-cache-status', ''), 32),
-            country=country,
-            city=_clip(city, 80),
-            status=int(status),
-            duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
-            path=_clip(request.url.path, 512),
+        elapsed = max(0, int((time.perf_counter() - started) * 1000))
+        fields = (
+            _clip(request.headers.get('user-agent', ''), 2048),
+            _clip(request.headers.get('sec-ch-ua', ''), 300),
+            _clip(request.headers.get('sec-ch-ua-platform', ''), 80),
+            _clip(request.headers.get('sec-ch-ua-platform-version', ''), 40),
+            _clip(request.headers.get('sec-ch-ua-mobile', ''), 16),
+            _clip(request.headers.get('referer', ''), 2048),
+            _clip(request.url.query, 4096),
+            _clip(wa_number, 32),
+            _clip(request.headers.get('cf-cache-status', ''), 32),
+            country,
+            _clip(city, 80),
+            int(status),
+            elapsed,
+            _clip(request.url.path, 512),
         )
+        _enqueue_access(lambda: store.record_access(*fields))
     except Exception:
         LOGGER.error('access log write failed')
 
@@ -1388,8 +1435,14 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
             raw = await request.body()
             if len(raw) > 8192:
                 raise HTTPException(413, '请求体超过大小限制')
-            # Store the body unchanged. text/plain JSON is not parsed or checked.
-            store.record_client_event(raw.decode('utf-8', 'replace'))
+            ip = getattr(request.state, 'visitor_ip', request.client.host if request.client else '')
+            country = geo_country(ip) if ip else None
+            request.state.access_country = country
+            request.state.access_country_ready = True
+            # Every site uses this same path. Only Hong Kong is kept, unchanged.
+            if country == 'HK':
+                text = raw.decode('utf-8', 'replace')
+                _enqueue_access(lambda body=text: store.record_client_event(body))
             return Response(status_code=204)
         except HTTPException as error:
             status = error.status_code
