@@ -1,4 +1,6 @@
 import io
+import json
+import subprocess
 import time
 import zipfile
 import pytest
@@ -147,15 +149,19 @@ def test_number_split_assigns_on_open_and_leaves_jump_links(apps):
     assert first.status_code == 200
     assert first.cookies.get('ab_wa') and first.cookies.get('ab_split') is None
     assert first.text.count('本次由助理Vivian 關詠怡 接待') == 1
-    assert first.text.count('Vivian') == 1 and 'Vivian 關詠怡本次由助理' not in first.text
-    assert '85211112222' in first.text and '85264150954' not in first.text and '85233334444' not in first.text
+    assert 'Vivian 關詠怡本次由助理' not in first.text
+    body, _, picker = first.text.partition('<script id="ab-number-split">')
+    assert picker.startswith('(function()') and '85211112222' in body and '85211112222' in picker
+    assert '85264150954' not in first.text and '85233334444' not in first.text
     assert 'https://old.example/landing' in first.text and 'youtube.com' in first.text
     assert '你好，我想免費領取今日潛力黑馬名單' in first.text
     assert published_page(admin) == original
     admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': chloe['id'], 'weight': 1}]})
     sticky = target.get('/')
-    assert '85211112222' in sticky.text and '本次由助理Vivian 關詠怡 接待' in sticky.text
-    assert '85233334444' not in sticky.text and 'https://old.example/landing' in sticky.text
+    body, _, picker = sticky.text.partition('<script id="ab-number-split">')
+    assert '85211112222' in body and '本次由助理Vivian 關詠怡 接待' in body
+    assert '85233334444' not in body and '85233334444' in picker
+    assert 'https://old.example/landing' in sticky.text
     fresh = TestClient(target.app, base_url='http://127.0.0.1:8766', client=('127.0.0.1', 50002))
     other = fresh.get('/')
     assert other.text.count('本次由助理Chloe 陳 接待') == 1
@@ -165,7 +171,7 @@ def test_number_split_assigns_on_open_and_leaves_jump_links(apps):
     admin.put('/api/b-redirects/numbers/split', json={'enabled': False, 'mode': 'random', 'members': [{'number_id': chloe['id'], 'weight': 1}]})
     plain = fresh.get('/')
     assert '本次由助理 Chloe 接待' in plain.text and '85264150954' in plain.text
-    assert '85233334444' not in plain.text
+    assert '85233334444' not in plain.text and 'ab-number-split' not in plain.text
     preset = admin.post('/api/b-redirects/presets', json={'urls': ['https://split.example/landing'], 'note': ''})
     assert preset.status_code == 200, preset.text
     preset_id = preset.json()['presets'][0]['id']
@@ -183,6 +189,7 @@ def test_number_split_assigns_on_open_and_leaves_jump_links(apps):
     links_only = TestClient(target.app, base_url='http://127.0.0.1:8766', client=('127.0.0.1', 50004)).get('/')
     assert 'https://split.example/landing' in links_only.text and 'old.example' not in links_only.text
     assert '本次由助理 Chloe 接待' in links_only.text and '85211112222' not in links_only.text
+    assert 'ab-number-split' not in links_only.text
     assert admin.get('/api/b-redirects').json()['split']['enabled'] is True
 
 
@@ -218,10 +225,124 @@ function goWhatsApp() {
     assert '85211112222' in first.text and '85265492837' not in first.text
     assert 'youtube.com' in first.text and '你好，我想免費領取今日潛力黑馬名單' in first.text
     assert 'https://wa.me/' in first.text
+    assert first.text.index('function goWhatsApp()') < first.text.index('id="ab-number-split"')
     admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': other['id'], 'weight': 1}]})
     sticky = target.get('/')
-    assert '85211112222' in sticky.text and "receptionist: 'Vivian 關詠怡'" in sticky.text
-    assert '85233334444' not in sticky.text
+    body, _, picker = sticky.text.partition('<script id="ab-number-split">')
+    assert '85211112222' in body and "receptionist: 'Vivian 關詠怡'" in body
+    assert 'function goWhatsApp()' in body and 'window.location.href = urls.universal' in body
+    assert '85233334444' not in body and '85233334444' in picker
+
+
+def _run_picker(script, storage, random_value, href='https://wa.me/85265454191?text=hi'):
+    program = r'''
+const fs = require("fs");
+const vm = require("vm");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const storage = input.storage;
+const links = [{
+  href: input.href,
+  getAttribute() { return this.href; },
+  setAttribute(_name, value) { this.href = value; }
+}];
+const reception = { textContent: "baked" };
+const math = Object.create(Math);
+math.random = () => input.random;
+const body = input.script.replace(/^<script id="ab-number-split">/, "").replace(/<\/script>$/, "");
+const context = vm.createContext({
+  localStorage: {
+    getItem(key) { return Object.prototype.hasOwnProperty.call(storage, key) ? storage[key] : null; },
+    setItem(key, value) { storage[key] = String(value); }
+  },
+  document: {
+    getElementById(id) { return id === "reception-text" ? reception : null; },
+    querySelectorAll() { return links; }
+  },
+  CONFIG: { whatsappNumber: "85265454191", receptionist: "baked" },
+  Math: math
+});
+vm.runInContext(body, context);
+process.stdout.write(JSON.stringify({
+  phone: context.CONFIG.whatsappNumber,
+  name: context.CONFIG.receptionist,
+  href: links[0].href,
+  reception: reception.textContent,
+  storage
+}));
+'''
+    completed = subprocess.run(
+        ['node', '-e', program],
+        input=json.dumps({'script': script, 'storage': storage, 'random': random_value, 'href': href}, ensure_ascii=False).encode(),
+        capture_output=True, check=True,
+    )
+    return json.loads(completed.stdout)
+
+
+def _picker_script(text):
+    start = text.index('<script id="ab-number-split">')
+    end = text.index('</script>', start) + len('</script>')
+    return text[start:end]
+
+
+def test_shared_split_script_picks_a_pool_number_for_each_phone(apps):
+    admin, target = apps
+    page = '''<!doctype html><body>
+<div id="reception-text">本次由助理 Chloe 接待</div>
+<a class="gate-confirm" href="https://wa.me/85265454191?text=hi">go</a>
+<script>
+const CONFIG = { whatsappNumber: "85265454191", receptionist: "Chloe" };
+function buildWhatsAppUrls() {
+  const phone = String(CONFIG.whatsappNumber || "").replace(/\\D/g, "");
+  return { phone: phone, universal: "https://wa.me/" + phone + "?text=x" };
+}
+function goWhatsApp() {
+  const urls = buildWhatsAppUrls();
+  return urls.universal;
+}
+</script>
+</body>'''
+    upload(admin, 'B', page)
+    numbers = []
+    for phone, name in (('85265454191', 'Vivian 關詠怡'), ('85265459942', 'Nicole'), ('85265445264', 'Emma')):
+        numbers.append(admin.post('/api/b-redirects/numbers', json={'phones': [phone], 'note': '', 'display_name': name}).json()['numbers'][0])
+    saved = admin.put('/api/b-redirects/numbers/split', json={
+        'enabled': True, 'mode': 'random',
+        'members': [{'number_id': item['id'], 'weight': 1} for item in numbers],
+    })
+    assert saved.status_code == 200, saved.text
+    assert 'ab-number-split' not in published_page(admin)
+    first = target.get('/')
+    second = TestClient(target.app, base_url='http://127.0.0.1:8766', client=('127.0.0.1', 50008)).get('/')
+    script = _picker_script(first.text)
+    assert script == _picker_script(second.text)
+    for phone in ('85265454191', '85265459942', '85265445264'):
+        assert phone in script
+    before = first.text.split('<script id="ab-number-split">', 1)[0]
+    assert 'function goWhatsApp()' in before and 'return urls.universal' in before
+    low = _run_picker(script, {}, 0)
+    high = _run_picker(script, {}, 0.999)
+    assert low['phone'] == '85265454191' and low['href'] == 'https://wa.me/85265454191?text=hi'
+    assert high['phone'] == '85265445264' and high['href'] == 'https://wa.me/85265445264?text=hi'
+    assert low['name'] == 'Vivian 關詠怡'
+    assert low['reception'] == '本次由助理Vivian 關詠怡 接待'
+    kept = _run_picker(script, {'ab_wa_pick': '85265459942'}, 0)
+    assert kept['phone'] == '85265459942' and kept['href'] == 'https://wa.me/85265459942?text=hi'
+    assert kept['reception'] == '本次由助理Nicole 接待'
+    stale = _run_picker(script, {'ab_wa_pick': '85200000000'}, 0.999)
+    assert stale['phone'] == '85265445264' and stale['storage']['ab_wa_pick'] == '85265445264'
+    weighted = admin.put('/api/b-redirects/numbers/split', json={
+        'enabled': True, 'mode': 'weighted',
+        'members': [
+            {'number_id': numbers[0]['id'], 'weight': 1},
+            {'number_id': numbers[2]['id'], 'weight': 9},
+        ],
+    })
+    assert weighted.status_code == 200, weighted.text
+    weighted_script = _picker_script(target.get('/').text)
+    assert '"mode":"weighted"' in weighted_script
+    assert '85265459942' not in weighted_script
+    assert _run_picker(weighted_script, {}, 0)['phone'] == '85265454191'
+    assert _run_picker(weighted_script, {}, 0.95)['phone'] == '85265445264'
 
 
 def test_b_split_rewrites_the_page_before_it_is_sent(apps):
