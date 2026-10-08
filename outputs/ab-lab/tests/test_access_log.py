@@ -107,6 +107,46 @@ def test_assigned_whatsapp_number_is_recorded_with_the_request(tmp_path):
     assert row['country'] == 'HK'
 
 
+def test_analysis_panel_combines_every_domain(tmp_path):
+    admin, target = clients(tmp_path)
+    one = admin.post('/api/sites', json={'domain': 'one.example.com'}).json()['site']['id']
+    two = admin.post('/api/sites', json={'domain': 'two.example.com'}).json()['site']['id']
+    opened = target.get('/?gclid=from-default', headers={'User-Agent': 'HK-Default'})
+    assert opened.status_code == 503
+    assert '数据深度分析' not in opened.text
+    posted = target.post('/api/collect', content='{"event":"whatsapp_click","number":"85200000000"}', headers={'Content-Type': 'text/plain'})
+    assert posted.status_code == 204
+    web.flush_access_log()
+    for site_id, ua, body in ((one, 'HK-One', '{"event":"from-one"}'), (two, 'HK-Two', '{"event":"from-two"}')):
+        store = admin.app.state.registry.store(site_id)
+        store.record_access(ua, '', '', '"14.0.0"', '?1', 'https://ads.example', 'placement=feed', '85211112222', 'MISS', 'HK', 'Hong Kong', 200, 3, '/')
+        store.record_client_event(body)
+    page = admin.get('/')
+    assert 'data-tab="analysis"' in page.text
+    assert '数据深度分析' in page.text
+    assert page.text.index('id="panel-analysis"') < page.text.index('id="panel-logs"')
+    data = admin.get('/api/analysis?days=7')
+    assert data.status_code == 200
+    payload = data.json()
+    domains = {item['domain'] for item in payload['requests']['items']}
+    assert domains == {'本地站点', 'one.example.com', 'two.example.com'}
+    assert payload['requests']['total'] >= 3
+    one_row = next(item for item in payload['requests']['items'] if item['domain'] == 'one.example.com')
+    assert one_row['ua'] == 'HK-One'
+    assert one_row['ch_platform_version'] == '"14.0.0"'
+    assert one_row['query'] == 'placement=feed'
+    assert one_row['wa_number'] == '85211112222'
+    bodies = {item['domain']: item['body'] for item in payload['events']['items']}
+    assert bodies['one.example.com'] == '{"event":"from-one"}'
+    assert bodies['two.example.com'] == '{"event":"from-two"}'
+    assert '{"event":"whatsapp_click","number":"85200000000"}' in bodies['本地站点']
+    report = admin.get('/api/analysis/report?days=7')
+    assert report.headers['content-type'].startswith('text/plain')
+    assert '===== one.example.com =====' in report.text
+    assert '===== two.example.com =====' in report.text
+    assert 'HK-One' in report.text and 'HK-Two' in report.text
+
+
 def test_visitors_outside_hong_kong_are_not_stored(tmp_path, monkeypatch):
     monkeypatch.setattr(web, 'geo_country', lambda ip: 'US')
     admin, target = clients(tmp_path)

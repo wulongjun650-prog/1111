@@ -1123,6 +1123,52 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 
+    def analysis_sites(request):
+        account = principal(request)
+        owner = None if sees_everything(account) else account['id']
+        return registry.list(owner)
+
+    def analysis_domain(site):
+        return site.get('domain') or '本地站点'
+
+    @app.get('/api/analysis')
+    def analysis(request: Request, days: int = Query(default=7, ge=1, le=90)):
+        """Every domain this account can see, in one place. Hong Kong rows only."""
+        since = time.time() - days * 86400
+        sites = analysis_sites(request)
+        requests, events = [], []
+        request_total = event_total = 0
+        for site in sites:
+            store = registry.store(site['id'])
+            access_count, access_rows = store.recent_access(since, 200)
+            event_count, event_rows = store.recent_client_events(since, 200)
+            request_total += access_count
+            event_total += event_count
+            domain = analysis_domain(site)
+            for row in access_rows:
+                row['domain'] = domain
+                requests.append(row)
+            for row in event_rows:
+                row['domain'] = domain
+                events.append(row)
+        requests.sort(key=lambda row: row['created'], reverse=True)
+        events.sort(key=lambda row: row['created'], reverse=True)
+        return {
+            'days': days,
+            'domains': len(sites),
+            'requests': {'total': request_total, 'items': requests[:200]},
+            'events': {'total': event_total, 'items': events[:200]},
+        }
+
+    @app.get('/api/analysis/report')
+    def analysis_report(request: Request, days: int = Query(default=7, ge=1, le=90)):
+        parts = []
+        for site in analysis_sites(request):
+            text = registry.store(site['id']).access_report(days, 'HK')
+            parts.append(f'===== {analysis_domain(site)} =====\n{text}')
+        body = '\n'.join(parts) if parts else '没有可查看的域名。\n'
+        return Response(body, media_type='text/plain; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="analysis-report.txt"'})
+
     app.include_router(routes, prefix='/api/sites/{site_id}')
     app.include_router(routes, prefix='/api')
     return app

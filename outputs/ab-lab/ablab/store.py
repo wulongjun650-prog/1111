@@ -844,3 +844,16 @@ class Store:
             stamp = datetime.fromtimestamp(row['created'], timezone(timedelta(hours=8))).isoformat(timespec='seconds')
             lines.append(f'{stamp}\t{row["body"]}')
         return '\n'.join(lines) + '\n'
+
+    def recent_access(self, since, limit):
+        with self.connect() as db:
+            total = db.execute('SELECT COUNT(*) FROM access_log WHERE created>=?', (since,)).fetchone()[0]
+            rows = db.execute('''SELECT created,ua,ch_ua,ch_platform,ch_platform_version,ch_mobile,referer,query,wa_number,cf_cache_status,country,city,status,duration_ms,path
+                FROM access_log WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?''', (since, limit)).fetchall()
+        return total, [dict(row) for row in rows]
+
+    def recent_client_events(self, since, limit):
+        with self.connect() as db:
+            total = db.execute('SELECT COUNT(*) FROM client_events WHERE created>=?', (since,)).fetchone()[0]
+            rows = db.execute('SELECT created, body FROM client_events WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?', (since, limit)).fetchall()
+        return total, [dict(row) for row in rows]
