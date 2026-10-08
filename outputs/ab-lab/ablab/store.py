@@ -142,40 +142,47 @@ class Store:
             raise ValueError('版本不存在或槽位不符')
         return target
 
-    def delete_version(self, version_id):
-        """Hard-delete one unpublished B version, its files, and a stale active-link row."""
+    def delete_version(self, version_id, slot='B'):
+        """Hard-delete one unpublished A or B version and its files."""
+        if slot not in ('A', 'B'):
+            raise ValueError('只能删除未发布的 A 或 B 版本')
         target = self._version_directory(version_id)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             version = db.execute('SELECT id, slot, name FROM versions WHERE id=?', (version_id,)).fetchone()
-            if not version or version['slot'] != 'B':
-                raise ValueError('只能删除未发布的 B 版本')
-            published = db.execute("SELECT version_id FROM slots WHERE slot='B'").fetchone()[0]
+            if not version or version['slot'] != slot:
+                raise ValueError(f'只能删除未发布的 {slot} 版本')
+            published = db.execute('SELECT version_id FROM slots WHERE slot=?', (slot,)).fetchone()[0]
             if published == version_id:
-                raise ValueError('不能删除当前发布的 B 版本')
+                raise ValueError(f'不能删除当前发布的 {slot} 版本')
             active = db.execute('SELECT version_id FROM redirect_active WHERE id=1').fetchone()
             cleared_active = bool(active and active['version_id'] == version_id)
             if cleared_active:
                 db.execute('DELETE FROM redirect_active WHERE id=1')
-            if not db.execute('DELETE FROM versions WHERE id=? AND slot=?', (version_id, 'B')).rowcount:
-                raise ValueError('只能删除未发布的 B 版本')
-            self._audit(db, 'b_version_deleted', {'version': version_id, 'name': version['name'], 'cleared_active': cleared_active})
+            if not db.execute('DELETE FROM versions WHERE id=? AND slot=?', (version_id, slot)).rowcount:
+                raise ValueError(f'只能删除未发布的 {slot} 版本')
+            self._audit(db, f'{slot.lower()}_version_deleted', {'version': version_id, 'slot': slot, 'name': version['name'], 'cleared_active': cleared_active})
         if target.exists():
             shutil.rmtree(target)
         return version_id
 
-    def delete_unpublished_b_versions(self):
+    def delete_unpublished_versions(self, slot):
+        if slot not in ('A', 'B'):
+            raise ValueError('只能删除未发布的 A 或 B 版本')
         with self.connect() as db:
-            published = db.execute("SELECT version_id FROM slots WHERE slot='B'").fetchone()[0]
-            ids = [row['id'] for row in db.execute("SELECT id FROM versions WHERE slot='B' AND (? IS NULL OR id != ?) ORDER BY created", (published, published))]
+            published = db.execute('SELECT version_id FROM slots WHERE slot=?', (slot,)).fetchone()[0]
+            ids = [row['id'] for row in db.execute('SELECT id FROM versions WHERE slot=? AND (? IS NULL OR id != ?) ORDER BY created', (slot, published, published))]
         deleted = []
         for version_id in ids:
             try:
-                self.delete_version(version_id)
+                self.delete_version(version_id, slot)
             except ValueError:
                 continue
             deleted.append(version_id)
         return deleted
+
+    def delete_unpublished_b_versions(self):
+        return self.delete_unpublished_versions('B')
 
     def save_source(self, slot, base, path, content, expected_published):
         version = edit_content(self.pages / base['id'], path, content, self.pages, base['name'])

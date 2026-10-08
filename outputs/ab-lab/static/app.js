@@ -417,17 +417,17 @@ function renderSlots() {
     } else live.append(element('strong', '', state?.slots[slot] ? '已发布版本' : '尚未发布'));
     const versions = $(`#versions-${slot}`); versions.replaceChildren();
     const items = state?.versions.filter(version => version.slot === slot) || [];
-    const extras = slot === 'B' ? items.filter(version => version.id !== state?.slots.B) : [];
+    const extras = items.filter(version => version.id !== state?.slots[slot]);
     if (extras.length) {
       const cleanup = element('div', 'version-cleanup');
-      cleanup.append(element('small', '', state.slots.B ? `还有 ${extras.length} 个未发布版本` : `还没发布。这 ${extras.length} 个版本都可以清掉`));
+      cleanup.append(element('small', '', state.slots[slot] ? `还有 ${extras.length} 个未发布版本` : `还没发布。这 ${extras.length} 个版本都可以清掉`));
       cleanup.append(actionButton('清理未发布版本', async () => {
-        const message = state.slots.B
-          ? `彻底删除 ${extras.length} 个未发布的 B 版本？只保留当前发布版本。源码和记录都会删除，无法恢复。`
-          : `当前没有发布中的 B 版本。彻底删除全部 ${extras.length} 个 B 版本？源码和记录都会删除，无法恢复。`;
+        const message = state.slots[slot]
+          ? `彻底删除 ${extras.length} 个未发布的 ${slot} 版本？只保留当前发布版本。源码和记录都会删除，无法恢复。`
+          : `当前没有发布中的 ${slot} 版本。彻底删除全部 ${extras.length} 个 ${slot} 版本？源码和记录都会删除，无法恢复。`;
         if (!await confirmAction(message)) return;
-        const result = await api('/api/versions/B/cleanup', { method: 'POST', body: {} });
-        toast(`已删除 ${result.deleted} 个未发布 B 版本。`);
+        const result = await api(`/api/versions/${slot}/cleanup`, { method: 'POST', body: {} });
+        toast(`已删除 ${result.deleted} 个未发布 ${slot} 版本。`);
         await refreshState();
       }, 'button quiet small'));
       versions.append(cleanup);
@@ -448,10 +448,10 @@ function renderSlots() {
       const actions = element('div', 'actions');
       actions.append(actionButton('预览', () => preview(version)));
       actions.append(actionButton('编辑源码', () => sourceEditor.open(version)));
-      if (slot === 'B' && !isPublished) actions.append(actionButton('删除', async () => {
+      if (!isPublished) actions.append(actionButton('删除', async () => {
         if (!await confirmAction(`彻底删除「${version.name}」？源码和记录都会删除，无法恢复。当前发布版本不受影响。`)) return;
-        await api(`/api/versions/B/${version.id}`, { method: 'DELETE' });
-        toast('B 版本已删除。');
+        await api(`/api/versions/${slot}/${version.id}`, { method: 'DELETE' });
+        toast(`${slot} 版本已删除。`);
         await refreshState();
       }, 'button quiet small'));
       if (isPublished) actions.append(element('span', 'badge green', '当前发布'));

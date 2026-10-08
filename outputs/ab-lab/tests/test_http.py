@@ -88,6 +88,35 @@ def test_b_version_delete_and_cleanup_keep_the_published_page(apps, tmp_path):
     assert any(item['action'] == 'b_version_deleted' for item in admin.get('/api/audit').json()['items'])
 
 
+def test_a_version_delete_and_cleanup_keep_the_published_page(apps, tmp_path):
+    admin, _target = apps
+    live = upload(admin, 'A', '<h1>Live A</h1>')
+    extra = admin.post('/api/upload/A?name=old-a.html', content=b'<h1>Old A</h1>')
+    assert extra.status_code == 200, extra.text
+    extra_id = extra.json()['version']['id']
+    beta = upload(admin, 'B', '<h1>Beta</h1>')
+    refused = admin.delete(f'/api/versions/A/{live}')
+    assert refused.status_code == 400
+    assert '当前发布' in refused.json()['detail']
+    assert admin.delete(f'/api/versions/A/{beta}').status_code == 400
+    wrong_slot = admin.delete(f'/api/versions/B/{extra_id}')
+    assert wrong_slot.status_code == 400
+    assert '只能删除未发布的 B 版本' in wrong_slot.json()['detail']
+    assert admin.delete(f'/api/versions/A/{extra_id}').status_code == 200
+    assert not (tmp_path / 'pages' / extra_id).exists()
+    assert '<h1>Live A</h1>' in (tmp_path / 'pages' / live / 'index.html').read_text(encoding='utf-8')
+    admin.post('/api/upload/A?name=old-a2.html', content=b'<h1>Old A2</h1>')
+    admin.post('/api/upload/A?name=old-a3.html', content=b'<h1>Old A3</h1>')
+    cleaned = admin.post('/api/versions/A/cleanup')
+    assert cleaned.status_code == 200, cleaned.text
+    assert cleaned.json() == {'deleted': 2}
+    state = admin.get('/api/state').json()
+    assert [item['id'] for item in state['versions'] if item['slot'] == 'A'] == [live]
+    assert state['slots']['A'] == live
+    assert any(item['id'] == beta for item in state['versions'] if item['slot'] == 'B')
+    assert any(item['action'] == 'a_version_deleted' for item in admin.get('/api/audit').json()['items'])
+
+
 def test_deleting_a_b_version_uses_the_selected_domain(apps, tmp_path):
     admin, _target = apps
     other = admin.post('/api/sites', json={'domain': 'shop.example'}).json()['site']['id']
