@@ -127,6 +127,20 @@ def test_super_crawler_blocks_official_ranges_and_named_bots_only_when_enabled()
     assert decide(Config(rules={'super_bots': True, 'whitelist': ['66.249.66.1']}), visit(ip='66.249.66.1', ua=iphone))['reason'] == 'whitelist'
 
 
+def test_forged_phone_identity_is_blocked_even_when_super_switch_is_off():
+    forged_iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1'
+    forged_chrome = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.1938.76 Mobile Safari/537.36'
+    for ua, country in ((forged_iphone, 'US'), (forged_iphone, 'BR'), (forged_chrome, 'US')):
+        result = decide(Config(), visit(ip='43.166.224.244', ua=ua, country=country))
+        assert result['slot'] == 'A'
+        assert result['reason'] == 'super_bot'
+    current = IPHONE.format(os='18_7', safari='18.7.5')
+    assert decide(Config(), visit(ua=current, country='HK'))['reason'] == 'allowed'
+    assert decide(Config(), visit(ua=ANDROID, country='BR'))['reason'] == 'allowed'
+    assert decide(Config(), visit(ua='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36', country='US'))['reason'] == 'allowed'
+    assert decide(Config(rules={'whitelist': ['43.166.224.244']}), visit(ip='43.166.224.244', ua=forged_iphone))['reason'] == 'whitelist'
+
+
 def test_strict_crawler_leaves_normal_phones_and_stays_off_by_default():
     iphone = IPHONE.format(os='18_7', safari='18.7.5')
     assert decide(Config(rules={'strict_bots': True}), visit(ua=iphone))['reason'] == 'allowed'
