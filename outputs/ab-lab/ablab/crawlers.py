@@ -1,4 +1,4 @@
-"""Publisher-issued crawler ranges. A normal phone address is not in this set."""
+"""Google's published crawler and fetcher ranges. A normal phone address is not in this set."""
 import ipaddress
 import json
 from pathlib import Path
@@ -23,7 +23,7 @@ _EXACT4, _RANGES4, _RANGES6 = _load()
 
 
 def is_crawler_ip(address):
-    """True when the address is inside a publisher's own crawler or fetcher range."""
+    """True when the address is inside a Google crawler or fetcher range."""
     if not isinstance(address, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
         address = ipaddress.ip_address(address)
     if address.version == 4:
