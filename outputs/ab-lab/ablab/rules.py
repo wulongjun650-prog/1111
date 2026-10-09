@@ -68,6 +68,21 @@ def google_crawler(ua):
     return any(marker in text for marker in _GOOGLE_MARKERS)
 
 
+# Copied phone identities used by scanners. A current iPhone or Android does not send these.
+_FORGED_PHONE_MARKERS = (
+    'iphone os 13_2_3',
+    'cpu os 13_2_3',
+    'chrome/116.0.1938',
+    'crios/116.0.1938',
+)
+
+
+def forged_phone(ua):
+    """True for the phone strings scanners copy. Ordinary iPhone and Android traffic does not match."""
+    text = ua.lower()
+    return any(marker in text for marker in _FORGED_PHONE_MARKERS)
+
+
 def named_crawler(ua):
     """A crawler that names itself. Phone brands such as Cubot are not crawlers."""
     text = ua.lower()
@@ -120,9 +135,15 @@ def decide(config: Config, visitor: Visitor):
     trace.append({'rule': 'blacklist', 'status': 'pass', 'detail': '未命中黑名单'})
     if matches(rules.whitelist):
         return result(config.allowed_slot, 'whitelist', f'命中白名单，跳过其余规则；放行后展示 {config.allowed_slot}', 'pass')
-    crawler_hit = rules.super_bots and (google_crawler(visitor.ua) or named_crawler(visitor.ua) or is_crawler_ip(address))
+    forged = forged_phone(visitor.ua)
+    if forged:
+        crawler_hit = True
+        crawler_detail = '超级防爬虫：伪造的手机浏览器标识，不是普通访客'
+    else:
+        crawler_hit = rules.super_bots and (google_crawler(visitor.ua) or named_crawler(visitor.ua) or is_crawler_ip(address))
+        crawler_detail = '超级防爬虫：谷歌官方爬虫地址或身份，以及其他官方爬虫'
     checks = [
-        ('super_bot', rules.super_bots, crawler_hit, '超级防爬虫：谷歌官方爬虫地址或身份，以及其他官方爬虫'),
+        ('super_bot', rules.super_bots or forged, crawler_hit, crawler_detail),
         ('strict_bot', rules.strict_bots, strict_crawler(visitor.ua, device), '严格防爬虫：爬虫、脚本或没有正常浏览器标识的访问'),
         ('bot_marker', rules.block_bots, any(marker in visitor.ua.lower() for marker in rules.bot_markers), 'UA 命中爬虫特征；仅为可伪造的声明'),
         ('ipv4', rules.block_ipv4, address.version == 4, 'IPv4 访问被限制'),
