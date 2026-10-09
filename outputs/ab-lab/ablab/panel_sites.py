@@ -124,3 +124,22 @@ class PanelSites(PanelPreflight):
                 or type(result.get('siteId')) is not int or result['siteId'] <= 0):
             raise ProvisioningError('创建结果不明确，须核对站点归属，不能盲目重试')
         return result['siteId']
+
+    def delete_owned(self, domain, path, panel_id=None):
+        """Delete one site only after inspect() proves this product created it."""
+        self._require_writes()
+        if normalize_domain(domain) != domain or not re.fullmatch(r'/www/wwwroot/ab-lab-sites/[a-f0-9]{32}', path):
+            raise ValueError('站点查询域名或路径无效')
+        remote = self.inspect(domain, path)
+        if remote is None:
+            return None
+        if panel_id is not None and remote['panel_id'] != panel_id:
+            raise ProvisioningError('站点编号不一致，拒绝删除')
+        self._request('/v2/site', 'DeleteSite', {
+            'id': remote['panel_id'],
+            'webname': domain,
+            'ftp': '0',
+            'database': '0',
+            'path': '1',
+        })
+        return remote['panel_id']

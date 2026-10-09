@@ -216,6 +216,56 @@ def test_owned_site_with_added_subdirectory_cannot_be_reconfigured():
         adapter(response).inspect(IDENTITY['domain'], IDENTITY['path'])
 
 
+def _panel(respond):
+    return adapter(respond, writes=True)
+
+
+def _delete_handler(sites, domains):
+    requests = []
+
+    def respond(request):
+        fields = {key: values[0] for key, values in parse_qs(request.content.decode(), keep_blank_values=True).items()}
+        action = request.url.params['action']
+        expected = hashlib.md5((fields['request_time'] + hashlib.md5(b'example-key').hexdigest()).encode()).hexdigest()
+        assert fields['request_token'] == expected
+        requests.append((action, fields))
+        if action == 'getData':
+            if fields['table'] == 'domain':
+                message = list(domains)
+            elif fields['table'] == 'binding':
+                message = []
+            else:
+                message = {'data': list(sites) if fields['p'] == '1' else []}
+            return httpx.Response(200, json={'status': 0, 'message': message})
+        assert action == 'DeleteSite' and request.url.path == '/v2/site'
+        assert fields['id'] == '22'
+        assert fields['webname'] == IDENTITY['domain']
+        assert fields['ftp'] == '0' and fields['database'] == '0' and fields['path'] == '1'
+        return httpx.Response(200, json={'status': 0, 'message': True})
+
+    return respond, requests
+
+
+def test_delete_owned_removes_only_the_inspected_site():
+    respond, requests = _delete_handler([owned_site()], [domain(IDENTITY['domain'])])
+    assert _panel(respond).delete_owned(IDENTITY['domain'], IDENTITY['path'], 22) == 22
+    assert [action for action, _fields in requests].count('DeleteSite') == 1
+
+
+def test_delete_owned_leaves_a_missing_or_foreign_site():
+    empty, requests = _delete_handler([], [])
+    assert _panel(empty).delete_owned(IDENTITY['domain'], IDENTITY['path'], 22) is None
+    assert all(action != 'DeleteSite' for action, _fields in requests)
+    present, requests = _delete_handler([owned_site()], [domain(IDENTITY['domain'])])
+    with pytest.raises(ProvisioningError, match='拒绝删除'):
+        _panel(present).delete_owned(IDENTITY['domain'], IDENTITY['path'], 99)
+    assert all(action != 'DeleteSite' for action, _fields in requests)
+    foreign, requests = _delete_handler([owned_site(ps='not-ours')], [domain(IDENTITY['domain'])])
+    with pytest.raises(ProvisioningError):
+        _panel(foreign).delete_owned(IDENTITY['domain'], IDENTITY['path'], 22)
+    assert all(action != 'DeleteSite' for action, _fields in requests)
+
+
 def test_unrelated_subdirectory_does_not_block_new_site():
     response, requests = fixture(bindings=[
         {'id': 8, 'pid': 99, 'domain': 'shop.example.net', 'path': 'shop', 'port': 80, 'addtime': '2026-09-21'}])

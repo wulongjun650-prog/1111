@@ -1038,6 +1038,12 @@ function renderDomains() {
       await loadDomains();
       toast(result.cloudflare?.ok ? '已重新套用 Cloudflare 规则。' : (result.cloudflare?.detail || 'Cloudflare 未完成'), !result.cloudflare?.ok);
     },'text-button small'));
+    if (isAdmin(account) && site.id !== 'default') actions.append(actionButton('彻底删除',async()=>{
+      if (!await confirmAction(`彻底删除 ${site.domain}？页面、证书、访问记录和宝塔站点都会删掉，域名列表和上方的站点选择也会一起消失，删了不能恢复。`)) return;
+      const result = await api(`/api/sites/${site.id}`,{method:'DELETE'});
+      await loadDomains();
+      toast(result.cloudflare_warning ? `已彻底删除 ${result.domain}。${result.cloudflare_warning}` : `已彻底删除 ${result.domain}。列表和站点选择里都没有它了。`, Boolean(result.cloudflare_warning));
+    },'text-button small danger'));
     row.append(name,health,validation,created,note,availability,actions); body.append(row);
   }
   if (!sites.length) { const row=element('tr'), cell=element('td','empty-state',all.length ? '没有匹配的域名或备注' : '暂无域名，点击「添加域名」开始接入。'); cell.colSpan=7; row.append(cell); body.append(row); }

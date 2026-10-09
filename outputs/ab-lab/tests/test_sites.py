@@ -66,6 +66,15 @@ def test_scoped_api_content_and_preview(tmp_path):
     assert target.get(f'/_sites/{b}/').status_code == 503
     assert target.get(admin.get(second + '/state').json()['target_url']).status_code == 503
     assert target.get('/', headers={'host': 'unknown.example.com'}).status_code == 403
+    removed = admin.delete(f'/api/sites/{a}', headers=headers)
+    assert removed.status_code == 200, removed.text
+    assert removed.json()['domain'] == 'one.example.com'
+    assert removed.json()['cloudflare_warning'] == ''
+    assert a not in {site['id'] for site in admin.get('/api/sites').json()['sites']}
+    assert not (tmp_path / 'sites' / a).exists()
+    assert (tmp_path / 'erasures' / f'{a}.json').is_file()
+    assert target.get(f'/_sites/{a}/').status_code == 404
+    assert admin.delete('/api/sites/default', headers=headers).status_code == 400
     assert admin.get('/api/sites/unknown/state').status_code == 404
     assert admin.get('/api/state').json()['site']['id'] == 'default'
     assert admin.post('/api/sites', json={'domain': 'no-csrf.example.com'}).status_code == 403
@@ -118,3 +127,38 @@ def test_pause_generation_cannot_be_overwritten(tmp_path):
     registry.control(site['id'], 'pause')
     assert not registry.transition(site['id'], site['generation'], 'active')
     assert registry.get(site['id'])['stage'] == 'paused'
+
+
+def test_remove_drops_the_row_events_reputation_and_files(tmp_path):
+    from ablab.reputation import GoogleReputation
+    registry = Registry(tmp_path, default_domain='old.example.com')
+    GoogleReputation(registry)
+    site = registry.add('gone.example.com')
+    registry.store(site['id']).add_links('B', ['https://example.com/gone'])
+    with registry.connect() as db:
+        db.execute('INSERT INTO google_reputation(site_id,result) VALUES(?,?)', (site['id'], '{}'))
+        db.execute('INSERT INTO google_reputation_locks(site_id,token,until) VALUES(?,?,?)', (site['id'], 't', 1))
+    directory = tmp_path / 'sites' / site['id']
+    assert directory.is_dir()
+    with pytest.raises(ValueError, match='原有站点不能删除'):
+        registry.remove('default')
+    snapshot = registry.remove(site['id'])
+    assert snapshot['domain'] == 'gone.example.com'
+    assert not directory.exists()
+    with pytest.raises(KeyError):
+        registry.get(site['id'])
+    with registry.connect() as db:
+        assert db.execute('SELECT 1 FROM site_events WHERE site_id=?', (site['id'],)).fetchone() is None
+        assert db.execute('SELECT 1 FROM google_reputation WHERE site_id=?', (site['id'],)).fetchone() is None
+        assert db.execute('SELECT 1 FROM google_reputation_locks WHERE site_id=?', (site['id'],)).fetchone() is None
+        assert db.execute("SELECT 1 FROM sites WHERE id='default'").fetchone() is not None
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'secret').write_text('keep')
+    linked = registry.add('link.example.com')
+    link = tmp_path / 'sites' / linked['id']
+    link.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match='符号链接'):
+        registry.remove(linked['id'])
+    assert (outside / 'secret').read_text() == 'keep'
+    assert registry.get(linked['id'])['domain'] == 'link.example.com'

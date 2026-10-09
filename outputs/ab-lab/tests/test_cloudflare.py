@@ -591,6 +591,40 @@ def test_closing_cloudflare_keeps_a_finished_site_and_a_failed_call_keeps_state(
     assert kept['cf_status'] == 'active'
 
 
+def test_delete_zone_checks_the_name_before_deleting():
+    calls = []
+
+    def respond(request):
+        calls.append((request.method, request.url.path))
+        assert request.headers['authorization'] == 'Bearer ' + TOKEN
+        if request.method == 'GET':
+            return envelope(zone('shop.example.com', status='active'))
+        assert request.method == 'DELETE'
+        return envelope({'id': ZONE})
+
+    Cloudflare(TOKEN, 'rules.example.com', ORIGIN, httpx.MockTransport(respond)).delete_zone(ZONE, 'shop.example.com')
+    assert calls == [('GET', '/client/v4/zones/' + ZONE), ('DELETE', '/client/v4/zones/' + ZONE)]
+
+
+def test_delete_zone_stops_when_the_name_or_the_zone_does_not_match():
+    calls = []
+
+    def mismatch(request):
+        calls.append(request.method)
+        return envelope(zone('other.example.com', status='active'))
+
+    with pytest.raises(CloudflareError, match='不一致'):
+        Cloudflare(TOKEN, 'rules.example.com', ORIGIN, httpx.MockTransport(mismatch)).delete_zone(ZONE, 'shop.example.com')
+    assert calls == ['GET']
+
+    def missing(request):
+        calls.append(request.method)
+        return failure(10003, 'not found', 404)
+
+    Cloudflare(TOKEN, 'rules.example.com', ORIGIN, httpx.MockTransport(missing)).delete_zone(ZONE, 'shop.example.com')
+    assert calls == ['GET', 'GET']
+
+
 def test_missing_cloudflare_config_rejects_the_option_without_saving(tmp_path, monkeypatch):
     monkeypatch.delenv('AB_CLOUDFLARE_TOKEN', raising=False)
     monkeypatch.delenv('AB_CLOUDFLARE_TEMPLATE', raising=False)
