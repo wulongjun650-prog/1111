@@ -42,6 +42,7 @@
       <button class="nav-item" data-tab="simulate"><span aria-hidden="true">⌘</span>规则模拟</button>
       <button class="nav-item" data-tab="logs"><span aria-hidden="true">≡</span>访问日志</button>
       <button class="nav-item" data-tab="analysis"><span aria-hidden="true">≡</span>数据深度分析</button>
+      <button class="nav-item" data-tab="campaign"><span aria-hidden="true">▦</span>投放数据</button>
       <button class="nav-item" data-tab="domains"><span aria-hidden="true">◎</span>域名管理</button>
       {% if account.role in ['admin', 'observer'] %}<button class="nav-item" data-tab="accounts"><span aria-hidden="true">◎</span>账号管理</button>{% endif %}
     </nav>
@@ -227,6 +228,29 @@
         <article class="card logs-card">
           <div class="card-heading"><div><p class="eyebrow">BEACON</p><h2>落地页事件</h2><p id="analysis-events-summary" class="muted">跳转事件原样保存。来源域名取自请求的 Origin，不看国家。</p></div></div>
           <div class="table-scroll"><table><caption class="sr-only">各域名落地页事件原文</caption><thead><tr><th>时间</th><th>域名</th><th>收到的原文</th></tr></thead><tbody id="analysis-events"><tr><td colspan="3" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
+        </article>
+      </section>
+
+      <section id="panel-campaign" class="tab-panel" aria-label="投放数据" hidden>
+        <div class="notice"><span aria-hidden="true">ⓘ</span><p id="campaign-note">进站只算打到源站的 HTML。同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。标红只提醒，不会自动改页面或跳转。</p></div>
+        <article class="card logs-card">
+          <div class="card-heading">
+            <div><p class="eyebrow">CAMPAIGN</p><h2>投放数据</h2><p id="campaign-summary" class="muted">进入此页后加载。</p></div>
+            <div class="actions"><a id="campaign-csv" class="button secondary" href="/api/campaign.csv?range=today">↓ 导出 CSV</a><a id="campaign-json" class="button secondary" href="/api/campaign/events?range=today">↓ 原始事件</a></div>
+          </div>
+          <form id="campaign-filters" class="filter-bar">
+            <label>日期<select id="campaign-range" name="range"><option value="today" selected>今天</option><option value="yesterday">昨天</option><option value="7d">近 7 天</option><option value="custom">自定义</option></select></label>
+            <label id="campaign-start-label" hidden>开始<input id="campaign-start" name="start" type="date"></label>
+            <label id="campaign-end-label" hidden>结束<input id="campaign-end" name="end" type="date"></label>
+            <label>域名<input id="campaign-domain" name="domain" placeholder="全部"></label>
+            <label>版位<input id="campaign-placement" name="placement" placeholder="全部，可填包名或域名"></label>
+            <label>device<input id="campaign-device" name="device" placeholder="全部"></label>
+            <label>wa_env<input id="campaign-env" name="wa_env" placeholder="全部"></label>
+            <label>link_type<input id="campaign-link" name="link_type" placeholder="全部"></label>
+            <label>机型 / 系统<input id="campaign-model" name="model" placeholder="全部，可填机型或系统"></label>
+            <button class="button secondary" type="submit">查询</button>
+          </form>
+          <div class="table-scroll"><table><caption class="sr-only">投放数据</caption><thead><tr><th>域名</th><th>版位</th><th>device</th><th>wa_env</th><th>link_type</th><th>机型 / 系统</th><th>进站</th><th>点击</th><th>拉起</th><th>兜底</th><th>点击率</th><th>拉起率</th><th>兜底后</th><th></th></tr></thead><tbody id="campaign-rows"><tr><td colspan="14" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
         </article>
       </section>
 
