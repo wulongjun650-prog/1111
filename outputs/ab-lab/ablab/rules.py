@@ -24,6 +24,10 @@ _CRAWLER_MARKERS = (
     'duckassistbot', 'claude-searchbot', 'meta-externalagent', 'meta-webindexer',
     'amzn-searchbot', 'amzn-user', 'perplexity-user', 'mistralai-user',
     'ttd-content', 'flipboardproxy', 'parsely', 'yeti/', 'google-agent',
+    'feedfetcher-google', 'apis-google', 'duplexweb-google', 'google-read-aloud',
+    'google-site-verification', 'google-cws', 'google-gemininotebook', 'google-notebooklm',
+    'googlemessages', 'google-pinpoint', 'googleproducer', 'google-speakr',
+    'google favicon', 'googleweblight',
     'imagesiftbot', 'omgilibot', 'diffbot',
     'crawler', 'spider', 'headlesschrome', 'phantomjs', 'selenium',
     'puppeteer', 'playwright', 'curl/', 'wget/', 'python-requests',
@@ -51,7 +55,10 @@ _GOOGLE_MARKERS = (
     'googlebot', 'adsbot-google', 'mediapartners-google', 'storebot-google',
     'googleother', 'google-inspectiontool', 'google-cloudvertexbot', 'google-safety',
     'google-agent', 'feedfetcher-google', 'apis-google', 'duplexweb-google',
-    'google-read-aloud', 'google-site-verification',
+    'google-read-aloud', 'google-site-verification', 'google-cws',
+    'google-gemininotebook', 'google-notebooklm', 'googlemessages',
+    'google-pinpoint', 'googleproducer', 'google-speakr', 'google favicon',
+    'googleweblight',
 )
 
 
@@ -113,9 +120,9 @@ def decide(config: Config, visitor: Visitor):
     trace.append({'rule': 'blacklist', 'status': 'pass', 'detail': '未命中黑名单'})
     if matches(rules.whitelist):
         return result(config.allowed_slot, 'whitelist', f'命中白名单，跳过其余规则；放行后展示 {config.allowed_slot}', 'pass')
-    crawler_hit = rules.super_bots and (google_crawler(visitor.ua) or is_crawler_ip(address))
+    crawler_hit = rules.super_bots and (google_crawler(visitor.ua) or named_crawler(visitor.ua) or is_crawler_ip(address))
     checks = [
-        ('super_bot', rules.super_bots, crawler_hit, '超级防爬虫：谷歌官方爬虫地址，或谷歌爬虫身份'),
+        ('super_bot', rules.super_bots, crawler_hit, '超级防爬虫：谷歌官方爬虫地址或身份，以及其他官方爬虫'),
         ('strict_bot', rules.strict_bots, strict_crawler(visitor.ua, device), '严格防爬虫：爬虫、脚本或没有正常浏览器标识的访问'),
         ('bot_marker', rules.block_bots, any(marker in visitor.ua.lower() for marker in rules.bot_markers), 'UA 命中爬虫特征；仅为可伪造的声明'),
         ('ipv4', rules.block_ipv4, address.version == 4, 'IPv4 访问被限制'),
