@@ -102,10 +102,28 @@ def test_super_crawler_blocks_official_ranges_and_named_bots_only_when_enabled()
     assert decide(Config(rules={'super_bots': True}), visit(ip='157.55.39.5', ua=iphone))['reason'] == 'super_bot'
     assert decide(Config(rules={'super_bots': True}), visit(ua=iphone))['reason'] == 'allowed'
     assert decide(Config(rules={'super_bots': True}), visit(ua=CUBOT))['reason'] == 'allowed'
+    chrome = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36'
+    gsa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/300.0.598994205 Mobile/15E148 Safari/604.1'
+    assert decide(Config(rules={'super_bots': True}), visit(ua=chrome))['reason'] == 'allowed'
+    assert decide(Config(rules={'super_bots': True}), visit(ua=gsa))['reason'] == 'allowed'
     assert decide(Config(rules={'super_bots': True}), visit(ip='8.8.8.8', ua=iphone))['reason'] == 'allowed'
     assert decide(Config(rules={'super_bots': True}), visit(ip='3.81.245.78', ua=iphone))['reason'] == 'super_bot'
     assert decide(Config(rules={'super_bots': True}), visit(ua='Mozilla/5.0 (compatible; Perplexity-User/1.0)'))['reason'] == 'super_bot'
-    assert decide(Config(), visit(ip='3.81.245.78', ua=iphone))['reason'] == 'allowed'
+    assert decide(Config(rules={'super_bots': True}), visit(ua='Mozilla/5.0 (compatible; AdsBot-Google; +http://www.google.com/adsbot.html)'))['reason'] == 'super_bot'
+    for ua in (
+        'FeedFetcher-Google; (+http://www.google.com/feedfetcher.html)',
+        'APIs-Google (+https://developers.google.com/webmasters/APIs-Google.html)',
+        'Mozilla/5.0 (compatible; Google-GeminiNotebook; +https://developers.google.com/crawling/docs/crawlers-fetchers/google-gemininotebook)',
+        'Mozilla/5.0 (compatible; Google-CWS)',
+        'GoogleProducer; (+https://developers.google.com/search/docs/crawling-indexing/google-producer)',
+        'GoogleMessages',
+        'Google-Pinpoint',
+        'Mozilla/5.0 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)',
+        'google-speakr',
+        'Google-NotebookLM',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/49.0.2623.75 Safari/537.36 Google Favicon',
+    ):
+        assert decide(Config(rules={'super_bots': True}), visit(ua=ua))['reason'] == 'super_bot'
     assert decide(Config(rules={'super_bots': True, 'whitelist': ['66.249.66.1']}), visit(ip='66.249.66.1', ua=iphone))['reason'] == 'whitelist'
 
 

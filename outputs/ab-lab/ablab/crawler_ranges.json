@@ -1,6 +1,6 @@
 {
- "built": "2026-10-08",
- "note": "Publisher-issued crawler and fetcher ranges. General cloud customer space is not included. Monitoring probes are not included.",
+ "built": "2026-10-09",
+ "note": "Google's official crawler, ads, and user-triggered fetcher ranges are the primary set. Other publishers' crawler ranges are included as well. General cloud customer space and monitoring probes are not included.",
  "sources": [
   {
    "name": "Google common crawlers",
