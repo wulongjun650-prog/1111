@@ -85,7 +85,7 @@ const cloudflareAutoCheck = createCloudflareAutoCheck({
   },
 });
 const rulesForm = $('#rules-form');
-$$('[data-tab]').forEach(button => button.querySelector('span').replaceChildren(icon(button.dataset.tab === 'accounts' || button.dataset.tab === 'analysis' ? 'logs' : button.dataset.tab)));
+$$('[data-tab]').forEach(button => button.querySelector('span').replaceChildren(icon(button.dataset.tab === 'accounts' || button.dataset.tab === 'analysis' || button.dataset.tab === 'campaign' ? 'logs' : button.dataset.tab)));
 const selections = Object.fromEntries(['countries','languages'].map(kind => [kind,createSelection(rulesForm.elements.namedItem(kind),kind)]));
 const labels = {
   domains: ['域名管理', '域名管理', '统一查看谷歌风险、接入状态、备注与访问状态。'],
@@ -96,6 +96,7 @@ const labels = {
   simulate: ['规则模拟', '规则模拟', '输入访问条件，检查已保存规则的判断结果。'],
   logs: ['访问日志', '访问日志', '查看文档请求、设备、国家与分流结果。'],
   analysis: ['数据深度分析', '数据深度分析', '汇总所有域名的香港访客请求和落地页事件。'],
+  campaign: ['投放数据', '投放数据', '按版位看进站、点击和拉起。标红只提醒，不会自动改页面。'],
   accounts: ['账号管理', '账号管理', isObserver(account) ? '查看用户名、角色和名下域名。密码不会显示。' : '创建代理或观察号，管理访问权限与域名归属。'],
 };
 const reasons = { blacklist: '命中黑名单', whitelist: '命中白名单', super_bot: '超级防爬虫', strict_bot: '严格防爬虫', bot_marker: '匹配机器人标记', ipv4: 'IPv4 限制', device: '设备限制', os_version: '系统版本限制', blocked_cidr: '命中屏蔽网段', country: '国家 / 地区限制', country_unknown: '国家未知', language: '语言限制', visit_limit: '超过访问次数', allowed: '规则通过', pass: '规则通过', force_a: '强制 A', force_b: '强制 B', protection_off: '防护已关闭' };
@@ -601,8 +602,8 @@ async function loadLogs(page = 1, {quiet = false} = {}) {
   }
 }
 
-const siteFreeTabs = ['domains', 'accounts', 'analysis'];
-const alwaysOpenPanels = ['panel-domains', 'panel-accounts', 'panel-analysis'];
+const siteFreeTabs = ['domains', 'accounts', 'analysis', 'campaign'];
+const alwaysOpenPanels = ['panel-domains', 'panel-accounts', 'panel-analysis', 'panel-campaign'];
 let analysisRequest = 0;
 
 function clipCell(text, className = 'path-cell') {
@@ -663,6 +664,94 @@ async function loadAnalysis() {
   }
 }
 
+let campaignRequest = 0;
+let campaignTimer = 0;
+
+function campaignQuery() {
+  const params = new URLSearchParams();
+  params.set('range', $('#campaign-range').value || 'today');
+  if ($('#campaign-range').value === 'custom') {
+    params.set('start', $('#campaign-start').value);
+    params.set('end', $('#campaign-end').value);
+  }
+  for (const [name, id] of [['domain', 'campaign-domain'], ['placement', 'campaign-placement'], ['device', 'campaign-device'], ['wa_env', 'campaign-env'], ['link_type', 'campaign-link'], ['model', 'campaign-model']]) {
+    const value = $(`#${id}`).value.trim();
+    if (value) params.set(name, value);
+  }
+  return params;
+}
+
+function percent(value) {
+  return value == null ? '—' : `${(Number(value) * 100).toFixed(1)}%`;
+}
+
+function watchCampaign(active) {
+  clearInterval(campaignTimer);
+  campaignTimer = 0;
+  if (active) campaignTimer = setInterval(() => { if (activeTab === 'campaign') loadCampaign(); }, 60000);
+}
+
+async function loadCampaign() {
+  const request = ++campaignRequest;
+  const params = campaignQuery();
+  const query = params.toString();
+  $('#campaign-csv').href = `/api/campaign.csv?${query}`;
+  $('#campaign-json').href = `/api/campaign/events?${query}`;
+  try {
+    const data = await api(`/api/campaign?${query}`);
+    if (request !== campaignRequest) return;
+    const totals = data.totals || {};
+    $('#campaign-summary').textContent = `进站 ${number(totals.visits)} · 点击 ${number(totals.clicks)} · 拉起 ${number(totals.opens)} · 拉起率 ${percent(totals.open_rate)}`;
+    $('#campaign-note').textContent = `接收地址 ${data.endpoint || ''}。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。`;
+    const body = $('#campaign-rows');
+    body.replaceChildren();
+    if (!data.rows.length) {
+      const row = element('tr');
+      const cell = element('td', 'empty-state', '这段时间没有进站或跳转事件。');
+      cell.colSpan = 14;
+      row.append(cell);
+      body.append(row);
+      return;
+    }
+    for (const item of data.rows) {
+      const row = element('tr', item.alert ? 'campaign-alert' : '');
+      if (item.alert) row.title = item.alert_reason;
+      const actions = element('td', '', `点击 ${number(item.fallback_click)} · 号码 ${number(item.copy_number)} · 消息 ${number(item.copy_message)}`);
+      const exportCell = element('td');
+      if (item.alert) {
+        const linkParams = new URLSearchParams(params);
+        linkParams.set('domain', item.domain);
+        linkParams.set('placement', item.placement);
+        linkParams.set('placement_exact', '1');
+        linkParams.set('wa_env', item.wa_env);
+        const link = element('a', 'text-button', '导出该版位');
+        link.href = `/api/campaign/events?${linkParams.toString()}`;
+        exportCell.append(link);
+      }
+      row.append(
+        element('td', '', item.domain),
+        element('td', '', item.placement_label),
+        element('td', '', item.device),
+        element('td', '', item.wa_env),
+        element('td', '', item.link_type),
+        element('td', '', `${item.model} · ${item.os}`),
+        element('td', '', number(item.visits)),
+        element('td', '', number(item.clicks)),
+        element('td', '', number(item.opens)),
+        element('td', '', number(item.fallbacks)),
+        element('td', '', percent(item.click_rate)),
+        element('td', '', percent(item.open_rate)),
+        actions,
+        exportCell,
+      );
+      body.append(row);
+    }
+  } catch (error) {
+    if (request === campaignRequest) $('#campaign-summary').textContent = '加载失败，请再查询一次。';
+    throw error;
+  }
+}
+
 async function selectTab(name, {load = true} = {}) {
   if (!labels[name] || (name === 'desk' && isObserver(account))) name = 'overview';
   if (name === 'accounts' && !seesAll(account)) name = 'domains';
@@ -675,7 +764,7 @@ async function selectTab(name, {load = true} = {}) {
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
   $('#breadcrumb-current').textContent = labels[name][0];
-  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',desk:'WORK ORDERS',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',analysis:'DEEP ANALYSIS',accounts:'ACCOUNTS'}[name];
+  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',desk:'WORK ORDERS',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',analysis:'DEEP ANALYSIS',campaign:'CAMPAIGN',accounts:'ACCOUNTS'}[name];
   $('#page-title').textContent = labels[name][1]; $('#page-subtitle').textContent = labels[name][2];
   if (name !== 'content') closePreview();
   else if (state) await tracking.load();
@@ -683,12 +772,20 @@ async function selectTab(name, {load = true} = {}) {
   desk.setActive(name === 'desk');
   if (name === 'logs') await loadLogs();
   if (name === 'analysis') await loadAnalysis();
+  if (name === 'campaign') await loadCampaign();
+  watchCampaign(name === 'campaign');
   if (name === 'domains' && load) await loadDomains();
   if (name === 'accounts') await loadAccounts();
   if (name === 'overview' && state) dashboard.refresh();
 }
 
 on($('#analysis-filters'), 'submit', event => { event.preventDefault(); return loadAnalysis(); });
+on($('#campaign-filters'), 'submit', event => { event.preventDefault(); return loadCampaign(); });
+on($('#campaign-range'), 'change', () => {
+  const custom = $('#campaign-range').value === 'custom';
+  $('#campaign-start-label').hidden = !custom;
+  $('#campaign-end-label').hidden = !custom;
+});
 $$('[data-tab]').forEach(button => on(button, 'click', () => selectTab(button.dataset.tab)));
 $$('[data-go]').forEach(button => on(button, 'click', () => selectTab(button.dataset.go)));
 on($('.brand'), 'click', event => { event.preventDefault(); return selectTab('overview'); });
@@ -697,6 +794,7 @@ on($('#refresh-state'), 'click', event => busy(event.currentTarget, async () => 
   await refreshState();
   if (activeTab === 'logs') await loadLogs(logPage);
   if (activeTab === 'analysis') await loadAnalysis();
+  if (activeTab === 'campaign') await loadCampaign();
   if ($('#audit-details').open) await loadAudit();
 }));
 $$('[data-routing]').forEach(button => on(button, 'click', () => saveConfig(patchConfig(state.config, { routing: button.dataset.routing }))));

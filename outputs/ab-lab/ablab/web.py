@@ -29,7 +29,8 @@ from .analytics import summarize
 from .models import ConfigUpdate, DirectEntry, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput, WhatsAppReception, WhatsAppSplit
 from .tracking import normalize_conversion, normalize_ga4
 from .linkcheck import LinkChecker
-from .watrust import TrustChecker, device_from_environ
+from .watrust import PUBLIC_ORIGIN, TrustChecker, device_from_environ
+from .campaign import build_campaign, export_events, window_bounds
 from .redirects import public_occurrences, rewrite_reception_bytes, rewrite_text, scan_bundle
 from .rules import decide
 from .cloudflare import Cloudflare
@@ -1191,6 +1192,78 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         body = '\n'.join(parts) if parts else '没有可查看的域名。\n'
         return Response(body, media_type='text/plain; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="analysis-report.txt"'})
 
+    def collect_campaign(request, since, until):
+        visits, events = [], []
+        for site in analysis_sites(request):
+            site_store = registry.store(site['id'])
+            domain = analysis_domain(site)
+            for row in site_store.campaign_access(since, until):
+                row['domain'] = domain
+                visits.append(row)
+            for row in site_store.campaign_events(since, until):
+                row['domain'] = (row.get('origin') or '').strip() or domain
+                events.append(row)
+        return visits, events
+
+    def campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact=False):
+        since, until = window_bounds(span, start, end, time.time())
+        filters = {
+            'domain': domain.strip()[:253],
+            'placement': (placement if placement_exact else placement.strip())[:300],
+            'device': device.strip()[:80],
+            'wa_env': wa_env.strip()[:80],
+            'link_type': link_type.strip()[:80],
+            'model': model.strip()[:80],
+            'placement_exact': bool(placement_exact),
+        }
+        return since, until, filters
+
+    @app.get('/api/campaign')
+    def campaign_table(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
+                       start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
+                       wa_env: str = '', link_type: str = '', model: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact)
+        visits, events = collect_campaign(request, since, until)
+        report = build_campaign(visits, events, filters)
+        report['endpoint'] = jump_event_endpoint(deployment)
+        report['range'] = span
+        report['since'] = since
+        report['until'] = until
+        return report
+
+    @app.get('/api/campaign.csv')
+    def campaign_csv(request: Request, slot: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
+                     start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
+                     wa_env: str = '', link_type: str = '', model: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(slot, start, end, domain, placement, device, wa_env, link_type, model, placement_exact)
+        visits, events = collect_campaign(request, since, until)
+        report = build_campaign(visits, events, filters)
+        fields = ['域名', '版位', 'device', 'wa_env', 'link_type', '机型', '系统', '进站数', '点击数', '拉起数', '兜底数', '点击率', '拉起率', '兜底点击', '复制号码', '复制消息', '标红', '原因']
+        stream = io.StringIO(newline='')
+        writer = csv.writer(stream)
+        writer.writerow(fields)
+        def cell(value):
+            text = '' if value is None else str(value)
+            return "'" + text if text.startswith(('=', '+', '-', '@', '\t', '\r')) else text
+        def percent(value):
+            return '' if value is None else f'{value * 100:.1f}%'
+        for row in report['rows']:
+            writer.writerow([cell(value) for value in (
+                row['domain'], row['placement_label'], row['device'], row['wa_env'], row['link_type'], row['model'], row['os'],
+                row['visits'], row['clicks'], row['opens'], row['fallbacks'], percent(row['click_rate']), percent(row['open_rate']),
+                row['fallback_click'], row['copy_number'], row['copy_message'], '是' if row['alert'] else '', row['alert_reason'],
+            )])
+        return Response('\ufeff' + stream.getvalue(), media_type='text/csv; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="campaign.csv"'})
+
+    @app.get('/api/campaign/events')
+    def campaign_events_export(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
+                               start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
+                               wa_env: str = '', link_type: str = '', model: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact)
+        _visits, events = collect_campaign(request, since, until)
+        payload = json.dumps(export_events(events, filters), ensure_ascii=False, separators=(',', ':'))
+        return Response(payload, media_type='application/json; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="campaign-events.json"'})
+
     @app.post('/wa-events')
     async def wa_events(request: Request):
         return await accept_jump_event(request, registry, store)
@@ -1272,7 +1345,7 @@ _NUMBER_SPLIT_SCRIPT = (
     '}'
     'var phone=String(pick.phone||"").replace(/\\D/g,"");'
     'var name=pick.name||"";'
-    'try{if(typeof CONFIG==="object"&&CONFIG){CONFIG.whatsappNumber=phone;if(name)CONFIG.receptionist=name;}}catch(e){}'
+    'try{if(typeof CONFIG==="object"&&CONFIG){CONFIG.eventEndpoint=__ENDPOINT__;CONFIG.whatsappNumber=phone;if(name)CONFIG.receptionist=name;}}catch(e){}'
     'var links=document.querySelectorAll("a[href]");'
     'for(var n=0;n<links.length;n++){'
     'var href=links[n].getAttribute("href")||"";'
@@ -1285,7 +1358,38 @@ _NUMBER_SPLIT_SCRIPT = (
 )
 
 
-def number_split_script(members, mode):
+_EVENT_ENDPOINT = re.compile(r'''(\beventEndpoint\b\s*[:=]\s*)(['"])([^'"\n]{0,200})\2''')
+
+
+def jump_event_endpoint(deployment):
+    origin = deployment.admin_origin if deployment else PUBLIC_ORIGIN
+    return origin.rstrip('/') + '/wa-events'
+
+
+def fill_event_endpoint(data, url):
+    """Write the receiver into an empty CONFIG.eventEndpoint. Leave every other byte alone."""
+    if not url or b'eventEndpoint' not in data:
+        return data
+    bom = data.startswith(b'\xef\xbb\xbf')
+    raw = data[3:] if bom else data
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeError:
+        return data
+
+    def replace(match):
+        if match.group(3).strip():
+            return match.group(0)
+        return f'{match.group(1)}{match.group(2)}{url}{match.group(2)}'
+
+    updated = _EVENT_ENDPOINT.sub(replace, text)
+    if updated == text:
+        return data
+    payload = updated.encode('utf-8')
+    return (b'\xef\xbb\xbf' + payload) if bom else payload
+
+
+def number_split_script(members, mode, event_endpoint=''):
     """One script for every visitor. The cached page can still give each phone its own jump."""
     pool = []
     for item in members:
@@ -1305,11 +1409,12 @@ def number_split_script(members, mode):
     )
     spec = spec.replace('<', r'\u003c').replace('>', r'\u003e').replace('&', r'\u0026')
     spec = spec.replace('\u2028', r'\u2028').replace('\u2029', r'\u2029')
-    return _NUMBER_SPLIT_SCRIPT.replace('__SPEC__', spec)
+    endpoint = json.dumps(event_endpoint or jump_event_endpoint(None))
+    return _NUMBER_SPLIT_SCRIPT.replace('__ENDPOINT__', endpoint).replace('__SPEC__', spec)
 
 
-def inject_number_split(data, members, mode):
-    script = number_split_script(members, mode)
+def inject_number_split(data, members, mode, event_endpoint=''):
+    script = number_split_script(members, mode, event_endpoint)
     if not script:
         return data
     bom = data.startswith(b'\xef\xbb\xbf')
@@ -1496,6 +1601,7 @@ def record_visit_access(store, request, status, started, wa_number, country):
             int(status),
             elapsed,
             _clip(request.url.path, 512),
+            _clip(getattr(request.state, 'visitor_ip', request.client.host if request.client else ''), 80),
         )
         _enqueue_access(lambda: store.record_access(*fields))
     except Exception:
@@ -1527,7 +1633,7 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
         redirect = directory_redirect(store, [version_id], path, request)
         if redirect is not None:
             return redirect
-        return content_response(store, version_id, path, request.method)
+        return content_response(store, version_id, path, request.method, lambda data, relative: fill_event_endpoint(data, jump_event_endpoint(deployment)))
 
     @app.post('/wa-events')
     async def wa_events(request: Request, store=Depends(site_store)):
@@ -1617,6 +1723,7 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
         prepared = prepare_split(store, request, version_id) if slot == 'B' else None
         numbered = prepare_number_split(store, request, version_id) if slot == 'B' else None
         wa_number = (numbered['number'].get('phone') or '') if numbered and numbered.get('number') else ''
+        endpoint = jump_event_endpoint(deployment)
 
         def visitor_transform(data, relative):
             if numbered:
@@ -1625,11 +1732,12 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
                 except ValueError:
                     pass
                 if Path(relative).suffix.lower() in ('.html', '.htm'):
-                    data = inject_number_split(data, numbered['members'], numbered['mode'])
-                return data
-            return prepared['transform'](data, relative)
+                    data = inject_number_split(data, numbered['members'], numbered['mode'], endpoint)
+            elif prepared:
+                data = prepared['transform'](data, relative)
+            return fill_event_endpoint(data, endpoint)
 
-        transform = visitor_transform if (prepared or numbered) else None
+        transform = visitor_transform
         response = content_response(store, version_id, path, request.method, transform)
         if prepared and prepared['is_new']:
             response.set_cookie(SPLIT_COOKIE, prepared['token'], max_age=365 * 24 * 3600, secure=bool(deployment), httponly=True, samesite='lax', path='/')

@@ -109,6 +109,17 @@ def test_analysis_panel_hides_another_agents_domains(accounts):
     assert '数据深度分析' in a.get('/').text
 
 
+def test_campaign_table_hides_another_agents_events(accounts):
+    app, auth, owner, a, b, one, two = accounts
+    mine, theirs = add(a, 'mine-campaign.test'), add(b, 'their-campaign.test')
+    app.state.registry.store(mine['id']).record_client_event('{"event":"whatsapp_click","transaction_id":"mine","wa_env":"ios","link_type":"api","placement":"news.example"}', 'mine-campaign.test')
+    app.state.registry.store(theirs['id']).record_client_event('{"event":"whatsapp_click","transaction_id":"secret","wa_env":"ios","link_type":"api","placement":"news.example"}', 'their-campaign.test')
+    data = a.get('/api/campaign?range=today')
+    assert data.status_code == 200, data.text
+    assert 'secret' not in data.text and 'their-campaign.test' not in data.text
+    assert 'mine' in data.text
+
+
 def test_all_analytics_never_reads_another_agents_data(accounts):
     app, auth, owner, a, b, one, two = accounts
     first, second = add(a, 'one.test'), add(b, 'two.test')

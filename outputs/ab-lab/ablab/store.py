@@ -126,6 +126,9 @@ class Store:
             event_columns = {row['name'] for row in db.execute('PRAGMA table_info(client_events)')}
             if 'origin' not in event_columns:
                 db.execute("ALTER TABLE client_events ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
+            access_columns = {row['name'] for row in db.execute('PRAGMA table_info(access_log)')}
+            if 'ip' not in access_columns:
+                db.execute("ALTER TABLE access_log ADD COLUMN ip TEXT NOT NULL DEFAULT ''")
             db.execute('INSERT OR IGNORE INTO settings VALUES(1,?,0,?)', (Config().model_dump_json(), secrets.token_hex(32)))
             db.executemany('INSERT OR IGNORE INTO slots(slot) VALUES(?)', [('A',), ('B',)])
             self.secret = db.execute('SELECT secret FROM settings WHERE id=1').fetchone()[0].encode()
@@ -913,12 +916,12 @@ class Store:
         with self.connect() as db:
             return [dict(row) for row in db.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100')]
 
-    def record_access(self, ua, ch_ua, ch_platform, ch_platform_version, ch_mobile, referer, query, wa_number, cf_cache_status, country, city, status, duration_ms, path):
+    def record_access(self, ua, ch_ua, ch_platform, ch_platform_version, ch_mobile, referer, query, wa_number, cf_cache_status, country, city, status, duration_ms, path, ip=''):
         """One row per visitor request. A failure here must not break the page."""
         with self.connect() as db:
-            db.execute('''INSERT INTO access_log(created,ua,ch_ua,ch_platform,ch_platform_version,ch_mobile,referer,query,wa_number,cf_cache_status,country,city,status,duration_ms,path)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
-                time.time(), ua, ch_ua, ch_platform, ch_platform_version, ch_mobile, referer, query, wa_number, cf_cache_status, country, city, status, duration_ms, path))
+            db.execute('''INSERT INTO access_log(created,ua,ch_ua,ch_platform,ch_platform_version,ch_mobile,referer,query,wa_number,cf_cache_status,country,city,status,duration_ms,path,ip)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+                time.time(), ua, ch_ua, ch_platform, ch_platform_version, ch_mobile, referer, query, wa_number, cf_cache_status, country, city, status, duration_ms, path, (ip or '')[:80]))
             latest = db.execute('SELECT MAX(id) FROM access_log').fetchone()[0]
             if latest and latest % 200 == 0:
                 db.execute('DELETE FROM access_log WHERE created<?', (time.time() - 90 * 86400,))
@@ -977,6 +980,16 @@ class Store:
             rows = db.execute('''SELECT created,ua,ch_ua,ch_platform,ch_platform_version,ch_mobile,referer,query,wa_number,cf_cache_status,country,city,status,duration_ms,path
                 FROM access_log WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?''', (since, limit)).fetchall()
         return total, [dict(row) for row in rows]
+
+    def campaign_access(self, since, until):
+        with self.connect() as db:
+            rows = db.execute('SELECT created, ua, query, path, ip FROM access_log WHERE created>=? AND created<?', (since, until)).fetchall()
+        return [dict(row) for row in rows]
+
+    def campaign_events(self, since, until):
+        with self.connect() as db:
+            rows = db.execute('SELECT id, created, body, origin FROM client_events WHERE created>=? AND created<? ORDER BY id', (since, until)).fetchall()
+        return [dict(row) for row in rows]
 
     def recent_client_events(self, since, limit):
         with self.connect() as db:
