@@ -68,19 +68,20 @@ def google_crawler(ua):
     return any(marker in text for marker in _GOOGLE_MARKERS)
 
 
-# Copied phone identities used by scanners. A current iPhone or Android does not send these.
-_FORGED_PHONE_MARKERS = (
-    'iphone os 13_2_3',
-    'cpu os 13_2_3',
-    'chrome/116.0.1938',
-    'crios/116.0.1938',
-)
+# Copied phone identities. The country on these visits is only the cloud region.
+# iOS 13.2.3 / Safari 13.0.3 is the string scanners paste. Chrome build 1938 was
+# never a real Chrome release (Chrome 116 shipped as 116.0.5845).
+_FORGED_IOS = re.compile(r'(?:iphone os|cpu os)\s+13[._]2[._]3\b')
+_FORGED_SAFARI = re.compile(r'version/13\.0\.3\b')
+_FORGED_CHROME = re.compile(r'(?:chrome|crios)/\d+\.\d+\.1938(?:\D|$)')
 
 
 def forged_phone(ua):
     """True for the phone strings scanners copy. Ordinary iPhone and Android traffic does not match."""
     text = ua.lower()
-    return any(marker in text for marker in _FORGED_PHONE_MARKERS)
+    if _FORGED_IOS.search(text) or _FORGED_CHROME.search(text):
+        return True
+    return bool(_FORGED_SAFARI.search(text) and any(name in text for name in ('iphone', 'ipad', 'ipod')))
 
 
 def named_crawler(ua):
