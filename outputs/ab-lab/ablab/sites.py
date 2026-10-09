@@ -133,6 +133,36 @@ class Registry:
             self._event(db, site_id, 'unconfigured', '域名已登记；等待服务器配置接入服务')
         return self.get(site_id)
 
+    def remove(self, site_id):
+        """Drop the registry row and this site's data directory. Root-owned files are queued separately."""
+        if site_id == 'default':
+            raise ValueError('原有站点不能删除')
+        if not isinstance(site_id, str) or not re.fullmatch(r'[a-f0-9]{32}', site_id):
+            raise ValueError('站点ID格式错误')
+        directory = self.root / 'sites' / site_id
+        if directory.is_symlink():
+            raise ValueError('站点目录不能是符号链接')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT * FROM sites WHERE id=?', (site_id,)).fetchone()
+            if row is None:
+                raise KeyError(site_id)
+            snapshot = dict(row)
+            tables = {item[0] for item in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            db.execute('DELETE FROM site_events WHERE site_id=?', (site_id,))
+            if 'google_reputation' in tables:
+                db.execute('DELETE FROM google_reputation WHERE site_id=?', (site_id,))
+            if 'google_reputation_locks' in tables:
+                db.execute('DELETE FROM google_reputation_locks WHERE site_id=?', (site_id,))
+            db.execute('DELETE FROM sites WHERE id=?', (site_id,))
+        snapshot['_wipe_failed'] = False
+        try:
+            from .site_erasure import wipe_site_data
+            wipe_site_data(self.root, site_id)
+        except (OSError, ValueError):
+            snapshot['_wipe_failed'] = True
+        return snapshot
+
     def assign_owner(self, site_id, owner_id):
         if not isinstance(owner_id, str) or not re.fullmatch(r'admin|[a-f0-9]{32}', owner_id):
             raise ValueError('账号ID格式错误')

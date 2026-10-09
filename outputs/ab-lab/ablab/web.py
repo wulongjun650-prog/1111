@@ -625,6 +625,26 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         authorized_site(request, site_id)
         return {'site': registry.set_availability(site_id, action)}
 
+    @app.delete('/api/sites/{site_id}')
+    def delete_site(site_id: str, request: Request):
+        require_admin(request)
+        if site_id == 'default':
+            raise ValueError('原有站点不能删除')
+        snapshot = registry.remove(site_id)
+        warning = ''
+        zone_id = snapshot.get('cf_zone_id') or ''
+        if zone_id:
+            try:
+                cloudflare.delete_zone(zone_id, snapshot['domain'])
+                zone_id = ''
+            except ProvisioningError as error:
+                warning = str(error)[:180]
+        from .site_erasure import queue_erasure
+        queue_erasure(registry.root, dict(snapshot, cf_zone_id=zone_id))
+        if snapshot.get('_wipe_failed'):
+            warning = (warning + ' ' if warning else '') + '部分文件将由服务器继续清理。'
+        return {'ok': True, 'domain': snapshot['domain'], 'cloudflare_warning': warning}
+
     @app.post('/api/sites/{site_id}/provision/{action}')
     def provision_control(site_id: str, action: Literal['pause', 'retry'], request: Request):
         authorized_site(request, site_id)

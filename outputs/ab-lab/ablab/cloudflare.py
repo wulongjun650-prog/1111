@@ -135,6 +135,20 @@ class Cloudflare:
             })
         return {'proxied': False, 'address': address}
 
+    def delete_zone(self, zone_id, domain):
+        """Delete the Cloudflare zone after its name matches this domain."""
+        domain = normalize_domain(domain)
+        zone_id = _zone_id(zone_id)
+        if not self.token:
+            raise CloudflareError('服务器未配置 Cloudflare')
+        with self._client() as client:
+            zone = self._call(client, 'GET', '/zones/' + zone_id, missing_ok=True)
+            if zone is None:
+                return
+            if _zone_view(zone)['name'] != domain:
+                raise CloudflareError('Cloudflare 站点与登记域名不一致')
+            self._call(client, 'DELETE', '/zones/' + zone_id, missing_ok=True)
+
     def _client(self):
         return httpx.Client(transport=self.transport, timeout=10, follow_redirects=False, trust_env=False)
 

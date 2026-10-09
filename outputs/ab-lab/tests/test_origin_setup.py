@@ -106,6 +106,14 @@ def world(tmp_path, *, dns=True, issuer='ok', fail_tls=False, advance=True):
     return setup, registry, site, config, other, calls
 
 
+def test_deleted_domain_stops_an_in_flight_build(tmp_path):
+    setup, registry, site, _config, _other, _calls = world(tmp_path)
+    registry.remove(site['id'])
+    assert setup._current(site) is False
+    assert setup.run_pending() == 'done'
+    assert setup.panel.created == []
+
+
 def test_matching_direct_domain_gets_one_site_one_certificate_and_https(tmp_path):
     setup, registry, site, config, other, calls = world(tmp_path)
     before = other.read_bytes()

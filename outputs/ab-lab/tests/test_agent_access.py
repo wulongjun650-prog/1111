@@ -235,6 +235,7 @@ def test_observer_reads_every_domain_and_account_but_cannot_change_anything(acco
         ('POST', '/api/accounts', {'username': 'another', 'password': 'watch-password-ok', 'role': 'agent'}),
         ('PATCH', f"/api/accounts/{one['id']}", {'enabled': False}),
         ('PUT', f"/api/sites/{first['id']}/owner", {'owner_id': 'admin'}),
+        ('DELETE', f"/api/sites/{first['id']}", None),
     ]
     for method, path, body in writes:
         result = watcher.request(method, path, json=body)
@@ -247,6 +248,20 @@ def test_observer_reads_every_domain_and_account_but_cannot_change_anything(acco
     assert app.state.registry.get(first['id'])['owner_id'] == one['id']
     assert watcher.post('/api/logout').status_code == 200
     assert watcher.get('/api/sites').status_code == 401
+
+
+def test_only_the_admin_can_delete_a_domain(accounts):
+    app, auth, owner, a, b, one, two = accounts
+    site = add(a, 'gone.test')
+    refused = a.delete(f"/api/sites/{site['id']}")
+    assert refused.status_code == 403
+    assert app.state.registry.get(site['id'])['domain'] == 'gone.test'
+    assert owner.delete('/api/sites/default').status_code == 400
+    result = owner.delete(f"/api/sites/{site['id']}")
+    assert result.status_code == 200, result.text
+    assert result.json()['domain'] == 'gone.test'
+    assert all(row['domain'] != 'gone.test' for row in owner.get('/api/sites').json()['sites'])
+    assert a.get('/api/sites').json()['sites'] == []
 
 
 def test_registry_owner_migration_preserves_existing_sites_and_worker_fields(tmp_path):

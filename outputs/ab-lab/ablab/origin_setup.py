@@ -204,9 +204,11 @@ class PanelCertificateIssuer:
 class OriginSetup:
     def __init__(self, registry, state_dir, server_ip, panel, issuer, *,
                  certificate_root=CERTIFICATE_ROOT, config_dir=Path('/www/server/panel/vhost/nginx'),
-                 runner=subprocess.run, checker=None, cloudflare=None):
+                 runner=subprocess.run, checker=None, cloudflare=None,
+                 webroot_root=Path('/www/wwwroot/ab-lab-sites')):
         self.registry, self.panel, self.issuer = registry, panel, issuer
         self.cloudflare = cloudflare
+        self.webroot_root = Path(webroot_root)
         self.server_ip = public_ipv4(server_ip)
         self.root = no_symlinks(Path(state_dir))
         self.certificate_root = no_symlinks(Path(certificate_root))
@@ -224,6 +226,10 @@ class OriginSetup:
         with worker_lock(self.lock_path) as acquired:
             if not acquired:
                 return 'busy'
+            try:
+                self._erase()
+            except Exception as error:
+                print('Origin erase failed (' + type(error).__name__ + ').', flush=True)
             from .cloudflare import repair_strict_ssl
             from .provisioning import inspect_pending
             repair_strict_ssl(self.registry, self.cloudflare)
@@ -239,8 +245,33 @@ class OriginSetup:
                 and site['next_attempt'] <= time.time())
 
     def _current(self, site):
-        latest = self.registry.get(site['id'])
+        try:
+            latest = self.registry.get(site['id'])
+        except KeyError:
+            return False
         return latest['enabled'] and latest['generation'] == site['generation'] and latest['domain'] == site['domain']
+
+    def erase_once(self):
+        with worker_lock(self.lock_path) as acquired:
+            if not acquired:
+                return 'busy'
+            self._erase()
+            return 'done'
+
+    def _erase(self):
+        from .site_erasure import erase_queued
+        return erase_queued(
+            self.registry.root / 'erasures',
+            panel=self.panel,
+            certificate_root=self.certificate_root,
+            config_dir=self.nginx.config_dir,
+            receipt_dir=self.nginx.root,
+            job_dir=self.job_dir,
+            webroot_root=self.webroot_root,
+            data_root=self.registry.root,
+            runner=self.nginx.runner,
+            cloudflare=self.cloudflare,
+        )
 
     def _stage(self, site, stage, **kwargs):
         return self._current(site) and self.registry.transition(site['id'], site['generation'], stage, **kwargs)
@@ -434,4 +465,10 @@ def serve_origin(data_dir, server_ip, *, port_path=PANEL_PORT, api_path=Path('/w
             setup.run_pending()
         except Exception as error:
             print('Origin pass failed (' + type(error).__name__ + ').', flush=True)
-        time.sleep(60)
+        # A full pass can wait on DNS. Erase queued domains without waiting that out.
+        for _ in range(12):
+            time.sleep(5)
+            try:
+                setup.erase_once()
+            except Exception as error:
+                print('Origin erase failed (' + type(error).__name__ + ').', flush=True)
