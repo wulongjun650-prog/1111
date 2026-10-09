@@ -117,6 +117,16 @@ class Registry:
             row = db.execute('SELECT * FROM sites WHERE domain=? AND enabled=1', (domain,)).fetchone()
         return dict(row) if row else None
 
+    def find_domain(self, host):
+        """The site registered for this name, including one that is paused."""
+        try:
+            domain = normalize_domain(host)
+        except ValueError:
+            return None
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM sites WHERE domain=?', (domain,)).fetchone()
+        return dict(row) if row else None
+
     def add(self, domain, owner_id='admin'):
         domain = normalize_domain(domain)
         if domain in self.reserved:

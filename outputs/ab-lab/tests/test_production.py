@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from ablab import web
 from ablab.settings import Deployment
 from ablab.auth import Auth
 from ablab.store import Store
@@ -90,6 +91,23 @@ def test_target_uses_real_proxy_ip_and_cannot_serve_admin(prod):
     assert '<h1>B</h1>' in target.get('/', headers={'X-Real-IP': '198.51.100.2'}).text
     assert target.get('/api/state').status_code == 404
     assert settings.admin_origin in target.get('/').headers['content-security-policy']
+
+
+def test_jump_events_accept_a_cross_origin_beacon_without_login(prod):
+    _data, settings, _auth, client = prod
+    bare = TestClient(client.app, base_url=settings.admin_origin, client=('127.0.0.1', 9))
+    headers = {'X-Real-IP': '198.51.100.20', 'X-Forwarded-Proto': 'https', 'Origin': 'https://shop.example', 'Content-Type': 'text/plain', 'Sec-Fetch-Site': 'cross-site'}
+    body = '{"event":"whatsapp_click","transaction_id":"tx","wa_env":"ios","link_type":"api","extra":1}'
+    posted = bare.post('/wa-events', content=body, headers=headers)
+    assert posted.status_code == 204
+    assert posted.text == ''
+    assert posted.headers['access-control-allow-origin'] == '*'
+    assert bare.post('/api/counters/reset', headers=headers, json={}).status_code == 403
+    web.flush_access_log()
+    with client.app.state.store.connect() as db:
+        row = db.execute('SELECT body, origin FROM client_events').fetchone()
+    assert row['body'] == body
+    assert row['origin'] == 'shop.example'
 
 
 def test_password_reset_revokes_session_and_login_stays_open(prod):

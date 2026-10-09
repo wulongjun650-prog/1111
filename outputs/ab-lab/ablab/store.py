@@ -19,6 +19,57 @@ class Conflict(ValueError):
     pass
 
 
+_JUMP_COUNTS = ('whatsapp_click', 'wa_app_opened', 'wa_fallback_shown')
+
+
+def _event_text(value):
+    if isinstance(value, str):
+        return value.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ')
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return ''
+    return str(value)
+
+
+def jump_event_lines(events, fallback_domain=''):
+    """Section 3: counts by source domain, then every raw body sorted by transaction_id."""
+    counts = {}
+    raw = []
+    for row in events:
+        body = row['body'] if isinstance(row['body'], str) else ''
+        origin = row['origin'] if isinstance(row['origin'], str) else ''
+        source = origin.strip() or fallback_domain
+        transaction_id = ''
+        try:
+            payload = json.loads(body)
+        except (TypeError, ValueError):
+            payload = None
+        if isinstance(payload, dict):
+            transaction_id = _event_text(payload.get('transaction_id'))
+            name = _event_text(payload.get('event'))
+            if name in _JUMP_COUNTS:
+                key = (source, _event_text(payload.get('wa_env')), _event_text(payload.get('link_type')))
+                bucket = counts.setdefault(key, {item: 0 for item in _JUMP_COUNTS})
+                bucket[name] += 1
+        raw.append((transaction_id, row['created'], source, body))
+    lines = [
+        '# 3 跳转事件（不受国家筛选，按来源域名 × wa_env × link_type）',
+        '域名\twa_env\tlink_type\twhatsapp_click\twa_app_opened\twa_fallback_shown',
+    ]
+    for key in sorted(counts):
+        bucket = counts[key]
+        lines.append('\t'.join((*key, *(str(bucket[item]) for item in _JUMP_COUNTS))))
+    lines.extend([
+        '',
+        '# 3.1 全部原始 JSON（按 transaction_id 排序）',
+        '收到时间\t来源域名\tJSON',
+    ])
+    raw.sort(key=lambda item: (item[0] == '', item[0], item[1]))
+    for _transaction_id, created, source, body in raw:
+        stamp = datetime.fromtimestamp(created, timezone(timedelta(hours=8))).isoformat(timespec='seconds')
+        lines.append(f'{stamp}\t{source}\t{body}')
+    return lines
+
+
 def choose_split_member(members, mode):
     if mode == 'weighted':
         total = sum(item['weight'] for item in members)
@@ -72,6 +123,9 @@ class Store:
                 db.execute('ALTER TABLE whatsapp_numbers ADD COLUMN trust_result TEXT')
             if 'display_name' not in number_columns:
                 db.execute("ALTER TABLE whatsapp_numbers ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
+            event_columns = {row['name'] for row in db.execute('PRAGMA table_info(client_events)')}
+            if 'origin' not in event_columns:
+                db.execute("ALTER TABLE client_events ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
             db.execute('INSERT OR IGNORE INTO settings VALUES(1,?,0,?)', (Config().model_dump_json(), secrets.token_hex(32)))
             db.executemany('INSERT OR IGNORE INTO slots(slot) VALUES(?)', [('A',), ('B',)])
             self.secret = db.execute('SELECT secret FROM settings WHERE id=1').fetchone()[0].encode()
@@ -869,14 +923,16 @@ class Store:
             if latest and latest % 200 == 0:
                 db.execute('DELETE FROM access_log WHERE created<?', (time.time() - 90 * 86400,))
 
-    def record_client_event(self, body):
+    def record_client_event(self, body, origin=''):
+        if not isinstance(origin, str):
+            origin = ''
         with self.connect() as db:
-            db.execute('INSERT INTO client_events(created,body) VALUES(?,?)', (time.time(), body))
+            db.execute('INSERT INTO client_events(created,body,origin) VALUES(?,?,?)', (time.time(), body, origin.strip()[:253]))
             latest = db.execute('SELECT MAX(id) FROM client_events').fetchone()[0]
             if latest and latest % 200 == 0:
                 db.execute('DELETE FROM client_events WHERE created<?', (time.time() - 90 * 86400,))
 
-    def access_report(self, days=7, country=None):
+    def access_report(self, days=7, country=None, domain=''):
         """Plain-text weekly export. Days are Hong Kong dates. Counts are requests."""
         since = time.time() - days * 86400
         where, args = 'created>=?', [since]
@@ -892,7 +948,7 @@ class Store:
                     CASE WHEN instr(lower(query), 'placement=')>0 THEN 1 ELSE 0 END placement,
                     COUNT(*) n
                 FROM access_log WHERE {where} GROUP BY 1,2,3,4,5 ORDER BY 1,2,3,4,5''', args).fetchall()
-            events = db.execute('SELECT created, body FROM client_events WHERE created>=? ORDER BY id', (since,)).fetchall()
+            events = db.execute('SELECT created, body, origin FROM client_events WHERE created>=? ORDER BY id', (since,)).fetchall()
         scope = country or '全部'
         lines = [
             '访问日志周报',
@@ -911,13 +967,8 @@ class Store:
             '日期\t含wv)\tiOS且不含Safari/\t带gclid\t带placement\t请求数',
         ])
         lines.extend(f'{row["day"]}\t{row["wv"]}\t{row["ios_no_safari"]}\t{row["gclid"]}\t{row["placement"]}\t{row["n"]}' for row in cross)
-        lines.extend([
-            '',
-            '# 3 事件端点收到的全部记录（不受国家筛选，每行一条收到的 JSON）',
-        ])
-        for row in events:
-            stamp = datetime.fromtimestamp(row['created'], timezone(timedelta(hours=8))).isoformat(timespec='seconds')
-            lines.append(f'{stamp}\t{row["body"]}')
+        lines.append('')
+        lines.extend(jump_event_lines(events, domain))
         return '\n'.join(lines) + '\n'
 
     def recent_access(self, since, limit):
@@ -930,5 +981,5 @@ class Store:
     def recent_client_events(self, since, limit):
         with self.connect() as db:
             total = db.execute('SELECT COUNT(*) FROM client_events WHERE created>=?', (since,)).fetchone()[0]
-            rows = db.execute('SELECT created, body FROM client_events WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?', (since, limit)).fetchall()
+            rows = db.execute('SELECT created, body, origin FROM client_events WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?', (since, limit)).fetchall()
         return total, [dict(row) for row in rows]

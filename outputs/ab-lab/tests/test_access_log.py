@@ -1,7 +1,11 @@
+import threading
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
 from ablab import web
+from ablab.store import Store
 from ablab.web import create_admin, create_target
 
 
@@ -145,6 +149,130 @@ def test_analysis_panel_combines_every_domain(tmp_path):
     assert '===== one.example.com =====' in report.text
     assert '===== two.example.com =====' in report.text
     assert 'HK-One' in report.text and 'HK-Two' in report.text
+
+
+def test_wa_events_keeps_the_raw_json_for_any_landing_domain(tmp_path):
+    admin, target = clients(tmp_path)
+    created = admin.post('/api/sites', json={'domain': 'one.example.com'})
+    assert created.status_code == 200, created.text
+    site_id = created.json()['site']['id']
+    body = '{"event":"whatsapp_click","transaction_id":"t-9","wa_env":"ios_safari","link_type":"universal","placement_app":"feed","future_field":{"n":1}}'
+    foreign = TestClient(admin.app, base_url='http://127.0.0.1:8765', client=('127.0.0.1', 11))
+    posted = foreign.post('/wa-events', content=body, headers={
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Origin': 'https://one.example.com',
+        'Sec-Fetch-Site': 'cross-site',
+    })
+    assert posted.status_code == 204
+    assert posted.text == ''
+    assert posted.headers['access-control-allow-origin'] == '*'
+    referred = target.post('/wa-events', content='{"event":"wa_app_opened","transaction_id":"t-9"}', headers={
+        'Referer': 'https://one.example.com/landing?gclid=1',
+    })
+    assert referred.status_code == 204
+    assert referred.headers['access-control-allow-origin'] == '*'
+    other = target.post('/wa-events', content='not-json', headers={'Origin': 'null', 'Content-Type': 'text/plain'})
+    assert other.status_code == 204
+    web.flush_access_log()
+    with admin.app.state.registry.store(site_id).connect() as db:
+        rows = db.execute('SELECT body, origin FROM client_events ORDER BY id').fetchall()
+    assert [row['body'] for row in rows] == [body, '{"event":"wa_app_opened","transaction_id":"t-9"}']
+    assert {row['origin'] for row in rows} == {'one.example.com'}
+    with admin.app.state.store.connect() as db:
+        kept = db.execute('SELECT body, origin FROM client_events').fetchone()
+        assert kept['body'] == 'not-json' and kept['origin'] == ''
+        assert db.execute("SELECT COUNT(*) FROM access_log WHERE path='/wa-events'").fetchone()[0] == 0
+    huge = foreign.post('/wa-events', content='x' * 8193, headers={'Content-Type': 'text/plain', 'Origin': 'https://one.example.com'})
+    assert huge.status_code == 413
+    assert huge.headers['access-control-allow-origin'] == '*'
+    page = target.get('/')
+    policy = page.headers['content-security-policy']
+    flags = policy.split(';')[0].split()
+    assert flags == ['sandbox', 'allow-scripts', 'allow-forms', 'allow-same-origin', 'allow-popups', 'allow-popups-to-escape-sandbox', 'allow-top-navigation-to-custom-protocols']
+    assert 'allow-top-navigation' not in flags
+
+
+def test_wa_events_returns_before_the_write(tmp_path, monkeypatch):
+    _admin, target = clients(tmp_path)
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow(self, body, origin=''):
+        started.set()
+        release.wait(2)
+
+    monkeypatch.setattr(Store, 'record_client_event', slow)
+    try:
+        began = time.perf_counter()
+        posted = target.post('/wa-events', content='{"event":"whatsapp_click"}', headers={'Content-Type': 'text/plain', 'Origin': 'https://shop.example'})
+        elapsed = time.perf_counter() - began
+        assert posted.status_code == 204
+        assert elapsed < 0.5
+        assert started.wait(1)
+    finally:
+        release.set()
+        web.flush_access_log()
+
+
+def test_old_event_rows_gain_a_source_domain_column(tmp_path):
+    import sqlite3
+    path = tmp_path / 'app.db'
+    db = sqlite3.connect(path)
+    db.execute('CREATE TABLE client_events(id INTEGER PRIMARY KEY, created REAL NOT NULL, body TEXT NOT NULL)')
+    db.execute('INSERT INTO client_events(created, body) VALUES(?, ?)', (time.time(), '{"event":"whatsapp_click","transaction_id":"old","wa_env":"ios","link_type":"api"}'))
+    db.commit()
+    db.close()
+    store = Store(tmp_path)
+    report = store.access_report(7, None, '本地站点')
+    assert '本地站点\tios\tapi\t1\t0\t0' in report
+    assert '{"event":"whatsapp_click","transaction_id":"old","wa_env":"ios","link_type":"api"}' in report
+
+
+def test_weekly_section_three_counts_domain_env_and_link(tmp_path):
+    admin, _target = clients(tmp_path)
+    store = admin.app.state.store
+    rows = [
+        ('{"event":"whatsapp_click","transaction_id":"b","wa_env":"ios","link_type":"universal","placement_app":"feed","future":1}', 'one.example'),
+        ('{"event":"wa_app_opened","transaction_id":"a","wa_env":"ios","link_type":"universal"}', 'one.example'),
+        ('{"event":"whatsapp_click","transaction_id":"a","wa_env":"ios","link_type":"universal"}', 'one.example'),
+        ('{"event":"wa_fallback_shown","wa_env":"android","link_type":"scheme"}', 'two.example'),
+        ('{"event":"wa_copy_number","transaction_id":"a","wa_env":"ios","link_type":"universal","note":"keep me"}', 'one.example'),
+        ('not-json', 'two.example'),
+    ]
+    for body, origin in rows:
+        store.record_client_event(body, origin)
+    report = store.access_report(7, 'HK', '本地站点')
+    assert 'one.example\tios\tuniversal\t2\t1\t0' in report
+    assert 'two.example\tandroid\tscheme\t0\t0\t1' in report
+    assert '"future":1' in report
+    assert 'wa_copy_number' in report
+    raw = report.split('# 3.1 全部原始 JSON（按 transaction_id 排序）', 1)[1]
+    markers = [
+        '"event":"wa_app_opened","transaction_id":"a"',
+        '"event":"whatsapp_click","transaction_id":"a"',
+        'wa_copy_number',
+        '"transaction_id":"b"',
+        'wa_fallback_shown',
+        'not-json',
+    ]
+    positions = [raw.index(item) for item in markers]
+    assert positions == sorted(positions)
+    downloaded = admin.get('/api/analysis/report?days=7')
+    assert 'one.example\tios\tuniversal\t2\t1\t0' in downloaded.text
+
+
+def test_jump_events_outside_hong_kong_are_still_stored(tmp_path, monkeypatch):
+    monkeypatch.setattr(web, 'geo_country', lambda ip: 'US')
+    admin, target = clients(tmp_path)
+    posted = target.post('/wa-events', content='{"event":"whatsapp_click","transaction_id":"us"}', headers={'Content-Type': 'text/plain', 'Origin': 'https://shop.example'})
+    assert posted.status_code == 204
+    collect = target.post('/api/collect', content='{"event":"whatsapp_click"}', headers={'Content-Type': 'text/plain'})
+    assert collect.status_code == 204
+    web.flush_access_log()
+    with admin.app.state.store.connect() as db:
+        rows = db.execute('SELECT body, origin FROM client_events').fetchall()
+        assert db.execute('SELECT COUNT(*) FROM access_log').fetchone()[0] == 0
+    assert [(row['body'], row['origin']) for row in rows] == [('{"event":"whatsapp_click","transaction_id":"us"}', 'shop.example')]
 
 
 def test_visitors_outside_hong_kong_are_not_stored(tmp_path, monkeypatch):

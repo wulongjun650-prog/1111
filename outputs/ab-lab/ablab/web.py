@@ -15,7 +15,7 @@ import secrets
 import threading
 import time
 from typing import Annotated, Literal
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlsplit
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path as PathParameter, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -112,6 +112,7 @@ class LocalBoundary:
         state = scope.setdefault('state', {})
         site = None
         is_ingest = self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/wa-trust/screen/[A-Za-z0-9_-]{20,80}', scope['path']) is not None
+        is_beacon = scope['method'] == 'POST' and scope['path'] == '/wa-events'
         if self.deployment:
             allowed_hosts = (self.deployment.host(self.admin),)
             if not self.admin and self.registry:
@@ -125,7 +126,7 @@ class LocalBoundary:
                 state['visitor_ip'] = visitor_ip
             local &= headers.get(b'x-forwarded-proto') == b'https'
         invalid = not local or host not in allowed_hosts
-        if self.admin:
+        if self.admin and not is_beacon:
             invalid |= origin is not None and origin != expected_origin.encode()
             invalid |= headers.get(b'sec-fetch-site', b'none') not in (b'none', b'same-origin')
         if invalid:
@@ -154,7 +155,7 @@ class LocalBoundary:
         if self.admin and self.auth:
             request = Request(scope)
             session = self.auth.session(request.cookies.get(COOKIE))
-            public = is_ingest or (scope['path'] == '/api/login' and scope['method'] == 'POST') or (scope['method'] in ('GET', 'HEAD') and scope['path'] in ('/login', '/static/login.js', '/static/app.css'))
+            public = is_beacon or is_ingest or (scope['path'] == '/api/login' and scope['method'] == 'POST') or (scope['method'] in ('GET', 'HEAD') and scope['path'] in ('/login', '/static/login.js', '/static/app.css'))
             if not public and session is None:
                 response = RedirectResponse('/login', status_code=307) if scope['path'] == '/' else JSONResponse({'detail': '请先登录'}, status_code=401)
                 response.headers['Cache-Control'] = 'no-store'
@@ -184,7 +185,7 @@ class LocalBoundary:
                     await JSONResponse({'detail': '观察号只能查看'}, status_code=403)(scope, receive, send)
                     return
         state['csrf'] = csrf
-        if self.admin and scope['method'] not in ('GET', 'HEAD') and not is_ingest:
+        if self.admin and scope['method'] not in ('GET', 'HEAD') and not is_ingest and not is_beacon:
             if origin != expected_origin.encode() or not secrets.compare_digest(headers.get(b'x-csrf-token', b''), csrf.encode()):
                 await JSONResponse({'detail': '请求校验失败，请刷新页面'}, status_code=403)(scope, receive, send)
                 return
@@ -1100,11 +1101,12 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return _present_logs(store.logs(days, slot, page))
 
     @routes.get('/access-report')
-    def access_report(days: int = Query(default=7, ge=1, le=90), country: str = '', store=Depends(site_store)):
+    def access_report(request: Request, days: int = Query(default=7, ge=1, le=90), country: str = '', store=Depends(site_store)):
         code = country.strip().upper()
         if code and not re.fullmatch(r'[A-Z]{2}', code):
             raise HTTPException(400, '国家代码应为两位字母')
-        text = store.access_report(days, code or None)
+        site = registry.get(request.path_params.get('site_id', 'default'))
+        text = store.access_report(days, code or None, site.get('domain') or '本地站点')
         return Response(text, media_type='text/plain; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="access-report.txt"'})
 
     @routes.get('/logs/rate')
@@ -1169,7 +1171,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 row['domain'] = domain
                 requests.append(row)
             for row in event_rows:
-                row['domain'] = domain
+                row['domain'] = (row.get('origin') or '').strip() or domain
                 events.append(row)
         requests.sort(key=lambda row: row['created'], reverse=True)
         events.sort(key=lambda row: row['created'], reverse=True)
@@ -1184,10 +1186,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def analysis_report(request: Request, days: int = Query(default=7, ge=1, le=90)):
         parts = []
         for site in analysis_sites(request):
-            text = registry.store(site['id']).access_report(days, 'HK')
+            text = registry.store(site['id']).access_report(days, 'HK', analysis_domain(site))
             parts.append(f'===== {analysis_domain(site)} =====\n{text}')
         body = '\n'.join(parts) if parts else '没有可查看的域名。\n'
         return Response(body, media_type='text/plain; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="analysis-report.txt"'})
+
+    @app.post('/wa-events')
+    async def wa_events(request: Request):
+        return await accept_jump_event(request, registry, store)
 
     app.include_router(routes, prefix='/api/sites/{site_id}')
     app.include_router(routes, prefix='/api')
@@ -1435,6 +1441,38 @@ def _enqueue_access(job):
         LOGGER.error('access log queue full')
 
 
+JUMP_EVENT_LIMIT = 8192
+JUMP_HEADERS = {'Access-Control-Allow-Origin': '*'}
+
+
+def jump_source_domain(request):
+    """Landing domain from Origin, then Referer. Missing or opaque values stay blank."""
+    for key in ('origin', 'referer'):
+        raw = request.headers.get(key, '').strip()
+        if not raw or raw.lower() == 'null':
+            continue
+        host = urlsplit(raw).hostname
+        if host:
+            return host[:253]
+    return ''
+
+
+async def accept_jump_event(request, registry, fallback_store):
+    """Store one beacon and answer before the write. Statistics must not slow the page."""
+    raw = await request.body()
+    if len(raw) > JUMP_EVENT_LIMIT:
+        return Response(status_code=413, headers=JUMP_HEADERS)
+    body = raw.decode('utf-8', 'replace')
+    origin = jump_source_domain(request)
+    store = fallback_store
+    if origin and registry is not None:
+        site = registry.find_domain(origin)
+        if site is not None:
+            store = registry.store(site['id'])
+    _enqueue_access(lambda store=store, body=body, origin=origin: store.record_client_event(body, origin))
+    return Response(status_code=204, headers=JUMP_HEADERS)
+
+
 def record_visit_access(store, request, status, started, wa_number, country):
     """Queue one Hong Kong visitor request. The page is not waiting on this write."""
     try:
@@ -1490,6 +1528,10 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
         if redirect is not None:
             return redirect
         return content_response(store, version_id, path, request.method)
+
+    @app.post('/wa-events')
+    async def wa_events(request: Request, store=Depends(site_store)):
+        return await accept_jump_event(request, registry, store)
 
     @app.post('/api/collect')
     async def collect_client_event(request: Request, store=Depends(site_store)):
