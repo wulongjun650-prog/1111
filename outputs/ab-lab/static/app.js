@@ -692,7 +692,7 @@ function campaignQuery() {
   const box = $('#campaign-domain');
   if (box) box.value = domain;
   if (domain) params.set('domain', domain);
-  for (const [name, id] of [['dest_app', 'campaign-dest'], ['placement', 'campaign-placement'], ['youtube', 'campaign-youtube'], ['device', 'campaign-device'], ['wa_env', 'campaign-env'], ['link_type', 'campaign-link'], ['model', 'campaign-model']]) {
+  for (const [name, id] of [['dest_app', 'campaign-dest'], ['placement', 'campaign-placement'], ['youtube', 'campaign-youtube'], ['opener', 'campaign-opener'], ['device', 'campaign-device'], ['wa_env', 'campaign-env'], ['link_type', 'campaign-link'], ['model', 'campaign-model']]) {
     const value = $(`#${id}`).value.trim();
     if (value) params.set(name, value);
   }
@@ -714,7 +714,7 @@ function emptyCampaign(message) {
   body.replaceChildren();
   const row = element('tr');
   const cell = element('td', 'empty-state', message);
-  cell.colSpan = 17;
+  cell.colSpan = 18;
   row.append(cell);
   body.append(row);
 }
@@ -741,7 +741,7 @@ async function loadCampaign() {
     if (request !== campaignRequest) return;
     const totals = data.totals || {};
     $('#campaign-summary').textContent = `${domain} · 进站 ${number(totals.visits)} · 点击 ${number(totals.clicks)} · 拉起 ${number(totals.opens)} · 拉起率 ${percent(totals.open_rate)}`;
-    $('#campaign-note').textContent = `只显示 ${domain}。接收地址 ${data.endpoint || ''}。时间是香港时间，精确到秒；一行里有多次时显示最晚的一次。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
+    $('#campaign-note').textContent = `只显示 ${domain}。打开是进来的应用或浏览器，例如微信、华为浏览器、Chrome。接收地址 ${data.endpoint || ''}。时间是香港时间，精确到秒；一行里有多次时显示最晚的一次。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
     if (!data.rows.length) {
       emptyCampaign(`这段时间，${domain} 没有进站或跳转事件。`);
       return;
@@ -772,6 +772,7 @@ async function loadCampaign() {
         element('td', '', item.dest_label || '未知'),
         element('td', '', item.placement_label),
         element('td', '', item.youtube_label || (item.youtube_video ? `视频 ${item.youtube_video}` : '—')),
+        element('td', '', item.opener || '未知'),
         element('td', '', item.device),
         element('td', '', item.wa_env),
         element('td', '', item.link_type),

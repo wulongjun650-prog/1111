@@ -7,6 +7,41 @@ from ablab.campaign import build_campaign, device_from_ua, fill_youtube_channels
 from ablab.web import create_admin, create_target, inject_dest_app
 
 
+def test_open_app_names_wechat_and_huawei_before_chrome():
+    from ablab.devices import describe_device, open_app
+    wechat = 'Mozilla/5.0 (Linux; Android 12; NOH-AN00 Build/HUAWEINOH-AN00; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/107.0.5304.141 Mobile Safari/537.36 MicroMessenger/8.0.35.2360 WeChat/arm64 Weixin'
+    huawei = 'Mozilla/5.0 (Linux; Android 10; LYA-AL00) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 HuaweiBrowser/11.0.3.300 Mobile Safari/537.36'
+    chrome = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36'
+    safari = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1'
+    assert open_app(wechat) == '微信'
+    assert open_app(huawei) == '华为浏览器'
+    assert open_app(chrome) == 'Chrome'
+    assert open_app(safari) == 'Safari'
+    assert open_app('') == '未知'
+    assert describe_device(wechat)['browser'] == '微信'
+    assert describe_device(huawei)['browser'] == '华为浏览器'
+    assert describe_device(chrome)['browser'] == 'Chrome 120.0.0.0'
+
+
+def test_campaign_rows_split_by_the_app_that_opened_the_page():
+    wechat = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 MicroMessenger/8.0.42'
+    huawei = 'Mozilla/5.0 (Linux; Android 10; LYA-AL00) AppleWebKit/537.36 Chrome/83.0.4103.106 HuaweiBrowser/11.0.3.300 Mobile Safari/537.36'
+    def event(token, ua, name='whatsapp_click'):
+        body = {'event': name, 'transaction_id': token, 'wa_env': 'android_browser', 'link_type': 'universal', 'device': 'mobile', 'placement': 'news.example', 'gclid': token}
+        if ua:
+            body['ua'] = ua
+        return {'domain': 'one.test', 'body': json.dumps(body), 'id': token, 'created': 2, 'origin': 'one.test'}
+    report = build_campaign([
+        {'domain': 'one.test', 'query': 'gclid=w', 'ip': '1.1.1.1', 'ua': wechat, 'path': '/', 'created': 1, 'referer': ''},
+    ], [event('w', wechat), event('w', '', 'wa_app_opened'), event('h', huawei)], {})
+    assert {row['opener'] for row in report['rows']} == {'微信', '华为浏览器'}
+    wechat_row = next(row for row in report['rows'] if row['opener'] == '微信')
+    assert wechat_row['clicks'] == 1 and wechat_row['opens'] == 1 and wechat_row['visits'] == 1
+    only = build_campaign([], [event('w', wechat), event('h', huawei)], {'opener': '华为'})
+    assert [row['opener'] for row in only['rows']] == ['华为浏览器']
+    assert only['totals']['clicks'] == 1
+
+
 def test_placement_and_phone_labels():
     assert placement_label('') == '未知'
     assert placement_label('mobileapp::2-com.example.app') == 'Android App · com.example.app'
@@ -144,6 +179,7 @@ def test_campaign_follows_the_selected_domain(tmp_path):
     page = admin.get('/').text
     assert 'id="campaign-domain" name="domain" readonly' in page
     assert '只显示左上角当前管理站点' in page
+    assert '可填微信或华为' in page
     registry = admin.app.state.registry
     one = registry.add('one.vip')
     two = registry.add('two.vip')
