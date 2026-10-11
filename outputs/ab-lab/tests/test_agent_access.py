@@ -107,6 +107,19 @@ def test_analysis_panel_hides_another_agents_domains(accounts):
     owner_domains = {item['domain'] for item in owner.get('/api/analysis?days=7').json()['requests']['items']}
     assert {'mine.test', 'theirs.test'} <= owner_domains
     assert '数据深度分析' in a.get('/').text
+    stolen = a.get('/api/analysis?days=7&domain=theirs.test')
+    assert stolen.status_code == 200
+    assert stolen.json()['domains'] == 0
+    assert stolen.json()['requests']['items'] == [] and stolen.json()['events']['items'] == []
+    assert 'their-secret' not in stolen.text
+    assert a.get('/api/analysis/report?days=7&domain=theirs.test').text == '没有可查看的域名。\n'
+    assert a.post('/api/analysis/clear?domain=theirs.test').status_code == 404
+    own = a.post('/api/analysis/clear?domain=mine.test')
+    assert own.status_code == 200, own.text
+    assert own.json()['domain'] == 'mine.test'
+    with app.state.registry.store(theirs['id']).connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM access_log').fetchone()[0] == 1
+        assert db.execute("SELECT body FROM client_events").fetchone()[0] == '{"event":"their-secret"}'
 
 
 def test_campaign_table_hides_another_agents_events(accounts):
@@ -201,6 +214,8 @@ def test_observer_reads_every_domain_and_account_but_cannot_change_anything(acco
     page = watcher.get('/')
     assert page.status_code == 200
     assert 'data-tab="accounts"' in page.text and '观察账号' in page.text
+    assert 'id="analysis-clear"' not in page.text
+    assert '导出数据' in page.text
     catalog = watcher.get('/api/sites')
     assert catalog.status_code == 200, catalog.text
     assert {site['domain'] for site in catalog.json()['sites']} >= {'one.test', 'two.test'}
@@ -231,6 +246,7 @@ def test_observer_reads_every_domain_and_account_but_cannot_change_anything(acco
         ('PUT', f"/api/sites/{first['id']}/config", {}),
         ('POST', f"/api/sites/{first['id']}/publish/A", {}),
         ('POST', f"/api/sites/{first['id']}/simulate", {}),
+        ('POST', '/api/analysis/clear?domain=one.test', {}),
         ('POST', f"/api/sites/{first['id']}/logs/clear", {}),
         ('POST', f"/api/sites/{first['id']}/logs/clear-foreign", {}),
         ('POST', f"/api/sites/{first['id']}/desk/review", {'tickets': [], 'phone': ''}),

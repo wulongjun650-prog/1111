@@ -922,6 +922,15 @@ class Store:
             self._audit(db, 'logs_cleared', {'deleted': deleted})
         return deleted
 
+    def clear_analysis(self):
+        """Delete this site's deep-analysis rows: Hong Kong request log and landing-page events."""
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            access = db.execute('DELETE FROM access_log').rowcount
+            events = db.execute('DELETE FROM client_events').rowcount
+            self._audit(db, 'analysis_cleared', {'access': access, 'events': events})
+        return {'access': access, 'events': events}
+
     def clear_logs_unless(self, keep):
         """Delete visit rows in this site only. keep(ip, country) uses the same display rule as the log list."""
         with self.connect() as db:

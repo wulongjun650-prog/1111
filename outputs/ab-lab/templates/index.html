@@ -213,21 +213,21 @@
       <section id="panel-simulate" class="tab-panel" aria-label="规则模拟" hidden><div class="simulation-grid"><article class="card"><p class="eyebrow">RULE PLAYGROUND</p><h2>构造一次访问</h2><p class="muted">以下为模拟条件，并非当前浏览器真实身份。使用已保存的规则，不写入日志或计数。</p><form id="simulate-form"><fieldset id="simulate-fields" class="stack-form" disabled><legend class="sr-only">模拟访问条件</legend><div class="form-grid"><label>IP 地址<input name="ip" value="203.0.113.7" required></label><label>国家 / 地区<input name="country" placeholder="HK；留空表示未知" maxlength="2" pattern="[a-zA-Z]{2}"></label></div><label>User-Agent<textarea name="ua" rows="4" placeholder="Mozilla/5.0 …">Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) Mobile</textarea></label><div class="form-grid"><label>语言<input name="language" value="zh-CN"></label><label>窗口内访问次数<input name="visits" type="number" min="1" step="1" value="1" required></label></div><button type="submit" class="button primary">运行规则模拟 <span aria-hidden="true">→</span></button></fieldset></form></article><article class="card simulation-result"><div class="card-heading"><h2>判断结果</h2><span class="badge neutral">无副作用</span></div><div id="simulation-output" aria-live="polite"><div class="empty-state large"><span class="empty-symbol" aria-hidden="true">⌘</span><h3>每条规则，都可以解释</h3><p>运行模拟后，这里将展示目标内容<br>与完整判断过程。</p></div></div></article></div></section>
 
       <section id="panel-analysis" class="tab-panel" aria-label="数据深度分析" hidden>
-        <div class="notice"><span aria-hidden="true">ⓘ</span><p>这是双子星的汇总板块，不挂在某一个域名下面。只看香港访客。每个域名的记录仍写在该域名自己的库里，这里合在一起看，并用域名区分。边缘缓存命中到不了源站，不会出现在这里。</p></div>
+        <div class="notice"><span aria-hidden="true">ⓘ</span><p>只显示左上角当前管理站点。只看香港访客。删除和导出都只动这个域名，其他域名不动。边缘缓存命中到不了源站，不会出现在这里。</p></div>
         <article class="card logs-card">
           <div class="card-heading">
-            <div><p class="eyebrow">HONG KONG · ALL DOMAINS</p><h2>请求记录</h2><p id="analysis-summary" class="muted">进入此页后汇总各域名的香港记录。</p></div>
-            <div class="actions"><a id="analysis-download" class="button secondary" href="/api/analysis/report?days=7">↓ 下载周报</a></div>
+            <div><p class="eyebrow">HONG KONG</p><h2>请求记录</h2><p id="analysis-summary" class="muted">进入此页后加载当前站点的香港记录。</p></div>
+            <div class="actions">{% if account.role != 'observer' %}<button id="analysis-clear" class="button secondary" type="button">删除数据</button>{% endif %}<a id="analysis-download" class="button secondary">↓ 导出数据</a></div>
           </div>
           <form id="analysis-filters" class="filter-bar">
             <label>时间范围<select id="analysis-days" name="days"><option value="1">最近 1 天</option><option value="7" selected>最近 7 天</option><option value="30">最近 30 天</option><option value="90">最近 90 天</option></select></label>
             <button class="button secondary" type="submit">查询</button>
           </form>
-          <div class="table-scroll"><table><caption class="sr-only">各域名香港访客请求</caption><thead><tr><th>时间</th><th>域名</th><th>状态</th><th>分配号码</th><th>cf-cache-status</th><th>平台版本</th><th>Referer</th><th>查询字符串</th><th>User-Agent</th></tr></thead><tbody id="analysis-requests"><tr><td colspan="9" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
+          <div class="table-scroll"><table><caption class="sr-only">当前站点香港访客请求</caption><thead><tr><th>时间</th><th>域名</th><th>状态</th><th>分配号码</th><th>cf-cache-status</th><th>平台版本</th><th>Referer</th><th>查询字符串</th><th>User-Agent</th></tr></thead><tbody id="analysis-requests"><tr><td colspan="9" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
         </article>
         <article class="card logs-card">
           <div class="card-heading"><div><p class="eyebrow">BEACON</p><h2>落地页事件</h2><p id="analysis-events-summary" class="muted">跳转事件原样保存。来源域名取自请求的 Origin，不看国家。</p></div></div>
-          <div class="table-scroll"><table><caption class="sr-only">各域名落地页事件原文</caption><thead><tr><th>时间</th><th>域名</th><th>收到的原文</th></tr></thead><tbody id="analysis-events"><tr><td colspan="3" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
+          <div class="table-scroll"><table><caption class="sr-only">当前站点落地页事件原文</caption><thead><tr><th>时间</th><th>域名</th><th>收到的原文</th></tr></thead><tbody id="analysis-events"><tr><td colspan="3" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
         </article>
       </section>
 

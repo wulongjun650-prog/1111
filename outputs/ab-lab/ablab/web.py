@@ -1182,7 +1182,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if not sees_everything(principal(request)):
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'a_version_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted', 'whatsapp_trust_checked', 'whatsapp_split_updated', 'contact_links_added', 'contact_link_deleted'}
+                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'analysis_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'a_version_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted', 'whatsapp_trust_checked', 'whatsapp_split_updated', 'contact_links_added', 'contact_link_deleted'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 
@@ -1194,11 +1194,18 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def analysis_domain(site):
         return site.get('domain') or '本地站点'
 
-    @app.get('/api/analysis')
-    def analysis(request: Request, days: int = Query(default=7, ge=1, le=90)):
-        """Every domain this account can see, in one place. Hong Kong rows only."""
-        since = time.time() - days * 86400
+    def scoped_analysis_sites(request, domain=''):
         sites = analysis_sites(request)
+        wanted = (domain or '').strip().lower()
+        if not wanted:
+            return sites
+        return [site for site in sites if analysis_domain(site).lower() == wanted]
+
+    @app.get('/api/analysis')
+    def analysis(request: Request, days: int = Query(default=7, ge=1, le=90), domain: str = ''):
+        """Hong Kong rows for one selected domain, or every domain this account can see."""
+        since = time.time() - days * 86400
+        sites = scoped_analysis_sites(request, domain)
         requests, events = [], []
         request_total = event_total = 0
         for site in sites:
@@ -1207,12 +1214,12 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             event_count, event_rows = store.recent_client_events(since, 200)
             request_total += access_count
             event_total += event_count
-            domain = analysis_domain(site)
+            site_domain = analysis_domain(site)
             for row in access_rows:
-                row['domain'] = domain
+                row['domain'] = site_domain
                 requests.append(row)
             for row in event_rows:
-                row['domain'] = (row.get('origin') or '').strip() or domain
+                row['domain'] = (row.get('origin') or '').strip() or site_domain
                 events.append(row)
         requests.sort(key=lambda row: row['created'], reverse=True)
         events.sort(key=lambda row: row['created'], reverse=True)
@@ -1223,10 +1230,22 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             'events': {'total': event_total, 'items': events[:200]},
         }
 
+    @app.post('/api/analysis/clear')
+    def analysis_clear(request: Request, domain: str = ''):
+        wanted = domain.strip()
+        if not wanted:
+            raise HTTPException(400, '请先选择域名')
+        sites = scoped_analysis_sites(request, wanted)
+        if len(sites) != 1:
+            raise HTTPException(404, '没有这个域名')
+        counts = registry.store(sites[0]['id']).clear_analysis()
+        counts['domain'] = analysis_domain(sites[0])
+        return counts
+
     @app.get('/api/analysis/report')
-    def analysis_report(request: Request, days: int = Query(default=7, ge=1, le=90)):
+    def analysis_report(request: Request, days: int = Query(default=7, ge=1, le=90), domain: str = ''):
         parts = []
-        for site in analysis_sites(request):
+        for site in scoped_analysis_sites(request, domain):
             text = registry.store(site['id']).access_report(days, 'HK', analysis_domain(site))
             parts.append(f'===== {analysis_domain(site)} =====\n{text}')
         body = '\n'.join(parts) if parts else '没有可查看的域名。\n'

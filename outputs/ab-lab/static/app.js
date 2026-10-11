@@ -95,7 +95,7 @@ const labels = {
   rules: ['访问规则', '访问规则', '设置访问条件，保存后对当前站点生效。'],
   simulate: ['规则模拟', '规则模拟', '输入访问条件，检查已保存规则的判断结果。'],
   logs: ['访问日志', '访问日志', '查看文档请求、设备、国家与分流结果。'],
-  analysis: ['数据深度分析', '数据深度分析', '汇总所有域名的香港访客请求和落地页事件。'],
+  analysis: ['数据深度分析', '数据深度分析', '只看当前管理站点的香港访客请求和落地页事件。'],
   campaign: ['投放数据', '投放数据', '按版位看进站、点击和拉起。标红只提醒，不会自动改页面。'],
   accounts: ['账号管理', '账号管理', isObserver(account) ? '查看用户名、角色和名下域名。密码不会显示。' : '创建代理或观察号，管理访问权限与域名归属。'],
 };
@@ -629,18 +629,40 @@ function clipCell(text, className = 'path-cell') {
 
 async function loadAnalysis() {
   const request = ++analysisRequest;
+  const domain = currentDomain();
   const days = $('#analysis-days').value || '7';
-  $('#analysis-download').href = `/api/analysis/report?days=${days}`;
+  if (!domain) {
+    $('#analysis-summary').textContent = '请先在左上角选择域名。';
+    $('#analysis-events-summary').textContent = '请先在左上角选择域名。';
+    $('#analysis-download').removeAttribute('href');
+    const requests = $('#analysis-requests');
+    requests.replaceChildren();
+    const row = element('tr');
+    const cell = element('td', 'empty-state', '请先在左上角选择域名。');
+    cell.colSpan = 9;
+    row.append(cell);
+    requests.append(row);
+    const events = $('#analysis-events');
+    events.replaceChildren();
+    const eventRow = element('tr');
+    const eventCell = element('td', 'empty-state', '请先在左上角选择域名。');
+    eventCell.colSpan = 3;
+    eventRow.append(eventCell);
+    events.append(eventRow);
+    return;
+  }
+  const params = new URLSearchParams({ days, domain });
+  $('#analysis-download').href = `/api/analysis/report?${params}`;
   try {
-    const data = await api(`/api/analysis?days=${days}`);
+    const data = await api(`/api/analysis?${params}`);
     if (request !== analysisRequest) return;
-    $('#analysis-summary').textContent = `${number(data.domains)} 个域名 · 香港请求 ${number(data.requests.total)} 条，下面显示最近 ${number(data.requests.items.length)} 条`;
-    $('#analysis-events-summary').textContent = `落地页事件 ${number(data.events.total)} 条，下面显示最近 ${number(data.events.items.length)} 条`;
+    $('#analysis-summary').textContent = `${domain} · 香港请求 ${number(data.requests.total)} 条，下面显示最近 ${number(data.requests.items.length)} 条`;
+    $('#analysis-events-summary').textContent = `${domain} · 落地页事件 ${number(data.events.total)} 条，下面显示最近 ${number(data.events.items.length)} 条`;
     const requests = $('#analysis-requests');
     requests.replaceChildren();
     if (!data.requests.items.length) {
       const row = element('tr');
-      const cell = element('td', 'empty-state', '这段时间没有香港访客请求。');
+      const cell = element('td', 'empty-state', `这段时间，${domain} 没有香港访客请求。`);
       cell.colSpan = 9;
       row.append(cell);
       requests.append(row);
@@ -663,7 +685,7 @@ async function loadAnalysis() {
     events.replaceChildren();
     if (!data.events.items.length) {
       const row = element('tr');
-      const cell = element('td', 'empty-state', '这段时间没有落地页事件。');
+      const cell = element('td', 'empty-state', `这段时间，${domain} 没有落地页事件。`);
       cell.colSpan = 3;
       row.append(cell);
       events.append(row);
@@ -822,6 +844,15 @@ async function selectTab(name, {load = true} = {}) {
 }
 
 on($('#analysis-filters'), 'submit', event => { event.preventDefault(); return loadAnalysis(); });
+const analysisClear = $('#analysis-clear');
+if (analysisClear) on(analysisClear, 'click', event => busy(event.currentTarget, async () => {
+  const domain = currentDomain();
+  if (!domain) throw new Error('请先在左上角选择域名。');
+  if (!await confirmAction(`删除 ${domain} 的全部请求记录和落地页事件？访问日志不动。删掉后不能恢复，其他域名也不受影响。`)) return;
+  const result = await api(`/api/analysis/clear?domain=${encodeURIComponent(domain)}`, { method: 'POST', body: {} });
+  toast(`已删除 ${domain} 的 ${number(result.access)} 条请求、${number(result.events)} 条落地页事件。`);
+  await loadAnalysis();
+}));
 on($('#campaign-filters'), 'submit', event => { event.preventDefault(); return loadCampaign(); });
 on($('#campaign-range'), 'change', () => {
   const custom = $('#campaign-range').value === 'custom';
@@ -1245,6 +1276,7 @@ async function loadDomains({refreshSelection = true} = {}) {
   if (changed && next && refreshSelection) {
     await refreshState();
     if (activeTab === 'logs') await loadLogs();
+    if (activeTab === 'analysis') await loadAnalysis();
     if (activeTab === 'campaign') await loadCampaign();
   }
 }
@@ -1316,6 +1348,7 @@ async function switchSite(next) {
   try {
     await refreshState();
     if (activeTab === 'logs') await loadLogs();
+    if (activeTab === 'analysis') await loadAnalysis();
     if (activeTab === 'campaign') await loadCampaign();
     visitWatch.checkRate();
     if ($('#audit-details').open) await loadAudit();
