@@ -104,6 +104,17 @@ const formatDate = value => {
   const date = new Date(Number(value) * 1000);
   return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleString('zh-CN', { hour12: false });
 };
+const campaignClock = value => {
+  const date = new Date(Number(value) * 1000);
+  if (!value || Number.isNaN(date.valueOf())) return '—';
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Hong_Kong', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(date);
+  const pick = type => parts.find(part => part.type === type)?.value || '';
+  return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`;
+};
 reasons.manual = '手动指定';
 const traceLabels = { blacklist: '黑名单检查', whitelist: '白名单检查', super_bot: '超级防爬虫', strict_bot: '严格防爬虫', bot_marker: 'UA 特征检查', ipv4: 'IPv4 检查', device: '设备检查', os_version: '系统版本检查', blocked_cidr: '自定义网段检查', country: '国家检查', country_unknown: '国家检查', language: '语言检查', visit_limit: '访问次数检查' };
 const number = value => Number(value ?? 0).toLocaleString('zh-CN');
@@ -389,7 +400,9 @@ function renderSlots() {
       const input = element('input'); input.type = 'file'; input.accept = '.zip,.html,.htm'; input.required = true; input.name = 'file'; input.disabled = !state;
       label.append(input);
       const submit = element('button', 'button secondary small', '上传并创建版本'); submit.type = 'submit'; submit.disabled = !state;
-      form.append(label, element('small', '', 'ZIP 或 HTML，最大 20 MB。上传后要点下面的「用这一版」才会生效。'), submit);
+      form.append(label, element('small', '', slot === 'B'
+        ? 'ZIP 或 HTML，最大 20 MB。拖进来会自动补上报代码，谷歌代码不动。上传后要点下面的「用这一版」才会生效。'
+        : 'ZIP 或 HTML，最大 20 MB。上传后要点下面的「用这一版」才会生效。'), submit);
       on(form, 'submit', async event => {
         event.preventDefault();
         await busy(submit, async () => {
@@ -398,7 +411,8 @@ function renderSlots() {
           try {
             const uploaded = await api(`/api/upload/${slot}?name=${encodeURIComponent(file.name)}`, { method: 'POST', raw: true, body: file });
             input.value = '';
-            toast(`${slot} 版本已导入，尚未发布。`);
+            const implant = uploaded.implant && uploaded.implant.label ? ` ${uploaded.implant.label}。` : '';
+            toast(`${slot} 版本已导入，尚未发布。${implant}`);
             await refreshState();
             if (slot === 'B') await bRedirects.selectVersion(uploaded.version.id);
           } finally { input.disabled = false; }
@@ -674,7 +688,11 @@ function campaignQuery() {
     params.set('start', $('#campaign-start').value);
     params.set('end', $('#campaign-end').value);
   }
-  for (const [name, id] of [['domain', 'campaign-domain'], ['dest_app', 'campaign-dest'], ['placement', 'campaign-placement'], ['youtube', 'campaign-youtube'], ['device', 'campaign-device'], ['wa_env', 'campaign-env'], ['link_type', 'campaign-link'], ['model', 'campaign-model']]) {
+  const domain = currentDomain();
+  const box = $('#campaign-domain');
+  if (box) box.value = domain;
+  if (domain) params.set('domain', domain);
+  for (const [name, id] of [['dest_app', 'campaign-dest'], ['placement', 'campaign-placement'], ['youtube', 'campaign-youtube'], ['opener', 'campaign-opener'], ['device', 'campaign-device'], ['wa_env', 'campaign-env'], ['link_type', 'campaign-link'], ['model', 'campaign-model']]) {
     const value = $(`#${id}`).value.trim();
     if (value) params.set(name, value);
   }
@@ -691,8 +709,29 @@ function watchCampaign(active) {
   if (active) campaignTimer = setInterval(() => { if (activeTab === 'campaign') loadCampaign(); }, 60000);
 }
 
+function emptyCampaign(message) {
+  const body = $('#campaign-rows');
+  body.replaceChildren();
+  const row = element('tr');
+  const cell = element('td', 'empty-state', message);
+  cell.colSpan = 18;
+  row.append(cell);
+  body.append(row);
+}
+
 async function loadCampaign() {
   const request = ++campaignRequest;
+  const domain = currentDomain();
+  if (!domain) {
+    $('#campaign-summary').textContent = '请先在左上角选择域名。';
+    $('#campaign-note').textContent = '投放数据跟左上角的当前管理站点走。选哪个域名，这里就只显示哪个域名。';
+    $('#campaign-csv').removeAttribute('href');
+    $('#campaign-json').removeAttribute('href');
+    const box = $('#campaign-domain');
+    if (box) box.value = '';
+    emptyCampaign('请先在左上角选择域名。');
+    return;
+  }
   const params = campaignQuery();
   const query = params.toString();
   $('#campaign-csv').href = `/api/campaign.csv?${query}`;
@@ -701,18 +740,14 @@ async function loadCampaign() {
     const data = await api(`/api/campaign?${query}`);
     if (request !== campaignRequest) return;
     const totals = data.totals || {};
-    $('#campaign-summary').textContent = `进站 ${number(totals.visits)} · 点击 ${number(totals.clicks)} · 拉起 ${number(totals.opens)} · 拉起率 ${percent(totals.open_rate)}`;
-    $('#campaign-note').textContent = `接收地址 ${data.endpoint || ''}。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
-    const body = $('#campaign-rows');
-    body.replaceChildren();
+    $('#campaign-summary').textContent = `${domain} · 进站 ${number(totals.visits)} · 点击 ${number(totals.clicks)} · 拉起 ${number(totals.opens)} · 拉起率 ${percent(totals.open_rate)}`;
+    $('#campaign-note').textContent = `只显示 ${domain}。打开是进来的应用或浏览器，例如微信、华为浏览器、Chrome。接收地址 ${data.endpoint || ''}。时间是香港时间，精确到秒；一行里有多次时显示最晚的一次。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
     if (!data.rows.length) {
-      const row = element('tr');
-      const cell = element('td', 'empty-state', '这段时间没有进站或跳转事件。');
-      cell.colSpan = 16;
-      row.append(cell);
-      body.append(row);
+      emptyCampaign(`这段时间，${domain} 没有进站或跳转事件。`);
       return;
     }
+    const body = $('#campaign-rows');
+    body.replaceChildren();
     for (const item of data.rows) {
       const row = element('tr', item.alert ? 'campaign-alert' : '');
       if (item.alert) row.title = item.alert_reason;
@@ -729,11 +764,15 @@ async function loadCampaign() {
         link.href = `/api/campaign/events?${linkParams.toString()}`;
         exportCell.append(link);
       }
+      const when = element('td', 'visit-time', campaignClock(item.seen_at));
+      if (item.first_at && item.seen_at && Number(item.first_at) !== Number(item.seen_at)) when.title = `最早 ${campaignClock(item.first_at)}`;
       row.append(
+        when,
         element('td', '', item.domain),
         element('td', '', item.dest_label || '未知'),
         element('td', '', item.placement_label),
         element('td', '', item.youtube_label || (item.youtube_video ? `视频 ${item.youtube_video}` : '—')),
+        element('td', '', item.opener || '未知'),
         element('td', '', item.device),
         element('td', '', item.wa_env),
         element('td', '', item.link_type),
@@ -1206,6 +1245,7 @@ async function loadDomains({refreshSelection = true} = {}) {
   if (changed && next && refreshSelection) {
     await refreshState();
     if (activeTab === 'logs') await loadLogs();
+    if (activeTab === 'campaign') await loadCampaign();
   }
 }
 
@@ -1276,6 +1316,7 @@ async function switchSite(next) {
   try {
     await refreshState();
     if (activeTab === 'logs') await loadLogs();
+    if (activeTab === 'campaign') await loadCampaign();
     visitWatch.checkRate();
     if ($('#audit-details').open) await loadAudit();
   } finally {

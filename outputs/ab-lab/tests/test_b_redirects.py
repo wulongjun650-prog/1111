@@ -675,7 +675,8 @@ def test_secret_weapon_fills_abc_and_leaves_the_rest_of_the_page(console):
     assert wrote.json()['kind'] == 'abc'
     assert wrote.json()['changed'] == 1
     text = published_html(app)
-    assert text == ABC_PAGE.replace("directMode: '',", "directMode: 'ABC',", 1)
+    base_text = (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+    assert text == base_text.replace("directMode: '',", "directMode: 'ABC',", 1)
     assert client.get('/api/state').json()['direct_mode'] == 'ABC'
     assert 'id="lead-gate"' in text
     assert 'openLeadGate(btn.dataset.location)' in text
@@ -688,7 +689,7 @@ def test_secret_weapon_fills_abc_and_leaves_the_rest_of_the_page(console):
     assert again.status_code == 200, again.text
     assert again.json()['kind'] == 'cba'
     restored = published_html(app)
-    assert restored == ABC_PAGE.replace("directMode: '',", "directMode: 'CBA',", 1)
+    assert restored == base_text.replace("directMode: '',", "directMode: 'CBA',", 1)
     assert client.get('/api/state').json()['direct_mode'] == 'CBA'
     third = client.post('/api/b-redirects/direct-entry', json={
         'version_id': again.json()['version']['id'], 'expected_published': again.json()['version']['id']})
@@ -709,7 +710,7 @@ def test_secret_weapon_does_not_rewrite_an_unrecognized_abc_switch(console):
     assert refused.status_code == 400, refused.text
     assert '没有改动' in refused.json()['detail']
     assert app.state.store.slots()['B'] == base
-    assert published_html(app) == page
+    assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
 
 
 def test_secret_weapon_refuses_a_page_without_the_gate(console):

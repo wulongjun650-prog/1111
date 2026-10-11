@@ -67,6 +67,7 @@ tr.campaign-alert td{background:#fff4f4;color:#8d3b3b}
 .log-watch label { flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
 .log-watch input[type="number"] { width: 72px; }
 #watch-count { white-space: nowrap; }
+#campaign-domain[readonly] { cursor: default; color: inherit; opacity: 1; }
 .watch-alarm { align-items: center; }
 @media (max-width: 1100px) { .log-watch { margin-left: 0; } }
 .watch-alarm p { font-weight: 650; color: var(--ink, #20283d); }

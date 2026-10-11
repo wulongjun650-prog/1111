@@ -1,5 +1,6 @@
 import asyncio
 import csv
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import io
@@ -32,6 +33,7 @@ from .linkcheck import LinkChecker
 from .watrust import PUBLIC_ORIGIN, TrustChecker, device_from_environ
 from .campaign import build_campaign, export_events, fill_youtube_channels, window_bounds
 from .contact_config import scan_contact
+from .page_implant import implant_tree, scan_implant
 from .redirects import public_occurrences, rewrite_reception_bytes, rewrite_text, scan_bundle
 from .rules import decide
 from .cloudflare import Cloudflare
@@ -719,8 +721,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         # CPU/disk work in worker thread keeps health and UI requests responsive.
         from starlette.concurrency import run_in_threadpool
         version = await run_in_threadpool(import_content, data, name, store.pages)
+        implant = None
+        if slot == 'B':
+            root = store.pages / version['id']
+            implant = await run_in_threadpool(implant_tree, root)
+            version['bytes'] = sum(item.stat().st_size for item in root.rglob('*') if item.is_file())
         await run_in_threadpool(store.add_version, slot, version)
-        return {'version': version | {'slot': slot}}
+        return {'version': version | {'slot': slot}, 'implant': implant}
 
     @routes.post('/publish/{slot}')
     def publish(slot: Slot, body: VersionChoice, request: Request, store=Depends(site_store)):
@@ -787,13 +794,16 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         version_id = version_id or published
         base, occurrences, warnings = None, [], []
         contact = {'has_config': False, 'readable': True, 'contact_app': {'present': False, 'value': ''}, 'band_url': {'present': False, 'value': ''}, 'kakao_url': {'present': False, 'value': ''}}
+        implant = {'state': 'absent', 'label': '还没有 B 页'}
         if version_id:
             base = source_version(store, 'B', version_id)
             occurrences, warnings = scan_bundle(store.pages / version_id, version_id)
             contact = scan_contact(store.pages / version_id)
+            implant = scan_implant(store.pages / version_id)
         return {'version':base, 'published_version':published, 'occurrences':public_occurrences(occurrences),
                 'warnings':warnings, 'presets':store.redirect_presets(), 'numbers':store.whatsapp_numbers(),
                 'trust_poll':store.whatsapp_trust_poll_enabled(), 'links':store.contact_links(), 'contact':contact,
+                'implant':implant,
                 'active':store.redirect_active(), 'split':store.redirect_split(), 'number_split':store.whatsapp_split()}
 
     @routes.put('/b-redirects/split')
@@ -1235,7 +1245,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 events.append(row)
         return visits, events
 
-    def campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact=False, dest_app='', youtube=''):
+    def campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact=False, dest_app='', youtube='', opener=''):
         since, until = window_bounds(span, start, end, time.time())
         filters = {
             'domain': domain.strip()[:253],
@@ -1246,6 +1256,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             'model': model.strip()[:80],
             'dest_app': dest_app.strip().lower()[:20],
             'youtube': youtube.strip()[:120],
+            'opener': opener.strip()[:40],
             'placement_exact': bool(placement_exact),
         }
         return since, until, filters
@@ -1253,8 +1264,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.get('/api/campaign')
     def campaign_table(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
                        start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
-                       wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', placement_exact: bool = False):
-        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube)
+                       wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', opener: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube, opener)
         visits, events = collect_campaign(request, since, until)
         report = _with_youtube_channels(build_campaign(visits, events, filters))
         report['endpoint'] = jump_event_endpoint(deployment)
@@ -1266,11 +1277,11 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.get('/api/campaign.csv')
     def campaign_csv(request: Request, slot: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
                      start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
-                     wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', placement_exact: bool = False):
-        since, until, filters = campaign_arguments(slot, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube)
+                     wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', opener: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(slot, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube, opener)
         visits, events = collect_campaign(request, since, until)
         report = _with_youtube_channels(build_campaign(visits, events, filters))
-        fields = ['域名', '去向', '版位', '频道', 'device', 'wa_env', 'link_type', '机型', '系统', '进站数', '点击数', '拉起数', '兜底数', '点击率', '拉起率', '兜底点击', '复制号码', '复制消息', '标红', '原因']
+        fields = ['时间', '域名', '去向', '版位', '频道', '打开', 'device', 'wa_env', 'link_type', '机型', '系统', '进站数', '点击数', '拉起数', '兜底数', '点击率', '拉起率', '兜底点击', '复制号码', '复制消息', '标红', '原因']
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
         writer.writerow(fields)
@@ -1279,9 +1290,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             return "'" + text if text.startswith(('=', '+', '-', '@', '\t', '\r')) else text
         def percent(value):
             return '' if value is None else f'{value * 100:.1f}%'
+        def clock(stamp):
+            if not stamp:
+                return ''
+            return datetime.fromtimestamp(float(stamp), timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
         for row in report['rows']:
             writer.writerow([cell(value) for value in (
-                row['domain'], row['dest_label'], row['placement_label'], row['youtube_label'], row['device'], row['wa_env'], row['link_type'], row['model'], row['os'],
+                clock(row.get('seen_at')), row['domain'], row['dest_label'], row['placement_label'], row['youtube_label'], row.get('opener') or '', row['device'], row['wa_env'], row['link_type'], row['model'], row['os'],
                 row['visits'], row['clicks'], row['opens'], row['fallbacks'], percent(row['click_rate']), percent(row['open_rate']),
                 row['fallback_click'], row['copy_number'], row['copy_message'], '是' if row['alert'] else '', row['alert_reason'],
             )])
@@ -1290,8 +1305,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.get('/api/campaign/events')
     def campaign_events_export(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
                                start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
-                               wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', placement_exact: bool = False):
-        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube)
+                               wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', opener: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube, opener)
         _visits, events = collect_campaign(request, since, until)
         payload = json.dumps(export_events(events, filters), ensure_ascii=False, separators=(',', ':'))
         return Response(payload, media_type='application/json; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="campaign-events.json"'})

@@ -22,6 +22,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   header.append(title, count);
   const current = element('div', 'b-now'); current.id = 'b-redirect-current';
   const description = element('p', 'muted', '勾选要换的位置。普通链接点「换成这条」。WhatsApp 号码在下面的号码池里换，进线语不动。BAND 和 Kakao 链接也在下面预存，换成这条时写入 CONFIG。');
+  const implantStatus = element('p', 'b-contact-scan', '上报代码：上传 B 页后显示。'); implantStatus.id = 'b-implant-status';
   const message = element('p', 'b-redirect-message'); message.id = 'b-redirect-message'; message.hidden = true;
   message.setAttribute('role', 'status');
   const splitPanel = element('div', 'b-split'); splitPanel.id = 'b-redirect-split';
@@ -127,7 +128,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const occurrences = element('div', 'b-redirect-occurrences'); occurrences.id = 'b-redirect-occurrences';
   details.append(summary, occurrences);
   const warnings = element('div', 'b-redirect-warnings');
-  root.append(header, current, description, message, splitPanel, presets, form, poolHint, waBox, contactBox, toolbar, details, warnings);
+  root.append(header, current, description, implantStatus, message, splitPanel, presets, form, poolHint, waBox, contactBox, toolbar, details, warnings);
 
   const isCurrent = value => Boolean(value && session === value && value.siteId === getSite()?.id);
   const selected = value => value.occurrences.filter(item => !value.excluded.has(item.key));
@@ -556,6 +557,8 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       if (numbersRevision === value.numbersRevision) value.numbers = result.numbers || [];
       if (linksRevision === value.linksRevision) value.links = result.links || [];
       value.contact = result.contact || blankContact();
+      value.implant = result.implant || null;
+      implantStatus.textContent = `上报代码：${value.implant && value.implant.label ? value.implant.label : '还没有 B 页'}`;
       value.trustPoll = Boolean(result.trust_poll);
       value.active = result.active;
       if (!value.splitDirty) {value.split = result.split || blankSplit(); value.savedSplit = value.split;}

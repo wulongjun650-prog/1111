@@ -7,6 +7,47 @@ from ablab.campaign import build_campaign, device_from_ua, fill_youtube_channels
 from ablab.web import create_admin, create_target, inject_dest_app
 
 
+def test_open_app_names_wechat_and_huawei_before_chrome():
+    from ablab.devices import describe_device, open_app
+    wechat = 'Mozilla/5.0 (Linux; Android 12; NOH-AN00 Build/HUAWEINOH-AN00; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/107.0.5304.141 Mobile Safari/537.36 MicroMessenger/8.0.35.2360 WeChat/arm64 Weixin'
+    huawei = 'Mozilla/5.0 (Linux; Android 10; LYA-AL00) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 HuaweiBrowser/11.0.3.300 Mobile Safari/537.36'
+    chrome = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36'
+    safari = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1'
+    assert open_app(wechat) == '微信'
+    assert open_app(huawei) == '华为浏览器'
+    assert open_app(chrome) == 'Chrome'
+    assert open_app(safari) == 'Safari'
+    assert open_app('') == '未知'
+    assert describe_device(wechat)['browser'] == '微信'
+    assert describe_device(huawei)['browser'] == '华为浏览器'
+    assert describe_device(chrome)['browser'] == 'Chrome 120.0.0.0'
+
+
+def test_campaign_rows_split_by_the_app_that_opened_the_page():
+    wechat = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 MicroMessenger/8.0.42'
+    huawei = 'Mozilla/5.0 (Linux; Android 10; LYA-AL00) AppleWebKit/537.36 Chrome/83.0.4103.106 HuaweiBrowser/11.0.3.300 Mobile Safari/537.36'
+    def event(token, ua, name='whatsapp_click'):
+        body = {'event': name, 'transaction_id': token, 'wa_env': 'android_browser', 'link_type': 'universal', 'device': 'mobile', 'placement': 'news.example', 'gclid': token}
+        if ua:
+            body['ua'] = ua
+        return {'domain': 'one.test', 'body': json.dumps(body), 'id': token, 'created': 2, 'origin': 'one.test'}
+    report = build_campaign([
+        {'domain': 'one.test', 'query': 'gclid=w', 'ip': '1.1.1.1', 'ua': wechat, 'path': '/', 'created': 1, 'referer': ''},
+    ], [event('w', wechat), event('w', '', 'wa_app_opened'), event('h', huawei)], {})
+    assert {row['opener'] for row in report['rows']} == {'微信', '华为浏览器'}
+    wechat_row = next(row for row in report['rows'] if row['opener'] == '微信')
+    assert wechat_row['clicks'] == 1 and wechat_row['opens'] == 1 and wechat_row['visits'] == 1
+    only = build_campaign([], [event('w', wechat), event('h', huawei)], {'opener': '华为'})
+    assert [row['opener'] for row in only['rows']] == ['华为浏览器']
+    assert only['totals']['clicks'] == 1
+    clipped = 'Mozilla/5.0 (Linux; Android 12; NOH-AN00; wv) AppleWebKit/537.36 Chrome/107.0.5304.141 Mobile Safari/537.36'
+    full = clipped + ' MicroMessenger/8.0.42 WeChat/arm64 Weixin'
+    rescued = build_campaign([
+        {'domain': 'one.test', 'query': 'gclid=w', 'ip': '1.1.1.1', 'ua': full, 'path': '/', 'created': 1, 'referer': ''},
+    ], [event('w', clipped)], {})
+    assert next(row['opener'] for row in rescued['rows'] if row['clicks']) == '微信'
+
+
 def test_placement_and_phone_labels():
     assert placement_label('') == '未知'
     assert placement_label('mobileapp::2-com.example.app') == 'Android App · com.example.app'
@@ -53,12 +94,14 @@ def test_campaign_counts_visits_clicks_and_red_rows():
     assert android['clicks'] == 1
     assert android['opens'] == 1
     assert android['visits'] == 1
+    assert android['seen_at'] == 3 and android['first_at'] == 1
     assert report['totals']['visits'] == 3
     assert android['model'] == 'iPhone'
     news = next(row for row in report['rows'] if row['placement'] == 'news.example' and row['fallbacks'])
     assert news['fallbacks'] == 1
     assert news['fallback_click'] == 1 and news['copy_number'] == 1 and news['copy_message'] == 1
     assert news['model'] == 'Pixel 7'
+    assert news['seen_at'] == 7
     assert report['totals']['clicks'] == 1
     assert all(row['path'] != '/app.js' for row in report['rows'] if 'path' in row)
 
@@ -124,6 +167,8 @@ def test_campaign_api_filters_and_exports(tmp_path):
     assert '"extra":1' in ''.join(bodies)
     csv_text = admin.get('/api/campaign.csv?range=today').text
     assert '点击数' in csv_text and '去向' in csv_text and 'WhatsApp' in csv_text and 'Android App · com.foo' in csv_text
+    assert csv_text.splitlines()[0].lstrip('\ufeff').startswith('时间,')
+    assert payload['rows'][0]['seen_at'] > 0
     assert admin.get('/api/campaign?range=custom&start=2026-01-02&end=2026-01-01').status_code == 400
     store.record_client_event('{"event":"whatsapp_click","transaction_id":"blank","wa_env":"ios_safari","device":"mobile"}', 'shop.example')
     exact = admin.get('/api/campaign/events?range=today&domain=shop.example&placement=&placement_exact=true&wa_env=ios_safari')
@@ -132,6 +177,36 @@ def test_campaign_api_filters_and_exports(tmp_path):
     assert narrowed.json()['totals']['opens'] == 1
     opened, closed = window_bounds('today', '', '', 1_700_000_000)
     assert closed - opened == 86400
+
+
+def test_campaign_follows_the_selected_domain(tmp_path):
+    admin = TestClient(create_admin(tmp_path), base_url='http://127.0.0.1:8765', client=('127.0.0.1', 9))
+    admin.headers.update({'Origin': 'http://127.0.0.1:8765', 'X-CSRF-Token': admin.app.state.csrf})
+    page = admin.get('/').text
+    assert 'id="campaign-domain" name="domain" readonly' in page
+    assert '只显示左上角当前管理站点' in page
+    assert '可填微信或华为' in page
+    registry = admin.app.state.registry
+    one = registry.add('one.vip')
+    two = registry.add('two.vip')
+    click = '{"event":"whatsapp_click","transaction_id":"%s","wa_env":"ios_safari","link_type":"universal","device":"mobile","placement":"news.example"}'
+    registry.store(one['id']).record_client_event(click % 'keep-one', 'one.vip')
+    registry.store(two['id']).record_client_event(click % 'hide-two', 'two.vip')
+    registry.store(one['id']).record_access('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)', '', '', '', '', '', 'gclid=g-one&placement=news.example', '', '', 'HK', '', 200, 1, '/', '203.0.113.8')
+    registry.store(two['id']).record_access('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)', '', '', '', '', '', 'gclid=g-two&placement=news.example', '', '', 'HK', '', 200, 1, '/', '203.0.113.9')
+    scoped = admin.get('/api/campaign?range=today&domain=one.vip')
+    assert scoped.status_code == 200, scoped.text
+    payload = scoped.json()
+    assert {row['domain'] for row in payload['rows']} == {'one.vip'}
+    assert payload['totals']['clicks'] == 1
+    assert payload['totals']['visits'] == 1
+    assert 'hide-two' not in scoped.text and 'two.vip' not in scoped.text
+    csv_text = admin.get('/api/campaign.csv?range=today&domain=one.vip').text
+    assert 'one.vip' in csv_text and 'two.vip' not in csv_text
+    raw = admin.get('/api/campaign/events?range=today&domain=one.vip').text
+    assert 'keep-one' in raw and 'hide-two' not in raw
+    both = admin.get('/api/campaign?range=today').json()
+    assert {'one.vip', 'two.vip'} <= {row['domain'] for row in both['rows']}
 
 
 def test_served_page_fills_only_the_empty_event_endpoint(tmp_path):
@@ -148,16 +223,19 @@ function goWhatsApp(){ location.href = "https://wa.me/" + CONFIG.whatsappNumber;
     served = target.get('/')
     assert served.status_code == 200
     url = 'https://hhucuq.top/wa-events'
-    assert served.text == page.replace('eventEndpoint: ""', f'eventEndpoint: "{url}"')
     flags = served.headers['content-security-policy'].split(';')[0].split()
     assert 'allow-popups' in flags and 'allow-popups-to-escape-sandbox' in flags
     assert 'allow-top-navigation-to-custom-protocols' in flags and 'allow-top-navigation' not in flags
     stored = next((admin.app.state.store.pages / admin.app.state.store.slots()['B']).rglob('*.html')).read_text(encoding='utf-8')
-    assert stored == page
+    jump = 'function goWhatsApp(){ location.href = "https://wa.me/" + CONFIG.whatsappNumber; }'
+    assert jump in stored and 'eventEndpoint: ""' in stored and 'ab-event-implant' in stored
+    assert served.text == stored.replace('eventEndpoint: ""', f'eventEndpoint: "{url}"')
     kept = page.replace('eventEndpoint: ""', 'eventEndpoint: "https://other.example/off"')
     uploaded = admin.post('/api/upload/B?name=page.html', content=kept.encode())
     admin.post('/api/publish/B', json={'version_id': uploaded.json()['version']['id']})
-    assert target.get('/').text == kept
+    stored = next((admin.app.state.store.pages / admin.app.state.store.slots()['B']).rglob('*.html')).read_text(encoding='utf-8')
+    assert 'eventEndpoint: "https://other.example/off"' in stored
+    assert target.get('/').text == stored
 
 
 def _event(domain, body, row_id):

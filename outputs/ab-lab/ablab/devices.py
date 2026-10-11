@@ -51,6 +51,60 @@ def ios_label(ua):
     return 'iOS 18 以上'
 
 
+_IN_APP = (
+    (re.compile(r'MicroMessenger|Weixin|\bWeChat/', re.I), '微信'),
+    (re.compile(r'HuaweiBrowser/', re.I), '华为浏览器'),
+    (re.compile(r'MiuiBrowser/', re.I), '小米浏览器'),
+    (re.compile(r'HeyTapBrowser/', re.I), 'OPPO浏览器'),
+    (re.compile(r'VivoBrowser/', re.I), 'vivo浏览器'),
+    (re.compile(r'UCBrowser/|UCWEB', re.I), 'UC浏览器'),
+    (re.compile(r'MQQBrowser/', re.I), 'QQ浏览器'),
+    (re.compile(r'(?<![A-Za-z])QQ/\d', re.I), 'QQ'),
+    (re.compile(r'Instagram', re.I), 'Instagram'),
+    (re.compile(r'FB_IAB|FBAN|FBAV/', re.I), 'Facebook'),
+    (re.compile(r'\bAweme/', re.I), '抖音'),
+    (re.compile(r'BytedanceWebview|musical_ly|TikTok', re.I), 'TikTok'),
+    (re.compile(r'\bLine/\d', re.I), 'LINE'),
+    (re.compile(r'KAKAOTALK', re.I), 'KakaoTalk'),
+    (re.compile(r'\bWhatsApp/', re.I), 'WhatsApp'),
+    (re.compile(r'\bGSA/', re.I), 'Google'),
+)
+
+
+def in_app_name(ua):
+    """The app that opened the page, when the UA names one. Ordinary browsers return None."""
+    text = ua or ''
+    for pattern, name in _IN_APP:
+        if pattern.search(text):
+            return name
+    return None
+
+
+def open_app(ua):
+    """Chinese name of the app or browser that opened the page."""
+    named = in_app_name(ua)
+    if named:
+        return named
+    text = ua or ''
+    if re.search(r'EdgA/|EdgiOS/|Edg/', text, re.I):
+        return 'Edge'
+    if re.search(r'OPR/|Opera/', text, re.I):
+        return 'Opera'
+    if re.search(r'Firefox/|FxiOS/', text, re.I):
+        return 'Firefox'
+    if re.search(r'SamsungBrowser/', text, re.I):
+        return '三星浏览器'
+    if re.search(r'CriOS/|Chrome/', text, re.I):
+        return 'Chrome'
+    if re.search(r'Version/[\d.]+', text) and 'Safari/' in text:
+        return 'Safari'
+    if re.search(r';\s*wv\)', text, re.I):
+        return '应用内打开'
+    if text.strip():
+        return '浏览器'
+    return '未知'
+
+
 def describe_device(ua):
     ua = ''.join(c for c in ua[:1024] if c.isprintable())
     device, brand, model, system, browser = '', '', '', '', ''
@@ -93,13 +147,17 @@ def describe_device(ua):
         system = 'macOS' + (' ' + value if (value := version(r'Mac OS X\s+([\d_.]+)')) else '')
     elif 'Linux' in ua or 'X11' in ua:
         device, system = 'Linux 设备', 'Linux'
-    for pattern, name in [(r'(?:EdgA|EdgiOS|Edg|Edge)/([\d.]+)', 'Edge'), (r'(?:OPR|Opera)/([\d.]+)', 'Opera'), (r'SamsungBrowser/([\d.]+)', 'Samsung Internet'), (r'(?:Firefox|FxiOS)/([\d.]+)', 'Firefox'), (r'(?:Chrome|CriOS)/([\d.]+)', 'Chrome')]:
-        if value := version(pattern):
-            browser = name + ' ' + value
-            break
+    named = in_app_name(ua)
+    if named:
+        browser = named
     else:
-        if 'Safari/' in ua and (value := version(r'Version/([\d.]+)')):
-            browser = 'Safari ' + value
+        for pattern, name in [(r'(?:EdgA|EdgiOS|Edg|Edge)/([\d.]+)', 'Edge'), (r'(?:OPR|Opera)/([\d.]+)', 'Opera'), (r'SamsungBrowser/([\d.]+)', 'Samsung Internet'), (r'(?:Firefox|FxiOS)/([\d.]+)', 'Firefox'), (r'(?:Chrome|CriOS)/([\d.]+)', 'Chrome')]:
+            if value := version(pattern):
+                browser = name + ' ' + value
+                break
+        else:
+            if 'Safari/' in ua and (value := version(r'Version/([\d.]+)')):
+                browser = 'Safari ' + value
     if not brand and re.search(r'Android', ua, re.I):
         for pattern, name in (
             (r'SamsungBrowser/', 'Samsung'),

@@ -1,5 +1,9 @@
 """Read-only campaign totals. Nothing here changes a page, a jump, or a setting."""
 from collections import defaultdict
+
+from .devices import open_app
+
+_GENERIC_OPENERS = {'', '未知', '浏览器', '应用内打开', 'Chrome', 'Safari', 'Edge', 'Firefox', 'Opera'}
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, unquote, urlsplit
 import json
@@ -215,7 +219,8 @@ def parse_event(row):
     if not isinstance(payload, dict):
         payload = {}
     placement = _text(payload.get('placement')) or _text(payload.get('placement_app'))
-    model, system = device_from_ua(_text(payload.get('ua')))
+    ua = _text(payload.get('ua'))
+    model, system = device_from_ua(ua)
     transaction_id = _text(payload.get('transaction_id'))
     return {
         'id': row.get('id'),
@@ -227,6 +232,8 @@ def parse_event(row):
         'link_type': _text(payload.get('link_type')) or '未知',
         'model': model,
         'os': system,
+        'ua': ua,
+        'opener': open_app(ua),
         'event': _text(payload.get('event')),
         'dest_app': _dest_app(payload),
         'network': _text(payload.get('network')).lower(),
@@ -248,16 +255,20 @@ def parse_visit(row):
     if not placement and referer_youtube:
         placement = referer
     network = query_value(row.get('query'), 'network').lower()
-    model, system = device_from_ua(row.get('ua') or '')
+    ua = row.get('ua') or ''
+    model, system = device_from_ua(ua)
     domain = _text(row.get('domain'))
     ip = _text(row.get('ip'))
     ua = row.get('ua') or ''
     key = ('gclid', domain, gclid) if gclid else ('ipua', domain, ip, ua)
     return {
+        'created': row.get('created') or 0,
         'domain': domain,
         'placement': placement,
         'model': model,
         'os': system,
+        'ua': ua,
+        'opener': open_app(ua),
         'device': '未知',
         'wa_env': '未知',
         'link_type': '未知',
@@ -306,7 +317,7 @@ def fill_youtube_channels(rows, lookup):
 
 def _matches(item, filters, fields):
     for field in fields:
-        if field in ('placement', 'model', 'youtube'):
+        if field in ('placement', 'model', 'youtube', 'opener'):
             continue
         wanted = (filters.get(field) or '').strip()
         if field == 'dest_app':
@@ -336,6 +347,10 @@ def _matches(item, filters, fields):
         model = (filters.get('model') or '').strip()
         if model and model not in item.get('model', '') and model not in item.get('os', ''):
             return False
+    if 'opener' in fields:
+        opener = (filters.get('opener') or '').strip()
+        if opener and opener not in (item.get('opener') or ''):
+            return False
     return True
 
 
@@ -356,6 +371,7 @@ def _blank_row(item):
         'link_type': item['link_type'],
         'model': item['model'],
         'os': item['os'],
+        'opener': item.get('opener') or '未知',
         'visits': 0,
         'clicks': 0,
         'opens': 0,
@@ -365,16 +381,32 @@ def _blank_row(item):
         'copy_message': 0,
         'click_ids': set(),
         'visit_keys': set(),
+        'seen_at': 0,
+        'first_at': 0,
         'alert': False,
         'alert_reason': '',
     }
 
 
+def _note_time(row, created):
+    try:
+        stamp = float(created or 0)
+    except (TypeError, ValueError):
+        return
+    if stamp <= 0:
+        return
+    if not row['seen_at'] or stamp > row['seen_at']:
+        row['seen_at'] = stamp
+    if not row['first_at'] or stamp < row['first_at']:
+        row['first_at'] = stamp
+
+
 def _row_key(item):
-    return (item['domain'], item['placement'], item['device'], item['wa_env'], item['link_type'], item['model'], item['os'], item.get('dest_app') or '')
+    return (item['domain'], item['placement'], item['device'], item['wa_env'], item['link_type'], item['model'], item['os'], item.get('dest_app') or '', item.get('opener') or '')
 
 
 def _add_event(row, item):
+    _note_time(row, item.get('created'))
     kind = _EVENT_KINDS.get(item['event'])
     if kind == 'click':
         row['click_ids'].add(item['tx_key'])
@@ -407,7 +439,7 @@ def inherit_transaction(events):
     """An open beacon often omits the phone and the placement already sent with the click."""
     known_device = {}
     known_fields = {}
-    names = ('device', 'wa_env', 'link_type', 'placement', 'gclid', 'dest_app', 'network', 'youtube_channel', 'youtube_video', 'youtube_referrer')
+    names = ('device', 'wa_env', 'link_type', 'placement', 'gclid', 'dest_app', 'network', 'youtube_channel', 'youtube_video', 'youtube_referrer', 'ua')
     for item in events:
         token = item['transaction_id']
         if not token:
@@ -430,6 +462,8 @@ def inherit_transaction(events):
             current = item.get(name) or ''
             if not current or current == '未知':
                 item[name] = value
+        if item.get('ua'):
+            item['opener'] = open_app(item['ua'])
     return events
 
 
@@ -483,15 +517,15 @@ def build_campaign(visit_rows, event_rows, filters=None):
         annotate_youtube(item)
     for item in visits:
         annotate_youtube(item)
-    options = _options(events, visits)
-    chosen_events = [item for item in events if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app', 'youtube'))]
+    chosen_events = [item for item in events if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app', 'youtube', 'opener'))]
     chosen_visits = []
     seen = set()
     for item in visits:
-        if item['key'] in seen or not _matches(item, filters, ('domain', 'placement', 'model', 'youtube')):
+        if item['key'] in seen or not _matches(item, filters, ('domain', 'placement', 'model', 'youtube', 'opener')):
             continue
         seen.add(item['key'])
         chosen_visits.append(item)
+    options = _options(chosen_events, chosen_visits)
     rows = {}
     for item in chosen_events:
         key = _row_key(item)
@@ -515,10 +549,13 @@ def build_campaign(visit_rows, event_rows, filters=None):
             if row is None:
                 row = _blank_row(visit if key == _row_key(visit) else {
                     'domain': key[0], 'placement': key[1], 'device': key[2], 'wa_env': key[3],
-                    'link_type': key[4], 'model': key[5], 'os': key[6], 'dest_app': key[7],
+                    'link_type': key[4], 'model': key[5], 'os': key[6], 'dest_app': key[7], 'opener': key[8],
                 })
                 rows[key] = row
             row['visit_keys'].add(visit['key'])
+            if row.get('opener') in _GENERIC_OPENERS and visit.get('opener') not in _GENERIC_OPENERS:
+                row['opener'] = visit['opener']
+            _note_time(row, visit.get('created'))
             counted.add(visit['key'])
     table = []
     for row in rows.values():
@@ -557,7 +594,7 @@ def export_events(event_rows, filters=None):
     chosen = []
     for item in inherit_transaction([parse_event(row) for row in event_rows]):
         annotate_youtube(item)
-        if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app', 'youtube')):
+        if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app', 'youtube', 'opener')):
             chosen.append(item)
     chosen.sort(key=lambda item: (item['transaction_id'] == '', item['transaction_id'], item['created'], item['id'] or 0))
     return [
