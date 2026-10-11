@@ -151,6 +151,21 @@
     .gate-desc{margin:8px 0 0;color:#4a5568;font-size:15px;line-height:1.6}
     .gate-options{display:grid;gap:10px;margin-top:16px}
     .gate-option{position:relative;width:100%;min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 15px;border:2px solid #e4dfd6;border-radius:18px;background:#fff;color:#30415f;font-size:18px;font-weight:900;text-align:left;cursor:pointer;box-shadow:0 4px 14px rgba(36,57,104,.03);transition:.16s ease}
+    a.gate-option{-webkit-touch-callout:none}
+    .gate-step{display:none}
+    .gate-step.active{display:block;animation:gate-in .18s ease}
+    @keyframes gate-in{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+    .gate-progress{display:flex;align-items:center;gap:6px;margin:0 0 8px}
+    .gate-progress-dot{width:26px;height:6px;border-radius:999px;background:#e3ddd3}
+    .gate-progress-dot.on{background:var(--orange)}
+    .gate-progress-text{margin-left:4px;font-size:13px;font-weight:800;color:#6b7380}
+    .gate-picked{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 12px;border-radius:13px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:14px;font-weight:800}
+    .gate-picked b{color:#bc6d12}
+    .gate-back{margin-left:auto;min-height:32px;padding:0 12px;border:1px solid #e6cf9f;border-radius:999px;background:#fff;color:#9d5b07;font-size:13px;font-weight:900;cursor:pointer}
+    .gate-desc b{color:#1f7a45}
+    .gate-option-go{width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2fb867,#1f9d55);color:#fff;font-size:24px;font-weight:900;line-height:1;padding-bottom:2px}
+    .gate-go{border-color:#cfe9d9}
+    .gate-go:active{border-color:#2fb867;background:#effaf3}
     .gate-option-main{display:flex;align-items:center;gap:12px;min-width:0}
     .gate-option-icon{width:42px;height:42px;border-radius:12px;background:linear-gradient(180deg,#fff6e7,#fff1d5);color:#b96809;display:flex;align-items:center;justify-content:center;flex:none;font-size:17px;font-weight:950;border:1px solid #f2dfb9}
     .gate-option-title{display:block;color:#253550;line-height:1.3}
@@ -300,32 +315,49 @@
     <a class="cta floating-cta" href="https://wa.me/85257980601?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="floating" id="floating-button">免費領取今日潛力黑馬名單</a>
   </div>
 
-  <!-- 一步領取抽屉：按首屏卡片預選，確認按鈕 <a> 與跳轉保持原樣 -->
+  <!-- 兩頁領取抽屉：第 1 頁揀名單（按首屏卡片預選），第 2 頁選項本身係 <a>，點擊經 goWhatsApp 跳轉，同原確認按鈕一樣 -->
   <div class="lead-gate" id="lead-gate" aria-hidden="true">
     <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="gate-title-1">
       <div class="gate-handle"></div>
       <div class="gate-top">
-        <div class="gate-kicker">12 OCT 名單已整理好</div>
+        <div class="gate-kicker" id="gate-kicker">12 OCT 名單已整理好</div>
         <button class="gate-close-x" type="button" id="gate-cancel" aria-label="關閉">×</button>
       </div>
+      <div class="gate-progress"><span class="gate-progress-dot on"></span><span class="gate-progress-dot" id="gate-progress-2"></span><span class="gate-progress-text" id="gate-progress-text">第 1 步 / 共 2 步</span></div>
 
-      <h3 class="gate-title" id="gate-title-1">你想先收邊份名單？</h3>
-      <p class="gate-desc">已幫你揀好，直接按下面綠色按鈕即可；想換可以再揀。</p>
-      <div class="gate-options">
-        <button class="gate-option" type="button" data-question="interest" data-value="近期潛力黑馬名單">
-          <span class="gate-option-main"><span class="gate-option-icon">黑</span><span><span class="gate-option-title">潛力黑馬名單</span><small>反彈市有大戶跟緊嘅方向</small></span></span><span class="gate-option-check"></span>
-        </button>
-        <button class="gate-option" type="button" data-question="interest" data-value="今日心水股名單">
-          <span class="gate-option-main"><span class="gate-option-icon">今</span><span><span class="gate-option-title">今日心水股名單</span><small>今日最值得先睇嘅幾隻，附原因</small></span></span><span class="gate-option-check"></span>
-        </button>
-        <button class="gate-option" type="button" data-question="interest" data-value="高息收息股名單">
-          <span class="gate-option-main"><span class="gate-option-icon">息</span><span><span class="gate-option-title">高息收息股名單</span><small>派息、現金流較穩定，啱長線收息</small></span></span><span class="gate-option-check"></span>
-        </button>
+      <div class="gate-step active" data-step="1">
+        <h3 class="gate-title" id="gate-title-1">你想先收邊份名單？</h3>
+        <p class="gate-desc">揀一份，即刻去下一步。</p>
+        <div class="gate-options">
+          <button class="gate-option" type="button" data-question="interest" data-value="近期潛力黑馬名單">
+            <span class="gate-option-main"><span class="gate-option-icon">黑</span><span><span class="gate-option-title">潛力黑馬名單</span><small>反彈市有大戶跟緊嘅方向</small></span></span><span class="gate-option-check"></span>
+          </button>
+          <button class="gate-option" type="button" data-question="interest" data-value="今日心水股名單">
+            <span class="gate-option-main"><span class="gate-option-icon">今</span><span><span class="gate-option-title">今日心水股名單</span><small>今日最值得先睇嘅幾隻，附原因</small></span></span><span class="gate-option-check"></span>
+          </button>
+          <button class="gate-option" type="button" data-question="interest" data-value="高息收息股名單">
+            <span class="gate-option-main"><span class="gate-option-icon">息</span><span><span class="gate-option-title">高息收息股名單</span><small>派息、現金流較穩定，啱長線收息</small></span></span><span class="gate-option-check"></span>
+          </button>
+        </div>
       </div>
-      <div class="gate-actions">
-        <a class="gate-confirm" href="https://wa.me/85257980601?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" id="gate-confirm" role="button" aria-disabled="true">打開 WhatsApp 免費領取 →</a>
+
+      <div class="gate-step" data-step="2">
+        <div class="gate-picked">你揀咗：<b id="gate-picked-name">潛力黑馬名單</b> <button type="button" class="gate-back" id="gate-back">改</button></div>
+        <h3 class="gate-title">你而家嘅情況係？</h3>
+        <p class="gate-desc">揀一個，<b>即刻打開 WhatsApp 收名單</b>。</p>
+        <div class="gate-options">
+        <a class="gate-option gate-go" href="https://wa.me/85257980601?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="手上有股被套緊，想解套">
+          <span class="gate-option-main"><span class="gate-option-icon">套</span><span><span class="gate-option-title">手上有股被套緊</span><small>想知點樣解套</small></span></span><span class="gate-option-go">›</span>
+        </a>
+        <a class="gate-option gate-go" href="https://wa.me/85257980601?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="有閒錢，想揀隻好股入市">
+          <span class="gate-option-main"><span class="gate-option-icon">錢</span><span><span class="gate-option-title">有閒錢，想入市</span><small>想揀隻好股買入</small></span></span><span class="gate-option-go">›</span>
+        </a>
+        <a class="gate-option gate-go" href="https://wa.me/85257980601?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="想穩陣收息，長線慢慢等">
+          <span class="gate-option-main"><span class="gate-option-icon">穩</span><span><span class="gate-option-title">想穩陣收息</span><small>長線慢慢等，唔想大上大落</small></span></span><span class="gate-option-go">›</span>
+        </a>
+        </div>
+        <div class="gate-confirm-sub">撳完直接打開 WhatsApp，按「發送」即收</div>
       </div>
-      <div class="gate-confirm-sub">打開後直接按「發送」，即可收到名單</div>
 
       <div class="gate-trust">完全免費 · 不需要填姓名、電話或其他資料</div>
     </div>
@@ -556,20 +588,38 @@
     let redirecting = false;
     let pendingLocation = 'hero';
     const leadGate = document.getElementById('lead-gate');
-    const gateOptions = [...document.querySelectorAll('.gate-option')];
     const gateCancel = document.getElementById('gate-cancel');
-    const gateConfirm = document.getElementById('gate-confirm');
+    const gateBack = document.getElementById('gate-back');
+    const gateSteps = [...document.querySelectorAll('.gate-step')];
+    const interestOptions = [...document.querySelectorAll('.gate-option[data-question="interest"]')];
+    const priorityOptions = [...document.querySelectorAll('.gate-option[data-question="priority"]')];
+    const gatePickedName = document.getElementById('gate-picked-name');
+    const gateProgress2 = document.getElementById('gate-progress-2');
+    const gateProgressText = document.getElementById('gate-progress-text');
+    const gateKicker = document.getElementById('gate-kicker');
+    const GATE_KICKER = gateKicker.textContent;
     const gateAnswers = { interest:'', priority:'' };
     const defaultInterestMap = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
+    const SITUATIONS = priorityOptions.map(el => el.dataset.value);
 
-    function setConfirmEnabled(on){ gateConfirm.setAttribute('aria-disabled', on ? 'false' : 'true'); }
+    function setGateStep(step){
+      gateSteps.forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
+      gateProgress2.classList.toggle('on', step === 2);
+      gateProgressText.textContent = step === 1 ? '第 1 步 / 共 2 步' : '最後一步';
+      gateKicker.textContent = step === 1 ? GATE_KICKER : '最後一步 · 揀完即收名單';
+      if (step === 2) {
+        const picked = interestOptions.find(el => el.dataset.value === gateAnswers.interest);
+        gatePickedName.textContent = picked ? picked.querySelector('.gate-option-title').textContent : gateAnswers.interest;
+        try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateStep2',{variant:currentKey}); } catch(e){}
+      }
+    }
 
     function openLeadGate(locationName){
       pendingLocation = locationName || 'hero';
       gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
       gateAnswers.priority = '';
-      gateOptions.forEach(el => el.classList.toggle('active', el.dataset.value === gateAnswers.interest));
-      setConfirmEnabled(true);
+      interestOptions.forEach(el => el.classList.toggle('active', el.dataset.value === gateAnswers.interest));
+      setGateStep(1);
       leadGate.classList.add('show');
       leadGate.setAttribute('aria-hidden','false');
       document.body.style.overflow = 'hidden';
@@ -582,16 +632,16 @@
       document.body.style.overflow = '';
     }
 
-    gateOptions.forEach(btn => {
+    interestOptions.forEach(btn => {
       btn.addEventListener('click', () => {
-        const q = btn.dataset.question;
-        const v = btn.dataset.value;
-        gateAnswers[q] = v;
-        document.querySelectorAll(`.gate-option[data-question="${q}"]`).forEach(el => el.classList.toggle('active', el === btn));
-        setConfirmEnabled(true);
-        try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:q}); } catch(e){}
+        gateAnswers.interest = btn.dataset.value;
+        interestOptions.forEach(el => el.classList.toggle('active', el === btn));
+        try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'interest'}); } catch(e){}
+        setTimeout(() => setGateStep(2), 120);
       });
     });
+
+    gateBack.addEventListener('click', () => setGateStep(1));
 
     gateCancel.addEventListener('click', closeLeadGate);
     leadGate.addEventListener('click', e => { if (e.target === leadGate) closeLeadGate(); });
@@ -625,7 +675,7 @@
       };
     }
 
-    // 進線語由四段隨機拼出（5×3×6×6 = 540 種），同上一次唔同；{r} = 接待助理（CONFIG.receptionist）、{d} = 日期、{n} = 名單名
+    // 進線語由四段隨機拼出（5×3×6×6 = 540 種），中間加入第 2 頁揀嘅情況；同上一次唔同；{r} = 接待助理（CONFIG.receptionist）、{d} = 日期、{n} = 名單名
     const MSG_PARTS = {
       greet: ['{r} 助理你好，', '{r} 助理您好，', '{r} 你好，', '你好 {r} 助理，', '{r} 助理，你好呀，'],
       greetNoName: ['你好，', '您好，', '你好呀，'],
@@ -636,16 +686,17 @@
     const LIST_NAMES = { blackhorse:'潛力黑馬名單', picks:'心水股名單', income:'高息收息股名單' };
     const LAST_MSG_KEY = 'econman_last_msg';
 
-    function randomMessage(key) {
+    function randomMessage(key, situation) {
       const pick = arr => arr[Math.floor(Math.random() * arr.length)];
       const d = CONFIG.listDate || '今日';
       const n = LIST_NAMES[key] || '精選名單';
       const r = String(CONFIG.receptionist || '').trim();
+      const s = situation ? `，我${situation}` : '';
       let last = '';
       try { last = localStorage.getItem(LAST_MSG_KEY) || ''; } catch (e) {}
       let msg = '';
       for (let i = 0; i < 6 && (!msg || msg === last); i++) {
-        msg = (r ? pick(MSG_PARTS.greet).replace('{r}', r) : pick(MSG_PARTS.greetNoName)) + pick(MSG_PARTS.lead) + pick(MSG_PARTS.ask).replace('{d}', d).replace('{n}', n) + pick(MSG_PARTS.close);
+        msg = (r ? pick(MSG_PARTS.greet).replace('{r}', r) : pick(MSG_PARTS.greetNoName)) + pick(MSG_PARTS.lead) + pick(MSG_PARTS.ask).replace('{d}', d).replace('{n}', n) + s + pick(MSG_PARTS.close);
       }
       try { localStorage.setItem(LAST_MSG_KEY, msg); } catch (e) {}
       return msg;
@@ -656,7 +707,7 @@
       const key = VARIANTS[interestKey] ? interestKey : (VARIANTS[currentKey] ? currentKey : 'blackhorse');
       const code = leadCode ? `\n（編號：${leadCode}）` : '';
       let msg = '';
-      try { msg = randomMessage(key); } catch (e) {}
+      try { msg = randomMessage(key, gateAnswers.priority); } catch (e) {}
       return (msg || VARIANTS[key].message || '你好，我想睇10月12日精選名單，唔該發一份俾我。') + code;
     }
 
@@ -891,15 +942,18 @@
       btn.addEventListener('click', e => {
         if (!DIRECT_MODE) { e.preventDefault(); openLeadGate(btn.dataset.location); return; }
         gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
-        gateAnswers.priority = '';
+        gateAnswers.priority = SITUATIONS[Math.floor(Math.random() * SITUATIONS.length)] || '';
         goWhatsApp(e, btn.dataset.location);
       });
     });
 
-    gateConfirm.addEventListener('click', e => {
-      if (!gateAnswers.interest) { e.preventDefault(); return; }
-      closeLeadGate();
-      goWhatsApp(e, pendingLocation);
+    priorityOptions.forEach(opt => {
+      opt.addEventListener('click', e => {
+        gateAnswers.priority = opt.dataset.value;
+        try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'priority'}); } catch(err){}
+        closeLeadGate();
+        goWhatsApp(e, pendingLocation);
+      });
     });
 
     // Mobile floating CTA: show after hero, hide at final CTA.
