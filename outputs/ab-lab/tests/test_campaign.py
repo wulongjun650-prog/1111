@@ -40,6 +40,12 @@ def test_campaign_rows_split_by_the_app_that_opened_the_page():
     only = build_campaign([], [event('w', wechat), event('h', huawei)], {'opener': '华为'})
     assert [row['opener'] for row in only['rows']] == ['华为浏览器']
     assert only['totals']['clicks'] == 1
+    clipped = 'Mozilla/5.0 (Linux; Android 12; NOH-AN00; wv) AppleWebKit/537.36 Chrome/107.0.5304.141 Mobile Safari/537.36'
+    full = clipped + ' MicroMessenger/8.0.42 WeChat/arm64 Weixin'
+    rescued = build_campaign([
+        {'domain': 'one.test', 'query': 'gclid=w', 'ip': '1.1.1.1', 'ua': full, 'path': '/', 'created': 1, 'referer': ''},
+    ], [event('w', clipped)], {})
+    assert next(row['opener'] for row in rescued['rows'] if row['clicks']) == '微信'
 
 
 def test_placement_and_phone_labels():

@@ -2,6 +2,8 @@
 from collections import defaultdict
 
 from .devices import open_app
+
+_GENERIC_OPENERS = {'', '未知', '浏览器', '应用内打开', 'Chrome', 'Safari', 'Edge', 'Firefox', 'Opera'}
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, unquote, urlsplit
 import json
@@ -551,7 +553,7 @@ def build_campaign(visit_rows, event_rows, filters=None):
                 })
                 rows[key] = row
             row['visit_keys'].add(visit['key'])
-            if row.get('opener') in ('', '未知') and visit.get('opener') not in ('', '未知'):
+            if row.get('opener') in _GENERIC_OPENERS and visit.get('opener') not in _GENERIC_OPENERS:
                 row['opener'] = visit['opener']
             _note_time(row, visit.get('created'))
             counted.add(visit['key'])

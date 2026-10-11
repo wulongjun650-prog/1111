@@ -39,7 +39,7 @@ _SEND_EVENT = '''
           gbraid: ids.gbraid || "",
           wbraid: ids.wbraid || "",
           number: CONFIG.whatsappNumber || "",
-          ua: (typeof UA === "string" ? UA : (navigator.userAgent || "")).slice(0, 300)
+          ua: (typeof UA === "string" ? UA : (navigator.userAgent || "")).slice(0, 500)
         }, extra || {}));
         if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.eventEndpoint, new Blob([body], {type: "text/plain"}))) return;
         fetch(CONFIG.eventEndpoint, {method: "POST", body: body, mode: "no-cors", keepalive: true});
