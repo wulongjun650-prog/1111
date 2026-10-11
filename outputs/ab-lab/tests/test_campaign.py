@@ -138,6 +138,35 @@ def test_campaign_api_filters_and_exports(tmp_path):
     assert closed - opened == 86400
 
 
+def test_campaign_follows_the_selected_domain(tmp_path):
+    admin = TestClient(create_admin(tmp_path), base_url='http://127.0.0.1:8765', client=('127.0.0.1', 9))
+    admin.headers.update({'Origin': 'http://127.0.0.1:8765', 'X-CSRF-Token': admin.app.state.csrf})
+    page = admin.get('/').text
+    assert 'id="campaign-domain" name="domain" readonly' in page
+    assert '只显示左上角当前管理站点' in page
+    registry = admin.app.state.registry
+    one = registry.add('one.vip')
+    two = registry.add('two.vip')
+    click = '{"event":"whatsapp_click","transaction_id":"%s","wa_env":"ios_safari","link_type":"universal","device":"mobile","placement":"news.example"}'
+    registry.store(one['id']).record_client_event(click % 'keep-one', 'one.vip')
+    registry.store(two['id']).record_client_event(click % 'hide-two', 'two.vip')
+    registry.store(one['id']).record_access('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)', '', '', '', '', '', 'gclid=g-one&placement=news.example', '', '', 'HK', '', 200, 1, '/', '203.0.113.8')
+    registry.store(two['id']).record_access('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)', '', '', '', '', '', 'gclid=g-two&placement=news.example', '', '', 'HK', '', 200, 1, '/', '203.0.113.9')
+    scoped = admin.get('/api/campaign?range=today&domain=one.vip')
+    assert scoped.status_code == 200, scoped.text
+    payload = scoped.json()
+    assert {row['domain'] for row in payload['rows']} == {'one.vip'}
+    assert payload['totals']['clicks'] == 1
+    assert payload['totals']['visits'] == 1
+    assert 'hide-two' not in scoped.text and 'two.vip' not in scoped.text
+    csv_text = admin.get('/api/campaign.csv?range=today&domain=one.vip').text
+    assert 'one.vip' in csv_text and 'two.vip' not in csv_text
+    raw = admin.get('/api/campaign/events?range=today&domain=one.vip').text
+    assert 'keep-one' in raw and 'hide-two' not in raw
+    both = admin.get('/api/campaign?range=today').json()
+    assert {'one.vip', 'two.vip'} <= {row['domain'] for row in both['rows']}
+
+
 def test_served_page_fills_only_the_empty_event_endpoint(tmp_path):
     admin = TestClient(create_admin(tmp_path), base_url='http://127.0.0.1:8765', client=('127.0.0.1', 9))
     target = TestClient(create_target(tmp_path), base_url='http://127.0.0.1:8766', client=('127.0.0.1', 9))

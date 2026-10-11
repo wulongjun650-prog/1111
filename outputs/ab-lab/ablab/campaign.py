@@ -500,7 +500,6 @@ def build_campaign(visit_rows, event_rows, filters=None):
         annotate_youtube(item)
     for item in visits:
         annotate_youtube(item)
-    options = _options(events, visits)
     chosen_events = [item for item in events if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app', 'youtube'))]
     chosen_visits = []
     seen = set()
@@ -509,6 +508,7 @@ def build_campaign(visit_rows, event_rows, filters=None):
             continue
         seen.add(item['key'])
         chosen_visits.append(item)
+    options = _options(chosen_events, chosen_visits)
     rows = {}
     for item in chosen_events:
         key = _row_key(item)

@@ -688,7 +688,11 @@ function campaignQuery() {
     params.set('start', $('#campaign-start').value);
     params.set('end', $('#campaign-end').value);
   }
-  for (const [name, id] of [['domain', 'campaign-domain'], ['dest_app', 'campaign-dest'], ['placement', 'campaign-placement'], ['youtube', 'campaign-youtube'], ['device', 'campaign-device'], ['wa_env', 'campaign-env'], ['link_type', 'campaign-link'], ['model', 'campaign-model']]) {
+  const domain = currentDomain();
+  const box = $('#campaign-domain');
+  if (box) box.value = domain;
+  if (domain) params.set('domain', domain);
+  for (const [name, id] of [['dest_app', 'campaign-dest'], ['placement', 'campaign-placement'], ['youtube', 'campaign-youtube'], ['device', 'campaign-device'], ['wa_env', 'campaign-env'], ['link_type', 'campaign-link'], ['model', 'campaign-model']]) {
     const value = $(`#${id}`).value.trim();
     if (value) params.set(name, value);
   }
@@ -705,8 +709,29 @@ function watchCampaign(active) {
   if (active) campaignTimer = setInterval(() => { if (activeTab === 'campaign') loadCampaign(); }, 60000);
 }
 
+function emptyCampaign(message) {
+  const body = $('#campaign-rows');
+  body.replaceChildren();
+  const row = element('tr');
+  const cell = element('td', 'empty-state', message);
+  cell.colSpan = 17;
+  row.append(cell);
+  body.append(row);
+}
+
 async function loadCampaign() {
   const request = ++campaignRequest;
+  const domain = currentDomain();
+  if (!domain) {
+    $('#campaign-summary').textContent = '请先在左上角选择域名。';
+    $('#campaign-note').textContent = '投放数据跟左上角的当前管理站点走。选哪个域名，这里就只显示哪个域名。';
+    $('#campaign-csv').removeAttribute('href');
+    $('#campaign-json').removeAttribute('href');
+    const box = $('#campaign-domain');
+    if (box) box.value = '';
+    emptyCampaign('请先在左上角选择域名。');
+    return;
+  }
   const params = campaignQuery();
   const query = params.toString();
   $('#campaign-csv').href = `/api/campaign.csv?${query}`;
@@ -715,18 +740,14 @@ async function loadCampaign() {
     const data = await api(`/api/campaign?${query}`);
     if (request !== campaignRequest) return;
     const totals = data.totals || {};
-    $('#campaign-summary').textContent = `进站 ${number(totals.visits)} · 点击 ${number(totals.clicks)} · 拉起 ${number(totals.opens)} · 拉起率 ${percent(totals.open_rate)}`;
-    $('#campaign-note').textContent = `接收地址 ${data.endpoint || ''}。时间是香港时间，精确到秒；一行里有多次时显示最晚的一次。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
-    const body = $('#campaign-rows');
-    body.replaceChildren();
+    $('#campaign-summary').textContent = `${domain} · 进站 ${number(totals.visits)} · 点击 ${number(totals.clicks)} · 拉起 ${number(totals.opens)} · 拉起率 ${percent(totals.open_rate)}`;
+    $('#campaign-note').textContent = `只显示 ${domain}。接收地址 ${data.endpoint || ''}。时间是香港时间，精确到秒；一行里有多次时显示最晚的一次。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
     if (!data.rows.length) {
-      const row = element('tr');
-      const cell = element('td', 'empty-state', '这段时间没有进站或跳转事件。');
-      cell.colSpan = 17;
-      row.append(cell);
-      body.append(row);
+      emptyCampaign(`这段时间，${domain} 没有进站或跳转事件。`);
       return;
     }
+    const body = $('#campaign-rows');
+    body.replaceChildren();
     for (const item of data.rows) {
       const row = element('tr', item.alert ? 'campaign-alert' : '');
       if (item.alert) row.title = item.alert_reason;
@@ -1223,6 +1244,7 @@ async function loadDomains({refreshSelection = true} = {}) {
   if (changed && next && refreshSelection) {
     await refreshState();
     if (activeTab === 'logs') await loadLogs();
+    if (activeTab === 'campaign') await loadCampaign();
   }
 }
 
@@ -1293,6 +1315,7 @@ async function switchSite(next) {
   try {
     await refreshState();
     if (activeTab === 'logs') await loadLogs();
+    if (activeTab === 'campaign') await loadCampaign();
     visitWatch.checkRate();
     if ($('#audit-details').open) await loadAudit();
   } finally {
