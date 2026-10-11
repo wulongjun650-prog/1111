@@ -400,7 +400,9 @@ function renderSlots() {
       const input = element('input'); input.type = 'file'; input.accept = '.zip,.html,.htm'; input.required = true; input.name = 'file'; input.disabled = !state;
       label.append(input);
       const submit = element('button', 'button secondary small', '上传并创建版本'); submit.type = 'submit'; submit.disabled = !state;
-      form.append(label, element('small', '', 'ZIP 或 HTML，最大 20 MB。上传后要点下面的「用这一版」才会生效。'), submit);
+      form.append(label, element('small', '', slot === 'B'
+        ? 'ZIP 或 HTML，最大 20 MB。拖进来会自动补上报代码，谷歌代码不动。上传后要点下面的「用这一版」才会生效。'
+        : 'ZIP 或 HTML，最大 20 MB。上传后要点下面的「用这一版」才会生效。'), submit);
       on(form, 'submit', async event => {
         event.preventDefault();
         await busy(submit, async () => {
@@ -409,7 +411,8 @@ function renderSlots() {
           try {
             const uploaded = await api(`/api/upload/${slot}?name=${encodeURIComponent(file.name)}`, { method: 'POST', raw: true, body: file });
             input.value = '';
-            toast(`${slot} 版本已导入，尚未发布。`);
+            const implant = uploaded.implant && uploaded.implant.label ? ` ${uploaded.implant.label}。` : '';
+            toast(`${slot} 版本已导入，尚未发布。${implant}`);
             await refreshState();
             if (slot === 'B') await bRedirects.selectVersion(uploaded.version.id);
           } finally { input.disabled = false; }

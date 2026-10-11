@@ -33,6 +33,7 @@ from .linkcheck import LinkChecker
 from .watrust import PUBLIC_ORIGIN, TrustChecker, device_from_environ
 from .campaign import build_campaign, export_events, fill_youtube_channels, window_bounds
 from .contact_config import scan_contact
+from .page_implant import implant_tree, scan_implant
 from .redirects import public_occurrences, rewrite_reception_bytes, rewrite_text, scan_bundle
 from .rules import decide
 from .cloudflare import Cloudflare
@@ -720,8 +721,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         # CPU/disk work in worker thread keeps health and UI requests responsive.
         from starlette.concurrency import run_in_threadpool
         version = await run_in_threadpool(import_content, data, name, store.pages)
+        implant = None
+        if slot == 'B':
+            root = store.pages / version['id']
+            implant = await run_in_threadpool(implant_tree, root)
+            version['bytes'] = sum(item.stat().st_size for item in root.rglob('*') if item.is_file())
         await run_in_threadpool(store.add_version, slot, version)
-        return {'version': version | {'slot': slot}}
+        return {'version': version | {'slot': slot}, 'implant': implant}
 
     @routes.post('/publish/{slot}')
     def publish(slot: Slot, body: VersionChoice, request: Request, store=Depends(site_store)):
@@ -788,13 +794,16 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         version_id = version_id or published
         base, occurrences, warnings = None, [], []
         contact = {'has_config': False, 'readable': True, 'contact_app': {'present': False, 'value': ''}, 'band_url': {'present': False, 'value': ''}, 'kakao_url': {'present': False, 'value': ''}}
+        implant = {'state': 'absent', 'label': '还没有 B 页'}
         if version_id:
             base = source_version(store, 'B', version_id)
             occurrences, warnings = scan_bundle(store.pages / version_id, version_id)
             contact = scan_contact(store.pages / version_id)
+            implant = scan_implant(store.pages / version_id)
         return {'version':base, 'published_version':published, 'occurrences':public_occurrences(occurrences),
                 'warnings':warnings, 'presets':store.redirect_presets(), 'numbers':store.whatsapp_numbers(),
                 'trust_poll':store.whatsapp_trust_poll_enabled(), 'links':store.contact_links(), 'contact':contact,
+                'implant':implant,
                 'active':store.redirect_active(), 'split':store.redirect_split(), 'number_split':store.whatsapp_split()}
 
     @routes.put('/b-redirects/split')

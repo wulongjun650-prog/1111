@@ -152,16 +152,19 @@ function goWhatsApp(){ location.href = "https://wa.me/" + CONFIG.whatsappNumber;
     served = target.get('/')
     assert served.status_code == 200
     url = 'https://hhucuq.top/wa-events'
-    assert served.text == page.replace('eventEndpoint: ""', f'eventEndpoint: "{url}"')
     flags = served.headers['content-security-policy'].split(';')[0].split()
     assert 'allow-popups' in flags and 'allow-popups-to-escape-sandbox' in flags
     assert 'allow-top-navigation-to-custom-protocols' in flags and 'allow-top-navigation' not in flags
     stored = next((admin.app.state.store.pages / admin.app.state.store.slots()['B']).rglob('*.html')).read_text(encoding='utf-8')
-    assert stored == page
+    jump = 'function goWhatsApp(){ location.href = "https://wa.me/" + CONFIG.whatsappNumber; }'
+    assert jump in stored and 'eventEndpoint: ""' in stored and 'ab-event-implant' in stored
+    assert served.text == stored.replace('eventEndpoint: ""', f'eventEndpoint: "{url}"')
     kept = page.replace('eventEndpoint: ""', 'eventEndpoint: "https://other.example/off"')
     uploaded = admin.post('/api/upload/B?name=page.html', content=kept.encode())
     admin.post('/api/publish/B', json={'version_id': uploaded.json()['version']['id']})
-    assert target.get('/').text == kept
+    stored = next((admin.app.state.store.pages / admin.app.state.store.slots()['B']).rglob('*.html')).read_text(encoding='utf-8')
+    assert 'eventEndpoint: "https://other.example/off"' in stored
+    assert target.get('/').text == stored
 
 
 def _event(domain, body, row_id):
