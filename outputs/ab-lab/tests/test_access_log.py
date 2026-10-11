@@ -151,6 +151,55 @@ def test_analysis_panel_combines_every_domain(tmp_path):
     assert 'HK-One' in report.text and 'HK-Two' in report.text
 
 
+def test_analysis_panel_follows_the_selected_domain(tmp_path):
+    admin, _target = clients(tmp_path)
+    one = admin.post('/api/sites', json={'domain': 'one.example.com'}).json()['site']['id']
+    two = admin.post('/api/sites', json={'domain': 'two.example.com'}).json()['site']['id']
+    for site_id, ua, body in ((one, 'HK-One', '{"event":"from-one"}'), (two, 'HK-Two', '{"event":"from-two"}')):
+        store = admin.app.state.registry.store(site_id)
+        store.record_access(ua, '', '', '"14.0.0"', '?1', 'https://ads.example', 'placement=feed', '85211112222', 'MISS', 'HK', 'Hong Kong', 200, 3, '/')
+        store.record_client_event(body)
+        with store.connect() as db:
+            db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode) VALUES(?,?,?,?,?,?,?,?)',
+                       (time.time(), '203.0.113.9', 'HK', 'mobile', 'B', 'allowed', '/', 'RULES'))
+    page = admin.get('/').text
+    assert 'id="analysis-clear"' in page
+    assert '删除数据' in page and '导出数据' in page
+    assert '只显示左上角当前管理站点' in page
+    assert 'href="/api/analysis/report?days=7"' not in page
+    scoped = admin.get('/api/analysis?days=7&domain=one.example.com')
+    assert scoped.status_code == 200, scoped.text
+    payload = scoped.json()
+    assert payload['domains'] == 1
+    assert {item['domain'] for item in payload['requests']['items']} == {'one.example.com'}
+    assert payload['requests']['total'] == 1
+    assert {item['body'] for item in payload['events']['items']} == {'{"event":"from-one"}'}
+    assert 'HK-Two' not in scoped.text and 'from-two' not in scoped.text
+    report = admin.get('/api/analysis/report?days=7&domain=One.Example.com')
+    assert report.status_code == 200
+    assert '===== one.example.com =====' in report.text
+    assert 'two.example.com' not in report.text and 'HK-Two' not in report.text
+    assert 'HK-One' in report.text
+    assert admin.post('/api/analysis/clear').status_code == 400
+    assert admin.post('/api/analysis/clear?domain=missing.example').status_code == 404
+    cleared = admin.post('/api/analysis/clear?domain=one.example.com')
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json() == {'access': 1, 'events': 1, 'domain': 'one.example.com'}
+    after = admin.get('/api/analysis?days=7&domain=one.example.com').json()
+    assert after['requests']['total'] == 0 and after['events']['total'] == 0
+    other = admin.get('/api/analysis?days=7&domain=two.example.com').json()
+    assert other['requests']['total'] == 1
+    assert other['events']['items'][0]['body'] == '{"event":"from-two"}'
+    with admin.app.state.registry.store(one).connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM events').fetchone()[0] == 1
+        assert db.execute('SELECT COUNT(*) FROM access_log').fetchone()[0] == 0
+        assert db.execute('SELECT COUNT(*) FROM client_events').fetchone()[0] == 0
+    with admin.app.state.registry.store(two).connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM access_log').fetchone()[0] == 1
+        assert db.execute('SELECT COUNT(*) FROM client_events').fetchone()[0] == 1
+        assert db.execute('SELECT COUNT(*) FROM events').fetchone()[0] == 1
+
+
 def test_wa_events_keeps_the_raw_json_for_any_landing_domain(tmp_path):
     admin, target = clients(tmp_path)
     created = admin.post('/api/sites', json={'domain': 'one.example.com'})
