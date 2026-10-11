@@ -1,9 +1,10 @@
 import json
+import subprocess
 
 from fastapi.testclient import TestClient
 
-from ablab.campaign import build_campaign, device_from_ua, placement_label, window_bounds
-from ablab.web import create_admin, create_target
+from ablab.campaign import build_campaign, device_from_ua, fill_youtube_channels, placement_label, window_bounds, youtube_from
+from ablab.web import create_admin, create_target, inject_dest_app
 
 
 def test_placement_and_phone_labels():
@@ -11,6 +12,13 @@ def test_placement_and_phone_labels():
     assert placement_label('mobileapp::2-com.example.app') == 'Android App · com.example.app'
     assert placement_label('mobileapp::1-12345') == 'iOS App · 12345'
     assert placement_label('news.example') == 'news.example'
+    assert youtube_from('https://www.youtube.com/@FinanceDaily')['channel'] == '@FinanceDaily'
+    assert youtube_from('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv')['channel'] == 'UCabcdefghijklmnopqrstuv'
+    assert youtube_from('https://www.youtube.com/watch?v=dQw4w9WgXcQ')['video'] == 'dQw4w9WgXcQ'
+    assert youtube_from('https://youtu.be/dQw4w9WgXcQ')['video'] == 'dQw4w9WgXcQ'
+    assert youtube_from('https://www.youtube.com/shorts/dQw4w9WgXcQ')['video'] == 'dQw4w9WgXcQ'
+    assert youtube_from('news.example') is None
+    assert placement_label('https://www.youtube.com/@FinanceDaily') == 'YouTube · @FinanceDaily'
     assert device_from_ua('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) Version/18.7 Mobile/15E148 Safari/604.1') == ('iPhone', 'iOS 18.7')
     assert device_from_ua('Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36') == ('Pixel 7', 'Android 13')
 
@@ -41,6 +49,7 @@ def test_campaign_counts_visits_clicks_and_red_rows():
     report = build_campaign(visits, events, {})
     android = next(row for row in report['rows'] if row['placement'] == 'mobileapp::2-com.foo' and row['clicks'])
     assert android['placement_label'] == 'Android App · com.foo'
+    assert android['dest_app'] == 'whatsapp' and android['dest_label'] == 'WhatsApp'
     assert android['clicks'] == 1
     assert android['opens'] == 1
     assert android['visits'] == 1
@@ -114,7 +123,7 @@ def test_campaign_api_filters_and_exports(tmp_path):
     assert [item['transaction_id'] for item in exported.json()] == ['other', 'same', 'same']
     assert '"extra":1' in ''.join(bodies)
     csv_text = admin.get('/api/campaign.csv?range=today').text
-    assert '点击数' in csv_text and 'Android App · com.foo' in csv_text
+    assert '点击数' in csv_text and '去向' in csv_text and 'WhatsApp' in csv_text and 'Android App · com.foo' in csv_text
     assert admin.get('/api/campaign?range=custom&start=2026-01-02&end=2026-01-01').status_code == 400
     store.record_client_event('{"event":"whatsapp_click","transaction_id":"blank","wa_env":"ios_safari","device":"mobile"}', 'shop.example')
     exact = admin.get('/api/campaign/events?range=today&domain=shop.example&placement=&placement_exact=true&wa_env=ios_safari')
@@ -149,3 +158,174 @@ function goWhatsApp(){ location.href = "https://wa.me/" + CONFIG.whatsappNumber;
     uploaded = admin.post('/api/upload/B?name=page.html', content=kept.encode())
     admin.post('/api/publish/B', json={'version_id': uploaded.json()['version']['id']})
     assert target.get('/').text == kept
+
+
+def _event(domain, body, row_id):
+    return {'domain': domain, 'body': json.dumps(body, ensure_ascii=False), 'id': row_id, 'created': row_id, 'origin': domain}
+
+
+def test_band_and_kakao_count_apart_from_whatsapp():
+    def click(app, index, placement, opened=False):
+        name = {'whatsapp': 'whatsapp_click', 'band': 'band_click', 'kakao': 'kakao_click'}[app]
+        opened_name = {'whatsapp': 'wa_app_opened', 'band': 'band_app_opened', 'kakao': 'kakao_app_opened'}[app]
+        rows = [_event('one.test', {'event': name, 'transaction_id': f'{app}-{index}', 'wa_env': 'android_chrome', 'link_type': 'universal', 'device': 'mobile', 'placement': placement}, index)]
+        if opened:
+            rows.append(_event('one.test', {'event': opened_name, 'transaction_id': f'{app}-{index}', 'wa_env': 'android_chrome', 'link_type': 'universal', 'device': 'mobile', 'placement': placement}, 10000 + index))
+        return rows
+
+    events = []
+    for index in range(30):
+        events.extend(click('whatsapp', index, 'wa.example', opened=index < 16))
+    for index in range(100):
+        events.extend(click('band', 1000 + index, 'band-fast.example', opened=True))
+    for index in range(30):
+        events.extend(click('band', 2000 + index, 'band-slow.example', opened=index < 10))
+    events.extend(click('kakao', 3000, 'kakao.example', opened=True))
+    events.append(_event('one.test', {'event': 'band_fallback_shown', 'transaction_id': 'band-2000', 'wa_env': 'android_chrome', 'link_type': 'universal', 'device': 'mobile', 'placement': 'band-slow.example', 'dest_app': 'band'}, 9))
+    events.append(_event('one.test', {'event': 'kakao_copy_number', 'transaction_id': 'kakao-3000', 'wa_env': 'android_chrome', 'link_type': 'universal', 'device': 'mobile', 'placement': 'kakao.example'}, 10))
+    report = build_campaign([], events, {})
+    whatsapp = next(row for row in report['rows'] if row['dest_app'] == 'whatsapp')
+    fast = next(row for row in report['rows'] if row['placement'] == 'band-fast.example')
+    slow = next(row for row in report['rows'] if row['placement'] == 'band-slow.example')
+    kakao = next(row for row in report['rows'] if row['dest_app'] == 'kakao')
+    assert whatsapp['clicks'] == 30 and whatsapp['opens'] == 16 and whatsapp['alert'] is False
+    assert fast['dest_label'] == 'BAND' and fast['clicks'] == 100 and fast['opens'] == 100 and fast['alert'] is False
+    assert slow['clicks'] == 30 and slow['opens'] == 10 and slow['fallbacks'] == 1 and slow['alert'] is True
+    assert '低于 50%' in slow['alert_reason']
+    assert kakao['dest_label'] == 'Kakao' and kakao['clicks'] == 1 and kakao['opens'] == 1 and kakao['copy_number'] == 1
+    assert kakao['alert'] is False
+    assert report['totals']['clicks'] == 161 and report['totals']['opens'] == 127
+    only_band = build_campaign([], events, {'dest_app': 'BAND'})
+    assert {row['dest_app'] for row in only_band['rows']} == {'band'}
+    assert only_band['totals']['clicks'] == 130
+
+
+def _script_body(html):
+    marker = '<script id="ab-dest-app">'
+    start = html.index(marker) + len(marker)
+    return html[start:html.index('</script>', start)]
+
+
+def _run_destination(script, config, prelude=''):
+    program = prelude + """
+const CONFIG = %s;
+function buildWhatsAppUrls() {
+  return {phone:'85200000000', universal:'https://wa.me/85200000000?text=hi', scheme:'whatsapp://send?phone=85200000000', intent:'intent://send?phone=85200000000#Intent;scheme=whatsapp;package=com.whatsapp;end'};
+}
+const sent = [];
+function sendEvent(name, extra) { sent.push({name: name, extra: extra}); }
+%s
+const urls = buildWhatsAppUrls('hi');
+sendEvent('whatsapp_click', {transaction_id:'t1', placement:'keep'});
+sendEvent('wa_app_opened', {transaction_id:'t1'});
+sendEvent('wa_fallback_shown', null);
+sendEvent('wa_fallback_click', {});
+sendEvent('wa_copy_number', {});
+sendEvent('wa_copy_message', {});
+process.stdout.write(JSON.stringify({urls: urls, sent: sent}));
+""" % (json.dumps(config), script)
+    completed = subprocess.run(['node', '-e', program], check=True, capture_output=True, text=True)
+    return json.loads(completed.stdout)
+
+
+def test_served_page_switches_destination_only_after_the_link_is_set(tmp_path):
+    admin = TestClient(create_admin(tmp_path), base_url='http://127.0.0.1:8765', client=('127.0.0.1', 9))
+    target = TestClient(create_target(tmp_path), base_url='http://127.0.0.1:8766', client=('127.0.0.1', 9))
+    admin.headers.update({'Origin': 'http://127.0.0.1:8765', 'X-CSRF-Token': admin.app.state.csrf})
+    page = '''<!doctype html><html><body><script>
+const CONFIG = { contactApp: "band", bandUrl: "https://band.us/n/example", whatsappNumber: "85200000000", eventEndpoint: "" };
+function buildWhatsAppUrls(message) {
+  return { phone: "85200000000", universal: "https://wa.me/85200000000", scheme: "whatsapp://send?phone=85200000000", intent: "intent://send" };
+}
+function sendEvent(name, extra) {}
+function goWhatsApp(){ var urls = buildWhatsAppUrls("hi"); location.href = urls.universal; }
+</script></body></html>'''
+    uploaded = admin.post('/api/upload/B?name=page.html', content=page.encode())
+    assert uploaded.status_code == 200, uploaded.text
+    assert admin.post('/api/publish/B', json={'version_id': uploaded.json()['version']['id']}).status_code == 200
+    served = target.get('/')
+    assert served.status_code == 200
+    assert 'id="ab-dest-app"' in served.text
+    assert 'function buildWhatsAppUrls(message)' in served.text
+    assert 'https://wa.me/85200000000' in served.text and 'whatsapp://send?phone=85200000000' in served.text
+    assert 'function goWhatsApp(){ var urls = buildWhatsAppUrls("hi"); location.href = urls.universal; }' in served.text
+    assert 'eventEndpoint: "https://hhucuq.top/wa-events"' in served.text
+    flags = served.headers['content-security-policy'].split(';')[0].split()
+    assert 'allow-popups' in flags and 'allow-popups-to-escape-sandbox' in flags
+    assert 'allow-top-navigation-to-custom-protocols' in flags and 'allow-top-navigation' not in flags
+    stored = next((admin.app.state.store.pages / admin.app.state.store.slots()['B']).rglob('*.html')).read_text(encoding='utf-8')
+    assert stored == page
+    assert 'ab-dest-app' not in stored
+    script = _script_body(served.text)
+    band = _run_destination(script, {'contactApp': 'band', 'bandUrl': ' https://band.us/n/example ', 'whatsappNumber': '+852 0000 0000'})
+    assert band['urls'] == {'phone': '85200000000', 'universal': 'https://band.us/n/example', 'scheme': 'https://band.us/n/example', 'intent': 'https://band.us/n/example'}
+    assert [item['name'] for item in band['sent']] == ['band_click', 'band_app_opened', 'band_fallback_shown', 'band_fallback_click', 'band_copy_number', 'band_copy_message']
+    assert band['sent'][0]['extra']['dest_app'] == 'band' and band['sent'][0]['extra']['placement'] == 'keep'
+    kakao = _run_destination(script, {'contactApp': 'KAKAO', 'kakaoLink': 'https://open.kakao.com/o/example'})
+    assert kakao['urls']['universal'] == 'https://open.kakao.com/o/example'
+    assert kakao['sent'][0]['name'] == 'kakao_click' and kakao['sent'][1]['name'] == 'kakao_app_opened'
+    whatsapp = _run_destination(script, {'contactApp': 'whatsapp', 'bandUrl': 'https://band.us/n/example'})
+    assert whatsapp['urls']['universal'] == 'https://wa.me/85200000000?text=hi'
+    assert whatsapp['urls']['scheme'].startswith('whatsapp://')
+    assert [item['name'] for item in whatsapp['sent']][0] == 'whatsapp_click'
+    assert 'dest_app' not in (whatsapp['sent'][0]['extra'] or {})
+    unset = _run_destination(script, {})
+    assert unset['urls']['scheme'].startswith('whatsapp://') and unset['sent'][0]['name'] == 'whatsapp_click'
+    missing = _run_destination(script, {'contactApp': 'band', 'bandUrl': '   '})
+    assert missing['urls']['universal'].startswith('https://wa.me/') and missing['sent'][0]['name'] == 'whatsapp_click'
+    raw = b'function buildWhatsAppUrls(){return "https://wa.me/1"}'
+    assert inject_dest_app(raw, 'app.js') == raw
+    assert inject_dest_app(page.encode(), 'notes.txt') == page.encode()
+    channel_page = _run_destination(script, {'whatsappNumber': '85200000000'}, '''
+const location = { search: "?placement=" + encodeURIComponent("https://www.youtube.com/@FinanceDaily") + "&network=ytv" };
+const document = { referrer: "" };
+''')
+    assert channel_page['urls']['universal'].startswith('https://wa.me/')
+    assert channel_page['sent'][0]['name'] == 'whatsapp_click'
+    assert channel_page['sent'][0]['extra']['youtube_channel'] == '@FinanceDaily'
+    assert channel_page['sent'][0]['extra']['network'] == 'ytv'
+    assert 'dest_app' not in channel_page['sent'][0]['extra']
+    referred = _run_destination(script, {}, '''
+const location = { search: "" };
+const document = { referrer: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" };
+''')
+    assert referred['sent'][0]['name'] == 'whatsapp_click'
+    assert referred['sent'][0]['extra']['youtube_video'] == 'dQw4w9WgXcQ'
+    assert referred['sent'][0]['extra']['youtube_referrer'].startswith('https://www.youtube.com/watch?v=')
+    band_channel = _run_destination(script, {'contactApp': 'band', 'bandUrl': 'https://band.us/n/example'}, '''
+const location = { search: "?placement=" + encodeURIComponent("https://www.youtube.com/@FinanceDaily") };
+const document = { referrer: "" };
+''')
+    assert band_channel['urls']['universal'] == 'https://band.us/n/example'
+    assert band_channel['sent'][0]['name'] == 'band_click'
+    assert band_channel['sent'][1]['name'] == 'band_app_opened'
+    assert band_channel['sent'][0]['extra']['dest_app'] == 'band'
+    assert band_channel['sent'][0]['extra']['youtube_channel'] == '@FinanceDaily'
+
+
+def test_youtube_channel_stays_with_the_band_wake():
+    video = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+    events = [
+        _event('one.test', {'event': 'band_click', 'transaction_id': 'b1', 'wa_env': 'android_chrome', 'link_type': 'universal', 'device': 'mobile', 'placement': video, 'dest_app': 'band'}, 1),
+        _event('one.test', {'event': 'band_app_opened', 'transaction_id': 'b1', 'dest_app': 'band'}, 2),
+        _event('one.test', {'event': 'kakao_click', 'transaction_id': 'k1', 'wa_env': 'android_chrome', 'link_type': 'universal', 'device': 'mobile', 'placement': 'https://www.youtube.com/@OtherShow', 'dest_app': 'kakao'}, 3),
+        _event('one.test', {'event': 'kakao_app_opened', 'transaction_id': 'k1'}, 4),
+    ]
+    visits = [{
+        'domain': 'one.test', 'query': '', 'ip': '203.0.113.8', 'ua': 'Mozilla/5.0',
+        'path': '/', 'created': 1, 'referer': 'https://www.youtube.com/@FinanceDaily',
+    }]
+    report = build_campaign(visits, events, {})
+    band = next(row for row in report['rows'] if row['dest_app'] == 'band')
+    kakao = next(row for row in report['rows'] if row['dest_app'] == 'kakao')
+    assert band['clicks'] == 1 and band['opens'] == 1
+    assert band['youtube_video'] == 'dQw4w9WgXcQ' and band['youtube_label'] == ''
+    assert band['placement_label'] == 'YouTube · 视频 dQw4w9WgXcQ'
+    assert kakao['clicks'] == 1 and kakao['opens'] == 1 and kakao['youtube_channel'] == '@OtherShow'
+    fill_youtube_channels(report['rows'], lambda video_id: '财经日报' if video_id == 'dQw4w9WgXcQ' else '')
+    assert band['youtube_channel'] == '财经日报' and band['youtube_label'] == '财经日报'
+    assert band['placement_label'] == 'YouTube · 财经日报'
+    narrowed = build_campaign(visits, events, {'youtube': '@OtherShow', 'dest_app': 'kakao'})
+    assert len(narrowed['rows']) == 1 and narrowed['rows'][0]['opens'] == 1
+    referred = next(row for row in report['rows'] if row['placement'] == 'https://www.youtube.com/@FinanceDaily')
+    assert referred['youtube_channel'] == '@FinanceDaily'

@@ -224,7 +224,7 @@ def test_old_event_rows_gain_a_source_domain_column(tmp_path):
     db.close()
     store = Store(tmp_path)
     report = store.access_report(7, None, '本地站点')
-    assert '本地站点\tios\tapi\t1\t0\t0' in report
+    assert '本地站点\tWhatsApp\tios\tapi\t1\t0\t0' in report
     assert '{"event":"whatsapp_click","transaction_id":"old","wa_env":"ios","link_type":"api"}' in report
 
 
@@ -242,8 +242,8 @@ def test_weekly_section_three_counts_domain_env_and_link(tmp_path):
     for body, origin in rows:
         store.record_client_event(body, origin)
     report = store.access_report(7, 'HK', '本地站点')
-    assert 'one.example\tios\tuniversal\t2\t1\t0' in report
-    assert 'two.example\tandroid\tscheme\t0\t0\t1' in report
+    assert 'one.example\tWhatsApp\tios\tuniversal\t2\t1\t0' in report
+    assert 'two.example\tWhatsApp\tandroid\tscheme\t0\t0\t1' in report
     assert '"future":1' in report
     assert 'wa_copy_number' in report
     raw = report.split('# 3.1 全部原始 JSON（按 transaction_id 排序）', 1)[1]
@@ -258,7 +258,24 @@ def test_weekly_section_three_counts_domain_env_and_link(tmp_path):
     positions = [raw.index(item) for item in markers]
     assert positions == sorted(positions)
     downloaded = admin.get('/api/analysis/report?days=7')
-    assert 'one.example\tios\tuniversal\t2\t1\t0' in downloaded.text
+    assert 'one.example\tWhatsApp\tios\tuniversal\t2\t1\t0' in downloaded.text
+
+
+def test_weekly_section_three_splits_band_and_kakao(tmp_path):
+    store = Store(tmp_path)
+    rows = [
+        ('{"event":"band_click","transaction_id":"b","wa_env":"android","link_type":"universal","dest_app":"band"}', 'one.example'),
+        ('{"event":"band_app_opened","transaction_id":"b","wa_env":"android","link_type":"universal"}', 'one.example'),
+        ('{"event":"kakao_fallback_shown","wa_env":"ios","link_type":"scheme","dest_app":"kakao"}', 'one.example'),
+        ('{"event":"whatsapp_click","transaction_id":"w","wa_env":"android","link_type":"universal"}', 'one.example'),
+    ]
+    for body, origin in rows:
+        store.record_client_event(body, origin)
+    report = store.access_report(7, 'HK', '本地站点')
+    assert 'one.example\tBAND\tandroid\tuniversal\t1\t1\t0' in report
+    assert 'one.example\tKakao\tios\tscheme\t0\t0\t1' in report
+    assert 'one.example\tWhatsApp\tandroid\tuniversal\t1\t0\t0' in report
+    assert 'band_app_opened' in report
 
 
 def test_jump_events_outside_hong_kong_are_still_stored(tmp_path, monkeypatch):
