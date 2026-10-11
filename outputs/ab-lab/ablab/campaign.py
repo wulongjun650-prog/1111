@@ -254,6 +254,7 @@ def parse_visit(row):
     ua = row.get('ua') or ''
     key = ('gclid', domain, gclid) if gclid else ('ipua', domain, ip, ua)
     return {
+        'created': row.get('created') or 0,
         'domain': domain,
         'placement': placement,
         'model': model,
@@ -365,9 +366,24 @@ def _blank_row(item):
         'copy_message': 0,
         'click_ids': set(),
         'visit_keys': set(),
+        'seen_at': 0,
+        'first_at': 0,
         'alert': False,
         'alert_reason': '',
     }
+
+
+def _note_time(row, created):
+    try:
+        stamp = float(created or 0)
+    except (TypeError, ValueError):
+        return
+    if stamp <= 0:
+        return
+    if not row['seen_at'] or stamp > row['seen_at']:
+        row['seen_at'] = stamp
+    if not row['first_at'] or stamp < row['first_at']:
+        row['first_at'] = stamp
 
 
 def _row_key(item):
@@ -375,6 +391,7 @@ def _row_key(item):
 
 
 def _add_event(row, item):
+    _note_time(row, item.get('created'))
     kind = _EVENT_KINDS.get(item['event'])
     if kind == 'click':
         row['click_ids'].add(item['tx_key'])
@@ -519,6 +536,7 @@ def build_campaign(visit_rows, event_rows, filters=None):
                 })
                 rows[key] = row
             row['visit_keys'].add(visit['key'])
+            _note_time(row, visit.get('created'))
             counted.add(visit['key'])
     table = []
     for row in rows.values():

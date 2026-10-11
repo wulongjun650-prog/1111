@@ -104,6 +104,17 @@ const formatDate = value => {
   const date = new Date(Number(value) * 1000);
   return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleString('zh-CN', { hour12: false });
 };
+const campaignClock = value => {
+  const date = new Date(Number(value) * 1000);
+  if (!value || Number.isNaN(date.valueOf())) return '—';
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Hong_Kong', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(date);
+  const pick = type => parts.find(part => part.type === type)?.value || '';
+  return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`;
+};
 reasons.manual = '手动指定';
 const traceLabels = { blacklist: '黑名单检查', whitelist: '白名单检查', super_bot: '超级防爬虫', strict_bot: '严格防爬虫', bot_marker: 'UA 特征检查', ipv4: 'IPv4 检查', device: '设备检查', os_version: '系统版本检查', blocked_cidr: '自定义网段检查', country: '国家检查', country_unknown: '国家检查', language: '语言检查', visit_limit: '访问次数检查' };
 const number = value => Number(value ?? 0).toLocaleString('zh-CN');
@@ -702,13 +713,13 @@ async function loadCampaign() {
     if (request !== campaignRequest) return;
     const totals = data.totals || {};
     $('#campaign-summary').textContent = `进站 ${number(totals.visits)} · 点击 ${number(totals.clicks)} · 拉起 ${number(totals.opens)} · 拉起率 ${percent(totals.open_rate)}`;
-    $('#campaign-note').textContent = `接收地址 ${data.endpoint || ''}。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
+    $('#campaign-note').textContent = `接收地址 ${data.endpoint || ''}。时间是香港时间，精确到秒；一行里有多次时显示最晚的一次。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
     const body = $('#campaign-rows');
     body.replaceChildren();
     if (!data.rows.length) {
       const row = element('tr');
       const cell = element('td', 'empty-state', '这段时间没有进站或跳转事件。');
-      cell.colSpan = 16;
+      cell.colSpan = 17;
       row.append(cell);
       body.append(row);
       return;
@@ -729,7 +740,10 @@ async function loadCampaign() {
         link.href = `/api/campaign/events?${linkParams.toString()}`;
         exportCell.append(link);
       }
+      const when = element('td', 'visit-time', campaignClock(item.seen_at));
+      if (item.first_at && item.seen_at && Number(item.first_at) !== Number(item.seen_at)) when.title = `最早 ${campaignClock(item.first_at)}`;
       row.append(
+        when,
         element('td', '', item.domain),
         element('td', '', item.dest_label || '未知'),
         element('td', '', item.placement_label),

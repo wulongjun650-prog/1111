@@ -53,12 +53,14 @@ def test_campaign_counts_visits_clicks_and_red_rows():
     assert android['clicks'] == 1
     assert android['opens'] == 1
     assert android['visits'] == 1
+    assert android['seen_at'] == 3 and android['first_at'] == 1
     assert report['totals']['visits'] == 3
     assert android['model'] == 'iPhone'
     news = next(row for row in report['rows'] if row['placement'] == 'news.example' and row['fallbacks'])
     assert news['fallbacks'] == 1
     assert news['fallback_click'] == 1 and news['copy_number'] == 1 and news['copy_message'] == 1
     assert news['model'] == 'Pixel 7'
+    assert news['seen_at'] == 7
     assert report['totals']['clicks'] == 1
     assert all(row['path'] != '/app.js' for row in report['rows'] if 'path' in row)
 
@@ -124,6 +126,8 @@ def test_campaign_api_filters_and_exports(tmp_path):
     assert '"extra":1' in ''.join(bodies)
     csv_text = admin.get('/api/campaign.csv?range=today').text
     assert '点击数' in csv_text and '去向' in csv_text and 'WhatsApp' in csv_text and 'Android App · com.foo' in csv_text
+    assert csv_text.splitlines()[0].lstrip('\ufeff').startswith('时间,')
+    assert payload['rows'][0]['seen_at'] > 0
     assert admin.get('/api/campaign?range=custom&start=2026-01-02&end=2026-01-01').status_code == 400
     store.record_client_event('{"event":"whatsapp_click","transaction_id":"blank","wa_env":"ios_safari","device":"mobile"}', 'shop.example')
     exact = admin.get('/api/campaign/events?range=today&domain=shop.example&placement=&placement_exact=true&wa_env=ios_safari')
