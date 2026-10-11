@@ -3,7 +3,7 @@ import subprocess
 
 from fastapi.testclient import TestClient
 
-from ablab.campaign import build_campaign, device_from_ua, placement_label, window_bounds
+from ablab.campaign import build_campaign, device_from_ua, fill_youtube_channels, placement_label, window_bounds, youtube_from
 from ablab.web import create_admin, create_target, inject_dest_app
 
 
@@ -12,6 +12,13 @@ def test_placement_and_phone_labels():
     assert placement_label('mobileapp::2-com.example.app') == 'Android App · com.example.app'
     assert placement_label('mobileapp::1-12345') == 'iOS App · 12345'
     assert placement_label('news.example') == 'news.example'
+    assert youtube_from('https://www.youtube.com/@FinanceDaily')['channel'] == '@FinanceDaily'
+    assert youtube_from('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv')['channel'] == 'UCabcdefghijklmnopqrstuv'
+    assert youtube_from('https://www.youtube.com/watch?v=dQw4w9WgXcQ')['video'] == 'dQw4w9WgXcQ'
+    assert youtube_from('https://youtu.be/dQw4w9WgXcQ')['video'] == 'dQw4w9WgXcQ'
+    assert youtube_from('https://www.youtube.com/shorts/dQw4w9WgXcQ')['video'] == 'dQw4w9WgXcQ'
+    assert youtube_from('news.example') is None
+    assert placement_label('https://www.youtube.com/@FinanceDaily') == 'YouTube · @FinanceDaily'
     assert device_from_ua('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) Version/18.7 Mobile/15E148 Safari/604.1') == ('iPhone', 'iOS 18.7')
     assert device_from_ua('Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36') == ('Pixel 7', 'Android 13')
 
@@ -199,8 +206,8 @@ def _script_body(html):
     return html[start:html.index('</script>', start)]
 
 
-def _run_destination(script, config):
-    program = """
+def _run_destination(script, config, prelude=''):
+    program = prelude + """
 const CONFIG = %s;
 function buildWhatsAppUrls() {
   return {phone:'85200000000', universal:'https://wa.me/85200000000?text=hi', scheme:'whatsapp://send?phone=85200000000', intent:'intent://send?phone=85200000000#Intent;scheme=whatsapp;package=com.whatsapp;end'};
@@ -269,3 +276,56 @@ function goWhatsApp(){ var urls = buildWhatsAppUrls("hi"); location.href = urls.
     raw = b'function buildWhatsAppUrls(){return "https://wa.me/1"}'
     assert inject_dest_app(raw, 'app.js') == raw
     assert inject_dest_app(page.encode(), 'notes.txt') == page.encode()
+    channel_page = _run_destination(script, {'whatsappNumber': '85200000000'}, '''
+const location = { search: "?placement=" + encodeURIComponent("https://www.youtube.com/@FinanceDaily") + "&network=ytv" };
+const document = { referrer: "" };
+''')
+    assert channel_page['urls']['universal'].startswith('https://wa.me/')
+    assert channel_page['sent'][0]['name'] == 'whatsapp_click'
+    assert channel_page['sent'][0]['extra']['youtube_channel'] == '@FinanceDaily'
+    assert channel_page['sent'][0]['extra']['network'] == 'ytv'
+    assert 'dest_app' not in channel_page['sent'][0]['extra']
+    referred = _run_destination(script, {}, '''
+const location = { search: "" };
+const document = { referrer: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" };
+''')
+    assert referred['sent'][0]['name'] == 'whatsapp_click'
+    assert referred['sent'][0]['extra']['youtube_video'] == 'dQw4w9WgXcQ'
+    assert referred['sent'][0]['extra']['youtube_referrer'].startswith('https://www.youtube.com/watch?v=')
+    band_channel = _run_destination(script, {'contactApp': 'band', 'bandUrl': 'https://band.us/n/example'}, '''
+const location = { search: "?placement=" + encodeURIComponent("https://www.youtube.com/@FinanceDaily") };
+const document = { referrer: "" };
+''')
+    assert band_channel['urls']['universal'] == 'https://band.us/n/example'
+    assert band_channel['sent'][0]['name'] == 'band_click'
+    assert band_channel['sent'][1]['name'] == 'band_app_opened'
+    assert band_channel['sent'][0]['extra']['dest_app'] == 'band'
+    assert band_channel['sent'][0]['extra']['youtube_channel'] == '@FinanceDaily'
+
+
+def test_youtube_channel_stays_with_the_band_wake():
+    video = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+    events = [
+        _event('one.test', {'event': 'band_click', 'transaction_id': 'b1', 'wa_env': 'android_chrome', 'link_type': 'universal', 'device': 'mobile', 'placement': video, 'dest_app': 'band'}, 1),
+        _event('one.test', {'event': 'band_app_opened', 'transaction_id': 'b1', 'dest_app': 'band'}, 2),
+        _event('one.test', {'event': 'kakao_click', 'transaction_id': 'k1', 'wa_env': 'android_chrome', 'link_type': 'universal', 'device': 'mobile', 'placement': 'https://www.youtube.com/@OtherShow', 'dest_app': 'kakao'}, 3),
+        _event('one.test', {'event': 'kakao_app_opened', 'transaction_id': 'k1'}, 4),
+    ]
+    visits = [{
+        'domain': 'one.test', 'query': '', 'ip': '203.0.113.8', 'ua': 'Mozilla/5.0',
+        'path': '/', 'created': 1, 'referer': 'https://www.youtube.com/@FinanceDaily',
+    }]
+    report = build_campaign(visits, events, {})
+    band = next(row for row in report['rows'] if row['dest_app'] == 'band')
+    kakao = next(row for row in report['rows'] if row['dest_app'] == 'kakao')
+    assert band['clicks'] == 1 and band['opens'] == 1
+    assert band['youtube_video'] == 'dQw4w9WgXcQ' and band['youtube_label'] == ''
+    assert band['placement_label'] == 'YouTube · 视频 dQw4w9WgXcQ'
+    assert kakao['clicks'] == 1 and kakao['opens'] == 1 and kakao['youtube_channel'] == '@OtherShow'
+    fill_youtube_channels(report['rows'], lambda video_id: '财经日报' if video_id == 'dQw4w9WgXcQ' else '')
+    assert band['youtube_channel'] == '财经日报' and band['youtube_label'] == '财经日报'
+    assert band['placement_label'] == 'YouTube · 财经日报'
+    narrowed = build_campaign(visits, events, {'youtube': '@OtherShow', 'dest_app': 'kakao'})
+    assert len(narrowed['rows']) == 1 and narrowed['rows'][0]['opens'] == 1
+    referred = next(row for row in report['rows'] if row['placement'] == 'https://www.youtube.com/@FinanceDaily')
+    assert referred['youtube_channel'] == '@FinanceDaily'

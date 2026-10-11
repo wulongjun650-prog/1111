@@ -232,7 +232,7 @@
       </section>
 
       <section id="panel-campaign" class="tab-panel" aria-label="投放数据" hidden>
-        <div class="notice"><span aria-hidden="true">ⓘ</span><p id="campaign-note">进站只算打到源站的 HTML。同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。</p></div>
+        <div class="notice"><span aria-hidden="true">ⓘ</span><p id="campaign-note">进站只算打到源站的 HTML。同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址。</p></div>
         <article class="card logs-card">
           <div class="card-heading">
             <div><p class="eyebrow">CAMPAIGN</p><h2>投放数据</h2><p id="campaign-summary" class="muted">进入此页后加载。</p></div>
@@ -245,13 +245,14 @@
             <label>域名<input id="campaign-domain" name="domain" placeholder="全部"></label>
             <label>去向<select id="campaign-dest" name="dest_app"><option value="">全部</option><option value="whatsapp">WhatsApp</option><option value="band">BAND</option><option value="kakao">Kakao</option></select></label>
             <label>版位<input id="campaign-placement" name="placement" placeholder="全部，可填包名或域名"></label>
+            <label>频道<input id="campaign-youtube" name="youtube" placeholder="全部，可填频道或视频"></label>
             <label>device<input id="campaign-device" name="device" placeholder="全部"></label>
             <label>wa_env<input id="campaign-env" name="wa_env" placeholder="全部"></label>
             <label>link_type<input id="campaign-link" name="link_type" placeholder="全部"></label>
             <label>机型 / 系统<input id="campaign-model" name="model" placeholder="全部，可填机型或系统"></label>
             <button class="button secondary" type="submit">查询</button>
           </form>
-          <div class="table-scroll"><table><caption class="sr-only">投放数据</caption><thead><tr><th>域名</th><th>去向</th><th>版位</th><th>device</th><th>wa_env</th><th>link_type</th><th>机型 / 系统</th><th>进站</th><th>点击</th><th>拉起</th><th>兜底</th><th>点击率</th><th>拉起率</th><th>兜底后</th><th></th></tr></thead><tbody id="campaign-rows"><tr><td colspan="15" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
+          <div class="table-scroll"><table><caption class="sr-only">投放数据</caption><thead><tr><th>域名</th><th>去向</th><th>版位</th><th>频道</th><th>device</th><th>wa_env</th><th>link_type</th><th>机型 / 系统</th><th>进站</th><th>点击</th><th>拉起</th><th>兜底</th><th>点击率</th><th>拉起率</th><th>兜底后</th><th></th></tr></thead><tbody id="campaign-rows"><tr><td colspan="16" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
         </article>
       </section>
 

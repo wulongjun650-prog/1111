@@ -30,7 +30,7 @@ from .models import ConfigUpdate, DirectEntry, LinkInput, RedirectApply, Redirec
 from .tracking import normalize_conversion, normalize_ga4
 from .linkcheck import LinkChecker
 from .watrust import PUBLIC_ORIGIN, TrustChecker, device_from_environ
-from .campaign import build_campaign, export_events, window_bounds
+from .campaign import build_campaign, export_events, fill_youtube_channels, window_bounds
 from .redirects import public_occurrences, rewrite_reception_bytes, rewrite_text, scan_bundle
 from .rules import decide
 from .cloudflare import Cloudflare
@@ -1205,7 +1205,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 events.append(row)
         return visits, events
 
-    def campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact=False, dest_app=''):
+    def campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact=False, dest_app='', youtube=''):
         since, until = window_bounds(span, start, end, time.time())
         filters = {
             'domain': domain.strip()[:253],
@@ -1215,6 +1215,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             'link_type': link_type.strip()[:80],
             'model': model.strip()[:80],
             'dest_app': dest_app.strip().lower()[:20],
+            'youtube': youtube.strip()[:120],
             'placement_exact': bool(placement_exact),
         }
         return since, until, filters
@@ -1222,10 +1223,10 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.get('/api/campaign')
     def campaign_table(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
                        start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
-                       wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', placement_exact: bool = False):
-        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app)
+                       wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube)
         visits, events = collect_campaign(request, since, until)
-        report = build_campaign(visits, events, filters)
+        report = _with_youtube_channels(build_campaign(visits, events, filters))
         report['endpoint'] = jump_event_endpoint(deployment)
         report['range'] = span
         report['since'] = since
@@ -1235,11 +1236,11 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.get('/api/campaign.csv')
     def campaign_csv(request: Request, slot: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
                      start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
-                     wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', placement_exact: bool = False):
-        since, until, filters = campaign_arguments(slot, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app)
+                     wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(slot, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube)
         visits, events = collect_campaign(request, since, until)
-        report = build_campaign(visits, events, filters)
-        fields = ['域名', '去向', '版位', 'device', 'wa_env', 'link_type', '机型', '系统', '进站数', '点击数', '拉起数', '兜底数', '点击率', '拉起率', '兜底点击', '复制号码', '复制消息', '标红', '原因']
+        report = _with_youtube_channels(build_campaign(visits, events, filters))
+        fields = ['域名', '去向', '版位', '频道', 'device', 'wa_env', 'link_type', '机型', '系统', '进站数', '点击数', '拉起数', '兜底数', '点击率', '拉起率', '兜底点击', '复制号码', '复制消息', '标红', '原因']
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
         writer.writerow(fields)
@@ -1250,7 +1251,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             return '' if value is None else f'{value * 100:.1f}%'
         for row in report['rows']:
             writer.writerow([cell(value) for value in (
-                row['domain'], row['dest_label'], row['placement_label'], row['device'], row['wa_env'], row['link_type'], row['model'], row['os'],
+                row['domain'], row['dest_label'], row['placement_label'], row['youtube_label'], row['device'], row['wa_env'], row['link_type'], row['model'], row['os'],
                 row['visits'], row['clicks'], row['opens'], row['fallbacks'], percent(row['click_rate']), percent(row['open_rate']),
                 row['fallback_click'], row['copy_number'], row['copy_message'], '是' if row['alert'] else '', row['alert_reason'],
             )])
@@ -1259,8 +1260,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.get('/api/campaign/events')
     def campaign_events_export(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
                                start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
-                               wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', placement_exact: bool = False):
-        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app)
+                               wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube)
         _visits, events = collect_campaign(request, since, until)
         payload = json.dumps(export_events(events, filters), ensure_ascii=False, separators=(',', ':'))
         return Response(payload, media_type='application/json; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="campaign-events.json"'})
@@ -1359,24 +1360,60 @@ _NUMBER_SPLIT_SCRIPT = (
 )
 
 # Runs after the page's own functions. WhatsApp URLs stay until contactApp is band or kakao.
+# YouTube fields are copied from the address bar and the referrer; event names stay until the link changes.
 _DEST_APP_SCRIPT = (
     '<script id="ab-dest-app">(function(){'
-    'var cfg={},app="whatsapp",url="";'
+    'function ytFrom(raw){'
+    'var text=String(raw||"").replace(/^\\s+|\\s+$/g,"");'
+    'if(!text)return null;'
+    'var decoded=text;try{decoded=decodeURIComponent(text);}catch(e){}'
+    'var match=decoded.match(/^(?:https?:\\/\\/)?(?:www\\.|m\\.)?(youtube\\.com|youtu\\.be)(\\/[^\\s#]*)?/i);'
+    'if(!match)return null;'
+    'var host=match[1].toLowerCase(),path=match[2]||"/",query="",cut=path.indexOf("?");'
+    'if(cut>=0){query=path.slice(cut+1);path=path.slice(0,cut);}'
+    'var channel="",video="",found;'
+    'found=path.match(/^\\/@([^\\/]+)/);if(found)channel="@"+found[1];'
+    'else{found=path.match(/^\\/channel\\/([^\\/]+)/);if(found)channel=found[1];'
+    'else{found=path.match(/^\\/(?:c|user)\\/([^\\/]+)/);if(found)channel=found[1];}}'
+    'if(host==="youtu.be")video=(path.split("/")[1]||"");'
+    'else{found=path.match(/^\\/(?:shorts|embed|live|v)\\/([^\\/]+)/);if(found)video=found[1];'
+    'else if(path==="/watch"||path.indexOf("/watch/")===0){found=query.match(/(?:^|&)v=([^&]+)/);if(found)video=found[1];}}'
+    'return{channel:channel.slice(0,120),video:video.slice(0,32),url:decoded.slice(0,300)};'
+    '}'
+    'function youtubeExtra(){'
+    'var placement="",network="",referrer="",fromPlace=null,fromRef=null,net="";'
+    'try{var params=new URLSearchParams(location.search);placement=params.get("placement")||"";network=params.get("network")||"";}catch(e){}'
+    'try{referrer=document.referrer||"";}catch(e){}'
+    'fromPlace=ytFrom(placement);fromRef=ytFrom(referrer);net=String(network||"").toLowerCase();'
+    'if(!fromPlace&&!fromRef&&net!=="ytv"&&net!=="yts")return null;'
+    'var out={},chosen=fromPlace||fromRef;'
+    'if(net==="ytv"||net==="yts")out.network=net;'
+    'if(chosen){if(chosen.channel)out.youtube_channel=chosen.channel;if(chosen.video)out.youtube_video=chosen.video;'
+    'if(!fromPlace&&fromRef)out.youtube_referrer=chosen.url;}'
+    'return out;'
+    '}'
+    'var cfg={},app="whatsapp",url="",switching=false;'
     'try{cfg=(typeof CONFIG==="object"&&CONFIG)||{};}catch(e){cfg={};}'
     'app=String(cfg.contactApp||"whatsapp").toLowerCase();'
-    'if(app!=="band"&&app!=="kakao")return;'
+    'if(app==="band"||app==="kakao"){'
     'url=String((app==="band"?(cfg.bandUrl||cfg.bandLink):(cfg.kakaoUrl||cfg.kakaoLink))||"").replace(/^\\s+|\\s+$/g,"");'
-    'if(!url)return;'
+    'if(url)switching=true;}'
+    'if(switching){'
     'var urls=function(){var phone="";try{phone=String(cfg.whatsappNumber||"").replace(/\\D/g,"");}catch(e){}'
     'return{phone:phone,universal:url,scheme:url,intent:url};};'
     'try{buildWhatsAppUrls=urls;}catch(e){}'
     'try{window.buildWhatsAppUrls=urls;}catch(e){}'
+    '}'
     'var previous=null;try{previous=sendEvent;}catch(e){}'
     'if(typeof previous!=="function")return;'
-    'var map={whatsapp_click:app+"_click",wa_app_opened:app+"_app_opened",wa_fallback_shown:app+"_fallback_shown",wa_fallback_click:app+"_fallback_click",wa_copy_number:app+"_copy_number",wa_copy_message:app+"_copy_message"};'
-    'var wrapped=function(name,extra){var more={},key;'
-    'if(extra&&typeof extra==="object"){for(key in extra){if(Object.prototype.hasOwnProperty.call(extra,key))more[key]=extra[key];}}'
-    'more.dest_app=app;return previous(map[name]||name,more);};'
+    'var map=switching?{whatsapp_click:app+"_click",wa_app_opened:app+"_app_opened",wa_fallback_shown:app+"_fallback_shown",wa_fallback_click:app+"_fallback_click",wa_copy_number:app+"_copy_number",wa_copy_message:app+"_copy_message"}:null;'
+    'var wrapped=function(name,extra){'
+    'var next=name,more=extra;'
+    'try{more={};var key;if(extra&&typeof extra==="object"){for(key in extra){if(Object.prototype.hasOwnProperty.call(extra,key))more[key]=extra[key];}}'
+    'if(switching)more.dest_app=app;'
+    'var yt=youtubeExtra();if(yt){for(key in yt){if(Object.prototype.hasOwnProperty.call(yt,key))more[key]=yt[key];}}'
+    'if(map&&map[name])next=map[name];}catch(err){next=name;more=extra;}'
+    'return previous(next,more);};'
     'try{sendEvent=wrapped;}catch(e){}'
     'try{window.sendEvent=wrapped;}catch(e){}'
     '})();</script>'
@@ -1407,6 +1444,38 @@ def inject_dest_app(data, relative=''):
 
 
 _EVENT_ENDPOINT = re.compile(r'''(\beventEndpoint\b\s*[:=]\s*)(['"])([^'"\n]{0,200})\2''')
+
+
+_youtube_names = {}
+_youtube_lock = threading.Lock()
+
+
+def lookup_youtube_channel(video_id):
+    """Channel title for one video. A miss stays a video id; the click path never waits on this."""
+    if not re.fullmatch(r'[A-Za-z0-9_-]{11}', video_id or ''):
+        return ''
+    with _youtube_lock:
+        cached = _youtube_names.get(video_id)
+    if cached is not None:
+        return cached
+    name = ''
+    try:
+        from urllib.request import Request as UrlRequest, urlopen
+        address = 'https://www.youtube.com/oembed?format=json&url=' + quote('https://www.youtube.com/watch?v=' + video_id, safe='')
+        with urlopen(UrlRequest(address, headers={'User-Agent': 'Mozilla/5.0'}), timeout=2) as response:
+            payload = json.loads(response.read(20000))
+        if isinstance(payload, dict) and isinstance(payload.get('author_name'), str):
+            name = payload['author_name'].strip()[:120]
+    except Exception:
+        name = ''
+    with _youtube_lock:
+        _youtube_names[video_id] = name
+    return name
+
+
+def _with_youtube_channels(report):
+    fill_youtube_channels(report.get('rows') or [], lookup_youtube_channel)
+    return report
 
 
 def jump_event_endpoint(deployment):

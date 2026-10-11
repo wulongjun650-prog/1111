@@ -1,7 +1,7 @@
 """Read-only campaign totals. Nothing here changes a page, a jump, or a setting."""
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 import json
 import re
 
@@ -14,6 +14,49 @@ _ANDROID_VERSION = re.compile(r'Android\s+(\d+(?:\.\d+)*)', re.I)
 _ANDROID_MODEL = re.compile(r'Android\s+[\d.]+;\s*([^;)]+)')
 
 
+_YT_HOSTS = {'youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'www.youtu.be'}
+
+
+def youtube_from(value):
+    """Channel handle, channel id, or video id carried by a YouTube address."""
+    raw = unquote((value or '').strip())
+    if not raw:
+        return None
+    candidate = raw
+    if '://' not in candidate:
+        folded = candidate.lower()
+        if folded.startswith('//'):
+            candidate = 'https:' + candidate
+        elif folded.startswith(('youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'www.youtu.be')):
+            candidate = 'https://' + candidate
+        else:
+            return None
+    try:
+        parts = urlsplit(candidate)
+    except ValueError:
+        return None
+    host = (parts.hostname or '').lower()
+    if host not in _YT_HOSTS and not host.endswith('.youtube.com'):
+        return None
+    path = parts.path or '/'
+    segments = [unquote(part) for part in path.split('/') if part]
+    channel = ''
+    video = ''
+    if host.endswith('youtu.be'):
+        video = segments[0] if segments else ''
+    elif segments and segments[0].startswith('@'):
+        channel = segments[0]
+    elif len(segments) >= 2 and segments[0] == 'channel':
+        channel = segments[1]
+    elif len(segments) >= 2 and segments[0] in ('c', 'user'):
+        channel = segments[1]
+    elif len(segments) >= 2 and segments[0] in ('shorts', 'embed', 'live', 'v'):
+        video = segments[1]
+    elif segments and segments[0] == 'watch':
+        video = (parse_qs(parts.query).get('v') or [''])[0]
+    return {'channel': channel.strip()[:120], 'video': video.strip()[:32], 'url': candidate[:300]}
+
+
 def placement_label(value):
     text = (value or '').strip()
     if not text:
@@ -24,6 +67,13 @@ def placement_label(value):
     ios = _IOS.match(text)
     if ios:
         return 'iOS App · ' + ios.group(1).strip()
+    parsed = youtube_from(text)
+    if parsed:
+        if parsed['channel']:
+            return 'YouTube · ' + parsed['channel']
+        if parsed['video']:
+            return 'YouTube · 视频 ' + parsed['video']
+        return 'YouTube'
     return text
 
 
@@ -179,6 +229,10 @@ def parse_event(row):
         'os': system,
         'event': _text(payload.get('event')),
         'dest_app': _dest_app(payload),
+        'network': _text(payload.get('network')).lower(),
+        'youtube_channel': _text(payload.get('youtube_channel')),
+        'youtube_video': _text(payload.get('youtube_video')),
+        'youtube_referrer': _text(payload.get('youtube_referrer')),
         'transaction_id': transaction_id,
         'tx_key': transaction_id or f'#{row.get("id")}',
         'gclid': _text(payload.get('gclid')),
@@ -189,6 +243,11 @@ def parse_event(row):
 def parse_visit(row):
     gclid = query_value(row.get('query'), 'gclid')
     placement = query_value(row.get('query'), 'placement')
+    referer = _text(row.get('referer'))
+    referer_youtube = youtube_from(referer)
+    if not placement and referer_youtube:
+        placement = referer
+    network = query_value(row.get('query'), 'network').lower()
     model, system = device_from_ua(row.get('ua') or '')
     domain = _text(row.get('domain'))
     ip = _text(row.get('ip'))
@@ -203,14 +262,51 @@ def parse_visit(row):
         'wa_env': '未知',
         'link_type': '未知',
         'dest_app': '',
+        'network': network if network in ('ytv', 'yts') else '',
+        'youtube_channel': '',
+        'youtube_video': '',
+        'youtube_referrer': referer if referer_youtube else '',
         'gclid': gclid,
         'key': key,
     }
 
 
+def annotate_youtube(item):
+    parsed = youtube_from(item.get('placement')) or youtube_from(item.get('youtube_referrer'))
+    if parsed:
+        if not item.get('youtube_channel'):
+            item['youtube_channel'] = parsed['channel']
+        if not item.get('youtube_video'):
+            item['youtube_video'] = parsed['video']
+    item['youtube_label'] = item.get('youtube_channel') or ''
+    return item
+
+
+def fill_youtube_channels(rows, lookup):
+    """Replace a bare video id with the channel name. Lookup failures leave the video visible."""
+    found = {}
+    for row in rows:
+        video = row.get('youtube_video') or ''
+        if not video or row.get('youtube_channel'):
+            continue
+        if video not in found:
+            name = ''
+            if lookup and len(found) < 8:
+                try:
+                    name = _text(lookup(video))[:120]
+                except Exception:
+                    name = ''
+            found[video] = name
+        if found[video]:
+            row['youtube_channel'] = found[video]
+            row['youtube_label'] = found[video]
+            row['placement_label'] = 'YouTube · ' + found[video]
+    return rows
+
+
 def _matches(item, filters, fields):
     for field in fields:
-        if field in ('placement', 'model'):
+        if field in ('placement', 'model', 'youtube'):
             continue
         wanted = (filters.get(field) or '').strip()
         if field == 'dest_app':
@@ -224,6 +320,18 @@ def _matches(item, filters, fields):
                 return False
         elif placement and placement not in item.get('placement', '') and placement not in placement_label(item.get('placement')):
             return False
+    if 'youtube' in fields:
+        needle = (filters.get('youtube') or '').strip()
+        if needle:
+            hay = ' '.join((
+                item.get('youtube_channel') or '',
+                item.get('youtube_video') or '',
+                item.get('youtube_label') or '',
+                item.get('placement') or '',
+                placement_label(item.get('placement')),
+            ))
+            if needle not in hay:
+                return False
     if 'model' in fields:
         model = (filters.get('model') or '').strip()
         if model and model not in item.get('model', '') and model not in item.get('os', ''):
@@ -239,6 +347,10 @@ def _blank_row(item):
         'dest_label': dest_label(app),
         'placement': item['placement'],
         'placement_label': placement_label(item['placement']),
+        'youtube_channel': item.get('youtube_channel') or '',
+        'youtube_video': item.get('youtube_video') or '',
+        'youtube_label': item.get('youtube_label') or '',
+        'network': item.get('network') or '',
         'device': item['device'],
         'wa_env': item['wa_env'],
         'link_type': item['link_type'],
@@ -295,7 +407,7 @@ def inherit_transaction(events):
     """An open beacon often omits the phone and the placement already sent with the click."""
     known_device = {}
     known_fields = {}
-    names = ('device', 'wa_env', 'link_type', 'placement', 'gclid', 'dest_app')
+    names = ('device', 'wa_env', 'link_type', 'placement', 'gclid', 'dest_app', 'network', 'youtube_channel', 'youtube_video', 'youtube_referrer')
     for item in events:
         token = item['transaction_id']
         if not token:
@@ -367,12 +479,16 @@ def build_campaign(visit_rows, event_rows, filters=None):
     filters = filters or {}
     events = inherit_transaction([parse_event(row) for row in event_rows])
     visits = [parse_visit(row) for row in visit_rows if is_html_path(row.get('path'))]
+    for item in events:
+        annotate_youtube(item)
+    for item in visits:
+        annotate_youtube(item)
     options = _options(events, visits)
-    chosen_events = [item for item in events if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app'))]
+    chosen_events = [item for item in events if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app', 'youtube'))]
     chosen_visits = []
     seen = set()
     for item in visits:
-        if item['key'] in seen or not _matches(item, filters, ('domain', 'placement', 'model')):
+        if item['key'] in seen or not _matches(item, filters, ('domain', 'placement', 'model', 'youtube')):
             continue
         seen.add(item['key'])
         chosen_visits.append(item)
@@ -388,7 +504,7 @@ def build_campaign(visit_rows, event_rows, filters=None):
     for item in chosen_events:
         if item['gclid']:
             joined[(item['domain'], item['gclid'])].add(_row_key(item))
-    event_filters = any((filters.get(field) or '').strip() for field in ('device', 'wa_env', 'link_type', 'dest_app'))
+    event_filters = any((filters.get(field) or '').strip() for field in ('device', 'wa_env', 'link_type', 'dest_app', 'youtube'))
     counted = set()
     for visit in chosen_visits:
         targets = joined.get((visit['domain'], visit['gclid']), set()) if visit['gclid'] else set()
@@ -438,7 +554,11 @@ def build_campaign(visit_rows, event_rows, filters=None):
 
 def export_events(event_rows, filters=None):
     filters = filters or {}
-    chosen = [item for item in inherit_transaction([parse_event(row) for row in event_rows]) if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app'))]
+    chosen = []
+    for item in inherit_transaction([parse_event(row) for row in event_rows]):
+        annotate_youtube(item)
+        if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app', 'youtube')):
+            chosen.append(item)
     chosen.sort(key=lambda item: (item['transaction_id'] == '', item['transaction_id'], item['created'], item['id'] or 0))
     return [
         {'received': item['created'], 'domain': item['domain'], 'transaction_id': item['transaction_id'], 'body': item['body']}

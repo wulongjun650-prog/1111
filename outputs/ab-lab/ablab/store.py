@@ -1011,7 +1011,7 @@ class Store:
 
     def campaign_access(self, since, until):
         with self.connect() as db:
-            rows = db.execute('SELECT created, ua, query, path, ip FROM access_log WHERE created>=? AND created<?', (since, until)).fetchall()
+            rows = db.execute('SELECT created, ua, query, path, ip, referer FROM access_log WHERE created>=? AND created<?', (since, until)).fetchall()
         return [dict(row) for row in rows]
 
     def campaign_events(self, since, until):
