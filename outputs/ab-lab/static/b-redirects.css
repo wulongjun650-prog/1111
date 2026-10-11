@@ -67,9 +67,14 @@
 .b-wa-row.active { background: color-mix(in srgb, var(--chart-allow) 10%, var(--surface)); border-color: color-mix(in srgb, var(--chart-allow) 38%, var(--line)); }
 .b-wa-row .actions { margin-left: auto; flex-shrink: 0; }
 .b-wa .b-redirect-add-form { margin-top: 12px; margin-bottom: 0; }
+#b-contact-form { grid-template-columns: 120px minmax(200px, 1.4fr) minmax(110px, .45fr) auto; }
+.b-contact-status, .b-contact-scan, .b-contact-action { margin: 2px 0 10px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.b-contact-action { color: var(--ink); }
+.b-contact-action.error { color: var(--chart-block); }
+.b-contact-missing { display: inline-flex; margin: 0; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 650; color: var(--muted); background: color-mix(in srgb, var(--muted) 12%, var(--surface)); }
 @media (max-width: 900px) {
   .b-now { grid-template-columns: 1fr; }
-  .b-redirect-add-form { grid-template-columns: minmax(0, 1fr) minmax(140px, .6fr); }
+  .b-redirect-add-form, #b-contact-form { grid-template-columns: minmax(0, 1fr) minmax(140px, .6fr); }
   .b-redirect-add-form > .grow { grid-column: 1 / -1; }
   .b-redirect-preset { flex-direction: column; align-items: stretch; }
   .b-redirect-preset .actions { margin-left: 0; justify-content: flex-end; }
@@ -79,7 +84,7 @@
   .b-split .switch { margin-left: 0; }
 }
 @media (max-width: 520px) {
-  .b-redirect-add-form { grid-template-columns: 1fr; }
+  .b-redirect-add-form, #b-contact-form { grid-template-columns: 1fr; }
   .b-redirect-toolbar { flex-wrap: wrap; }
   .b-redirect-toolbar label { flex-basis: 100%; }
 }

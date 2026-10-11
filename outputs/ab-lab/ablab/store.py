@@ -128,6 +128,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS rotation(slot TEXT PRIMARY KEY, last_id INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_presets(id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, note TEXT NOT NULL, created REAL NOT NULL, check_result TEXT);
                 CREATE TABLE IF NOT EXISTS whatsapp_numbers(id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL UNIQUE, note TEXT NOT NULL, created REAL NOT NULL, trust_result TEXT);
+                CREATE TABLE IF NOT EXISTS contact_links(id INTEGER PRIMARY KEY AUTOINCREMENT, app TEXT NOT NULL, url TEXT NOT NULL, note TEXT NOT NULL, created REAL NOT NULL, UNIQUE(app, url));
                 CREATE TABLE IF NOT EXISTS redirect_active(id INTEGER PRIMARY KEY CHECK(id=1), url TEXT NOT NULL, preset_id INTEGER REFERENCES redirect_presets(id) ON DELETE SET NULL, version_id TEXT NOT NULL REFERENCES versions(id), updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_split(id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL, mode TEXT NOT NULL, members TEXT NOT NULL, updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS redirect_split_assign(visitor_hash TEXT PRIMARY KEY, preset_id INTEGER, url TEXT NOT NULL, created REAL NOT NULL);
@@ -492,6 +493,36 @@ class Store:
                 raise KeyError('WhatsApp 号码不存在')
             self._audit(db, 'whatsapp_number_deleted', {'id':number_id})
 
+    def contact_links(self):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute('SELECT id,app,url,note,created FROM contact_links ORDER BY id')]
+
+    def contact_link(self, link_id):
+        with self.connect() as db:
+            row = db.execute('SELECT id,app,url,note,created FROM contact_links WHERE id=?', (link_id,)).fetchone()
+        if not row:
+            raise ValueError('这条链接不在预存里，请刷新后再换')
+        return dict(row)
+
+    def add_contact_links(self, app, urls, note):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            existing = {(row['app'], row['url']) for row in db.execute('SELECT app,url FROM contact_links')}
+            if len(existing | {(app, url) for url in urls}) > 100:
+                raise ValueError('每个域名最多保存 100 条 BAND / Kakao 链接，请先删除不用的')
+            db.executemany('INSERT OR IGNORE INTO contact_links(app,url,note,created) VALUES(?,?,?,?)', [(app, url, note, time.time()) for url in urls])
+            if note:
+                db.executemany('UPDATE contact_links SET note=? WHERE app=? AND url=?', [(note, app, url) for url in urls])
+            self._audit(db, 'contact_links_added', {'app': app, 'count': len(urls)})
+            placeholders = ','.join('?' for _ in urls)
+            return [dict(row) for row in db.execute(f'SELECT id,app,url,note,created FROM contact_links WHERE app=? AND url IN ({placeholders}) ORDER BY id', (app, *urls))]
+
+    def delete_contact_link(self, link_id):
+        with self.connect() as db:
+            if not db.execute('DELETE FROM contact_links WHERE id=?', (link_id,)).rowcount:
+                raise ValueError('这条链接不在预存里')
+            self._audit(db, 'contact_link_deleted', {'id': link_id})
+
     def save_whatsapp_trust(self, number_id, status, reason):
         if status not in ('trust', 'clear', 'unconfirmed'):
             raise ValueError('信任检测结果无效')
@@ -709,6 +740,35 @@ class Store:
         if interim_id:
             shutil.rmtree(self.pages / interim_id, ignore_errors=True)
         return version | {'slot':'B'}, changed
+
+    def apply_contact_link(self, base, link, expected_published, commit_guard=None):
+        from .contact_config import rewrite_contact_bundle
+        if base['slot'] != 'B':
+            raise KeyError('B 版本不存在')
+        version, changed, summary = rewrite_contact_bundle(self.pages / base['id'], base['name'], self.pages, link['app'], link['url'])
+        try:
+            with self.connect() as db:
+                if commit_guard:
+                    commit_guard(db)
+                else:
+                    db.execute('BEGIN IMMEDIATE')
+                current = db.execute("SELECT version_id FROM slots WHERE slot='B'").fetchone()[0]
+                if current != expected_published:
+                    raise Conflict('当前 B 发布版本已变化，请重新扫描后再换')
+                saved = db.execute('SELECT app,url FROM contact_links WHERE id=?', (link['id'],)).fetchone()
+                if not saved or saved['app'] != link['app'] or saved['url'] != link['url']:
+                    raise ValueError('这条链接已删除或变更，请刷新后再换')
+                if version is None:
+                    return base | {'slot':'B'}, 0, summary
+                db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], 'B', version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
+                db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
+                self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed, 'contact_app':link['app'], 'contact_field':summary['contact_app'], 'url_field':summary['url']})
+                self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
+        except Exception:
+            if version is not None:
+                shutil.rmtree(self.pages / version['id'], ignore_errors=True)
+            raise
+        return version | {'slot':'B'}, changed, summary
 
     def _commit_b_version(self, base, version, changed, expected_published, commit_guard, detail):
         try:

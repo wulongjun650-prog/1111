@@ -21,7 +21,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const count = element('span', 'badge neutral', '尚未扫描'); count.id = 'b-redirect-count';
   header.append(title, count);
   const current = element('div', 'b-now'); current.id = 'b-redirect-current';
-  const description = element('p', 'muted', '勾选要换的位置。普通链接点「换成这条」。WhatsApp 号码在下面的号码池里换，进线语不动。');
+  const description = element('p', 'muted', '勾选要换的位置。普通链接点「换成这条」。WhatsApp 号码在下面的号码池里换，进线语不动。BAND 和 Kakao 链接也在下面预存，换成这条时写入 CONFIG。');
   const message = element('p', 'b-redirect-message'); message.id = 'b-redirect-message'; message.hidden = true;
   message.setAttribute('role', 'status');
   const splitPanel = element('div', 'b-split'); splitPanel.id = 'b-redirect-split';
@@ -91,6 +91,26 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   waSplitPanel.append(waSplitCopy, waSplitModeLabel, waSplitToggle);
   waBox.dataset.trustSeconds = String(trustSeconds);
   waBox.append(waHead, waNoteLine, waSwitchNote, waIntervalRow, waSplitPanel, waList, waForm);
+  const contactBox = element('section', 'b-wa'); contactBox.id = 'b-contact';
+  const contactHead = element('div', 'b-wa-head');
+  contactHead.append(element('strong', '', 'BAND / Kakao 链接'), element('p', 'b-contact-status', '和号码池一样先存好。点换成这条时，页面里没有的 contactApp 和链接会写进 CONFIG；已经有的显示已有，不改。'));
+  const contactScan = element('p', 'b-contact-scan', '扫描后显示这一版 CONFIG 里有没有 contactApp 和链接。'); contactScan.id = 'b-contact-scan';
+  const contactAction = element('p', 'b-contact-action'); contactAction.id = 'b-contact-action'; contactAction.hidden = true; contactAction.setAttribute('role', 'status');
+  const contactList = element('div', 'b-wa-list'); contactList.id = 'b-contact-list';
+  const contactForm = element('form', 'b-redirect-add-form'); contactForm.id = 'b-contact-form';
+  const contactAppLabel = element('label', '', '去向');
+  const contactApp = element('select'); contactApp.id = 'b-contact-app';
+  contactApp.append(element('option', '', 'BAND'), element('option', '', 'Kakao'));
+  contactApp.options[0].value = 'band'; contactApp.options[1].value = 'kakao';
+  contactAppLabel.append(contactApp);
+  const contactUrlLabel = element('label', 'grow', '添加链接');
+  const contactUrls = element('textarea'); contactUrls.id = 'b-contact-urls'; contactUrls.rows = 2; contactUrls.required = true;
+  contactUrls.placeholder = '每行一个 https 链接'; contactUrlLabel.append(contactUrls);
+  const contactNoteLabel = element('label', '', '备注');
+  const contactNote = element('input'); contactNote.id = 'b-contact-note'; contactNote.maxLength = 300; contactNote.placeholder = '可选'; contactNoteLabel.append(contactNote);
+  const contactAdd = element('button', 'button secondary', '添加链接'); contactAdd.id = 'b-contact-add'; contactAdd.type = 'submit';
+  contactForm.append(contactAppLabel, contactUrlLabel, contactNoteLabel, contactAdd);
+  contactBox.append(contactHead, contactScan, contactAction, contactList, contactForm);
   waIntervalApply.addEventListener('click', applyTrustSeconds);
   waInterval.addEventListener('keydown', event => {
     if (event.key !== 'Enter') return;
@@ -107,14 +127,16 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const occurrences = element('div', 'b-redirect-occurrences'); occurrences.id = 'b-redirect-occurrences';
   details.append(summary, occurrences);
   const warnings = element('div', 'b-redirect-warnings');
-  root.append(header, current, description, message, splitPanel, presets, form, poolHint, waBox, toolbar, details, warnings);
+  root.append(header, current, description, message, splitPanel, presets, form, poolHint, waBox, contactBox, toolbar, details, warnings);
 
   const isCurrent = value => Boolean(value && session === value && value.siteId === getSite()?.id);
   const selected = value => value.occurrences.filter(item => !value.excluded.has(item.key));
   const linkSelected = value => selected(value).filter(item => item.kind !== 'whatsapp_number');
   const numberSelected = value => selected(value).filter(item => item.kind === 'whatsapp_number');
   const activePreset = value => (value.active && value.active.version_id === value.published) ? value.active.preset_id : null;
-  const isDirty = () => Boolean(urls.value.trim() || note.value.trim() || waNumbers.value.trim() || waName.value.trim() || waNote.value.trim() || session?.selectionDirty || session?.splitDirty || session?.numberSplitDirty);
+  const isDirty = () => Boolean(urls.value.trim() || note.value.trim() || waNumbers.value.trim() || waName.value.trim() || waNote.value.trim() || contactUrls.value.trim() || contactNote.value.trim() || session?.selectionDirty || session?.splitDirty || session?.numberSplitDirty);
+  const blankContact = () => ({has_config:false, readable:true, contact_app:{present:false, value:''}, band_url:{present:false, value:''}, kakao_url:{present:false, value:''}});
+  const APP_LABEL = {band:'BAND', kakao:'Kakao'};
   const blankSplit = () => ({enabled:false, mode:'random', members:[]});
   const date = timestamp => timestamp ? new Date(Number(timestamp) * 1000).toLocaleString('zh-CN', {hour12:false}) : '尚未检测';
   const endpoint = value => `/api/b-redirects${value.versionId ? `?version_id=${encodeURIComponent(value.versionId)}` : ''}`;
@@ -247,6 +269,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     rescan.disabled = busy;
     urls.disabled = !value || value.busy; note.disabled = urls.disabled; add.disabled = urls.disabled;
     waNumbers.disabled = urls.disabled; waName.disabled = urls.disabled; waNote.disabled = urls.disabled; waAdd.disabled = urls.disabled; waReception.disabled = urls.disabled;
+    contactApp.disabled = urls.disabled; contactUrls.disabled = urls.disabled; contactNote.disabled = urls.disabled; contactAdd.disabled = urls.disabled;
     splitToggle.disabled = !value || value.busy; splitMode.disabled = splitToggle.disabled || splitModeLabel.hidden;
     waSplitToggle.disabled = !value || value.busy; waSplitMode.disabled = waSplitToggle.disabled || waSplitModeLabel.hidden;
     waList.querySelectorAll('.wa-split-join input').forEach(input => { input.disabled = waSplitToggle.disabled || input.title === '先写接待名'; });
@@ -262,6 +285,11 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     for (const row of waList.querySelectorAll('[data-number-id]')) {
       row.querySelectorAll('button').forEach(button => {
         button.disabled = busy || (button.dataset.action === 'recheck' && Boolean(value?.trustChecking?.has(Number(row.dataset.numberId)))) || (button.dataset.action === 'apply-number' && (!value?.versionId || !numberSelected(value).length));
+      });
+    }
+    for (const row of contactList.querySelectorAll('[data-link-id]')) {
+      row.querySelectorAll('button').forEach(button => {
+        button.disabled = busy || (button.dataset.action === 'apply-link' && (!value?.versionId || !value?.scanned));
       });
     }
     if (!value) {count.textContent = '尚未扫描'; return;}
@@ -519,12 +547,15 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     const request = ++value.request;
     const presetsRevision = value.presetsRevision;
     const numbersRevision = value.numbersRevision;
+    const linksRevision = value.linksRevision;
     if (!presetsOnly) {value.loading = true; updateControls();}
     try {
       const result = await api(endpoint(value));
       if (!isCurrent(value) || request !== value.request) return;
       if (presetsRevision === value.presetsRevision) value.presets = result.presets;
       if (numbersRevision === value.numbersRevision) value.numbers = result.numbers || [];
+      if (linksRevision === value.linksRevision) value.links = result.links || [];
+      value.contact = result.contact || blankContact();
       value.trustPoll = Boolean(result.trust_poll);
       value.active = result.active;
       if (!value.splitDirty) {value.split = result.split || blankSplit(); value.savedSplit = value.split;}
@@ -538,7 +569,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
         value.scanned = true;
         renderVersions(value); renderOccurrences(value);
       }
-      renderPresets(value); renderNumbers(value); renderNumberSplit(value); syncTrustTimer(value);
+      renderPresets(value); renderNumbers(value); renderContact(value); renderNumberSplit(value); syncTrustTimer(value);
     } catch (error) {
       if (isCurrent(value) && request === value.request && !error.stale) showMessage(`扫描失败，当前选择仍保留。${error.message}`, true);
     } finally {
@@ -748,6 +779,134 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     }
   }
 
+  function contactField(contact, app) {
+    return app === 'kakao' ? contact?.kakao_url : contact?.band_url;
+  }
+
+  function contactReady(contact, app) {
+    return Boolean(contact?.has_config && contact.readable && contact.contact_app?.present && contactField(contact, app)?.present);
+  }
+
+  function paintContactScan(value) {
+    const contact = value?.contact || blankContact();
+    if (!value?.versionId) {
+      contactScan.textContent = '扫描后显示这一版 CONFIG 里有没有 contactApp 和链接。';
+      return;
+    }
+    if (!contact.has_config) {
+      contactScan.textContent = '这一版没有 CONFIG。换成这条不会改代码。';
+      return;
+    }
+    if (!contact.readable) {
+      contactScan.textContent = 'CONFIG 无法识别，没有改代码。';
+      return;
+    }
+    const appText = contact.contact_app.present ? `contactApp：已有${contact.contact_app.value ? `（${contact.contact_app.value}）` : ''}` : 'contactApp：未写入';
+    const bandText = contact.band_url.present ? 'BAND 链接：已有' : 'BAND 链接：未写入';
+    const kakaoText = contact.kakao_url.present ? 'Kakao 链接：已有' : 'Kakao 链接：未写入';
+    contactScan.textContent = `${appText}。${bandText}。${kakaoText}。`;
+  }
+
+  function renderContact(value) {
+    contactList.replaceChildren();
+    paintContactScan(value);
+    const saved = value?.links || [];
+    if (!saved.length) contactList.append(element('p', 'empty-state', '还没有链接。先选 BAND 或 Kakao，再贴完整的 https 地址。'));
+    for (const item of saved) {
+      const ready = contactReady(value?.contact, item.app);
+      const row = element('div', 'b-wa-row'); row.dataset.linkId = item.id;
+      const info = element('div', 'b-redirect-preset-info');
+      const titleLine = element('div', 'b-redirect-title-line');
+      titleLine.append(element('strong', 'b-redirect-url', item.url));
+      titleLine.append(element('span', ready ? 'b-redirect-active-badge' : 'b-contact-missing', ready ? '已有' : '未写入'));
+      info.append(titleLine, element('p', 'subtle', APP_LABEL[item.app] || item.app));
+      if (item.note) info.append(element('p', 'subtle', item.note));
+      const actions = element('div', 'actions');
+      for (const [action, text, className] of [['delete','删除','button quiet small'],['apply-link','换成这条','button primary small']]) {
+        const button = element('button', className, text);
+        button.type = 'button'; button.dataset.action = action;
+        on(button, 'click', () => action === 'apply-link' ? applyContact(value, item) : deleteContact(value, item));
+        actions.append(button);
+      }
+      row.append(info, actions); contactList.append(row);
+    }
+    updateControls();
+  }
+
+  function showContactAction(text = '', error = false) {
+    contactAction.textContent = text;
+    contactAction.hidden = !text;
+    contactAction.classList.toggle('error', error);
+  }
+
+  function contactResultText(result, item) {
+    const label = APP_LABEL[item.app] || item.app;
+    if (!result.changed) return '已有，没有改代码。';
+    if (result.contact_app === 'added' && result.url === 'added') return `已写入 contactApp "${item.app}" 和 ${label} 链接，并发布 B。`;
+    if (result.url === 'added') {
+      const current = result.contact_value ? `（${result.contact_value}）` : '';
+      return `contactApp 已有${current}，已补上 ${label} 链接并发布 B。`;
+    }
+    return `${label} 链接已有，已补上 contactApp "${item.app}" 并发布 B。`;
+  }
+
+  async function applyContact(value, item) {
+    if (readOnly || !isCurrent(value) || value.busy || value.loading || !value.versionId || !value.scanned) return;
+    if (contactReady(value.contact, item.app)) {
+      showMessage('已有，没有改代码。'); showContactAction('已有，没有改代码。');
+      return;
+    }
+    if (value.contact?.has_config && !value.contact.readable) {
+      showMessage('CONFIG 无法识别，没有改代码。', true); showContactAction('CONFIG 无法识别，没有改代码。', true);
+      return;
+    }
+    if (!value.contact?.has_config) {
+      showMessage('这一版没有 CONFIG。换成这条不会改代码。', true); showContactAction('这一版没有 CONFIG。换成这条不会改代码。', true);
+      return;
+    }
+    value.busy = true; updateControls(); showMessage(`正在把 ${APP_LABEL[item.app] || item.app} 写入 CONFIG…`); showContactAction(`正在把 ${APP_LABEL[item.app] || item.app} 写入 CONFIG…`);
+    try {
+      const result = await api('/api/b-redirects/links/apply', {method:'POST', body:{version_id:value.versionId, link_id:item.id, expected_published:value.expectedPublished}});
+      if (!isCurrent(value)) return;
+      if (!result.changed) { showMessage('已有，没有改代码。'); showContactAction('已有，没有改代码。'); return; }
+      value.versionId = result.version.id; value.published = result.version.id;
+      value.expectedPublished = result.version.id; value.selectionDirty = false;
+      if (!value.versions.some(saved => saved.id === result.version.id)) value.versions.push(result.version);
+      renderVersions(value);
+      let refreshFailed = false;
+      try { await onApplied(result); }
+      catch (error) { if (!isCurrent(value) || error.stale) return; refreshFailed = true; }
+      if (!isCurrent(value)) return;
+      await scan(value);
+      const cacheNote = result.cloudflare?.ok ? ' Cloudflare 缓存已清除。' : result.cloudflare ? ' 页面已发布，但 Cloudflare 缓存没清掉。' : '';
+      const done = contactResultText(result, item) + cacheNote;
+      if (isCurrent(value)) {
+        const text = refreshFailed ? `${done}状态刷新失败。请刷新状态确认当前版本。` : done;
+        const failed = refreshFailed || Boolean(result.cloudflare && !result.cloudflare.ok);
+        showMessage(text, failed); showContactAction(text, failed);
+      }
+    } catch (error) {
+      if (!isCurrent(value) || error.stale) return;
+      if (error.status === 400) await scan(value);
+      if (isCurrent(value)) {
+        const text = error.status === 409 ? '当前 B 发布版本已变化，请刷新状态后再换。' : error.message;
+        showMessage(text, true); showContactAction(text, true);
+      }
+    } finally {
+      if (isCurrent(value)) { value.busy = false; updateControls(); }
+    }
+  }
+
+  async function deleteContact(value, item) {
+    if (!isCurrent(value) || value.busy) return;
+    if (!await confirmAction('从链接池删掉这条？已经发布的 B 页不会变。') || !isCurrent(value)) return;
+    value.busy = true; updateControls();
+    try {
+      await api(`/api/b-redirects/links/${item.id}`, {method:'DELETE'});
+      if (isCurrent(value)) { value.linksRevision += 1; value.links = value.links.filter(saved => saved.id !== item.id); renderContact(value); showMessage('已从链接池删除。发布中的 B 页还是原代码。'); showContactAction('已从链接池删除。发布中的 B 页还是原代码。'); }
+    } finally { if (isCurrent(value)) { value.busy = false; updateControls(); } }
+  }
+
   async function deleteNumber(value, item) {
     if (!isCurrent(value) || value.busy) return;
     if (!await confirmAction('从号码池删掉这个？已经发布的 B 页不会变。') || !isCurrent(value)) return;
@@ -805,6 +964,33 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       checkAddedNumbers(value, result.numbers.filter(item => !oldIds.has(item.id)).map(item => item.id));
     } finally {if (isCurrent(value)) {value.busy = false; updateControls();}}
   });
+  function parseContactUrls(text) {
+    const lines = String(text).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (!lines.length) throw new Error('请至少填写一个链接。');
+    return [...new Set(lines.map((line, index) => {
+      let url;
+      try { url = new URL(line); } catch { throw new Error(`第 ${index + 1} 行不是完整的网址。`); }
+      if (url.protocol !== 'https:' || url.username || url.password) throw new Error(`第 ${index + 1} 行请填写完整的 https 链接。`);
+      return line;
+    }))];
+  }
+
+  on(contactForm, 'submit', async event => {
+    event.preventDefault(); const value = session;
+    if (readOnly || !isCurrent(value) || value.busy) return;
+    const links = parseContactUrls(contactUrls.value);
+    if (links.length > 30) throw new Error('每次最多保存 30 条链接。');
+    value.busy = true; updateControls(); showMessage();
+    try {
+      const result = await api('/api/b-redirects/links', {method:'POST', body:{app:contactApp.value === 'kakao' ? 'kakao' : 'band', urls:links, note:contactNote.value.trim()}});
+      if (!isCurrent(value)) return;
+      value.linksRevision += 1;
+      value.links = [...value.links.filter(item => !result.links.some(saved => saved.id === item.id)), ...result.links];
+      contactUrls.value = ''; contactNote.value = ''; renderContact(value);
+      showMessage(`已添加 ${result.links.length} 条。`); showContactAction(`已添加 ${result.links.length} 条。`);
+    } finally { if (isCurrent(value)) { value.busy = false; updateControls(); } }
+  });
+
   function receptionName() {
     const name = waName.value.trim().replace(/\s+/g, ' ');
     if (!name) throw new Error('请填写接待名。');
@@ -889,7 +1075,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     let value = session;
     if (value?.siteId !== state.site.id) {
       clear();
-      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], liveOccurrences:[], warnings:[], presets:[], numbers:[], presetsRevision:0, numbersRevision:0, trustPoll:false, trustChecking:new Set(), active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, numberSplit:blankSplit(), savedNumberSplit:blankSplit(), numberSplitDirty:false, numberSplitSaving:false, numberSplitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
+      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], liveOccurrences:[], warnings:[], presets:[], numbers:[], links:[], contact:blankContact(), presetsRevision:0, numbersRevision:0, linksRevision:0, trustPoll:false, trustChecking:new Set(), active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, numberSplit:blankSplit(), savedNumberSplit:blankSplit(), numberSplitDirty:false, numberSplitSaving:false, numberSplitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
       session = value;
     }
     if (value.busy) {
@@ -925,8 +1111,8 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   function clear() {
     clearTimeout(splitTimer); splitTimer = 0; ++splitEpoch; clearTimeout(numberSplitTimer); numberSplitTimer = 0; ++numberSplitEpoch; ++queueGeneration; clearInterval(trustTimer); trustTimer = 0; trustFlight = false; session = null;
     waAlarm.hidden = true; trustAudio.stop(); waBox.dataset.trustPoll = '0'; waNoteLine.textContent = trustNote(false);
-    urls.value = ''; note.value = ''; waNumbers.value = ''; waName.value = ''; waNote.value = ''; version.replaceChildren(); occurrences.replaceChildren(); warnings.replaceChildren(); presets.replaceChildren();
-    renderNumbers(null); renderSplit(null); renderNumberSplit(null);
+    urls.value = ''; note.value = ''; waNumbers.value = ''; waName.value = ''; waNote.value = ''; contactUrls.value = ''; contactNote.value = ''; contactApp.value = 'band'; contactAction.hidden = true; contactAction.textContent = ''; version.replaceChildren(); occurrences.replaceChildren(); warnings.replaceChildren(); presets.replaceChildren();
+    renderNumbers(null); renderContact(null); renderSplit(null); renderNumberSplit(null);
     showMessage(); updateControls();
   }
 
@@ -981,6 +1167,6 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     return phones.length === 1 ? phones[0] : '';
   }
 
-  renderNumbers(null);
+  renderNumbers(null); renderContact(null);
   return {update, clear, selectVersion, setActive, isDirty, switchLive, livePhone};
 }

@@ -26,11 +26,12 @@ from pydantic import Field
 
 from .archives import EDITABLE_EXTENSIONS, MAX_FILE, MAX_ZIP, editable_file, import_content, read_source, resolve_file, source_files
 from .analytics import summarize
-from .models import ConfigUpdate, DirectEntry, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput, WhatsAppReception, WhatsAppSplit
+from .models import ConfigUpdate, ContactLinkApply, ContactLinkInput, DirectEntry, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput, WhatsAppReception, WhatsAppSplit
 from .tracking import normalize_conversion, normalize_ga4
 from .linkcheck import LinkChecker
 from .watrust import PUBLIC_ORIGIN, TrustChecker, device_from_environ
 from .campaign import build_campaign, export_events, fill_youtube_channels, window_bounds
+from .contact_config import scan_contact
 from .redirects import public_occurrences, rewrite_reception_bytes, rewrite_text, scan_bundle
 from .rules import decide
 from .cloudflare import Cloudflare
@@ -785,12 +786,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         published = store.slots()['B']
         version_id = version_id or published
         base, occurrences, warnings = None, [], []
+        contact = {'has_config': False, 'readable': True, 'contact_app': {'present': False, 'value': ''}, 'band_url': {'present': False, 'value': ''}, 'kakao_url': {'present': False, 'value': ''}}
         if version_id:
             base = source_version(store, 'B', version_id)
             occurrences, warnings = scan_bundle(store.pages / version_id, version_id)
+            contact = scan_contact(store.pages / version_id)
         return {'version':base, 'published_version':published, 'occurrences':public_occurrences(occurrences),
                 'warnings':warnings, 'presets':store.redirect_presets(), 'numbers':store.whatsapp_numbers(),
-                'trust_poll':store.whatsapp_trust_poll_enabled(),
+                'trust_poll':store.whatsapp_trust_poll_enabled(), 'links':store.contact_links(), 'contact':contact,
                 'active':store.redirect_active(), 'split':store.redirect_split(), 'number_split':store.whatsapp_split()}
 
     @routes.put('/b-redirects/split')
@@ -1007,6 +1010,33 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 purged = {'ok': False, 'detail': str(error)[:180]}
         return {'version':version, 'changed':changed, 'cloudflare':purged}
 
+    @routes.post('/b-redirects/links')
+    def add_contact_links(body: ContactLinkInput, store=Depends(site_store)):
+        return {'links': store.add_contact_links(body.app, body.urls, body.note)}
+
+    @routes.delete('/b-redirects/links/{link_id}')
+    def delete_contact_link(link_id: int, store=Depends(site_store)):
+        store.delete_contact_link(link_id)
+        return {'ok': True}
+
+    @routes.post('/b-redirects/links/apply')
+    def apply_contact_links(body: ContactLinkApply, request: Request, store=Depends(site_store)):
+        guard = redirect_commit_guard(request, store)
+        link = store.contact_link(body.link_id)
+        base = source_version(store, 'B', body.version_id)
+        if store.slots()['B'] != body.expected_published:
+            raise Conflict('当前 B 发布版本已变化，请重新扫描后再换')
+        version, changed, summary = store.apply_contact_link(base, link, body.expected_published, guard)
+        site = registry.get(request.path_params.get('site_id', 'default'))
+        purged = None
+        if changed and site.get('cf_zone_id') and cloudflare.configured:
+            try:
+                cloudflare.purge(site['cf_zone_id'], site['domain'])
+                purged = {'ok': True}
+            except ProvisioningError as error:
+                purged = {'ok': False, 'detail': str(error)[:180]}
+        return {'version': version, 'changed': changed, 'contact_app': summary['contact_app'], 'url': summary['url'], 'contact_value': summary['contact_value'], 'cloudflare': purged}
+
     @routes.get('/tracking')
     def get_tracking(store=Depends(site_store)):
         return {'snippets': registry.tracking_snippets(), 'published': store.published_tracking()}
@@ -1142,7 +1172,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         items = store.audit()
         if not sees_everything(principal(request)):
             site_actions = {'config_updated', 'content_imported', 'version_published',
-                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'a_version_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted', 'whatsapp_trust_checked', 'whatsapp_split_updated'}
+                            'counters_reset', 'logs_cleared', 'logs_foreign_cleared', 'links_added', 'link_deleted', 'b_redirect_presets_added', 'b_redirect_preset_deleted', 'a_version_deleted', 'b_version_deleted', 'b_redirect_split_updated', 'whatsapp_numbers_added', 'whatsapp_number_deleted', 'whatsapp_trust_checked', 'whatsapp_split_updated', 'contact_links_added', 'contact_link_deleted'}
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 

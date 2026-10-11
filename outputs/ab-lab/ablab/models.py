@@ -238,6 +238,33 @@ class WhatsAppSplit(StrictModel):
         return values
 
 
+def normalize_contact_url(value):
+    url = str(value).strip()
+    if not url or len(url) > 2000 or re.search(r'[\s<>"\'\\]', url):
+        raise ValueError('请填写完整的 https 链接')
+    parts = urlsplit(url)
+    if parts.scheme != 'https' or not parts.hostname:
+        raise ValueError('请填写完整的 https 链接')
+    return url
+
+
+class ContactLinkInput(StrictModel):
+    app: Literal['band', 'kakao']
+    urls: list[str] = Field(min_length=1, max_length=30)
+    note: str = Field(default='', max_length=300, strict=True)
+
+    @field_validator('urls')
+    @classmethod
+    def public_urls(cls, values):
+        return list(dict.fromkeys(normalize_contact_url(value) for value in values))
+
+
+class ContactLinkApply(StrictModel):
+    version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
+    link_id: int = Field(gt=0, strict=True)
+    expected_published: str | None = Field(pattern=r'^[a-f0-9]{32}$')
+
+
 class WhatsAppNumberApply(StrictModel):
     version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
     number_id: int = Field(gt=0, strict=True)
