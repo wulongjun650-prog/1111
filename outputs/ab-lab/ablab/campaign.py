@@ -115,6 +115,48 @@ def _percent(value):
     return f'{value * 100:.1f}%'
 
 
+_DEST_APPS = ('whatsapp', 'band', 'kakao')
+_DEST_LABELS = {'whatsapp': 'WhatsApp', 'band': 'BAND', 'kakao': 'Kakao'}
+_EVENT_KINDS = {
+    'whatsapp_click': 'click',
+    'band_click': 'click',
+    'kakao_click': 'click',
+    'wa_app_opened': 'open',
+    'band_app_opened': 'open',
+    'kakao_app_opened': 'open',
+    'wa_fallback_shown': 'fallback',
+    'band_fallback_shown': 'fallback',
+    'kakao_fallback_shown': 'fallback',
+    'wa_fallback_click': 'fallback_click',
+    'band_fallback_click': 'fallback_click',
+    'kakao_fallback_click': 'fallback_click',
+    'wa_copy_number': 'copy_number',
+    'band_copy_number': 'copy_number',
+    'kakao_copy_number': 'copy_number',
+    'wa_copy_message': 'copy_message',
+    'band_copy_message': 'copy_message',
+    'kakao_copy_message': 'copy_message',
+}
+
+
+def dest_label(value):
+    return _DEST_LABELS.get(value or '', '未知')
+
+
+def _dest_app(payload):
+    raw = _text(payload.get('dest_app')).lower()
+    if raw in _DEST_APPS:
+        return raw
+    name = _text(payload.get('event'))
+    if name.startswith('band_'):
+        return 'band'
+    if name.startswith('kakao_'):
+        return 'kakao'
+    if name.startswith('wa_') or name.startswith('whatsapp_'):
+        return 'whatsapp'
+    return ''
+
+
 def parse_event(row):
     try:
         payload = json.loads(row['body'])
@@ -136,6 +178,7 @@ def parse_event(row):
         'model': model,
         'os': system,
         'event': _text(payload.get('event')),
+        'dest_app': _dest_app(payload),
         'transaction_id': transaction_id,
         'tx_key': transaction_id or f'#{row.get("id")}',
         'gclid': _text(payload.get('gclid')),
@@ -159,6 +202,7 @@ def parse_visit(row):
         'device': '未知',
         'wa_env': '未知',
         'link_type': '未知',
+        'dest_app': '',
         'gclid': gclid,
         'key': key,
     }
@@ -169,6 +213,8 @@ def _matches(item, filters, fields):
         if field in ('placement', 'model'):
             continue
         wanted = (filters.get(field) or '').strip()
+        if field == 'dest_app':
+            wanted = wanted.lower()
         if wanted and item.get(field) != wanted:
             return False
     if 'placement' in fields:
@@ -186,8 +232,11 @@ def _matches(item, filters, fields):
 
 
 def _blank_row(item):
+    app = item.get('dest_app') or ''
     return {
         'domain': item['domain'],
+        'dest_app': app,
+        'dest_label': dest_label(app),
         'placement': item['placement'],
         'placement_label': placement_label(item['placement']),
         'device': item['device'],
@@ -210,22 +259,22 @@ def _blank_row(item):
 
 
 def _row_key(item):
-    return (item['domain'], item['placement'], item['device'], item['wa_env'], item['link_type'], item['model'], item['os'])
+    return (item['domain'], item['placement'], item['device'], item['wa_env'], item['link_type'], item['model'], item['os'], item.get('dest_app') or '')
 
 
 def _add_event(row, item):
-    name = item['event']
-    if name == 'whatsapp_click':
+    kind = _EVENT_KINDS.get(item['event'])
+    if kind == 'click':
         row['click_ids'].add(item['tx_key'])
-    elif name == 'wa_app_opened':
+    elif kind == 'open':
         row['opens'] += 1
-    elif name == 'wa_fallback_shown':
+    elif kind == 'fallback':
         row['fallbacks'] += 1
-    elif name == 'wa_fallback_click':
+    elif kind == 'fallback_click':
         row['fallback_click'] += 1
-    elif name == 'wa_copy_number':
+    elif kind == 'copy_number':
         row['copy_number'] += 1
-    elif name == 'wa_copy_message':
+    elif kind == 'copy_message':
         row['copy_message'] += 1
 
 
@@ -238,6 +287,7 @@ def _options(events, visits):
         'devices': values(events, 'device'),
         'wa_envs': values(events, 'wa_env'),
         'link_types': values(events, 'link_type'),
+        'dest_apps': values(events, 'dest_app'),
     }
 
 
@@ -245,7 +295,7 @@ def inherit_transaction(events):
     """An open beacon often omits the phone and the placement already sent with the click."""
     known_device = {}
     known_fields = {}
-    names = ('device', 'wa_env', 'link_type', 'placement', 'gclid')
+    names = ('device', 'wa_env', 'link_type', 'placement', 'gclid', 'dest_app')
     for item in events:
         token = item['transaction_id']
         if not token:
@@ -275,28 +325,31 @@ def _env_rates(events):
     clicks = defaultdict(set)
     opens = defaultdict(int)
     for item in events:
-        if item['event'] == 'whatsapp_click':
-            clicks[item['wa_env']].add(item['tx_key'])
-        elif item['event'] == 'wa_app_opened':
-            opens[item['wa_env']] += 1
+        kind = _EVENT_KINDS.get(item['event'])
+        key = (item['dest_app'], item['wa_env'])
+        if kind == 'click':
+            clicks[key].add(item['tx_key'])
+        elif kind == 'open':
+            opens[key] += 1
     rates = {}
-    for env in set(clicks) | set(opens):
-        rates[env] = _ratio(opens[env], len(clicks[env]))
+    for key in set(clicks) | set(opens):
+        app, env = key
+        rates.setdefault(app, {})[env] = _ratio(opens[key], len(clicks[key]))
     return rates
 
 
 def _mark_alerts(rows, events):
-    """Red means look at it. The rate is for the whole placement in that wa_env."""
+    """Red means look at it. The rate is for one destination app in that wa_env."""
     rates = _env_rates(events)
     parent = defaultdict(lambda: {'clicks': 0, 'opens': 0})
     for row in rows:
-        bucket = parent[(row['domain'], row['placement'], row['wa_env'])]
+        bucket = parent[(row['domain'], row['placement'], row['wa_env'], row['dest_app'])]
         bucket['clicks'] += row['clicks']
         bucket['opens'] += row['opens']
     for row in rows:
-        bucket = parent[(row['domain'], row['placement'], row['wa_env'])]
+        bucket = parent[(row['domain'], row['placement'], row['wa_env'], row['dest_app'])]
         rate = _ratio(bucket['opens'], bucket['clicks'])
-        env_rate = rates.get(row['wa_env'])
+        env_rate = rates.get(row['dest_app'], {}).get(row['wa_env'])
         low_absolute = rate is not None and rate < 0.5
         low_relative = rate is not None and env_rate is not None and rate < env_rate * 0.6
         if bucket['clicks'] >= 30 and (low_absolute or low_relative):
@@ -304,7 +357,7 @@ def _mark_alerts(rows, events):
             if low_absolute:
                 parts.append('低于 50%')
             if low_relative:
-                parts.append(f'低于同一 wa_env 平均 {_percent(env_rate)} 的 60%')
+                parts.append(f'低于同一去向、同一 wa_env 平均 {_percent(env_rate)} 的 60%')
             row['alert'] = True
             row['alert_reason'] = '，'.join(parts)
     return rates
@@ -315,7 +368,7 @@ def build_campaign(visit_rows, event_rows, filters=None):
     events = inherit_transaction([parse_event(row) for row in event_rows])
     visits = [parse_visit(row) for row in visit_rows if is_html_path(row.get('path'))]
     options = _options(events, visits)
-    chosen_events = [item for item in events if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type'))]
+    chosen_events = [item for item in events if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app'))]
     chosen_visits = []
     seen = set()
     for item in visits:
@@ -335,7 +388,7 @@ def build_campaign(visit_rows, event_rows, filters=None):
     for item in chosen_events:
         if item['gclid']:
             joined[(item['domain'], item['gclid'])].add(_row_key(item))
-    event_filters = any((filters.get(field) or '').strip() for field in ('device', 'wa_env', 'link_type'))
+    event_filters = any((filters.get(field) or '').strip() for field in ('device', 'wa_env', 'link_type', 'dest_app'))
     counted = set()
     for visit in chosen_visits:
         targets = joined.get((visit['domain'], visit['gclid']), set()) if visit['gclid'] else set()
@@ -346,7 +399,7 @@ def build_campaign(visit_rows, event_rows, filters=None):
             if row is None:
                 row = _blank_row(visit if key == _row_key(visit) else {
                     'domain': key[0], 'placement': key[1], 'device': key[2], 'wa_env': key[3],
-                    'link_type': key[4], 'model': key[5], 'os': key[6],
+                    'link_type': key[4], 'model': key[5], 'os': key[6], 'dest_app': key[7],
                 })
                 rows[key] = row
             row['visit_keys'].add(visit['key'])
@@ -361,15 +414,22 @@ def build_campaign(visit_rows, event_rows, filters=None):
         del row['visit_keys']
         table.append(row)
     env_rates = _mark_alerts(table, events)
-    table.sort(key=lambda item: (item['domain'], item['placement_label'], item['wa_env'], item['link_type'], item['device'], item['model'], -item['clicks']))
+    table.sort(key=lambda item: (item['domain'], item['dest_app'], item['placement_label'], item['wa_env'], item['link_type'], item['device'], item['model'], -item['clicks']))
+
+    def counted_events(kind):
+        chosen = [item for item in chosen_events if _EVENT_KINDS.get(item['event']) == kind]
+        if kind == 'click':
+            return len({item['tx_key'] for item in chosen})
+        return len(chosen)
+
     totals = {
         'visits': len(counted),
-        'clicks': len({item['tx_key'] for item in chosen_events if item['event'] == 'whatsapp_click'}),
-        'opens': sum(1 for item in chosen_events if item['event'] == 'wa_app_opened'),
-        'fallbacks': sum(1 for item in chosen_events if item['event'] == 'wa_fallback_shown'),
-        'fallback_click': sum(1 for item in chosen_events if item['event'] == 'wa_fallback_click'),
-        'copy_number': sum(1 for item in chosen_events if item['event'] == 'wa_copy_number'),
-        'copy_message': sum(1 for item in chosen_events if item['event'] == 'wa_copy_message'),
+        'clicks': counted_events('click'),
+        'opens': counted_events('open'),
+        'fallbacks': counted_events('fallback'),
+        'fallback_click': counted_events('fallback_click'),
+        'copy_number': counted_events('copy_number'),
+        'copy_message': counted_events('copy_message'),
     }
     totals['click_rate'] = _ratio(totals['clicks'], totals['visits'])
     totals['open_rate'] = _ratio(totals['opens'], totals['clicks'])
@@ -378,7 +438,7 @@ def build_campaign(visit_rows, event_rows, filters=None):
 
 def export_events(event_rows, filters=None):
     filters = filters or {}
-    chosen = [item for item in inherit_transaction([parse_event(row) for row in event_rows]) if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type'))]
+    chosen = [item for item in inherit_transaction([parse_event(row) for row in event_rows]) if _matches(item, filters, ('domain', 'placement', 'model', 'device', 'wa_env', 'link_type', 'dest_app'))]
     chosen.sort(key=lambda item: (item['transaction_id'] == '', item['transaction_id'], item['created'], item['id'] or 0))
     return [
         {'received': item['created'], 'domain': item['domain'], 'transaction_id': item['transaction_id'], 'body': item['body']}

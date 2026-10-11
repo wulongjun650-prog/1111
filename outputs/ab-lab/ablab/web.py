@@ -1205,7 +1205,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 events.append(row)
         return visits, events
 
-    def campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact=False):
+    def campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact=False, dest_app=''):
         since, until = window_bounds(span, start, end, time.time())
         filters = {
             'domain': domain.strip()[:253],
@@ -1214,6 +1214,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             'wa_env': wa_env.strip()[:80],
             'link_type': link_type.strip()[:80],
             'model': model.strip()[:80],
+            'dest_app': dest_app.strip().lower()[:20],
             'placement_exact': bool(placement_exact),
         }
         return since, until, filters
@@ -1221,8 +1222,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.get('/api/campaign')
     def campaign_table(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
                        start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
-                       wa_env: str = '', link_type: str = '', model: str = '', placement_exact: bool = False):
-        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact)
+                       wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app)
         visits, events = collect_campaign(request, since, until)
         report = build_campaign(visits, events, filters)
         report['endpoint'] = jump_event_endpoint(deployment)
@@ -1234,11 +1235,11 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.get('/api/campaign.csv')
     def campaign_csv(request: Request, slot: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
                      start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
-                     wa_env: str = '', link_type: str = '', model: str = '', placement_exact: bool = False):
-        since, until, filters = campaign_arguments(slot, start, end, domain, placement, device, wa_env, link_type, model, placement_exact)
+                     wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(slot, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app)
         visits, events = collect_campaign(request, since, until)
         report = build_campaign(visits, events, filters)
-        fields = ['域名', '版位', 'device', 'wa_env', 'link_type', '机型', '系统', '进站数', '点击数', '拉起数', '兜底数', '点击率', '拉起率', '兜底点击', '复制号码', '复制消息', '标红', '原因']
+        fields = ['域名', '去向', '版位', 'device', 'wa_env', 'link_type', '机型', '系统', '进站数', '点击数', '拉起数', '兜底数', '点击率', '拉起率', '兜底点击', '复制号码', '复制消息', '标红', '原因']
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
         writer.writerow(fields)
@@ -1249,7 +1250,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             return '' if value is None else f'{value * 100:.1f}%'
         for row in report['rows']:
             writer.writerow([cell(value) for value in (
-                row['domain'], row['placement_label'], row['device'], row['wa_env'], row['link_type'], row['model'], row['os'],
+                row['domain'], row['dest_label'], row['placement_label'], row['device'], row['wa_env'], row['link_type'], row['model'], row['os'],
                 row['visits'], row['clicks'], row['opens'], row['fallbacks'], percent(row['click_rate']), percent(row['open_rate']),
                 row['fallback_click'], row['copy_number'], row['copy_message'], '是' if row['alert'] else '', row['alert_reason'],
             )])
@@ -1258,8 +1259,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     @app.get('/api/campaign/events')
     def campaign_events_export(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
                                start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
-                               wa_env: str = '', link_type: str = '', model: str = '', placement_exact: bool = False):
-        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact)
+                               wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', placement_exact: bool = False):
+        since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app)
         _visits, events = collect_campaign(request, since, until)
         payload = json.dumps(export_events(events, filters), ensure_ascii=False, separators=(',', ':'))
         return Response(payload, media_type='application/json; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="campaign-events.json"'})
@@ -1356,6 +1357,53 @@ _NUMBER_SPLIT_SCRIPT = (
     'if(node)node.textContent="\\u672c\\u6b21\\u7531\\u52a9\\u7406"+name+" \\u63a5\\u5f85";}'
     '})();</script>'
 )
+
+# Runs after the page's own functions. WhatsApp URLs stay until contactApp is band or kakao.
+_DEST_APP_SCRIPT = (
+    '<script id="ab-dest-app">(function(){'
+    'var cfg={},app="whatsapp",url="";'
+    'try{cfg=(typeof CONFIG==="object"&&CONFIG)||{};}catch(e){cfg={};}'
+    'app=String(cfg.contactApp||"whatsapp").toLowerCase();'
+    'if(app!=="band"&&app!=="kakao")return;'
+    'url=String((app==="band"?(cfg.bandUrl||cfg.bandLink):(cfg.kakaoUrl||cfg.kakaoLink))||"").replace(/^\\s+|\\s+$/g,"");'
+    'if(!url)return;'
+    'var urls=function(){var phone="";try{phone=String(cfg.whatsappNumber||"").replace(/\\D/g,"");}catch(e){}'
+    'return{phone:phone,universal:url,scheme:url,intent:url};};'
+    'try{buildWhatsAppUrls=urls;}catch(e){}'
+    'try{window.buildWhatsAppUrls=urls;}catch(e){}'
+    'var previous=null;try{previous=sendEvent;}catch(e){}'
+    'if(typeof previous!=="function")return;'
+    'var map={whatsapp_click:app+"_click",wa_app_opened:app+"_app_opened",wa_fallback_shown:app+"_fallback_shown",wa_fallback_click:app+"_fallback_click",wa_copy_number:app+"_copy_number",wa_copy_message:app+"_copy_message"};'
+    'var wrapped=function(name,extra){var more={},key;'
+    'if(extra&&typeof extra==="object"){for(key in extra){if(Object.prototype.hasOwnProperty.call(extra,key))more[key]=extra[key];}}'
+    'more.dest_app=app;return previous(map[name]||name,more);};'
+    'try{sendEvent=wrapped;}catch(e){}'
+    'try{window.sendEvent=wrapped;}catch(e){}'
+    '})();</script>'
+)
+
+
+def inject_dest_app(data, relative=''):
+    """Serve-time wrapper. The stored page and its WhatsApp jump stay as uploaded."""
+    if Path(str(relative)).suffix.lower() not in ('.html', '.htm'):
+        return data
+    if b'buildWhatsAppUrls' not in data or b'id="ab-dest-app"' in data:
+        return data
+    bom = data.startswith(b'\xef\xbb\xbf')
+    raw = data[3:] if bom else data
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeError:
+        return data
+    if 'id="ab-dest-app"' in text or 'buildWhatsAppUrls' not in text:
+        return data
+    match = None
+    for found in re.finditer(r'</body\s*>', text, re.IGNORECASE):
+        match = found
+    index = match.start() if match else -1
+    updated = text + _DEST_APP_SCRIPT if index < 0 else text[:index] + _DEST_APP_SCRIPT + text[index:]
+    payload = updated.encode('utf-8')
+    return (b'\xef\xbb\xbf' + payload) if bom else payload
 
 
 _EVENT_ENDPOINT = re.compile(r'''(\beventEndpoint\b\s*[:=]\s*)(['"])([^'"\n]{0,200})\2''')
@@ -1633,7 +1681,7 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
         redirect = directory_redirect(store, [version_id], path, request)
         if redirect is not None:
             return redirect
-        return content_response(store, version_id, path, request.method, lambda data, relative: fill_event_endpoint(data, jump_event_endpoint(deployment)))
+        return content_response(store, version_id, path, request.method, lambda data, relative: inject_dest_app(fill_event_endpoint(data, jump_event_endpoint(deployment)), relative))
 
     @app.post('/wa-events')
     async def wa_events(request: Request, store=Depends(site_store)):
@@ -1735,7 +1783,7 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
                     data = inject_number_split(data, numbered['members'], numbered['mode'], endpoint)
             elif prepared:
                 data = prepared['transform'](data, relative)
-            return fill_event_endpoint(data, endpoint)
+            return inject_dest_app(fill_event_endpoint(data, endpoint), relative)
 
         transform = visitor_transform
         response = content_response(store, version_id, path, request.method, transform)

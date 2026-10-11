@@ -19,7 +19,33 @@ class Conflict(ValueError):
     pass
 
 
-_JUMP_COUNTS = ('whatsapp_click', 'wa_app_opened', 'wa_fallback_shown')
+_JUMP_KINDS = {
+    'whatsapp_click': 'click',
+    'band_click': 'click',
+    'kakao_click': 'click',
+    'wa_app_opened': 'open',
+    'band_app_opened': 'open',
+    'kakao_app_opened': 'open',
+    'wa_fallback_shown': 'fallback',
+    'band_fallback_shown': 'fallback',
+    'kakao_fallback_shown': 'fallback',
+}
+_JUMP_COLUMNS = ('click', 'open', 'fallback')
+_DEST_LABELS = {'whatsapp': 'WhatsApp', 'band': 'BAND', 'kakao': 'Kakao'}
+
+
+def _jump_dest(payload):
+    raw = _event_text(payload.get('dest_app')).lower()
+    if raw in _DEST_LABELS:
+        return raw
+    name = _event_text(payload.get('event'))
+    if name.startswith('band_'):
+        return 'band'
+    if name.startswith('kakao_'):
+        return 'kakao'
+    if name.startswith('wa_') or name.startswith('whatsapp_'):
+        return 'whatsapp'
+    return ''
 
 
 def _event_text(value):
@@ -46,18 +72,20 @@ def jump_event_lines(events, fallback_domain=''):
         if isinstance(payload, dict):
             transaction_id = _event_text(payload.get('transaction_id'))
             name = _event_text(payload.get('event'))
-            if name in _JUMP_COUNTS:
-                key = (source, _event_text(payload.get('wa_env')), _event_text(payload.get('link_type')))
-                bucket = counts.setdefault(key, {item: 0 for item in _JUMP_COUNTS})
-                bucket[name] += 1
+            kind = _JUMP_KINDS.get(name)
+            if kind:
+                key = (source, _jump_dest(payload), _event_text(payload.get('wa_env')), _event_text(payload.get('link_type')))
+                bucket = counts.setdefault(key, {item: 0 for item in _JUMP_COLUMNS})
+                bucket[kind] += 1
         raw.append((transaction_id, row['created'], source, body))
     lines = [
-        '# 3 跳转事件（不受国家筛选，按来源域名 × wa_env × link_type）',
-        '域名\twa_env\tlink_type\twhatsapp_click\twa_app_opened\twa_fallback_shown',
+        '# 3 跳转事件（不受国家筛选，按来源域名 × 去向 × wa_env × link_type）',
+        '域名\t去向\twa_env\tlink_type\t点击\t拉起\t兜底',
     ]
     for key in sorted(counts):
         bucket = counts[key]
-        lines.append('\t'.join((*key, *(str(bucket[item]) for item in _JUMP_COUNTS))))
+        source, app, wa_env, link_type = key
+        lines.append('\t'.join((source, _DEST_LABELS.get(app, app), wa_env, link_type, *(str(bucket[item]) for item in _JUMP_COLUMNS))))
     lines.extend([
         '',
         '# 3.1 全部原始 JSON（按 transaction_id 排序）',

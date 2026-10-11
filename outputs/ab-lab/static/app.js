@@ -674,7 +674,7 @@ function campaignQuery() {
     params.set('start', $('#campaign-start').value);
     params.set('end', $('#campaign-end').value);
   }
-  for (const [name, id] of [['domain', 'campaign-domain'], ['placement', 'campaign-placement'], ['device', 'campaign-device'], ['wa_env', 'campaign-env'], ['link_type', 'campaign-link'], ['model', 'campaign-model']]) {
+  for (const [name, id] of [['domain', 'campaign-domain'], ['dest_app', 'campaign-dest'], ['placement', 'campaign-placement'], ['device', 'campaign-device'], ['wa_env', 'campaign-env'], ['link_type', 'campaign-link'], ['model', 'campaign-model']]) {
     const value = $(`#${id}`).value.trim();
     if (value) params.set(name, value);
   }
@@ -702,13 +702,13 @@ async function loadCampaign() {
     if (request !== campaignRequest) return;
     const totals = data.totals || {};
     $('#campaign-summary').textContent = `进站 ${number(totals.visits)} · 点击 ${number(totals.clicks)} · 拉起 ${number(totals.opens)} · 拉起率 ${percent(totals.open_rate)}`;
-    $('#campaign-note').textContent = `接收地址 ${data.endpoint || ''}。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。`;
+    $('#campaign-note').textContent = `接收地址 ${data.endpoint || ''}。进站只算打到源站的 HTML，同一 gclid 算一人，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。`;
     const body = $('#campaign-rows');
     body.replaceChildren();
     if (!data.rows.length) {
       const row = element('tr');
       const cell = element('td', 'empty-state', '这段时间没有进站或跳转事件。');
-      cell.colSpan = 14;
+      cell.colSpan = 15;
       row.append(cell);
       body.append(row);
       return;
@@ -724,12 +724,14 @@ async function loadCampaign() {
         linkParams.set('placement', item.placement);
         linkParams.set('placement_exact', '1');
         linkParams.set('wa_env', item.wa_env);
+        if (item.dest_app) linkParams.set('dest_app', item.dest_app);
         const link = element('a', 'text-button', '导出该版位');
         link.href = `/api/campaign/events?${linkParams.toString()}`;
         exportCell.append(link);
       }
       row.append(
         element('td', '', item.domain),
+        element('td', '', item.dest_label || '未知'),
         element('td', '', item.placement_label),
         element('td', '', item.device),
         element('td', '', item.wa_env),
