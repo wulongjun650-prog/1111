@@ -1230,8 +1230,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             'events': {'total': event_total, 'items': events[:200]},
         }
 
-    @app.post('/api/analysis/clear')
-    def analysis_clear(request: Request, domain: str = ''):
+    def clear_selected_domain(request, domain):
         wanted = domain.strip()
         if not wanted:
             raise HTTPException(400, '请先选择域名')
@@ -1241,6 +1240,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         counts = registry.store(sites[0]['id']).clear_analysis()
         counts['domain'] = analysis_domain(sites[0])
         return counts
+
+    @app.post('/api/analysis/clear')
+    def analysis_clear(request: Request, domain: str = ''):
+        return clear_selected_domain(request, domain)
+
+    @app.post('/api/campaign/clear')
+    def campaign_clear(request: Request, domain: str = ''):
+        return clear_selected_domain(request, domain)
 
     @app.get('/api/analysis/report')
     def analysis_report(request: Request, days: int = Query(default=7, ge=1, le=90), domain: str = ''):

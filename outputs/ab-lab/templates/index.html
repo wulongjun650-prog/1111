@@ -236,7 +236,7 @@
         <article class="card logs-card">
           <div class="card-heading">
             <div><p class="eyebrow">CAMPAIGN</p><h2>投放数据</h2><p id="campaign-summary" class="muted">进入此页后加载。</p></div>
-            <div class="actions"><a id="campaign-csv" class="button secondary" href="/api/campaign.csv?range=today">↓ 导出 CSV</a><a id="campaign-json" class="button secondary" href="/api/campaign/events?range=today">↓ 原始事件</a></div>
+            <div class="actions">{% if account.role != 'observer' %}<button id="campaign-clear" class="button secondary" type="button">一键清空</button>{% endif %}<a id="campaign-csv" class="button secondary" href="/api/campaign.csv?range=today">↓ 导出 CSV</a><a id="campaign-json" class="button secondary" href="/api/campaign/events?range=today">↓ 原始事件</a></div>
           </div>
           <form id="campaign-filters" class="filter-bar">
             <label>日期<select id="campaign-range" name="range"><option value="today" selected>今天</option><option value="yesterday">昨天</option><option value="7d">近 7 天</option><option value="custom">自定义</option></select></label>

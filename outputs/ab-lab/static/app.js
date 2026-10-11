@@ -854,6 +854,15 @@ if (analysisClear) on(analysisClear, 'click', event => busy(event.currentTarget,
   await loadAnalysis();
 }));
 on($('#campaign-filters'), 'submit', event => { event.preventDefault(); return loadCampaign(); });
+const campaignClear = $('#campaign-clear');
+if (campaignClear) on(campaignClear, 'click', event => busy(event.currentTarget, async () => {
+  const domain = currentDomain();
+  if (!domain) throw new Error('请先在左上角选择域名。');
+  if (!await confirmAction(`清空 ${domain} 的全部投放数据？进站请求和落地页事件都会删掉，数据深度分析里这个域名也会空掉。访问日志不动，其他域名也不动。删掉后不能恢复。`)) return;
+  const result = await api(`/api/campaign/clear?domain=${encodeURIComponent(domain)}`, { method: 'POST', body: {} });
+  toast(`已清空 ${domain} 的 ${number(result.access)} 条进站请求、${number(result.events)} 条落地页事件。`);
+  await loadCampaign();
+}));
 on($('#campaign-range'), 'change', () => {
   const custom = $('#campaign-range').value === 'custom';
   $('#campaign-start-label').hidden = !custom;

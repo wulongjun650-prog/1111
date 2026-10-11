@@ -114,6 +114,7 @@ def test_analysis_panel_hides_another_agents_domains(accounts):
     assert 'their-secret' not in stolen.text
     assert a.get('/api/analysis/report?days=7&domain=theirs.test').text == '没有可查看的域名。\n'
     assert a.post('/api/analysis/clear?domain=theirs.test').status_code == 404
+    assert a.post('/api/campaign/clear?domain=theirs.test').status_code == 404
     own = a.post('/api/analysis/clear?domain=mine.test')
     assert own.status_code == 200, own.text
     assert own.json()['domain'] == 'mine.test'
@@ -215,6 +216,7 @@ def test_observer_reads_every_domain_and_account_but_cannot_change_anything(acco
     assert page.status_code == 200
     assert 'data-tab="accounts"' in page.text and '观察账号' in page.text
     assert 'id="analysis-clear"' not in page.text
+    assert 'id="campaign-clear"' not in page.text
     assert '导出数据' in page.text
     catalog = watcher.get('/api/sites')
     assert catalog.status_code == 200, catalog.text
@@ -247,6 +249,7 @@ def test_observer_reads_every_domain_and_account_but_cannot_change_anything(acco
         ('POST', f"/api/sites/{first['id']}/publish/A", {}),
         ('POST', f"/api/sites/{first['id']}/simulate", {}),
         ('POST', '/api/analysis/clear?domain=one.test', {}),
+        ('POST', '/api/campaign/clear?domain=one.test', {}),
         ('POST', f"/api/sites/{first['id']}/logs/clear", {}),
         ('POST', f"/api/sites/{first['id']}/logs/clear-foreign", {}),
         ('POST', f"/api/sites/{first['id']}/desk/review", {'tickets': [], 'phone': ''}),

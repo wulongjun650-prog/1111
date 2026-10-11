@@ -1,5 +1,6 @@
 import json
 import subprocess
+import time
 
 from fastapi.testclient import TestClient
 
@@ -184,6 +185,7 @@ def test_campaign_follows_the_selected_domain(tmp_path):
     admin.headers.update({'Origin': 'http://127.0.0.1:8765', 'X-CSRF-Token': admin.app.state.csrf})
     page = admin.get('/').text
     assert 'id="campaign-domain" name="domain" readonly' in page
+    assert 'id="campaign-clear"' in page and '一键清空' in page
     assert '只显示左上角当前管理站点' in page
     assert '可填微信或华为' in page
     registry = admin.app.state.registry
@@ -207,6 +209,23 @@ def test_campaign_follows_the_selected_domain(tmp_path):
     assert 'keep-one' in raw and 'hide-two' not in raw
     both = admin.get('/api/campaign?range=today').json()
     assert {'one.vip', 'two.vip'} <= {row['domain'] for row in both['rows']}
+    with registry.store(one['id']).connect() as db:
+        db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode) VALUES(?,?,?,?,?,?,?,?)',
+                   (time.time(), '203.0.113.8', 'HK', 'mobile', 'B', 'allowed', '/', 'RULES'))
+    assert admin.post('/api/campaign/clear').status_code == 400
+    assert admin.post('/api/campaign/clear?domain=missing.vip').status_code == 404
+    cleared = admin.post('/api/campaign/clear?domain=one.vip')
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()['domain'] == 'one.vip'
+    assert cleared.json()['access'] == 1 and cleared.json()['events'] == 1
+    emptied = admin.get('/api/campaign?range=today&domain=one.vip').json()
+    assert emptied['totals']['visits'] == 0 and emptied['totals']['clicks'] == 0
+    kept = admin.get('/api/campaign?range=today&domain=two.vip').json()
+    assert kept['totals']['visits'] == 1 and kept['totals']['clicks'] == 1
+    with registry.store(one['id']).connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM events').fetchone()[0] == 1
+        assert db.execute('SELECT COUNT(*) FROM access_log').fetchone()[0] == 0
+        assert db.execute('SELECT COUNT(*) FROM client_events').fetchone()[0] == 0
 
 
 def test_served_page_fills_only_the_empty_event_endpoint(tmp_path):
