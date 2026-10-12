@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 
@@ -339,6 +340,58 @@ def test_jump_events_outside_hong_kong_are_still_stored(tmp_path, monkeypatch):
         rows = db.execute('SELECT body, origin FROM client_events').fetchall()
         assert db.execute('SELECT COUNT(*) FROM access_log').fetchone()[0] == 0
     assert [(row['body'], row['origin']) for row in rows] == [('{"event":"whatsapp_click","transaction_id":"us"}', 'shop.example')]
+
+
+def test_opaque_origin_follows_the_page_host_including_rows_already_stored(tmp_path):
+    admin, target = clients(tmp_path)
+    created = admin.post('/api/sites', json={'domain': 'sbmnam.vip'})
+    assert created.status_code == 200, created.text
+    site_id = created.json()['site']['id']
+    other = admin.post('/api/sites', json={'domain': 'one.example.com'})
+    assert other.status_code == 200, other.text
+    other_id = other.json()['site']['id']
+    iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 Version/18.7 Mobile/15E148 Safari/604.1'
+    fresh = json.dumps({
+        'event': 'wa_app_opened', 'transaction_id': 'fresh', 'page': 'https://sbmnam.vip/',
+        'wa_env': 'ios_browser', 'link_type': 'universal', 'since_load_ms': 3829, 'ua': iphone,
+    })
+    posted = target.post('/wa-events', content=fresh, headers={'Origin': 'null', 'Content-Type': 'text/plain', 'User-Agent': iphone})
+    assert posted.status_code == 204
+    kept = target.post('/wa-events', content=json.dumps({
+        'event': 'whatsapp_click', 'transaction_id': 'header-wins', 'page': 'https://sbmnam.vip/',
+    }), headers={'Origin': 'https://one.example.com', 'Content-Type': 'text/plain', 'User-Agent': iphone})
+    assert kept.status_code == 204
+    unknown = target.post('/wa-events', content='{"event":"page_view","page":"https://not-ours.example/"}', headers={'Origin': 'null', 'Content-Type': 'text/plain'})
+    assert unknown.status_code == 204
+    web.flush_access_log()
+    with admin.app.state.registry.store(site_id).connect() as db:
+        row = db.execute('SELECT body, origin FROM client_events').fetchone()
+        assert row['body'] == fresh and row['origin'] == 'sbmnam.vip'
+        assert db.execute('SELECT COUNT(*) FROM intake_log').fetchone()[0] == 1
+    with admin.app.state.registry.store(other_id).connect() as db:
+        row = db.execute('SELECT origin FROM client_events').fetchone()
+        assert row['origin'] == 'one.example.com'
+    with admin.app.state.store.connect() as db:
+        parked = db.execute('SELECT body, origin FROM client_events').fetchone()
+        assert parked['origin'] == '' and 'not-ours.example' in parked['body']
+    old = json.dumps({
+        'event': 'whatsapp_click', 'transaction_id': 'already', 'page': 'https://sbmnam.vip/',
+        'wa_env': 'ios_browser', 'link_type': 'universal', 'since_load_ms': 1904, 'gclid': '', 'ua': iphone,
+    })
+    admin.app.state.store.record_client_event(old, '')
+    admin.app.state.store.record_intake('203.0.113.8', iphone, 'null', '', 'text/plain', len(old), old, 204, '已接收')
+    flow = admin.get('/api/campaign/flow?range=today&domain=sbmnam.vip')
+    assert flow.status_code == 200, flow.text
+    body = flow.json()
+    assert any('tx=already' in item['chain'] and item['time'] for item in body['visits'])
+    assert any('tx=fresh' in item['chain'] for item in body['visits'])
+    assert any(item['status'] == 204 and 'already' in item['body'] for item in body['intake'])
+    table = admin.get('/api/campaign?range=today&domain=sbmnam.vip').json()
+    assert sum(row['clicks'] for row in table['rows']) >= 1
+    elsewhere = admin.get('/api/campaign/flow?range=today&domain=one.example.com').json()
+    assert all('sbmnam.vip' not in item['chain'] for item in elsewhere['visits'])
+    local = admin.get('/api/campaign/flow?range=today&domain=' + '本地站点').json()
+    assert all('tx=already' not in item['chain'] for item in local['visits'])
 
 
 def test_visitors_outside_hong_kong_are_not_stored(tmp_path, monkeypatch):
