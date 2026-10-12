@@ -636,7 +636,7 @@ def build_campaign(visit_rows, event_rows, filters=None):
     }
     totals['click_rate'] = _ratio(totals['clicks'], totals['visits'])
     totals['open_rate'] = _ratio(totals['opens'], totals['clicks'])
-    return {'rows': table, 'totals': totals, 'options': options, 'env_open_rates': env_rates, 'systems': _systems(chosen_visits, chosen_events)}
+    return {'rows': table, 'totals': totals, 'options': options, 'env_open_rates': env_rates, 'systems': _systems(chosen_visits, chosen_events), 'placements': _placements(chosen_visits, chosen_events)}
 
 
 def _systems(visits, events):
@@ -678,6 +678,43 @@ def _systems(visits, events):
             'alert': alert,
             'alert_reason': f'{name} 进站 {visit_count}，点击 0' if alert else '',
         })
+    return rows
+
+
+def _placements(visits, events):
+    """One row per app. Versioned adsense hosts share the label already stored on each visit."""
+    buckets = {}
+
+    def bucket(label):
+        return buckets.setdefault(label, {'visits': set(), 'people': set(), 'times': set(), 'opens': 0})
+
+    for visit in visits:
+        bucket(placement_label(visit.get('placement') or ''))['visits'].add(visit['key'])
+    for item in events:
+        kind = _EVENT_KINDS.get(item['event'])
+        if kind not in ('click', 'open'):
+            continue
+        row = bucket(placement_label(item.get('placement') or ''))
+        if kind == 'click':
+            row['people'].add(_click_person(item))
+            row['times'].add(item['tx_key'])
+        else:
+            row['opens'] += 1
+    rows = []
+    for label, item in buckets.items():
+        visit_count = len(item['visits'])
+        click_count = len(item['people'])
+        if not visit_count and not click_count and not item['times'] and not item['opens']:
+            continue
+        rows.append({
+            'placement': label,
+            'visits': visit_count,
+            'clicks': click_count,
+            'click_times': len(item['times']),
+            'opens': item['opens'],
+            'open_rate': _ratio(item['opens'], click_count),
+        })
+    rows.sort(key=lambda item: (-item['visits'], -item['click_times'], item['placement']))
     return rows
 
 

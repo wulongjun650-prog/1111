@@ -24,6 +24,44 @@ def test_open_app_names_wechat_and_huawei_before_chrome():
     assert describe_device(chrome)['browser'] == 'Chrome 120.0.0.0'
 
 
+def test_placement_totals_keep_one_row_when_the_detail_splits_by_browser():
+    chrome = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36'
+    huawei = 'Mozilla/5.0 (Linux; Android 10; LYA-AL00) AppleWebKit/537.36 Chrome/83.0.4103.106 HuaweiBrowser/11.0.3.300 Mobile Safari/537.36'
+
+    def visit(gclid, placement, ua, ip):
+        return {'domain': 'tpwrep.vip', 'query': f'gclid={gclid}&placement={placement}', 'ip': ip, 'ua': ua, 'path': '/', 'created': 1, 'referer': ''}
+
+    def click(token, placement, ua):
+        return {'domain': 'tpwrep.vip', 'id': token, 'created': 5, 'origin': 'tpwrep.vip', 'body': json.dumps({
+            'event': 'whatsapp_click', 'transaction_id': token, 'gclid': token, 'placement': placement,
+            'wa_env': 'android_browser', 'link_type': 'intent', 'device': 'mobile', 'ua': ua,
+        })}
+
+    visits = [
+        visit('a1', 'mobileapp::2-com.aastocks.dzh', chrome, '203.0.113.1'),
+        visit('a2', 'mobileapp::2-com.aastocks.dzh', huawei, '203.0.113.2'),
+        visit('e1', '133.android.com.etnet.android.iq.adsenseformobileapps.com', chrome, '203.0.113.3'),
+        visit('e2', '132.android.com.etnet.android.iq.adsenseformobileapps.com', chrome, '203.0.113.4'),
+    ]
+    events = [
+        click('a1', 'mobileapp::2-com.aastocks.dzh', chrome),
+        click('a1b', 'mobileapp::2-com.aastocks.dzh', chrome),
+        {'domain': 'tpwrep.vip', 'id': 'open', 'created': 6, 'origin': 'tpwrep.vip', 'body': json.dumps({
+            'event': 'wa_app_opened', 'transaction_id': 'a1', 'gclid': 'a1', 'placement': 'mobileapp::2-com.aastocks.dzh',
+            'wa_env': 'android_browser', 'link_type': 'intent', 'ua': chrome,
+        })},
+    ]
+    report = build_campaign(visits, events, {})
+    assert sum(row['placement_label'] == 'Android App · com.aastocks.dzh' for row in report['rows']) >= 2
+    apps = {row['placement']: row for row in report['placements']}
+    stock = apps['Android App · com.aastocks.dzh']
+    assert stock['visits'] == 2 and stock['clicks'] == 2 and stock['click_times'] == 2 and stock['opens'] == 1
+    assert stock['open_rate'] == 0.5
+    etnet = apps['Android App · com.etnet.android.iq']
+    assert etnet['visits'] == 2 and etnet['clicks'] == 0 and etnet['opens'] == 0 and etnet['open_rate'] is None
+    assert [row['placement'] for row in report['placements'][:2]] == ['Android App · com.aastocks.dzh', 'Android App · com.etnet.android.iq']
+
+
 def test_campaign_rows_split_by_the_app_that_opened_the_page():
     wechat = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 MicroMessenger/8.0.42'
     huawei = 'Mozilla/5.0 (Linux; Android 10; LYA-AL00) AppleWebKit/537.36 Chrome/83.0.4103.106 HuaweiBrowser/11.0.3.300 Mobile Safari/537.36'
@@ -107,6 +145,15 @@ def test_app_versions_merge_and_clicks_count_people():
     assert systems['iPhone']['clicks'] == 1 and systems['iPhone']['click_times'] == 5 and systems['iPhone']['visits'] == 1
     assert systems['iPhone']['alert'] is False
     assert systems['Android']['visits'] == 1 and systems['Android']['clicks'] == 0 and systems['Android']['alert'] is False
+    apps = {row['placement']: row for row in report['placements']}
+    assert apps['iPhone App · com.etnet.quote.iq-streaming']['visits'] == 1
+    assert apps['iPhone App · com.etnet.quote.iq-streaming']['clicks'] == 1
+    assert apps['iPhone App · com.etnet.quote.iq-streaming']['click_times'] == 5
+    assert apps['iPhone App · com.etnet.quote.iq-streaming']['opens'] == 1
+    assert apps['iPhone App · com.etnet.quote.iq-streaming']['open_rate'] == 1
+    assert apps['Android App · com.etnet.android.iq']['visits'] == 1
+    assert apps['Android App · com.etnet.android.iq']['clicks'] == 0
+    assert apps['Android App · com.etnet.android.iq']['open_rate'] is None
 
     quiet = [
         {'domain': 'one.test', 'query': f'gclid=v{index}&placement={versions[0]}', 'ip': f'198.51.100.{index % 200}', 'ua': iphone, 'path': '/', 'created': index}
