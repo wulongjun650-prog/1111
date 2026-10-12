@@ -184,7 +184,7 @@ def test_analysis_panel_follows_the_selected_domain(tmp_path):
     assert admin.post('/api/analysis/clear?domain=missing.example').status_code == 404
     cleared = admin.post('/api/analysis/clear?domain=one.example.com')
     assert cleared.status_code == 200, cleared.text
-    assert cleared.json() == {'access': 1, 'events': 1, 'domain': 'one.example.com'}
+    assert cleared.json() == {'access': 1, 'events': 1, 'intake': 0, 'domain': 'one.example.com'}
     after = admin.get('/api/analysis?days=7&domain=one.example.com').json()
     assert after['requests']['total'] == 0 and after['events']['total'] == 0
     other = admin.get('/api/analysis?days=7&domain=two.example.com').json()
