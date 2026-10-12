@@ -757,6 +757,32 @@ function renderCampaignSystems(systems) {
   }
 }
 
+function renderCampaignPlacements(placements) {
+  const body = $('#campaign-placements');
+  if (!body) return;
+  body.replaceChildren();
+  if (!placements.length) {
+    const row = element('tr');
+    const cell = element('td', 'empty-state', '这段时间没有版位。');
+    cell.colSpan = 6;
+    row.append(cell);
+    body.append(row);
+    return;
+  }
+  for (const item of placements) {
+    const row = element('tr');
+    row.append(
+      element('td', '', item.placement),
+      element('td', '', number(item.visits)),
+      element('td', '', number(item.clicks)),
+      element('td', '', number(item.click_times)),
+      element('td', '', number(item.opens)),
+      element('td', '', percent(item.open_rate)),
+    );
+    body.append(row);
+  }
+}
+
 function emptyCampaign(message) {
   const body = $('#campaign-rows');
   body.replaceChildren();
@@ -911,6 +937,7 @@ async function loadCampaign() {
     $('#campaign-summary').textContent = '请先在左上角选择域名。';
     $('#campaign-note').textContent = '投放数据跟左上角的当前管理站点走。选哪个域名，这里就只显示哪个域名。';
     renderCampaignSystems([]);
+    renderCampaignPlacements([]);
     $('#campaign-csv').removeAttribute('href');
     $('#campaign-json').removeAttribute('href');
     const box = $('#campaign-domain');
@@ -931,6 +958,7 @@ async function loadCampaign() {
     $('#campaign-summary').textContent = `${domain} · 进站 ${number(totals.visits)} · 点击人数 ${number(totals.clicks)} · 点击次数 ${number(totals.click_times)} · 拉起 ${number(totals.opens)} · 拉起率 ${percent(totals.open_rate)}`;
     $('#campaign-note').textContent = `只显示 ${domain}。同一个 App 的版本号会并成一行。点击人数按 gclid 算，同一个人多次点击只算 1 人，点击次数另外显示。某个系统进站超过 100 且点击为 0 会标红。打开是进来的应用或浏览器，例如微信、华为浏览器、Chrome。接收地址 ${data.endpoint || ''}。时间是香港时间，精确到秒；一行里有多次时显示最晚的一次。进站只算打到源站的 HTML，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
     renderCampaignSystems(data.systems || []);
+    renderCampaignPlacements(data.placements || []);
     if (!data.rows.length) {
       emptyCampaign(`这段时间，${domain} 没有进站或跳转事件。`);
       await flowDone;
