@@ -13,6 +13,9 @@ import re
 HK = timezone(timedelta(hours=8))
 _ANDROID = re.compile(r'^mobileapp::2-(.+)$', re.I)
 _IOS = re.compile(r'^mobileapp::1-(.+)$', re.I)
+_ADSENSE = re.compile(r'^(?:(?:\d+)\.)*(android|iphone|ipad)\.(.+)\.adsenseformobileapps\.com$', re.I)
+_PLATFORM = {'android': 'Android', 'iphone': 'iPhone', 'ipad': 'iPad'}
+_SYSTEM_ORDER = ('iPhone', 'iPad', 'iPod', 'Android', '其他')
 _IOS_VERSION = re.compile(r'(?:CPU (?:iPhone |iPad )?OS|CPU OS)\s+(\d+)[_.](\d+)(?:[_.](\d+))?', re.I)
 _ANDROID_VERSION = re.compile(r'Android\s+(\d+(?:\.\d+)*)', re.I)
 _ANDROID_MODEL = re.compile(r'Android\s+[\d.]+;\s*([^;)]+)')
@@ -65,12 +68,17 @@ def placement_label(value):
     text = (value or '').strip()
     if not text:
         return '未知'
+    if text.startswith(('Android App · ', 'iPhone App · ', 'iPad App · ', 'iOS App · ', 'YouTube')):
+        return text
     android = _ANDROID.match(text)
     if android:
         return 'Android App · ' + android.group(1).strip()
     ios = _IOS.match(text)
     if ios:
         return 'iOS App · ' + ios.group(1).strip()
+    adsense = _ADSENSE.match(text)
+    if adsense:
+        return f'{_PLATFORM[adsense.group(1).lower()]} App · {adsense.group(2).strip()}'
     parsed = youtube_from(text)
     if parsed:
         if parsed['channel']:
@@ -79,6 +87,29 @@ def placement_label(value):
             return 'YouTube · 视频 ' + parsed['video']
         return 'YouTube'
     return text
+
+
+def canonical_placement(value):
+    """One label per app. Version prefixes on adsense hosts no longer split the row."""
+    text = (value or '').strip()
+    label = placement_label(text)
+    if label.startswith(('Android App · ', 'iPhone App · ', 'iPad App · ', 'iOS App · ')):
+        return label
+    return text
+
+
+def system_name(item):
+    model = item.get('model') or ''
+    system = item.get('os') or ''
+    if model == 'iPad':
+        return 'iPad'
+    if model == 'iPod':
+        return 'iPod'
+    if model == 'iPhone' or system.startswith('iOS'):
+        return 'iPhone'
+    if system.startswith('Android') or model == 'Android':
+        return 'Android'
+    return '其他'
 
 
 def device_from_ua(ua):
@@ -218,7 +249,8 @@ def parse_event(row):
         payload = None
     if not isinstance(payload, dict):
         payload = {}
-    placement = _text(payload.get('placement')) or _text(payload.get('placement_app'))
+    raw_placement = _text(payload.get('placement')) or _text(payload.get('placement_app'))
+    placement = canonical_placement(raw_placement)
     ua = _text(payload.get('ua'))
     model, system = device_from_ua(ua)
     transaction_id = _text(payload.get('transaction_id'))
@@ -227,6 +259,7 @@ def parse_event(row):
         'created': row.get('created') or 0,
         'domain': _text(row.get('domain')),
         'placement': placement,
+        'placement_raw': raw_placement,
         'device': _text(payload.get('device')) or '未知',
         'wa_env': _text(payload.get('wa_env')) or '未知',
         'link_type': _text(payload.get('link_type')) or '未知',
@@ -249,7 +282,8 @@ def parse_event(row):
 
 def parse_visit(row):
     gclid = query_value(row.get('query'), 'gclid')
-    placement = query_value(row.get('query'), 'placement')
+    raw_placement = query_value(row.get('query'), 'placement')
+    placement = canonical_placement(raw_placement)
     referer = _text(row.get('referer'))
     referer_youtube = youtube_from(referer)
     if not placement and referer_youtube:
@@ -265,6 +299,7 @@ def parse_visit(row):
         'created': row.get('created') or 0,
         'domain': domain,
         'placement': placement,
+        'placement_raw': raw_placement,
         'model': model,
         'os': system,
         'ua': ua,
@@ -326,10 +361,11 @@ def _matches(item, filters, fields):
             return False
     if 'placement' in fields:
         placement = filters.get('placement') if filters.get('placement_exact') else (filters.get('placement') or '').strip()
+        hay = ' '.join((item.get('placement') or '', item.get('placement_raw') or '', placement_label(item.get('placement') or '')))
         if filters.get('placement_exact'):
-            if (item.get('placement') or '') != (placement or ''):
+            if (item.get('placement') or '') != (placement or '') and (item.get('placement_raw') or '') != (placement or ''):
                 return False
-        elif placement and placement not in item.get('placement', '') and placement not in placement_label(item.get('placement')):
+        elif placement and placement not in hay:
             return False
     if 'youtube' in fields:
         needle = (filters.get('youtube') or '').strip()
@@ -374,12 +410,14 @@ def _blank_row(item):
         'opener': item.get('opener') or '未知',
         'visits': 0,
         'clicks': 0,
+        'click_times': 0,
         'opens': 0,
         'fallbacks': 0,
         'fallback_click': 0,
         'copy_number': 0,
         'copy_message': 0,
         'click_ids': set(),
+        'click_people': set(),
         'visit_keys': set(),
         'seen_at': 0,
         'first_at': 0,
@@ -405,11 +443,19 @@ def _row_key(item):
     return (item['domain'], item['placement'], item['device'], item['wa_env'], item['link_type'], item['model'], item['os'], item.get('dest_app') or '', item.get('opener') or '')
 
 
+def _click_person(item):
+    gclid = item.get('gclid') or ''
+    if gclid:
+        return gclid
+    return 'tx:' + str(item.get('tx_key') or '')
+
+
 def _add_event(row, item):
     _note_time(row, item.get('created'))
     kind = _EVENT_KINDS.get(item['event'])
     if kind == 'click':
         row['click_ids'].add(item['tx_key'])
+        row['click_people'].add(_click_person(item))
     elif kind == 'open':
         row['opens'] += 1
     elif kind == 'fallback':
@@ -560,10 +606,12 @@ def build_campaign(visit_rows, event_rows, filters=None):
     table = []
     for row in rows.values():
         row['visits'] = len(row['visit_keys'])
-        row['clicks'] = len(row['click_ids'])
+        row['clicks'] = len(row['click_people'])
+        row['click_times'] = len(row['click_ids'])
         row['click_rate'] = _ratio(row['clicks'], row['visits'])
         row['open_rate'] = _ratio(row['opens'], row['clicks'])
         del row['click_ids']
+        del row['click_people']
         del row['visit_keys']
         table.append(row)
     env_rates = _mark_alerts(table, events)
@@ -572,12 +620,14 @@ def build_campaign(visit_rows, event_rows, filters=None):
     def counted_events(kind):
         chosen = [item for item in chosen_events if _EVENT_KINDS.get(item['event']) == kind]
         if kind == 'click':
-            return len({item['tx_key'] for item in chosen})
+            return len({_click_person(item) for item in chosen})
         return len(chosen)
 
+    click_events = [item for item in chosen_events if _EVENT_KINDS.get(item['event']) == 'click']
     totals = {
         'visits': len(counted),
         'clicks': counted_events('click'),
+        'click_times': len({item['tx_key'] for item in click_events}),
         'opens': counted_events('open'),
         'fallbacks': counted_events('fallback'),
         'fallback_click': counted_events('fallback_click'),
@@ -586,7 +636,49 @@ def build_campaign(visit_rows, event_rows, filters=None):
     }
     totals['click_rate'] = _ratio(totals['clicks'], totals['visits'])
     totals['open_rate'] = _ratio(totals['opens'], totals['clicks'])
-    return {'rows': table, 'totals': totals, 'options': options, 'env_open_rates': env_rates}
+    return {'rows': table, 'totals': totals, 'options': options, 'env_open_rates': env_rates, 'systems': _systems(chosen_visits, chosen_events)}
+
+
+def _systems(visits, events):
+    """iPhone / Android totals for the current filter. A system with visits and no clicks is marked."""
+    by_gclid = {}
+    for visit in visits:
+        if visit.get('gclid'):
+            by_gclid.setdefault(visit['gclid'], system_name(visit))
+    buckets = {name: {'visits': set(), 'people': set(), 'times': set(), 'opens': 0} for name in _SYSTEM_ORDER}
+    for visit in visits:
+        buckets[system_name(visit)]['visits'].add(visit['key'])
+    for item in events:
+        kind = _EVENT_KINDS.get(item['event'])
+        if kind not in ('click', 'open'):
+            continue
+        name = system_name(item)
+        if name == '其他' and item.get('gclid') in by_gclid:
+            name = by_gclid[item['gclid']]
+        bucket = buckets[name]
+        if kind == 'click':
+            bucket['people'].add(_click_person(item))
+            bucket['times'].add(item['tx_key'])
+        else:
+            bucket['opens'] += 1
+    rows = []
+    for name in _SYSTEM_ORDER:
+        bucket = buckets[name]
+        visit_count = len(bucket['visits'])
+        click_count = len(bucket['people'])
+        if not visit_count and not click_count and not bucket['times'] and not bucket['opens']:
+            continue
+        alert = visit_count > 100 and click_count == 0
+        rows.append({
+            'system': name,
+            'visits': visit_count,
+            'clicks': click_count,
+            'click_times': len(bucket['times']),
+            'opens': bucket['opens'],
+            'alert': alert,
+            'alert_reason': f'{name} 进站 {visit_count}，点击 0' if alert else '',
+        })
+    return rows
 
 
 def export_events(event_rows, filters=None):
