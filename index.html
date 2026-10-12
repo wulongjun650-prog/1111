@@ -136,6 +136,13 @@
     .slider-dots{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:6px}
     .slider-dot{min-height:44px;border:1px solid #d9dfe7;border-radius:12px;padding:0 4px;background:rgba(255,255,255,.9);color:#4a5568;font-size:15px;font-weight:900;transition:.15s;cursor:pointer}
     .slider-dot.active{border-color:var(--orange);background:#fff3e2;color:#c0630c;box-shadow:0 4px 12px rgba(229,124,21,.14)}
+    .cta.cta-top{margin-top:6px;min-height:68px;border-radius:17px;font-size:21px;background:linear-gradient(135deg,#ffa33a,#e8700f);animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite,cta-glow 1.8s ease-out infinite}
+    @keyframes cta-glow{0%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 0 rgba(242,139,36,.55)}70%,100%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 11px rgba(242,139,36,0)}}
+    @media (prefers-reduced-motion:reduce){.cta.cta-top{animation:none}}
+    .hero-cta-sub{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 12px;color:#1f7a45;font-size:15px;line-height:1.4;font-weight:900}
+    .hero-cta-sub i{flex:none;width:18px;height:18px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;font-size:11px;display:flex;align-items:center;justify-content:center}
+    .hero-cta-sub span{color:#9fb5a7}
+    .hero-cta-sub[hidden]{display:none}
     .hero-choice{margin-top:10px;text-align:center;color:#5a6474;font-size:13px;line-height:1.5}
     .hero-qualify-note{text-align:center;margin:8px 0 0;color:#8a5a1f;font-size:14px;line-height:1.5;font-weight:800}
 
@@ -209,6 +216,9 @@
         <h1 class="hero-heading">港股大反彈<br><span class="hl">唔知跟邊隻？</span><br><span class="accent">今日名單免費送你</span></h1>
         <p class="hero-lead">升市都要揀啱股。唔使識睇數據，<b>按一下，WhatsApp 直接收到。</b></p>
 
+        <a class="cta cta-top" href="https://wa.me/85257980601?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
+        <div class="hero-cta-sub" id="hero-cta-sub"><i>✓</i>完全免費<span>·</span>答 2 條簡單問題即收名單</div>
+
         <div class="hero-steps" aria-label="領取步驟">
           <div class="hstep"><span class="hstep-n">1</span><span>揀名單</span></div>
           <div class="hstep"><span class="hstep-n">2</span><span>按領取</span></div>
@@ -246,7 +256,6 @@
           <button class="slider-dot" type="button" data-dot="income">高息收息</button>
         </div>
 
-        <a class="cta" href="https://wa.me/85257980601?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
         <div class="hero-choice" id="hero-choice">目前選擇：潛力黑馬 · 打開後按「發送」即收</div>
         <div class="hero-qualify-note">完全免費 · 唔使填任何資料 · 按一下即收</div>
         <div class="hero-proof">每日開市前更新 · 內容按公開市場資訊整理</div>
@@ -517,6 +526,13 @@
     const receptionText = document.getElementById('reception-text');
 
     receptionText.textContent = `本次由助理 ${CONFIG.receptionist} 接待`;
+
+    // ABC（冇選擇框）：領取按鈕放返卡片下面原位；CBA：留喺首屏突出顯示
+    if (String(CONFIG.directMode || '').trim().toUpperCase() === 'ABC') {
+      heroCta.classList.remove('cta-top');
+      document.getElementById('hero-cta-sub').hidden = true;
+      heroChoice.before(heroCta);
+    }
 
     function setActive(key, {scroll=false, track=true} = {}) {
       if (!VARIANTS[key]) return;
