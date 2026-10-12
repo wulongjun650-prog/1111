@@ -1222,7 +1222,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 row['domain'] = site_domain
                 requests.append(row)
             for row in event_rows:
-                row['domain'] = (row.get('origin') or '').strip() or site_domain
+                row['domain'] = displayed_event_domain(registry, row, site_domain)
                 events.append(row)
         requests.sort(key=lambda row: row['created'], reverse=True)
         events.sort(key=lambda row: row['created'], reverse=True)
@@ -1270,7 +1270,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 row['domain'] = domain
                 visits.append(row)
             for row in site_store.campaign_events(since, until):
-                row['domain'] = (row.get('origin') or '').strip() or domain
+                row['domain'] = displayed_event_domain(registry, row, domain)
                 events.append(row)
         return visits, events
 
@@ -1279,7 +1279,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         for site in analysis_sites(request):
             domain = analysis_domain(site)
             for row in registry.store(site['id']).intake_between(since, until):
-                row['domain'] = domain
+                row['domain'] = displayed_intake_domain(registry, row, domain)
                 rows.append(row)
         return rows
 
@@ -1904,6 +1904,53 @@ def _host_from_url(value):
         return ''
 
 
+def beacon_page_host(body):
+    """Landing host carried inside the JSON when the browser sent no Origin."""
+    if not body:
+        return ''
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return ''
+    if not isinstance(payload, dict):
+        return ''
+    page = payload.get('page')
+    if not isinstance(page, str):
+        return ''
+    return _host_from_url(page)
+
+
+def _known_domain(registry, host):
+    if not host or registry is None:
+        return ''
+    site = registry.find_domain(host)
+    if site is None:
+        return ''
+    return site.get('domain') or host
+
+
+def registered_beacon_host(registry, body):
+    """Page host only when it names a site we already track."""
+    return _known_domain(registry, beacon_page_host(body))
+
+
+def displayed_event_domain(registry, row, site_domain):
+    """Keep a stored host. A blank host follows the page URL inside the body."""
+    origin = (row.get('origin') or '').strip()
+    if origin and origin.lower() != 'null':
+        return origin
+    return registered_beacon_host(registry, row.get('body') or '') or site_domain
+
+
+def displayed_intake_domain(registry, row, site_domain):
+    """Header host first. An opaque Origin still follows the page URL in the body."""
+    header = _host_from_url(row.get('origin') or '') or _host_from_url(row.get('referer') or '')
+    known = _known_domain(registry, header)
+    if known:
+        return known
+    return registered_beacon_host(registry, row.get('body') or '') or site_domain
+
+
 async def _read_asgi_body(receive, limit=8192):
     chunks = []
     size = 0
@@ -1925,11 +1972,12 @@ async def _record_rejected_beacon(registry, scope, receive):
     try:
         raw, size = await _read_asgi_body(receive)
         headers = {key.decode('latin1').lower(): value.decode('latin1', 'replace') for key, value in scope.get('headers') or []}
-        host = _host_from_url(headers.get('origin') or headers.get('referer') or '')
+        text = raw.decode('utf-8', 'replace')
+        host = _host_from_url(headers.get('origin') or headers.get('referer') or '') or registered_beacon_host(registry, text)
         store = _beacon_store(registry, registry.store('default') if registry is not None else None, host)
         peer = scope.get('client')
         ip = (scope.get('state') or {}).get('visitor_ip') or (peer[0] if peer else '')
-        _queue_intake(store, ip, headers.get('user-agent', ''), headers.get('origin', ''), headers.get('referer', ''), headers.get('content-type', ''), size, raw.decode('utf-8', 'replace'), 403, '来源、域名或代理校验失败')
+        _queue_intake(store, ip, headers.get('user-agent', ''), headers.get('origin', ''), headers.get('referer', ''), headers.get('content-type', ''), size, text, 403, '来源、域名或代理校验失败')
     except Exception:
         LOGGER.error('rejected beacon log failed')
 
@@ -1940,7 +1988,7 @@ async def accept_jump_event(request, registry, fallback_store):
     status = 413 if len(raw) > JUMP_EVENT_LIMIT else 204
     body = raw[:8192].decode('utf-8', 'replace')
     reason = intake_reason(body if status == 204 else '', status)
-    host = jump_source_domain(request)
+    host = jump_source_domain(request) or registered_beacon_host(registry, body)
     store = _beacon_store(registry, fallback_store, host)
     ip = getattr(request.state, 'visitor_ip', '') or (request.client.host if request.client else '')
     _queue_intake(
