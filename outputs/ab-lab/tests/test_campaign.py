@@ -53,6 +53,11 @@ def test_placement_and_phone_labels():
     assert placement_label('') == '未知'
     assert placement_label('mobileapp::2-com.example.app') == 'Android App · com.example.app'
     assert placement_label('mobileapp::1-12345') == 'iOS App · 12345'
+    assert placement_label('132.android.com.etnet.android.iq.adsenseformobileapps.com') == 'Android App · com.etnet.android.iq'
+    assert placement_label('7.android.com.etnet.android.iq.adsenseformobileapps.com') == 'Android App · com.etnet.android.iq'
+    assert placement_label('3.4.19.iphone.com.etnet.quote.iq-streaming.adsenseformobileapps.com') == 'iPhone App · com.etnet.quote.iq-streaming'
+    assert placement_label('3.4.20.iphone.com.etnet.quote.iq-streaming.adsenseformobileapps.com') == 'iPhone App · com.etnet.quote.iq-streaming'
+    assert placement_label('Android App · com.etnet.android.iq') == 'Android App · com.etnet.android.iq'
     assert placement_label('news.example') == 'news.example'
     assert youtube_from('https://www.youtube.com/@FinanceDaily')['channel'] == '@FinanceDaily'
     assert youtube_from('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv')['channel'] == 'UCabcdefghijklmnopqrstuv'
@@ -63,6 +68,56 @@ def test_placement_and_phone_labels():
     assert placement_label('https://www.youtube.com/@FinanceDaily') == 'YouTube · @FinanceDaily'
     assert device_from_ua('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) Version/18.7 Mobile/15E148 Safari/604.1') == ('iPhone', 'iOS 18.7')
     assert device_from_ua('Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36') == ('Pixel 7', 'Android 13')
+
+
+def test_app_versions_merge_and_clicks_count_people():
+    iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)'
+    android = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36'
+    versions = [
+        '3.4.19.iphone.com.etnet.quote.iq-streaming.adsenseformobileapps.com',
+        '3.4.20.iphone.com.etnet.quote.iq-streaming.adsenseformobileapps.com',
+        '132.android.com.etnet.android.iq.adsenseformobileapps.com',
+        'mobileapp::2-com.etnet.android.iq',
+    ]
+    visits = [
+        {'domain': 'one.test', 'query': f'gclid=person&placement={versions[index % 2]}', 'ip': '203.0.113.8', 'ua': iphone, 'path': '/', 'created': index}
+        for index in range(5)
+    ]
+    visits.append({'domain': 'one.test', 'query': f'gclid=android-user&placement={versions[2]}', 'ip': '203.0.113.9', 'ua': android, 'path': '/', 'created': 6})
+    events = [
+        {'domain': 'one.test', 'id': index, 'created': index, 'origin': 'one.test', 'body': json.dumps({
+            'event': 'whatsapp_click', 'transaction_id': f'click-{index}', 'wa_env': 'ios_safari', 'link_type': 'universal',
+            'device': 'mobile', 'placement': versions[index % 2], 'gclid': 'person', 'ua': iphone,
+        })}
+        for index in range(5)
+    ]
+    events.append({'domain': 'one.test', 'id': 9, 'created': 9, 'origin': 'one.test', 'body': json.dumps({
+        'event': 'wa_app_opened', 'transaction_id': 'click-0', 'wa_env': 'ios_safari', 'link_type': 'universal',
+        'device': 'mobile', 'placement': versions[0], 'gclid': 'person', 'ua': iphone,
+    })})
+    report = build_campaign(visits, events, {})
+    labels = {row['placement_label'] for row in report['rows']}
+    assert 'iPhone App · com.etnet.quote.iq-streaming' in labels
+    assert 'Android App · com.etnet.android.iq' in labels
+    assert sum(row['placement_label'] == 'iPhone App · com.etnet.quote.iq-streaming' for row in report['rows']) == 1
+    iphone_row = next(row for row in report['rows'] if row['placement_label'] == 'iPhone App · com.etnet.quote.iq-streaming' and row['clicks'])
+    assert iphone_row['clicks'] == 1 and iphone_row['click_times'] == 5 and iphone_row['opens'] == 1
+    assert report['totals']['clicks'] == 1 and report['totals']['click_times'] == 5
+    systems = {row['system']: row for row in report['systems']}
+    assert systems['iPhone']['clicks'] == 1 and systems['iPhone']['click_times'] == 5 and systems['iPhone']['visits'] == 1
+    assert systems['iPhone']['alert'] is False
+    assert systems['Android']['visits'] == 1 and systems['Android']['clicks'] == 0 and systems['Android']['alert'] is False
+
+    quiet = [
+        {'domain': 'one.test', 'query': f'gclid=v{index}&placement={versions[0]}', 'ip': f'198.51.100.{index % 200}', 'ua': iphone, 'path': '/', 'created': index}
+        for index in range(101)
+    ]
+    flagged = build_campaign(quiet, [], {})
+    marked = next(row for row in flagged['systems'] if row['system'] == 'iPhone')
+    assert marked['visits'] == 101 and marked['clicks'] == 0 and marked['alert'] is True
+    assert '点击 0' in marked['alert_reason']
+    under = build_campaign(quiet[:100], [], {})
+    assert next(row for row in under['systems'] if row['system'] == 'iPhone')['alert'] is False
 
 
 def test_campaign_counts_visits_clicks_and_red_rows():
@@ -89,7 +144,7 @@ def test_campaign_counts_visits_clicks_and_red_rows():
         event('one.test', {'event': 'wa_copy_message', 'transaction_id': 't2', 'wa_env': 'ios_safari', 'link_type': 'scheme', 'device': 'mobile', 'placement': 'news.example'}, 7),
     ]
     report = build_campaign(visits, events, {})
-    android = next(row for row in report['rows'] if row['placement'] == 'mobileapp::2-com.foo' and row['clicks'])
+    android = next(row for row in report['rows'] if row['placement'] == 'Android App · com.foo' and row['clicks'])
     assert android['placement_label'] == 'Android App · com.foo'
     assert android['dest_app'] == 'whatsapp' and android['dest_label'] == 'WhatsApp'
     assert android['clicks'] == 1
@@ -167,7 +222,7 @@ def test_campaign_api_filters_and_exports(tmp_path):
     assert [item['transaction_id'] for item in exported.json()] == ['other', 'same', 'same']
     assert '"extra":1' in ''.join(bodies)
     csv_text = admin.get('/api/campaign.csv?range=today').text
-    assert '点击数' in csv_text and '去向' in csv_text and 'WhatsApp' in csv_text and 'Android App · com.foo' in csv_text
+    assert '点击人数' in csv_text and '点击次数' in csv_text and '去向' in csv_text and 'WhatsApp' in csv_text and 'Android App · com.foo' in csv_text
     assert csv_text.splitlines()[0].lstrip('\ufeff').startswith('时间,')
     assert payload['rows'][0]['seen_at'] > 0
     assert admin.get('/api/campaign?range=custom&start=2026-01-02&end=2026-01-01').status_code == 400

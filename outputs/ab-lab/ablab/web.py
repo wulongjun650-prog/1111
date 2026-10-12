@@ -1307,7 +1307,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         since, until, filters = campaign_arguments(slot, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube, opener)
         visits, events = collect_campaign(request, since, until)
         report = _with_youtube_channels(build_campaign(visits, events, filters))
-        fields = ['时间', '域名', '去向', '版位', '频道', '打开', 'device', 'wa_env', 'link_type', '机型', '系统', '进站数', '点击数', '拉起数', '兜底数', '点击率', '拉起率', '兜底点击', '复制号码', '复制消息', '标红', '原因']
+        fields = ['时间', '域名', '去向', '版位', '频道', '打开', 'device', 'wa_env', 'link_type', '机型', '系统', '进站数', '点击人数', '点击次数', '拉起数', '兜底数', '点击率', '拉起率', '兜底点击', '复制号码', '复制消息', '标红', '原因']
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
         writer.writerow(fields)
@@ -1323,7 +1323,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         for row in report['rows']:
             writer.writerow([cell(value) for value in (
                 clock(row.get('seen_at')), row['domain'], row['dest_label'], row['placement_label'], row['youtube_label'], row.get('opener') or '', row['device'], row['wa_env'], row['link_type'], row['model'], row['os'],
-                row['visits'], row['clicks'], row['opens'], row['fallbacks'], percent(row['click_rate']), percent(row['open_rate']),
+                row['visits'], row['clicks'], row.get('click_times') or 0, row['opens'], row['fallbacks'], percent(row['click_rate']), percent(row['open_rate']),
                 row['fallback_click'], row['copy_number'], row['copy_message'], '是' if row['alert'] else '', row['alert_reason'],
             )])
         return Response('\ufeff' + stream.getvalue(), media_type='text/csv; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="campaign.csv"'})
