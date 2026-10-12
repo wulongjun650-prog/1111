@@ -595,6 +595,7 @@
       if (gateSelectedTip) gateSelectedTip.classList.toggle('show', step === 2 && !!gateAnswers.interest);
       if (step === 2) {
         try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateStep2',{variant:currentKey}); } catch(e){}
+        sendEvent('gate_step2', { cta: pendingLocation, variant: currentKey, interest: gateAnswers.interest });
       }
     }
 
@@ -613,6 +614,8 @@
       leadGate.setAttribute('aria-hidden','false');
       document.body.style.overflow = 'hidden';
       try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateOpen',{placement:pendingLocation,variant:currentKey}); } catch(e){}
+      sendPageView();
+      sendEvent('gate_open', { cta: pendingLocation, variant: currentKey });
     }
 
     function closeLeadGate(){
@@ -644,10 +647,18 @@
       });
     });
 
-    gateCancel.addEventListener('click', closeLeadGate);
+    // 用戶自己關閉問卷（揀完答案跳轉時嘅 closeLeadGate 唔計）
+    function dismissLeadGate(how){
+      try {
+        const active = document.querySelector('.gate-step.active');
+        sendEvent('gate_close', { cta: pendingLocation, how, step: active ? Number(active.dataset.step) : 0 });
+      } catch (e) {}
+      closeLeadGate();
+    }
+    gateCancel.addEventListener('click', () => dismissLeadGate('x'));
     gateBack.addEventListener('click', () => setGateStep(1));
-    leadGate.addEventListener('click', e => { if (e.target === leadGate) closeLeadGate(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) closeLeadGate(); });
+    leadGate.addEventListener('click', e => { if (e.target === leadGate) dismissLeadGate('backdrop'); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) dismissLeadGate('esc'); });
 
     // ====== WhatsApp 跳轉：先判斷打開環境，再揀喚起方式 ======
     const UA = navigator.userAgent || '';
@@ -798,6 +809,16 @@
     });
     window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
 
+    // 每次進站報一條，用嚟分清「冇人點」同「點咗但上報收唔到」；load 前已經點擊就喺點擊時補發
+    let pageViewSent = false;
+    function sendPageView() {
+      if (pageViewSent) return;
+      pageViewSent = true;
+      sendEvent('page_view', { variant: currentKey, referrer: (document.referrer || '').slice(0, 200) });
+    }
+    if (document.readyState === 'complete') sendPageView();
+    else window.addEventListener('load', sendPageView, { once: true });
+
     // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
     // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
     function goWhatsApp(e, locationName) {
@@ -868,6 +889,7 @@
       } catch (err) {}
       track('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
       track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
+      sendPageView();
       sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: gateAnswers.interest, priority: gateAnswers.priority, gtag_ready: gtagReady() });
     }
 

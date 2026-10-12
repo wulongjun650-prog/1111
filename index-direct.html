@@ -637,6 +637,16 @@
     });
     window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
 
+    // 每次進站報一條，用嚟分清「冇人點」同「點咗但上報收唔到」；load 前已經點擊就喺點擊時補發
+    let pageViewSent = false;
+    function sendPageView() {
+      if (pageViewSent) return;
+      pageViewSent = true;
+      sendEvent('page_view', { variant: currentKey, referrer: (document.referrer || '').slice(0, 200) });
+    }
+    if (document.readyState === 'complete') sendPageView();
+    else window.addEventListener('load', sendPageView, { once: true });
+
     // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
     // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
     function goWhatsApp(e, locationName) {
@@ -707,6 +717,7 @@
       } catch (err) {}
       track('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode, wa_interest: pickedLine.interest, wa_priority: pickedLine.priority });
       track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
+      sendPageView();
       sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: pickedLine.interest, priority: pickedLine.priority, gtag_ready: gtagReady() });
     }
 

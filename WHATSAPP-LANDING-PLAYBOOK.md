@@ -341,7 +341,9 @@ setTimeout(() => { clearInterval(flushPoll); flushPendingEvents(true); }, 30000)
 GA4 有采样、延迟、ITP 丢失，且自定义维度要先注册、不追溯。诊断"为什么点了没进来"最可靠的数据源是**页面直接把每一步发回自己（或分流系统）的服务器**。
 
 - `CONFIG.eventEndpoint`：留空不发；填上后每一步各发一条 `POST`，`Content-Type: text/plain`，body 为 JSON（`text/plain` 不触发 CORS 预检）。优先 `navigator.sendBeacon`，失败退 `fetch keepalive`。全部排在跳转之后、`try/catch` 包住，端点不可达也不影响跳转（已验证）。
-- 事件：`whatsapp_click` → `wa_app_opened`（成功）或 `wa_fallback_shown` → `wa_fallback_click` / `wa_copy_number` / `wa_copy_message`（失败后用户的动作）。
+- 事件：`page_view`（load 时发；load 前就点击则在点击时补发）→ `gate_open` → `gate_step2` / `gate_close`（问卷，`how` = x / backdrop / esc，`step` = 关在第几步）→ `whatsapp_click` → `wa_app_opened`（成功）或 `wa_fallback_shown` → `wa_fallback_click` / `wa_copy_number` / `wa_copy_message`（失败后用户的动作）。
+- 漏斗诊断：某系统 / 版位 `page_view` 有、`gate_open` 无 → 首屏按钮点不动或没人点；`gate_open` 有、`whatsapp_click` 无 → 卡在问卷；连 `page_view` 都没有但服务器有进站 → 上报被拦，与跳转无关。
+- `gate_close` 必须包在 `try/catch` 里、且 `closeLeadGate()` 放在 `try` 之外：上报出错也必须能关掉问卷。
 - 每条共有字段：`event`、`ts`、`since_load_ms`（加载到此刻）、`wa_env`、`link_type`（universal / scheme / intent / iframe / retry）、`cta`（hero / final / floating / fallback）、`transaction_id`（同一次点击的所有事件共用，与 Google Ads 转化一致）、`placement_app` / `creative` / `device` / `gclid` / `gbraid` / `wbraid`、`number`、`visible`、`page`、`ua`。
 - `whatsapp_click` 另带：`lead_code`、`variant`、`interest`、`priority`、`gtag_ready`（点击瞬间 gtag 是否已就绪——用来量化"点得太快、转化靠补发"的比例）。
 - `wa_app_opened` / `wa_fallback_shown` 另带 `wa_ms`：点击到页面切后台 / 到面板弹出的毫秒数。
