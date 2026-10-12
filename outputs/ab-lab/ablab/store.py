@@ -141,6 +141,8 @@ class Store:
                 CREATE INDEX IF NOT EXISTS access_log_created ON access_log(created);
                 CREATE TABLE IF NOT EXISTS client_events(id INTEGER PRIMARY KEY, created REAL NOT NULL, body TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS client_events_created ON client_events(created);
+                CREATE TABLE IF NOT EXISTS intake_log(id INTEGER PRIMARY KEY, created REAL NOT NULL, ip TEXT NOT NULL, ua TEXT NOT NULL, origin TEXT NOT NULL, referer TEXT NOT NULL, content_type TEXT NOT NULL, body_length INTEGER NOT NULL, body TEXT NOT NULL, status INTEGER NOT NULL, reason TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS intake_log_created ON intake_log(created);
                 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, created REAL NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
@@ -928,8 +930,9 @@ class Store:
             db.execute('BEGIN IMMEDIATE')
             access = db.execute('DELETE FROM access_log').rowcount
             events = db.execute('DELETE FROM client_events').rowcount
-            self._audit(db, 'analysis_cleared', {'access': access, 'events': events})
-        return {'access': access, 'events': events}
+            intake = db.execute('DELETE FROM intake_log').rowcount
+            self._audit(db, 'analysis_cleared', {'access': access, 'events': events, 'intake': intake})
+        return {'access': access, 'events': events, 'intake': intake}
 
     def clear_logs_unless(self, keep):
         """Delete visit rows in this site only. keep(ip, country) uses the same display rule as the log list."""
@@ -1080,7 +1083,25 @@ class Store:
 
     def campaign_access(self, since, until):
         with self.connect() as db:
-            rows = db.execute('SELECT created, ua, query, path, ip, referer FROM access_log WHERE created>=? AND created<?', (since, until)).fetchall()
+            rows = db.execute('SELECT created, ua, query, path, ip, referer, wa_number FROM access_log WHERE created>=? AND created<?', (since, until)).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_intake(self, ip, ua, origin, referer, content_type, body_length, body, status, reason):
+        """One raw /wa-events request, including rejects and bodies that did not parse."""
+        text = body if isinstance(body, str) else ''
+        with self.connect() as db:
+            db.execute('''INSERT INTO intake_log(created,ip,ua,origin,referer,content_type,body_length,body,status,reason)
+                VALUES(?,?,?,?,?,?,?,?,?,?)''', (
+                time.time(), (ip or '')[:80], (ua or '')[:4096], (origin or '')[:500], (referer or '')[:2048],
+                (content_type or '')[:200], int(body_length), text[:8192], int(status), (reason or '')[:80]))
+            latest = db.execute('SELECT MAX(id) FROM intake_log').fetchone()[0]
+            if latest and latest % 200 == 0:
+                db.execute('DELETE FROM intake_log WHERE created<?', (time.time() - 90 * 86400,))
+
+    def intake_between(self, since, until):
+        with self.connect() as db:
+            rows = db.execute('''SELECT id, created, ip, ua, origin, referer, content_type, body_length, body, status, reason
+                FROM intake_log WHERE created>=? AND created<? ORDER BY id''', (since, until)).fetchall()
         return [dict(row) for row in rows]
 
     def campaign_events(self, since, until):

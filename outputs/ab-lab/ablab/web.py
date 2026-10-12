@@ -32,6 +32,7 @@ from .tracking import normalize_conversion, normalize_ga4
 from .linkcheck import LinkChecker
 from .watrust import PUBLIC_ORIGIN, TrustChecker, device_from_environ
 from .campaign import build_campaign, export_events, fill_youtube_channels, window_bounds
+from .flow import build_flow, intake_csv, summary_csv, visits_csv
 from .contact_config import scan_contact
 from .page_implant import implant_tree, scan_implant
 from .redirects import public_occurrences, rewrite_reception_bytes, rewrite_text, scan_bundle
@@ -134,6 +135,8 @@ class LocalBoundary:
             invalid |= origin is not None and origin != expected_origin.encode()
             invalid |= headers.get(b'sec-fetch-site', b'none') not in (b'none', b'same-origin')
         if invalid:
+            if is_beacon:
+                await _record_rejected_beacon(self.registry, scope, receive)
             await JSONResponse({'detail': '来源、域名或代理校验失败'}, status_code=403)(scope, receive, send)
             return
         if not self.admin and self.registry:
@@ -1271,6 +1274,15 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 events.append(row)
         return visits, events
 
+    def collect_intake(request, since, until):
+        rows = []
+        for site in analysis_sites(request):
+            domain = analysis_domain(site)
+            for row in registry.store(site['id']).intake_between(since, until):
+                row['domain'] = domain
+                rows.append(row)
+        return rows
+
     def campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact=False, dest_app='', youtube='', opener=''):
         since, until = window_bounds(span, start, end, time.time())
         filters = {
@@ -1336,6 +1348,67 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         _visits, events = collect_campaign(request, since, until)
         payload = json.dumps(export_events(events, filters), ensure_ascii=False, separators=(',', ':'))
         return Response(payload, media_type='application/json; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="campaign-events.json"'})
+
+    def flow_window(span, start, end):
+        try:
+            return window_bounds(span, start, end, time.time())
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from None
+
+    def flow_report(request, span, start, end, domain):
+        since, until = flow_window(span, start, end)
+        visits, events = collect_campaign(request, since, until)
+        return build_flow(visits, events, collect_intake(request, since, until), domain)
+
+    @app.get('/api/campaign/flow')
+    def campaign_flow(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
+                      start: str = '', end: str = '', domain: str = ''):
+        report = flow_report(request, span, start, end, domain)
+        report['visits_total'] = len(report['visits'])
+        report['visits'] = report['visits'][:200]
+        since, until = flow_window(span, start, end)
+        intake = collect_intake(request, since, until)
+        if domain.strip():
+            intake = [row for row in intake if (row.get('domain') or '').lower() == domain.strip().lower()]
+        report['intake_total'] = len(intake)
+        report['intake'] = list(reversed(intake[-100:]))
+        return report
+
+    def flow_csv(text, filename):
+        return Response('\ufeff' + text, media_type='text/csv; charset=utf-8', headers={'Content-Disposition': f'attachment; filename="{filename}"'})
+
+    @app.get('/api/campaign/flow.csv')
+    def campaign_flow_csv(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
+                          start: str = '', end: str = '', domain: str = ''):
+        return flow_csv(summary_csv(flow_report(request, span, start, end, domain)), 'flow-summary.csv')
+
+    @app.get('/api/campaign/visits.csv')
+    def campaign_visits_csv(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
+                            start: str = '', end: str = '', domain: str = ''):
+        return flow_csv(visits_csv(flow_report(request, span, start, end, domain)), 'flow-visits.csv')
+
+    @app.get('/api/campaign/intake.csv')
+    def campaign_intake_csv(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
+                            start: str = '', end: str = '', domain: str = ''):
+        since, until = flow_window(span, start, end)
+        rows = collect_intake(request, since, until)
+        if domain.strip():
+            rows = [row for row in rows if (row.get('domain') or '').lower() == domain.strip().lower()]
+        return flow_csv(intake_csv(rows), 'flow-intake.csv')
+
+    @app.get('/api/campaign/page')
+    def campaign_page(request: Request, domain: str = ''):
+        wanted = domain.strip()
+        if not wanted:
+            raise HTTPException(400, '请先选择域名')
+        sites = scoped_analysis_sites(request, wanted)
+        if len(sites) != 1:
+            raise HTTPException(404, '没有这个域名')
+        try:
+            payload, slot = served_landing_bytes(registry.store(sites[0]['id']), jump_event_endpoint(deployment))
+        except FileNotFoundError:
+            raise HTTPException(404, '当前发布页没有可导出的 HTML') from None
+        return Response(payload, media_type='text/html; charset=utf-8', headers={'Content-Disposition': f'attachment; filename="landing-{slot}.html"'})
 
     @app.post('/wa-events')
     async def wa_events(request: Request):
@@ -1622,6 +1695,42 @@ def inject_number_split(data, members, mode, event_endpoint=''):
     return (b'\xef\xbb\xbf' + payload) if bom else payload
 
 
+def _landing_html(root):
+    direct = root / 'index.html'
+    if direct.is_file():
+        return direct, 'index.html'
+    found = sorted(path for path in root.rglob('*') if path.is_file() and path.suffix.lower() in ('.html', '.htm'))
+    if not found:
+        raise FileNotFoundError('index.html')
+    return found[0], found[0].resolve().relative_to(root.resolve()).as_posix()
+
+
+def served_landing_bytes(store, endpoint):
+    """The published page plus the scripts added at serve time. No visitor row is written."""
+    config, _ = store.config()
+    if config.routing == 'FORCE_A':
+        slot = 'A'
+    elif config.routing == 'FORCE_B':
+        slot = 'B'
+    else:
+        slot = config.allowed_slot
+    version_id = store.slots().get(slot) or ''
+    if not version_id:
+        raise FileNotFoundError(slot)
+    root = store.pages / version_id
+    file, relative = _landing_html(root)
+    data = file.read_bytes()
+    split = store.whatsapp_split()
+    if split['enabled'] and split['members'] and Path(relative).suffix.lower() in ('.html', '.htm'):
+        number = {'phone': split['members'][0]['phone'], 'display_name': split['members'][0].get('display_name') or ''}
+        try:
+            data = assign_visitor_page(data, relative, cached_split_scan(root, version_id), None, number)
+        except ValueError:
+            pass
+        data = inject_number_split(data, split['members'], split['mode'], endpoint)
+    return inject_dest_app(fill_event_endpoint(data, endpoint), relative), slot
+
+
 def prepare_number_split(store, request, version_id):
     split = store.whatsapp_split()
     if not version_id or not split['enabled']:
@@ -1750,20 +1859,97 @@ def jump_source_domain(request):
     return ''
 
 
+def intake_reason(body, status):
+    """Why this beacon was kept, rejected, or could not be read."""
+    if status == 413:
+        return '超过大小限制'
+    if status == 403:
+        return '来源、域名或代理校验失败'
+    if not (body or '').strip():
+        return '空 body'
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return '不是 JSON'
+    if not isinstance(payload, dict):
+        return 'JSON 不是对象'
+    event = payload.get('event')
+    if not isinstance(event, str) or not event.strip():
+        return '缺少事件名'
+    return '已接收'
+
+
+def _beacon_store(registry, fallback_store, host):
+    if host and registry is not None:
+        site = registry.find_domain(host)
+        if site is not None:
+            return registry.store(site['id'])
+    return fallback_store
+
+
+def _queue_intake(store, ip, ua, origin, referer, content_type, body_length, body, status, reason):
+    if store is None:
+        return
+    fields = ((ip or '')[:80], (ua or '')[:4096], (origin or '')[:500], (referer or '')[:2048], (content_type or '')[:200], int(body_length), (body or '')[:8192], int(status), (reason or '')[:80])
+    _enqueue_access(lambda store=store, fields=fields: store.record_intake(*fields))
+
+
+def _host_from_url(value):
+    raw = (value or '').strip()
+    if not raw or raw.lower() == 'null':
+        return ''
+    try:
+        return (urlsplit(raw).hostname or '')[:253]
+    except ValueError:
+        return ''
+
+
+async def _read_asgi_body(receive, limit=8192):
+    chunks = []
+    size = 0
+    while True:
+        message = await receive()
+        if message['type'] != 'http.request':
+            break
+        piece = message.get('body') or b''
+        if size < limit:
+            chunks.append(piece[:limit - size])
+        size += len(piece)
+        if not message.get('more_body') or size >= 1024 * 1024:
+            break
+    return b''.join(chunks), size
+
+
+async def _record_rejected_beacon(registry, scope, receive):
+    """A filtered beacon still arrived. Keep it, then return the same 403."""
+    try:
+        raw, size = await _read_asgi_body(receive)
+        headers = {key.decode('latin1').lower(): value.decode('latin1', 'replace') for key, value in scope.get('headers') or []}
+        host = _host_from_url(headers.get('origin') or headers.get('referer') or '')
+        store = _beacon_store(registry, registry.store('default') if registry is not None else None, host)
+        peer = scope.get('client')
+        ip = (scope.get('state') or {}).get('visitor_ip') or (peer[0] if peer else '')
+        _queue_intake(store, ip, headers.get('user-agent', ''), headers.get('origin', ''), headers.get('referer', ''), headers.get('content-type', ''), size, raw.decode('utf-8', 'replace'), 403, '来源、域名或代理校验失败')
+    except Exception:
+        LOGGER.error('rejected beacon log failed')
+
+
 async def accept_jump_event(request, registry, fallback_store):
     """Store one beacon and answer before the write. Statistics must not slow the page."""
     raw = await request.body()
-    if len(raw) > JUMP_EVENT_LIMIT:
-        return Response(status_code=413, headers=JUMP_HEADERS)
-    body = raw.decode('utf-8', 'replace')
-    origin = jump_source_domain(request)
-    store = fallback_store
-    if origin and registry is not None:
-        site = registry.find_domain(origin)
-        if site is not None:
-            store = registry.store(site['id'])
-    _enqueue_access(lambda store=store, body=body, origin=origin: store.record_client_event(body, origin))
-    return Response(status_code=204, headers=JUMP_HEADERS)
+    status = 413 if len(raw) > JUMP_EVENT_LIMIT else 204
+    body = raw[:8192].decode('utf-8', 'replace')
+    reason = intake_reason(body if status == 204 else '', status)
+    host = jump_source_domain(request)
+    store = _beacon_store(registry, fallback_store, host)
+    ip = getattr(request.state, 'visitor_ip', '') or (request.client.host if request.client else '')
+    _queue_intake(
+        store, ip, request.headers.get('user-agent', ''), request.headers.get('origin', ''),
+        request.headers.get('referer', ''), request.headers.get('content-type', ''), len(raw), body, status, reason,
+    )
+    if status == 204:
+        _enqueue_access(lambda store=store, body=body, origin=host: store.record_client_event(body, origin))
+    return Response(status_code=status, headers=JUMP_HEADERS)
 
 
 def record_visit_access(store, request, status, started, wa_number, country):

@@ -767,6 +767,143 @@ function emptyCampaign(message) {
   body.append(row);
 }
 
+function flowQuery() {
+  const params = new URLSearchParams();
+  params.set('range', $('#campaign-range').value || 'today');
+  if ($('#campaign-range').value === 'custom') {
+    params.set('start', $('#campaign-start').value);
+    params.set('end', $('#campaign-end').value);
+  }
+  const domain = currentDomain();
+  if (domain) params.set('domain', domain);
+  return params;
+}
+
+function fillFlowRows(body, items, span, empty, build) {
+  body.replaceChildren();
+  if (!items.length) {
+    const row = element('tr');
+    const cell = element('td', 'empty-state', empty);
+    cell.colSpan = span;
+    row.append(cell);
+    body.append(row);
+    return;
+  }
+  for (const item of items) body.append(build(item));
+}
+
+function flowMetricCells(item) {
+  return [
+    element('td', '', number(item.visits)),
+    element('td', '', number(item.clicks)),
+    element('td', '', number(item.click_times)),
+    element('td', '', number(item.opens)),
+    element('td', '', number(item.fallbacks)),
+    element('td', '', percent(item.open_rate)),
+  ];
+}
+
+function renderFlow(data) {
+  const alerts = $('#flow-alerts');
+  alerts.replaceChildren();
+  for (const item of data.alerts || []) {
+    const note = element('div', 'notice');
+    const text = element('p', '', item.reason);
+    note.append(text);
+    alerts.append(note);
+  }
+  const test = data.test || {};
+  $('#flow-test').textContent = `测试流量 ${number(test.visits)} 次访问、${number(test.click_times)} 次点击，不计入汇总。`;
+  $('#flow-summary').textContent = `报警 ${number((data.alerts || []).length)} 条。进站超过 50 且点击为 0，标红疑似点击或上报失效。版位点击人数至少 10、拉起率比同系统其他版位低 30 个百分点，标红疑似唤醒失败。进站还在、事件连续 15 分钟为 0，标红接收中断。`;
+  fillFlowRows($('#flow-systems'), data.systems || [], 7, '这段时间没有计入汇总的进站或点击。', item => {
+    const row = element('tr', item.alert ? 'campaign-alert' : '');
+    if (item.alert) row.title = item.alert_reason;
+    row.append(element('td', '', item.name), ...flowMetricCells(item));
+    return row;
+  });
+  fillFlowRows($('#flow-placements'), data.placements || [], 8, '这段时间没有计入汇总的版位。', item => {
+    const row = element('tr', item.alert ? 'campaign-alert' : '');
+    if (item.alert) row.title = item.alert_reason;
+    row.append(element('td', '', item.name), element('td', '', item.system), ...flowMetricCells(item));
+    return row;
+  });
+  fillFlowRows($('#flow-trend'), data.trend || [], 3, '这段时间没有计入汇总的进站或事件。', item => {
+    const row = element('tr', item.alert ? 'campaign-alert' : '');
+    if (item.alert) row.title = item.alert_reason || '接收中断';
+    row.append(element('td', 'visit-time', item.label), element('td', '', number(item.visits)), element('td', '', number(item.events)));
+    return row;
+  });
+  const shown = (data.visits || []).length;
+  const total = data.visits_total || shown;
+  $('#flow-visits-summary').textContent = total > shown ? `共 ${number(total)} 次访问，这里显示最近 ${number(shown)} 次。完整名单在访问明细 CSV。` : `共 ${number(total)} 次访问。没有事件的访问会标无事件。`;
+  fillFlowRows($('#flow-visits'), data.visits || [], 10, '这段时间没有落地页访问。', item => {
+    const row = element('tr');
+    row.append(
+      element('td', 'visit-time', campaignClock(item.time)),
+      element('td', '', item.gclid || '—'),
+      element('td', '', item.placement_raw || '—'),
+      element('td', '', item.placement_norm || '—'),
+      element('td', '', item.system || '—'),
+      element('td', '', item.browser || '—'),
+      element('td', '', item.number || '—'),
+      element('td', '', item.align || '—'),
+      element('td', '', item.kind || '—'),
+      clipCell(item.chain || '无事件', 'analysis-wide'),
+    );
+    return row;
+  });
+  const intakeShown = (data.intake || []).length;
+  const intakeTotal = data.intake_total || intakeShown;
+  $('#flow-intake-summary').textContent = intakeTotal > intakeShown ? `共 ${number(intakeTotal)} 条请求，这里显示最近 ${number(intakeShown)} 条。完整日志在原始接收 CSV。` : `共 ${number(intakeTotal)} 条请求。空 body、解析失败和被拒绝的也会留下。`;
+  fillFlowRows($('#flow-intake'), data.intake || [], 8, '这段时间没有 /wa-events 请求。', item => {
+    const row = element('tr', item.status !== 204 ? 'campaign-alert' : '');
+    row.append(
+      element('td', 'visit-time', campaignClock(item.created)),
+      element('td', '', String(item.status ?? '')),
+      element('td', '', item.reason || '—'),
+      element('td', '', item.ip || '—'),
+      element('td', '', item.origin || '—'),
+      element('td', '', number(item.body_length)),
+      clipCell(item.ua || ''),
+      clipCell(item.body || '', 'analysis-wide'),
+    );
+    return row;
+  });
+}
+
+function clearFlow(message) {
+  $('#flow-summary').textContent = message;
+  $('#flow-test').textContent = '';
+  $('#flow-alerts').replaceChildren();
+  $('#flow-summary-csv').removeAttribute('href');
+  $('#flow-visits-csv').removeAttribute('href');
+  $('#flow-intake-csv').removeAttribute('href');
+  $('#flow-page').removeAttribute('href');
+  fillFlowRows($('#flow-systems'), [], 7, message, () => element('tr'));
+  fillFlowRows($('#flow-placements'), [], 8, message, () => element('tr'));
+  fillFlowRows($('#flow-trend'), [], 3, message, () => element('tr'));
+  fillFlowRows($('#flow-visits'), [], 10, message, () => element('tr'));
+  fillFlowRows($('#flow-intake'), [], 8, message, () => element('tr'));
+  $('#flow-visits-summary').textContent = message;
+  $('#flow-intake-summary').textContent = message;
+}
+
+async function loadFlow(request) {
+  const params = flowQuery();
+  const query = params.toString();
+  $('#flow-summary-csv').href = `/api/campaign/flow.csv?${query}`;
+  $('#flow-visits-csv').href = `/api/campaign/visits.csv?${query}`;
+  $('#flow-intake-csv').href = `/api/campaign/intake.csv?${query}`;
+  $('#flow-page').href = `/api/campaign/page?domain=${encodeURIComponent(currentDomain())}`;
+  try {
+    const data = await api(`/api/campaign/flow?${query}`);
+    if (request !== campaignRequest) return;
+    renderFlow(data);
+  } catch (error) {
+    if (request === campaignRequest) $('#flow-summary').textContent = '分流汇总加载失败，请再查询一次。';
+  }
+}
+
 async function loadCampaign() {
   const request = ++campaignRequest;
   const domain = currentDomain();
@@ -779,12 +916,14 @@ async function loadCampaign() {
     const box = $('#campaign-domain');
     if (box) box.value = '';
     emptyCampaign('请先在左上角选择域名。');
+    clearFlow('请先在左上角选择域名。');
     return;
   }
   const params = campaignQuery();
   const query = params.toString();
   $('#campaign-csv').href = `/api/campaign.csv?${query}`;
   $('#campaign-json').href = `/api/campaign/events?${query}`;
+  const flowDone = loadFlow(request);
   try {
     const data = await api(`/api/campaign?${query}`);
     if (request !== campaignRequest) return;
@@ -794,6 +933,7 @@ async function loadCampaign() {
     renderCampaignSystems(data.systems || []);
     if (!data.rows.length) {
       emptyCampaign(`这段时间，${domain} 没有进站或跳转事件。`);
+      await flowDone;
       return;
     }
     const body = $('#campaign-rows');
@@ -842,6 +982,8 @@ async function loadCampaign() {
   } catch (error) {
     if (request === campaignRequest) $('#campaign-summary').textContent = '加载失败，请再查询一次。';
     throw error;
+  } finally {
+    await flowDone;
   }
 }
 
