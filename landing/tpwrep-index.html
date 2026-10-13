@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f6f4ef">
+  <meta name="theme-color" content="#f3f6f8">
   <meta name="format-detection" content="telephone=no">
 
   <!-- 移动端极速网络连接预热与关键渲染资产预加载 -->
@@ -63,67 +63,113 @@
     src="https://www.facebook.com/tr?id=1055025880503308&ev=PageView&noscript=1"/></noscript>
 
   <style>
+    /* A2. Trust-first layout for HK investors 35-65. Native CSS, system type, no external font. */
     :root{
-      --paper:#f6f4ef;--white:#fff;--ink:#17233a;--navy:#243968;--navy2:#315489;
-      --orange:#f28b24;--orange2:#d96e12;--yellow:#ffd94a;--blue:#edf6fb;
-      --muted:#4a5568;--border:#e7e5df;--green:#1f9d62;--red:#c94b3f;--shadow:0 8px 26px rgba(35,57,104,.08)
+      --paper:#f3f6f8;--white:#fff;--ink:#1a2740;--navy:#1e3a5f;--navy2:#24527a;
+      --orange:#c2410c;--orange2:#9a3412;--yellow:#f4d19b;--blue:#e7eef5;
+      --muted:#3d4d63;--border:#d5dee8;--up:#c4352d;--down:#1d7a45;--green:#1d7a45;--red:#c4352d;
+      --shadow:0 1px 0 rgba(26,39,64,.06);--radius:10px;
+      color-scheme:light dark
     }
-    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    html{scroll-behavior:smooth;background:#e9e8e4;touch-action:manipulation}
-    body{margin:0;color:var(--ink);background:#e9e8e4;font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","PingFang HK","Microsoft JhengHei","Noto Sans TC",Arial,sans-serif;-webkit-font-smoothing:antialiased;touch-action:manipulation}
+    @media (prefers-color-scheme:dark){
+      :root{
+        --paper:#121820;--white:#1a2330;--ink:#e7eef6;--navy:#d5e4f5;--navy2:#9ec0de;
+        --orange:#e07a3d;--orange2:#f0b27a;--yellow:#3a2e22;--blue:#243140;
+        --muted:#b7c4d4;--border:#2c3c4e;--up:#ff7369;--down:#4ade80;--green:#4ade80;--red:#ff7369;
+        --shadow:none
+      }
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:auto}
+    body{margin:0;color:var(--ink);background:var(--paper);font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","PingFang HK","Microsoft JhengHei","Noto Sans TC",Arial,sans-serif;font-size:18px;line-height:1.65;-webkit-font-smoothing:antialiased;touch-action:manipulation}
     a{color:inherit;text-decoration:none;-webkit-user-select:none;user-select:none}
     button{font:inherit;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-user-select:none;user-select:none}
-    #method,#market,#trust,footer{content-visibility:auto;contain-intrinsic-size:1px 500px}
-    .page{width:100%;max-width:520px;margin:0 auto;background:var(--paper);min-height:100vh;overflow:hidden;box-shadow:0 0 30px rgba(0,0,0,.04)}
-    .brand-banner{display:block;width:100%;height:auto;background:#f6f6f3}
-    .hero{position:relative;padding:20px 20px 22px;background:linear-gradient(180deg,rgba(255,255,255,.20),rgba(246,244,239,.10)),url('assets/hero-bg.webp') center/cover no-repeat;border-bottom:1px solid rgba(36,57,104,.08)}
-    .hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(246,244,239,.04),rgba(246,244,239,.45));pointer-events:none}.hero-inner{position:relative;z-index:1}
-    .eyebrow{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.9);border:1px solid rgba(36,57,104,.12);color:var(--navy);font-size:14px;font-weight:850;box-shadow:0 5px 16px rgba(36,57,104,.05)}
-    .eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--red);animation:live-dot 1.6s ease-in-out infinite}
-    @keyframes live-dot{0%,100%{opacity:1}50%{opacity:.35}}
-    h1{margin:12px 0 8px;font-size:38px;line-height:1.08;letter-spacing:-.035em;color:#15233d;font-weight:950} h1 .accent{color:var(--orange2)}
-    .hero-kickers{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 0}.hero-kickers span{font-size:12px;font-weight:800;color:#334a6b;background:rgba(255,255,255,.72);border:1px solid rgba(36,57,104,.09);padding:6px 9px;border-radius:999px}
-    .hero-sub{margin:11px 0 0;font-size:15px;line-height:1.68;color:#42516b;font-weight:650}.hero-proof{margin-top:10px;color:#5a6474;font-size:12px;line-height:1.55;text-align:center}
-    .cta{-webkit-touch-callout:none;width:100%;min-height:60px;border:0;border-radius:15px;display:flex;align-items:center;justify-content:center;gap:8px;padding:15px 18px;margin-top:16px;color:#fff;background:linear-gradient(135deg,#f59a2e,#e77c15);font-size:19px;line-height:1.3;font-weight:900;box-shadow:0 11px 22px rgba(229,124,21,.22);cursor:pointer;-webkit-tap-highlight-color:transparent}
-    .cta:active,.gate-confirm:active{transform:scale(.98) translateY(1px);opacity:.94;transition:transform .06s ease,opacity .06s ease}
-    /* 領取按鈕動效：掃光 → 輕彈 → 箭頭前推，每 3 秒一輪。只動 transform（合成層），唔觸發重排、唔影響 CLS。
-       用偽元素實現，因為 qxCard() 會用 textContent 改寫按鈕文字 */
-    .cta[data-wa]{position:relative;overflow:hidden;isolation:isolate;animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite}
-    .cta[data-wa]::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:-40%;width:28%;background:linear-gradient(105deg,rgba(255,255,255,0),rgba(255,255,255,.45) 50%,rgba(255,255,255,0));transform:skewX(-18deg);animation:cta-shine 3s ease-in-out 1.2s infinite;pointer-events:none}
-    .cta[data-wa]::after{content:"";flex:none;width:8px;height:8px;margin-left:1px;border-top:2.5px solid currentColor;border-right:2.5px solid currentColor;transform:rotate(45deg);animation:cta-arrow 3s ease-in-out 1.2s infinite}
-    .cta[data-wa]:active{animation:none}
-    .cta.cta-idle,.cta.cta-idle::before,.cta.cta-idle::after,
-    .floating-cta-wrap:not(.show) .cta,.floating-cta-wrap:not(.show) .cta::before,.floating-cta-wrap:not(.show) .cta::after{animation-play-state:paused}
-    @keyframes cta-bounce{0%,62%,100%{transform:none}68%{transform:translateY(-3px) scale(1.035)}74%{transform:scale(.985)}80%{transform:translateY(-1px) scale(1.015)}86%{transform:none}}
-    @keyframes cta-shine{0%,38%{transform:translateX(0) skewX(-18deg)}60%,100%{transform:translateX(520%) skewX(-18deg)}}
-    @keyframes cta-arrow{0%,62%,100%{transform:translateX(0) rotate(45deg)}70%{transform:translateX(4px) rotate(45deg)}78%{transform:translateX(0) rotate(45deg)}}
-    @media (prefers-reduced-motion:reduce){.cta[data-wa],.cta[data-wa]::before,.cta[data-wa]::after{animation:none}}
-    .gate-option:active{transform:scale(.985);background:#f7f9fc;transition:transform .06s ease}
-    .gate-close-x:active,.gate-cancel:active{transform:scale(.97);background:#eae6de;transition:transform .06s ease}
-    .cta-note{text-align:center;margin:9px 0 0;color:#5a6474;font-size:13px;line-height:1.5}
-    section{padding:32px 20px}.section-white{background:#fff}.section-blue{background:linear-gradient(180deg,#f1f8fc,#edf5f9)}
-    .section-label{display:inline-block;font-size:13px;font-weight:900;letter-spacing:.06em;color:var(--orange2);margin-bottom:8px;padding:4px 10px;border-radius:999px;background:#fff1dc}
-    h2{margin:0;font-size:26px;line-height:1.35;letter-spacing:-.015em;color:#17243e;font-weight:950}h2 .hl{color:var(--red)}h2 .hl-o{color:var(--orange2)}.section-intro{margin:10px 0 0;font-size:16px;line-height:1.75;color:var(--muted)}
-    .section-intro b{color:#17243e}
-    .method-card{margin-top:18px;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 5px 18px rgba(41,74,119,.04)}
-    .method-row{display:grid;grid-template-columns:48px 1fr;gap:12px;align-items:center;padding:16px 15px;border-bottom:1px solid #eeeae3}.method-row:last-child{border-bottom:0}
-    .method-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fff4d6;color:#b66b09;font-size:18px;font-weight:900}.method-row strong{display:block;font-size:17px;color:#1f2d47;margin-bottom:3px}.method-row p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}.method-result{margin-top:14px;padding:13px 14px;border-radius:12px;background:#fff7da;border:1px solid #f3df9a;color:#3a4558;font-size:15px;font-weight:800;text-align:center;line-height:1.5}
-    .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}.stat{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 13px;min-height:104px}.stat-label{font-size:14px;color:#4a5568;font-weight:800}.stat-value{font-size:26px;line-height:1.1;font-weight:950;color:#192640;margin-top:8px;letter-spacing:-.02em}.stat-change{font-size:14px;font-weight:900;margin-top:6px}.up{color:var(--green)}.down{color:var(--red)}.neutral{color:var(--navy2)}
-    .stat.stat-hot{background:#fff8ec;border-color:#f1c877}
-    .market-points{margin-top:18px;border-top:1px solid #e3e0d9}.market-point{display:grid;grid-template-columns:36px 1fr;gap:11px;padding:16px 0;border-bottom:1px solid #e3e0d9}.num{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#fff4d6;color:#b66b09;font-size:14px;font-weight:900}.market-point strong{display:block;font-size:17px;line-height:1.45;color:#1f2d47;margin-bottom:5px}.market-point p{margin:0;color:var(--muted);font-size:15px;line-height:1.75}.market-point p b{color:#17243e}.source-line{margin-top:14px;font-size:12px;color:#6b7380;line-height:1.65}.source-line a{text-decoration:underline;text-underline-offset:2px}    .category-list{display:grid;gap:10px;margin-top:17px}.category-card{background:#fff;border:1px solid rgba(36,57,104,.11);border-radius:15px;padding:15px;box-shadow:0 5px 18px rgba(41,74,119,.04)}.category-top{display:flex;align-items:center;justify-content:space-between;gap:9px}.category-num{font-size:11px;font-weight:900;color:#fff;background:var(--navy);padding:5px 7px;border-radius:7px}.category-badge{font-size:10px;font-weight:900;color:#a86107;background:#fff2c6;padding:5px 7px;border-radius:7px}.category-card h3{margin:9px 0 5px;font-size:17px;color:#182640}.category-card p{margin:0;color:#657287;font-size:12px;line-height:1.6}.category-card.active{border-color:#f1c877;box-shadow:0 8px 22px rgba(229,124,21,.08)}
-    .list-note{margin-top:12px;padding:12px 13px;border-radius:13px;background:rgba(255,255,255,.65);border:1px dashed #bfd2e1}.list-note strong{display:block;font-size:12px;color:#283957;margin-bottom:7px}.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{font-size:10px;font-weight:800;color:#4b5c73;background:#fff;border:1px solid #dce6ee;padding:5px 7px;border-radius:999px}
-    .trust{display:flex;gap:14px;align-items:center;margin-top:18px;padding:16px;background:#fff;border:1px solid var(--border);border-radius:15px}.avatar{width:72px;height:72px;border-radius:15px;object-fit:cover;border:1px solid #e8e5de;background:#fff;flex:none}.trust h3{margin:0 0 4px;font-size:19px;color:#1a2741}.trust p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}.yt-link{display:inline-flex;align-items:center;gap:4px;margin-top:8px;color:var(--navy2);font-weight:850;font-size:14px;min-height:32px}
-    .trust-points{display:grid;gap:9px;margin-top:14px}.trust-point{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;background:rgba(255,255,255,.75);border:1px solid #dce6ee;border-radius:13px;font-size:15px;line-height:1.55;color:#2c3a52;font-weight:700}.trust-point i{flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center}
-    .final-card{margin-top:20px;padding:24px 18px 20px;border-radius:18px;background:linear-gradient(155deg,#fffaf0,#fff 68%);border:2px solid #f0cf8f;box-shadow:var(--shadow);text-align:center}.mini-label{display:inline-block;font-size:13px;font-weight:900;color:#b56b0d;letter-spacing:.04em;background:#fff1dc;padding:4px 10px;border-radius:999px}.final-card h2{font-size:26px;margin-top:10px}.final-card p{font-size:15px;line-height:1.7;color:var(--muted);margin:10px 0 0}.final-card p b{color:#17243e}.reception{margin-top:11px;font-size:13px;line-height:1.5;color:#5a6474;font-weight:700}
-    footer{padding:18px 18px calc(96px + env(safe-area-inset-bottom));text-align:center;color:#7d776d;background:#f6f4ef;font-size:12px;line-height:1.7;border-top:1px solid #ebe8e0}
-    .floating-cta-wrap{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(520px,100%);z-index:30;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(246,244,239,0),rgba(246,244,239,.96) 28%,rgba(246,244,239,.99));opacity:0;pointer-events:none;transition:opacity .2s ease}.floating-cta-wrap.show{opacity:1;pointer-events:auto}.floating-cta{width:100%;min-height:58px;margin:0;border-radius:15px;box-shadow:0 10px 24px rgba(229,124,21,.24);font-size:18px}
-
-    .hero-heading{margin:14px 0 6px;font-size:33px;line-height:1.22;letter-spacing:-.02em;color:#15233d;font-weight:950}
-    .hero-heading .accent{color:var(--orange2)}.hero-heading .hl{color:var(--red)}
-    .hero-lead{margin:8px 0 12px;color:#3a4558;font-size:16px;line-height:1.65;font-weight:700}
-    .hero-lead b{color:#15233d;background:linear-gradient(transparent 60%,#ffe08a 60%)}
-
+    a:focus-visible,button:focus-visible{outline:3px solid var(--orange);outline-offset:3px}
+    #method,#market,#trust,footer{content-visibility:auto;contain-intrinsic-size:1px 420px}
+    .page{width:100%;max-width:560px;margin:0 auto;background:var(--white);min-height:100vh;box-shadow:var(--shadow)}
+    .brand-banner{display:block;width:100%;height:auto;background:var(--white)}
+    .hero{position:relative;padding:8px 20px 28px;background:var(--white);border-bottom:1px solid var(--border)}
+    .hero-inner{position:relative}
+    .hero-photo{display:block;width:calc(100% + 40px);max-width:none;height:148px;margin:0 -20px 16px;object-fit:cover;object-position:center 40%}
+    .eyebrow{margin:0 0 10px;color:var(--navy2);font-size:16px;font-weight:700}
+    .eyebrow .dot{display:none}
+    h1,.hero-heading{margin:0 0 10px;font-size:34px;line-height:1.22;letter-spacing:0;color:var(--ink);font-weight:800}
+    .hero-heading .hl{color:var(--up)}
+    .hero-heading .accent{color:var(--orange2)}
+    .hero-lead{margin:0 0 14px;color:var(--muted);font-size:18px;line-height:1.6;font-weight:500}
+    .hero-lead b{color:var(--ink);font-weight:700}
     .lead-scroll{display:none}
+    .hero-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0}
+    .hstep{display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:8px 4px;background:var(--blue);border-radius:var(--radius);font-size:16px;font-weight:700;color:var(--ink);white-space:nowrap}
+    .hstep-n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--navy);color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center}
+    .cta{width:100%;min-height:64px;border:0;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;gap:8px;padding:16px 18px;margin-top:16px;color:#fff;background:var(--orange);font-size:20px;line-height:1.3;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .cta:active,.gate-confirm:active{transform:scale(.99)}
+    .cta.cta-top{margin-top:8px;min-height:68px;font-size:21px}
+    .hero-cta-sub{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 16px;color:var(--down);font-size:16px;line-height:1.4;font-weight:700}
+    .hero-cta-sub i{flex:none;width:20px;height:20px;border-radius:50%;background:var(--down);color:#fff;font-style:normal;font-size:13px;display:flex;align-items:center;justify-content:center}
+    .hero-cta-sub span{color:var(--muted);font-weight:500}
+    .hero-cta-sub[hidden]{display:none}
+    .slider-wrap{position:relative;margin:4px -20px 0;padding-left:20px;overflow:hidden}
+    .slider{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:4px 40px 12px 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .slider::-webkit-scrollbar{display:none}
+    .hero-card{flex:0 0 calc(100% - 36px);scroll-snap-align:start;min-height:0;border-radius:var(--radius);padding:18px 16px;background:var(--paper);border:1px solid var(--border);border-left:4px solid var(--border)}
+    .hero-card.active{border-left-color:var(--orange);background:var(--white)}
+    .card-tag{display:inline-flex;align-items:center;gap:6px;color:var(--orange2);font-size:15px;font-weight:800}
+    .card-tag i{display:block;width:8px;height:8px;border-radius:50%;background:var(--orange)}
+    .hero-card h3{margin:8px 0 6px;font-size:24px;line-height:1.3;color:var(--ink);font-weight:800}
+    .hero-card p{margin:0;color:var(--muted);font-size:17px;line-height:1.6;font-weight:500}
+    .hero-card p b{color:var(--ink)}
+    .card-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+    .card-meta span{font-size:14px;font-weight:700;color:var(--navy);background:var(--blue);padding:4px 8px;border-radius:6px}
+    .slider-dots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}
+    .slider-dot{min-height:52px;border:1px solid var(--border);border-radius:var(--radius);padding:0 6px;background:var(--white);color:var(--muted);font-size:16px;font-weight:800;cursor:pointer}
+    .slider-dot.active{border-color:var(--orange);background:var(--white);color:var(--orange2)}
+    .hero-choice,.hero-qualify-note,.hero-proof{margin:12px 0 0;text-align:center;color:var(--muted);font-size:15px;line-height:1.5;font-weight:500}
+    .hero-qualify-note{color:var(--navy)}
+    section{padding:32px 20px}
+    .section-white{background:var(--white)}
+    .section-blue{background:var(--paper)}
+    .section-label{display:block;margin:0 0 8px;color:var(--navy2);font-size:16px;font-weight:700}
+    h2{margin:0;font-size:28px;line-height:1.3;color:var(--ink);font-weight:800}
+    h2 .hl{color:var(--up)}
+    h2 .hl-o{color:var(--orange2)}
+    .section-intro{margin:12px 0 0;font-size:18px;line-height:1.7;color:var(--muted)}
+    .section-intro b{color:var(--ink)}
+    .method-card{margin-top:18px;border-top:1px solid var(--border)}
+    .method-row{display:grid;grid-template-columns:36px 1fr;gap:12px;align-items:start;padding:16px 0;border-bottom:1px solid var(--border)}
+    .method-icon{font-size:18px;font-weight:800;color:var(--orange2);padding-top:2px}
+    .method-row strong{display:block;font-size:20px;color:var(--ink);margin-bottom:2px}
+    .method-row p{margin:0;color:var(--muted);font-size:17px;line-height:1.6}
+    .method-result{margin-top:16px;color:var(--ink);font-size:17px;font-weight:700;line-height:1.5}
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+    .stat{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:14px 12px;min-height:108px}
+    .stat-label{font-size:15px;color:var(--muted);font-weight:700}
+    .stat-value{font-size:28px;line-height:1.15;font-weight:800;color:var(--ink);margin-top:6px}
+    .stat-change{font-size:15px;font-weight:800;margin-top:6px}
+    .up{color:var(--up)}
+    .down{color:var(--down)}
+    .neutral{color:var(--navy2)}
+    .stat.stat-hot{border-color:var(--orange)}
+    .market-points{margin-top:8px}
+    .market-point{padding:16px 0;border-top:1px solid var(--border)}
+    .market-point .num{display:none}
+    .market-point strong{display:block;font-size:20px;line-height:1.4;color:var(--ink);margin-bottom:4px}
+    .market-point p{margin:0;color:var(--muted);font-size:17px;line-height:1.7}
+    .market-point p b{color:var(--ink)}
+    .source-line{margin-top:14px;font-size:14px;color:var(--muted);line-height:1.65}
+    .source-line a{text-decoration:underline;text-underline-offset:2px}
+    .final-card{padding:4px 0 0;text-align:left}
+    .mini-label{color:var(--navy2);font-size:16px;font-weight:700}
+    .final-card h2{font-size:28px;margin-top:8px}
+    .final-card p{font-size:18px;line-height:1.7;color:var(--muted);margin:10px 0 0}
+    .final-card p b{color:var(--ink)}
+    .reception-row{display:flex;align-items:center;gap:12px;margin-top:14px}
+    .avatar{width:56px;height:56px;border-radius:50%;object-fit:cover;border:1px solid var(--border);background:var(--white);flex:none}
+    .reception{font-size:16px;line-height:1.45;color:var(--muted);font-weight:700}
+    footer{padding:20px 20px calc(108px + env(safe-area-inset-bottom));text-align:left;color:var(--muted);background:var(--paper);font-size:14px;line-height:1.7;border-top:1px solid var(--border)}
+    .floating-cta-wrap{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(560px,100%);z-index:30;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--white);border-top:1px solid var(--border);opacity:0;pointer-events:none}
+    .floating-cta-wrap.show{opacity:1;pointer-events:auto}
+    .floating-cta{width:100%;min-height:60px;margin:0;font-size:19px}
     @media (max-width:860px){
       html.cta-below .hero-inner{display:flex;flex-direction:column}
       html.cta-below .hero-above{order:1}
@@ -133,120 +179,63 @@
       html.cta-below .lead-tap{display:none}
       html.cta-below .lead-scroll{display:inline}
     }
-    .hero-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:4px 0 14px}
-    .hstep{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:8px 6px;background:rgba(255,255,255,.94);border:1px solid rgba(36,57,104,.12);border-radius:13px;font-size:15px;font-weight:900;color:#17243e;white-space:nowrap}
-    .hstep-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--orange);color:#fff;font-size:14px;font-weight:950;display:flex;align-items:center;justify-content:center}
-    .hstep:last-child .hstep-n{background:var(--green)}
-    .slider-wrap{position:relative;margin:6px -20px 0;padding-left:20px;overflow:hidden}
-    .slider{position:relative;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:3px 48px 8px 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-    .slider::-webkit-scrollbar{display:none}
-    .hero-card{flex:0 0 calc(100% - 44px);scroll-snap-align:start;min-height:180px;border-radius:17px;padding:16px 15px 15px;background:rgba(255,255,255,.90);border:1px solid rgba(36,57,104,.12);box-shadow:0 9px 26px rgba(36,57,104,.08);position:relative;overflow:hidden}
-    .hero-card:before{content:"";position:absolute;width:126px;height:126px;border-radius:50%;right:-54px;top:-54px;background:rgba(237,246,251,.95)}
-    .hero-card:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,var(--orange),var(--yellow))}
-    .hero-card.active{border-color:rgba(242,139,36,.45);box-shadow:0 10px 28px rgba(229,124,21,.12)}
-    .card-tag{display:inline-flex;align-items:center;gap:6px;position:relative;z-index:1;padding:5px 10px;border-radius:999px;background:#fff2c6;color:#9d5b07;font-size:13px;font-weight:950;letter-spacing:.02em}
-    .card-tag i{display:block;width:7px;height:7px;border-radius:50%;background:var(--orange)}
-    .hero-card h3{position:relative;z-index:1;margin:11px 0 7px;font-size:23px;line-height:1.25;letter-spacing:-.015em;color:#17243e;font-weight:950}
-    .hero-card p{position:relative;z-index:1;margin:0;color:#3f4b5e;font-size:15px;line-height:1.65;font-weight:650}
-    .hero-card p b{color:#c94b3f}
-    .card-meta{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
-    .card-meta span{font-size:13px;font-weight:850;color:#33465f;background:#f4f7fa;border:1px solid #e3eaf0;padding:5px 9px;border-radius:999px}
-    .slider-dots{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:6px}
-    .slider-dot{min-height:44px;border:1px solid #d9dfe7;border-radius:12px;padding:0 4px;background:rgba(255,255,255,.9);color:#4a5568;font-size:15px;font-weight:900;transition:.15s;cursor:pointer}
-    .slider-dot.active{border-color:var(--orange);background:#fff3e2;color:#c0630c;box-shadow:0 4px 12px rgba(229,124,21,.14)}
-    .cta.cta-top{margin-top:6px;min-height:68px;border-radius:17px;font-size:21px;background:linear-gradient(135deg,#ffa33a,#e8700f);animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite,cta-glow 1.8s ease-out infinite}
-    @keyframes cta-glow{0%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 0 rgba(242,139,36,.55)}70%,100%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 11px rgba(242,139,36,0)}}
-    @media (prefers-reduced-motion:reduce){.cta.cta-top{animation:none}}
-    .hero-cta-sub{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 12px;color:#1f7a45;font-size:15px;line-height:1.4;font-weight:900}
-    .hero-cta-sub i{flex:none;width:18px;height:18px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;font-size:11px;display:flex;align-items:center;justify-content:center}
-    .hero-cta-sub span{color:#9fb5a7}
-    .hero-cta-sub[hidden]{display:none}
-    .hero-choice{margin-top:10px;text-align:center;color:#5a6474;font-size:13px;line-height:1.5}
-    .hero-qualify-note{text-align:center;margin:8px 0 0;color:#8a5a1f;font-size:14px;line-height:1.5;font-weight:800}
-
-    /* 问卷抽屉样式：100% 完整保留 */
-    .lead-gate{position:fixed;inset:0;z-index:60;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .lead-gate{position:fixed;inset:0;z-index:60;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.62);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
     .lead-gate.show{display:flex}
-    .gate-panel{width:100%;max-width:520px;background:linear-gradient(180deg,#fcfbf8 0%,#f6f3ed 100%);border-radius:28px 28px 0 0;box-shadow:0 -16px 42px rgba(13,23,39,.18);padding:14px 18px calc(18px + env(safe-area-inset-bottom));max-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border:1px solid rgba(255,255,255,.55)}
-    .gate-handle{width:54px;height:5px;border-radius:999px;background:#d8d2c7;margin:0 auto 13px}
-    .gate-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
-    .gate-kicker{font-size:14px;font-weight:900;color:var(--orange2);letter-spacing:.02em}
-    .gate-close-x{width:40px;height:40px;border:0;border-radius:50%;background:#efebe4;color:#5a6474;font-size:22px;line-height:1;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center}
-    .gate-title{margin:6px 0 0;font-size:24px;line-height:1.35;color:#1b2943;font-weight:950;letter-spacing:-.015em}
-    .gate-desc{margin:8px 0 0;color:#4a5568;font-size:15px;line-height:1.6}
+    .gate-panel{width:100%;max-width:560px;background:var(--white);border-radius:16px 16px 0 0;padding:14px 18px calc(18px + env(safe-area-inset-bottom));max-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+    .gate-handle{width:48px;height:5px;border-radius:999px;background:var(--border);margin:0 auto 12px}
+    .gate-top,.gate-top2{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .gate-kicker,.gate-step-text{font-size:16px;font-weight:700;color:var(--orange2)}
+    .gate-close-x{width:44px;height:44px;border:0;border-radius:50%;background:var(--paper);color:var(--muted);font-size:26px;line-height:1;cursor:pointer}
+    .gate-title{margin:8px 0 0;font-size:26px;line-height:1.35;color:var(--ink);font-weight:800}
+    .gate-desc{margin:8px 0 0;color:var(--muted);font-size:17px;line-height:1.55}
     .gate-options{display:grid;gap:10px;margin-top:16px}
-    .gate-option{position:relative;width:100%;min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 15px;border:2px solid #e4dfd6;border-radius:18px;background:#fff;color:#30415f;font-size:18px;font-weight:900;text-align:left;cursor:pointer;box-shadow:0 4px 14px rgba(36,57,104,.03);transition:.16s ease}
+    .gate-option{position:relative;width:100%;min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--white);color:var(--ink);font-size:18px;font-weight:800;text-align:left;cursor:pointer}
     a.gate-option{-webkit-touch-callout:none}
     .gate-step{display:none}
-    .gate-step.active{display:block;animation:gate-in .18s ease}
-    @keyframes gate-in{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
-    .gate-progress{display:flex;align-items:center;gap:6px;margin:0 0 8px}
-    .gate-progress-dot{width:26px;height:6px;border-radius:999px;background:#e3ddd3}
+    .gate-step.active{display:block}
+    .gate-progress{display:flex;align-items:center;gap:8px;margin:0 0 8px}
+    .gate-progress-dot{width:28px;height:6px;border-radius:999px;background:var(--border)}
     .gate-progress-dot.on{background:var(--orange)}
-    .gate-progress-text{margin-left:4px;font-size:13px;font-weight:800;color:#6b7380}
+    .gate-progress-text{margin-left:4px;font-size:15px;font-weight:700;color:var(--muted)}
     .gate-panel.on-step2>.gate-top,.gate-panel.on-step2>.gate-progress{display:none}
-    .gate-top2{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
-    .gate-step-text{font-size:15px;font-weight:900;color:#7e8795}
-    .gate-bar{height:6px;border-radius:999px;background:#e8e3da;overflow:hidden;margin-bottom:14px}
-    .gate-bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#f0a04a,#f6c979)}
-    .gate-intro{padding:13px 14px;border:1px solid #ebe5db;border-radius:18px;background:linear-gradient(180deg,#fffdfa,#f8f5ef);box-shadow:inset 0 1px 0 rgba(255,255,255,.82)}
-    .gate-intro strong{display:block;font-size:16px;color:#202f49;margin-bottom:4px}
-    .gate-intro p{margin:0;color:#5a6474;font-size:14px;line-height:1.55}
-    .gate-selected-tip{margin-top:10px;padding:9px 12px;border-radius:13px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:14px;font-weight:800}
-    .gate-selected-tip b{color:#bc6d12}
-    .gate-option-arrow{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-size:20px;color:#aeb7c4;background:#f7f8fa;border:1px solid #edf0f4}
-    .gate-option.active .gate-option-arrow{color:#e8881f;background:#fff1dc;border-color:#f7d9aa}
-    .gate-back{min-height:60px;padding:0 18px;border:1px solid #dfdad1;border-radius:15px;background:#f3f1ec;color:#556177;font-size:17px;font-weight:950;cursor:pointer}
-    .gate-back:active{transform:scale(.97);background:#eae6de;transition:transform .06s ease}
-    .gate-step[data-step="2"] .gate-intro{padding:11px 13px}
-    .gate-step[data-step="2"] .gate-intro p{font-size:13px}
-    .gate-step[data-step="2"] .gate-selected-tip{margin-top:8px;padding:7px 11px}
-    .gate-step[data-step="2"] .gate-title{margin-top:12px;font-size:20px}
-    .gate-step[data-step="2"] .gate-desc{margin-top:4px;font-size:14px}
-    .gate-step[data-step="2"] .gate-options{gap:9px;margin-top:12px}
-    .gate-step[data-step="2"] .gate-option{min-height:0;padding:11px 12px;gap:10px;font-size:15px}
-    .gate-step[data-step="2"] .gate-option-main{gap:10px}
-    .gate-step[data-step="2"] .gate-option-icon{width:36px;height:36px;font-size:15px}
-    .gate-step[data-step="2"] .gate-option small{font-size:12px;margin-top:3px}
-    .gate-step[data-step="2"] .gate-option-arrow{width:28px;height:28px;font-size:18px}
-    .gate-step[data-step="2"] .gate-actions{margin-top:14px}
-    .gate-step[data-step="2"] .gate-back{min-height:56px}
-    a.gate-option{-webkit-touch-callout:none}
-    .gate-go:active{border-color:#ee9a3a;background:#fff7eb}
-    .gate-go-tip{flex:1;display:flex;flex-direction:column;justify-content:center;padding:6px 12px;border-radius:15px;background:#effaf3;border:1px solid #cfe9d9;color:#3f6b52;font-size:13px;line-height:1.45;font-weight:800;text-align:center}
-    .gate-go-tip b{color:#1f7a45;font-size:16px;font-weight:950}
-    @media(max-height:700px){.on-step2 .gate-handle{margin-bottom:8px}.gate-step[data-step="2"] .gate-intro p,.gate-step[data-step="2"] .gate-desc{display:none}.gate-step[data-step="2"] .gate-title{margin-top:10px}.gate-go-tip br{display:none}.gate-go-tip b{font-size:15px}.gate-step[data-step="2"] .gate-back{min-height:50px}}
-    @media(max-height:600px){.gate-step[data-step="2"] .gate-option small,.on-step2 .gate-trust{display:none}.gate-step[data-step="2"] .gate-option{padding:10px 12px}}
+    .gate-bar{height:6px;border-radius:999px;background:var(--border);overflow:hidden;margin-bottom:14px}
+    .gate-bar i{display:block;width:100%;height:100%;background:var(--orange)}
+    .gate-intro{padding:12px 14px;border-radius:var(--radius);background:var(--paper)}
+    .gate-intro strong{display:block;font-size:17px;color:var(--ink);margin-bottom:4px}
+    .gate-intro p{margin:0;color:var(--muted);font-size:16px;line-height:1.55}
+    .gate-selected-tip{margin-top:10px;padding:8px 12px;border-radius:var(--radius);background:var(--blue);color:var(--navy);font-size:16px;font-weight:700}
+    .gate-selected-tip b{color:var(--orange2)}
+    .gate-option-arrow{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-size:22px;color:var(--muted);background:var(--paper)}
+    .gate-back{min-height:56px;padding:0 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--paper);color:var(--ink);font-size:17px;font-weight:800;cursor:pointer}
     .gate-option-main{display:flex;align-items:center;gap:12px;min-width:0}
-    .gate-option-icon{width:42px;height:42px;border-radius:12px;background:linear-gradient(180deg,#fff6e7,#fff1d5);color:#b96809;display:flex;align-items:center;justify-content:center;flex:none;font-size:17px;font-weight:950;border:1px solid #f2dfb9}
-    .gate-option-title{display:block;color:#253550;line-height:1.3}
-    .gate-option small{display:block;margin-top:4px;color:#5a6474;font-size:13px;line-height:1.45;font-weight:700}
-    .gate-option-check{width:28px;height:28px;border-radius:50%;flex:none;border:2px solid #cfd5de;background:#fff;position:relative;transition:.16s ease}
-    .gate-option.active{border-color:#ee9a3a;background:linear-gradient(180deg,#fffdfa,#fff4e3);box-shadow:0 9px 22px rgba(229,124,21,.14)}
-    .gate-option.active .gate-option-check{border-color:#e8881f;background:#e8881f}
-    .gate-option.active .gate-option-check:after{content:"";position:absolute;left:8px;top:4px;width:7px;height:12px;border-right:3px solid #fff;border-bottom:3px solid #fff;transform:rotate(45deg)}
-    .gate-option.active .gate-option-title{color:#1d2c45}
+    .gate-option-icon{width:44px;height:44px;border-radius:8px;background:var(--blue);color:var(--navy);display:flex;align-items:center;justify-content:center;flex:none;font-size:16px;font-weight:800}
+    .gate-option-title{display:block;color:var(--ink);line-height:1.35}
+    .gate-option small{display:block;margin-top:4px;color:var(--muted);font-size:15px;line-height:1.45;font-weight:500}
+    .gate-option-check{width:26px;height:26px;border-radius:50%;flex:none;border:2px solid var(--border);background:var(--white);position:relative}
+    .gate-option.active{border-color:var(--orange);background:var(--paper)}
+    .gate-option.active .gate-option-check{border-color:var(--orange);background:var(--orange)}
+    .gate-option.active .gate-option-check:after{content:"";position:absolute;left:7px;top:3px;width:6px;height:11px;border-right:3px solid #fff;border-bottom:3px solid #fff;transform:rotate(45deg)}
     .gate-actions{display:flex;gap:10px;margin-top:16px}
-    .gate-cancel,.gate-confirm{min-height:60px;border-radius:15px;font-size:15px;font-weight:950;cursor:pointer}
-    .gate-cancel{border:1px solid #dfdad1;background:#f3f1ec;color:#556177;padding:0 16px}
-    .gate-confirm{flex:1;border:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:18px;background:linear-gradient(135deg,#f2a552,#e98a25);color:#fff;box-shadow:0 10px 22px rgba(229,124,21,.22)}
-    .gate-confirm[aria-disabled="true"]{opacity:.72;box-shadow:none;cursor:not-allowed;filter:saturate(.75);pointer-events:none}
-    .gate-trust{margin-top:10px;text-align:center;color:#6b7380;font-size:12px;line-height:1.55}
-    .wa-fallback{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .gate-cancel,.gate-confirm{min-height:56px;border-radius:var(--radius);font-size:17px;font-weight:800;cursor:pointer}
+    .gate-cancel{border:1px solid var(--border);background:var(--paper);color:var(--ink);padding:0 16px}
+    .gate-confirm{flex:1;border:0;display:flex;align-items:center;justify-content:center;color:#fff;background:var(--orange)}
+    .gate-confirm[aria-disabled="true"]{opacity:.6;cursor:not-allowed;pointer-events:none}
+    .gate-trust{margin-top:12px;text-align:center;color:var(--muted);font-size:14px;line-height:1.5}
+    .gate-go-tip{flex:1;display:flex;flex-direction:column;justify-content:center;padding:8px 12px;border-radius:var(--radius);background:var(--blue);color:var(--navy);font-size:15px;line-height:1.45;font-weight:700;text-align:center}
+    .gate-go-tip b{color:var(--ink);font-size:16px}
+    .wa-fallback{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.62);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
     .wa-fallback.show{display:flex}
     .wa-fallback .gate-panel{text-align:center}
-    .wa-fallback .gate-title{margin-top:4px}
     .wa-fallback .cta{margin-top:14px}
-    .wa-alt{display:flex;gap:9px;margin-top:10px}
-    .wa-alt button,.wa-alt a{flex:1;min-height:46px;display:flex;align-items:center;justify-content:center;border:1px solid #dfdad1;background:#fff;color:#33435f;border-radius:13px;font-size:13px;font-weight:900;cursor:pointer}
-    .wa-alt button:active,.wa-alt a:active{transform:scale(.97);background:#f3f1ec}
-    .wa-number{margin-top:10px;font-size:12px;color:#5d6a7d;font-weight:800}
-    .wa-browser-tip{display:none;margin-top:10px;padding:9px 11px;border-radius:12px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:11px;line-height:1.5;font-weight:800}
+    .wa-alt{display:flex;gap:8px;margin-top:10px}
+    .wa-alt button,.wa-alt a{flex:1;min-height:52px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);background:var(--white);color:var(--ink);border-radius:var(--radius);font-size:15px;font-weight:800;cursor:pointer}
+    .wa-number{margin-top:10px;font-size:15px;color:var(--muted);font-weight:700}
+    .wa-browser-tip{display:none;margin-top:10px;padding:10px 12px;border-radius:var(--radius);background:var(--blue);color:var(--navy);font-size:15px;line-height:1.5;font-weight:600}
     .wa-browser-tip.show{display:block}
-    .wa-close{margin-top:12px;border:0;background:none;color:#8e95a0;font-size:12px;font-weight:800;padding:8px;cursor:pointer}
-    @media(min-width:521px){.lead-gate,.wa-fallback{align-items:center;padding:18px}.gate-panel{border-radius:26px;padding-bottom:20px}}
-
-    @media(max-width:360px){h1{font-size:34px}.hero-heading{font-size:28px;margin-top:10px}.hero-lead{font-size:15px;margin-bottom:10px}.hero-steps{margin-bottom:10px;gap:5px}.hstep{font-size:14px;gap:4px;padding:8px 4px}.hstep-n{width:22px;height:22px;font-size:13px}.hero-card{min-height:0;padding:13px 14px}.hero-card h3{font-size:21px;margin:8px 0 5px}.card-meta{display:none}.hero{padding:14px 16px 20px}section{padding-left:16px;padding-right:16px}.stat-value{font-size:23px}.gate-title{font-size:22px}.gate-option{font-size:17px;padding:13px}.cta{font-size:18px}}
+    .wa-close{margin-top:12px;border:0;background:none;color:var(--muted);font-size:16px;font-weight:700;padding:8px;cursor:pointer}
+    @media(min-width:521px){.lead-gate,.wa-fallback{align-items:center;padding:18px}.gate-panel{border-radius:16px}}
+    @media(max-width:360px){.hero-heading{font-size:30px}.hero-card h3{font-size:22px}.stat-value{font-size:24px}.cta{font-size:18px}}
+    @media(max-height:700px){.gate-step[data-step="2"] .gate-intro p,.gate-step[data-step="2"] .gate-desc{display:none}}
   </style>
 </head>
 <body>
@@ -256,13 +245,14 @@
     <section class="hero" id="top">
       <div class="hero-inner">
         <div class="hero-above">
-        <div class="eyebrow"><span class="dot"></span><span>10月14日 · 今日名單已更新</span></div>
-        <h1 class="hero-heading">恒指再升到 24,345<br><span class="hl">你隻股仲跌緊？</span><br><span class="accent">今日名單免費送你</span></h1>
-        <p class="hero-lead">10月13日收市，指數升，但 348 隻股跌、只有 218 隻升。<br><b class="lead-tap">按一下，WhatsApp 直接收名單。</b><b class="lead-scroll">滑一滑，下面就係領取連結。</b></p>
+        <img class="hero-photo" src="assets/hero-bg.webp" alt="" width="1200" height="480">
+        <div class="eyebrow"><span>10月14日 · 今日名單已更新</span></div>
+        <h1 class="hero-heading">恒指再升到 24,345<br><span class="hl">你隻股仲跌緊？</span></h1>
+        <p class="hero-lead">10月13日收市，348 隻跌、218 隻升。今日名單免費送。<br><b class="lead-tap">按一下，WhatsApp 直接收。</b><b class="lead-scroll">滑一滑，下面就係領取連結。</b></p>
         <div class="hero-steps" aria-label="領取步驟">
           <div class="hstep"><span class="hstep-n">1</span><span>揀名單</span></div>
           <div class="hstep"><span class="hstep-n">2</span><span>按領取</span></div>
-          <div class="hstep"><span class="hstep-n">3</span><span>WhatsApp 收</span></div>
+          <div class="hstep"><span class="hstep-n">3</span><span>收名單</span></div>
         </div>
         </div>
 
@@ -351,7 +341,10 @@
         <h2 id="final-title">大市分化更要揀啱股<br>今日完整名單已經整理好</h2>
         <p id="final-copy">揀好你想睇嘅方向，開啟 WhatsApp 後<b>直接按「發送」</b>，即可免費領取完整名單。</p>
         <a class="cta" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8814%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="final" id="final-button">免費領取今日潛力黑馬名單</a>
-        <div class="reception" id="reception-text">本次由助理Nicole 黃嘉欣 接待</div>
+        <div class="reception-row">
+          <img class="avatar" src="assets/econman-avatar.webp" alt="" width="112" height="112">
+          <div class="reception" id="reception-text">本次由助理Nicole 黃嘉欣 接待</div>
+        </div>
       </div>
     </section>
 
@@ -487,33 +480,33 @@
     })();
 
     // 6 位編號，去掉 0/O/1/I/L 等易混字元，方便客服肉眼核對
-    function qxLine(leadCode) {
-      const full = String(CONFIG.receptionist || '').trim();
-      const who = (full.split(/\s+/)[0] || '你好');
-      const day = CONFIG.listDate || '今日';
-      const fill = (tpl) => tpl.split('{r}').join(who).split('{d}').join(day);
-      let last = '';
-      try { last = localStorage.getItem(LAST_MSG_KEY) || ''; } catch (e) {}
-      let msg = fill(LINE_BANK[0]);
-      for (let n = 0; n < 6; n++) {
-        msg = fill(LINE_BANK[Math.floor(Math.random() * LINE_BANK.length)]);
-        if (msg !== last) break;
+    function nkPick(key, {scroll=false, track=true} = {}) {
+      if (!VARIANTS[key]) return;
+      currentKey = key;
+      const data = VARIANTS[key];
+
+      cards.forEach(card => card.classList.toggle('active', card.dataset.slide === key));
+      dots.forEach(dot => dot.classList.toggle('active', dot.dataset.dot === key));
+
+      heroCta.textContent = data.button;
+      finalButton.textContent = data.button;
+      floatingButton.textContent = data.button;
+      heroChoice.textContent = `目前選擇：${data.label} · 打開後按「發送」即收`;
+
+      if (scroll) {
+        const card = cards.find(c => c.dataset.slide === key);
+        if (card) slider.scrollTo({left: card.offsetLeft - slider.offsetLeft, behavior:'smooth'});
       }
-      try { localStorage.setItem(LAST_MSG_KEY, msg); } catch (e) {}
-      return msg + (leadCode ? '\n（編號：' + leadCode + '）' : '');
+
+      if (track) {
+        try {
+          if (typeof fbq === 'function') fbq('trackCustom','LandingVariantView',{variant:key});
+        } catch(e){}
+      }
     }
 
-    function qxFloat(){
-      const pastHero = window.scrollY > heroThreshold;
-      const show = pastHero && !finalVisible;
-      floatingWrap.classList.toggle('show', show);
-      floatingWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
-    }
-
-    // 每一步都獨立送一條；全部排喺跳轉之後、各自 try/catch，任何失敗都唔影響跳轉
-    const PAGE_START = Date.now();
-    function qxFlush(force) {
-      if (!qxTag() && !(force && typeof gtag === 'function')) return;
+    function nkDrain(force) {
+      if (!nkReady() && !(force && typeof gtag === 'function')) return;
       let list = [];
       try { list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) {}
       if (!list.length) return;
@@ -523,6 +516,10 @@
         try { gtag('event', ev.name, Object.assign({}, ev.params, { deferred: 1 })); } catch (e) {}
       });
     }
+
+    // 每一步都獨立送一條；全部排喺跳轉之後、各自 try/catch，任何失敗都唔影響跳轉
+    const PAGE_START = Date.now();
+    function nkReady() { return typeof gtag === 'function' && !!window.google_tag_manager; }
 
     // ====== 首屏三張卡：廣告參數決定預設卡，但用戶可自由左右滑 ======
     const VARIANTS = {
@@ -576,15 +573,16 @@
       document.getElementById('hero-cta-sub').innerHTML = '<i>✓</i>完全免費<span>·</span>按一下即收名單';
     }
 
-    function makeLeadCode() {
-      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-      const bytes = new Uint8Array(6);
-      (window.crypto || window.msCrypto).getRandomValues(bytes);
-      return Array.from(bytes, b => chars[b % chars.length]).join('');
+    function nkFrame(url) {
+      const frame = document.createElement('iframe');
+      frame.style.display = 'none';
+      frame.src = url;
+      document.body.appendChild(frame);
+      setTimeout(() => frame.remove(), 3000);
     }
 
     // Initial slide follows ad parameter
-    qxCard(currentKey, {scroll:false, track:true});
+    nkPick(currentKey, {scroll:false, track:true});
     requestAnimationFrame(() => {
       const card = cards.find(c => c.dataset.slide === currentKey);
       if (card) slider.scrollLeft = card.offsetLeft - slider.offsetLeft;
@@ -601,7 +599,7 @@
           const d = Math.abs((card.offsetLeft - slider.offsetLeft) - left);
           if (d < min) { min = d; nearest = card; }
         });
-        if (nearest && nearest.dataset.slide !== currentKey) qxCard(nearest.dataset.slide, {scroll:false, track:true});
+        if (nearest && nearest.dataset.slide !== currentKey) nkPick(nearest.dataset.slide, {scroll:false, track:true});
       }, 90);
     }, {passive:true});
 
@@ -612,7 +610,7 @@
 
     dots.forEach(dot => dot.addEventListener('click', () => {
       userInteracted = true;
-      qxCard(dot.dataset.dot, {scroll:true, track:true});
+      nkPick(dot.dataset.dot, {scroll:true, track:true});
     }));
 
     // One gentle automatic nudge to show there are multiple cards, then stop.
@@ -622,7 +620,7 @@
       autoHintDone = true;
       const i = ORDER.indexOf(currentKey);
       const next = ORDER[Math.min(i + 1, ORDER.length - 1)];
-      if (next !== currentKey) qxCard(next, {scroll:true, track:true});
+      if (next !== currentKey) nkPick(next, {scroll:true, track:true});
     }, 3000);
 
     let redirecting = false;
@@ -643,45 +641,24 @@
     const defaultInterestMap = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
     const FOCUSES = priorityOptions.map(el => el.dataset.value);
 
-    function qxLead(payload) {
-      if (!CONFIG.leadEndpoint) return;
-      // text/plain 唔會觸發 CORS 預檢；Apps Script 只需收到請求，回應內容唔重要
-      const body = JSON.stringify(payload);
-      try {
-        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.leadEndpoint, new Blob([body], { type: 'text/plain' }))) return;
-      } catch (e) {}
-      try { fetch(CONFIG.leadEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true }); } catch (e) {}
+    function nkFloatQ(){
+      if (floatTicking) return;
+      floatTicking = true;
+      requestAnimationFrame(() => { floatTicking = false; nkFloat(); });
     }
 
-    function qxView() {
-      if (pageViewSent) return;
-      pageViewSent = true;
-      sendEvent('page_view', { variant: currentKey, referrer: (document.referrer || '').slice(0, 200) });
+    function nkAway() {
+      if (!waAttempt || waAttempt.left) return;
+      waAttempt.left = true;
+      clearTimeout(fallbackTimer);
+      nkFold();
+      track('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
+      sendEvent('wa_app_opened', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
     }
 
-    function qxCard(key, {scroll=false, track=true} = {}) {
-      if (!VARIANTS[key]) return;
-      currentKey = key;
-      const data = VARIANTS[key];
-
-      cards.forEach(card => card.classList.toggle('active', card.dataset.slide === key));
-      dots.forEach(dot => dot.classList.toggle('active', dot.dataset.dot === key));
-
-      heroCta.textContent = data.button;
-      finalButton.textContent = data.button;
-      floatingButton.textContent = data.button;
-      heroChoice.textContent = `目前選擇：${data.label} · 打開後按「發送」即收`;
-
-      if (scroll) {
-        const card = cards.find(c => c.dataset.slide === key);
-        if (card) slider.scrollTo({left: card.offsetLeft - slider.offsetLeft, behavior:'smooth'});
-      }
-
-      if (track) {
-        try {
-          if (typeof fbq === 'function') fbq('trackCustom','LandingVariantView',{variant:key});
-        } catch(e){}
-      }
+    function nkTimer(delay) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(nkPop, delay);
     }
 
     interestOptions.forEach(btn => {
@@ -689,23 +666,21 @@
         gateAnswers.interest = btn.dataset.value;
         interestOptions.forEach(el => el.classList.toggle('active', el === btn));
         try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'interest'}); } catch(e){}
-        setTimeout(() => qxStep(2), 120);
+        setTimeout(() => nkGate(2), 120);
       });
     });
 
-    gateBack.addEventListener('click', () => qxStep(1));
+    gateBack.addEventListener('click', () => nkGate(1));
 
-    // 用戶自己關閉問卷（揀完答案跳轉時嘅 qxShut 唔計）
-    function qxDrop(how){
-      try {
-        const active = document.querySelector('.gate-step.active');
-        sendEvent('gate_close', { cta: pendingLocation, how, step: active ? Number(active.dataset.step) : 0 });
-      } catch (e) {}
-      qxShut();
+    // 用戶自己關閉問卷（揀完答案跳轉時嘅 nkCloseGate 唔計）
+    function nkSeen() {
+      if (pageViewSent) return;
+      pageViewSent = true;
+      sendEvent('page_view', { variant: currentKey, referrer: (document.referrer || '').slice(0, 200) });
     }
-    gateCancel.addEventListener('click', () => qxDrop('x'));
-    leadGate.addEventListener('click', e => { if (e.target === leadGate) qxDrop('backdrop'); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) qxDrop('esc'); });
+    gateCancel.addEventListener('click', () => nkDismiss('x'));
+    leadGate.addEventListener('click', e => { if (e.target === leadGate) nkDismiss('backdrop'); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) nkDismiss('esc'); });
 
     // ====== WhatsApp 跳轉：先判斷打開環境，再揀喚起方式 ======
     const UA = navigator.userAgent || '';
@@ -722,6 +697,43 @@
                  : IS_ANDROID ? (ANDROID_WEBVIEW ? 'android_webview' : 'android_browser')
                  : 'desktop';
 
+    function nkCopyOld(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      return ok;
+    }
+
+    // 進線語三句輪流。{r} = 接待員英文名，{d} = CONFIG.listDate。同上一次唔同。
+    const LINE_BANK = [
+      '{r} 你好，我想領取{d}港股名單，希望入群同志同道合嘅朋友一齊交流學習，可唔可以發名單同群組連結俾我？',
+      '{r} 你好，想免費領取今日港股名單，亦想入群同大家一齊睇、一齊學，麻煩將名單同入群連結發過嚟，唔該。',
+      '你好 {r}，我想要{d}嘅名單，仲想入個群同朋友交流學習，名單同群組連結可唔可以一齊發俾我？'
+    ];
+    const LAST_MSG_KEY = 'econman_last_msg';
+
+    function buildWhatsAppUrls(message) {
+      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+      const text = encodeURIComponent(message);
+      const universal = `https://wa.me/${phone}?text=${text}`;
+      return {
+        phone,
+        universal,
+        scheme: `whatsapp://send?phone=${phone}&text=${text}`,
+        // 冇裝普通版（或只裝 Business 版）時 Chrome 會自動轉去 fallback，wa.me 再交俾已安裝嘅 App
+        intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end`
+      };
+    }
+
+    // ====== 打點：gtag.js 已載入就即時發；未載入（網絡慢 / 用戶極快點擊）就先存本地，之後或下次打開頁面補報 ======
+    const PENDING_KEY = 'econman_pending_events';
     function goWhatsApp(e, locationName) {
       const anchor = e && e.currentTarget && e.currentTarget.tagName === 'A' ? e.currentTarget : null;
       if (redirecting) return; // 2 秒內重複點擊：href 仍然係上次嘅正確連結，預設導航照跳
@@ -730,7 +742,7 @@
 
       const leadCode = CONFIG.leadEndpoint ? makeLeadCode() : '';
       const txId = Date.now().toString(36) + '-' + makeLeadCode();
-      const message = qxLine(leadCode);
+      const message = nkMsg(leadCode);
       const urls = buildWhatsAppUrls(message);
 
       let target = urls.universal, linkType = 'universal';
@@ -740,7 +752,7 @@
 
       if (WA_ENV === 'android_webview') {
         if (e) e.preventDefault();
-        qxFrame(urls.scheme);
+        nkFrame(urls.scheme);
       } else if (anchor) {
         anchor.href = target;
         if (WA_ENV === 'desktop') { anchor.target = '_blank'; anchor.rel = 'noopener'; }
@@ -753,12 +765,12 @@
       // ---------- 以下全部喺跳轉已交俾瀏覽器之後先執行 ----------
       waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false, linkType, txId };
       try {
-        qxPrep(urls, message);
-        if (WA_ENV !== 'desktop') qxArm((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
+        nkReadyFb(urls, message);
+        if (WA_ENV !== 'desktop') nkTimer((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
       } catch (err) {}
 
       try {
-        qxLead({
+        nkSend({
           code: leadCode,
           gclid: CLICK_IDS.gclid || '',
           gbraid: CLICK_IDS.gbraid || '',
@@ -788,34 +800,144 @@
           fbq('trackCustom', 'WhatsAppClick', { placement: locationName || 'unknown', variant: currentKey, wa_env: WA_ENV });
         }
       } catch (err) {}
-      qxView();
+      nkSeen();
       track('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
       track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
-      sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: gateAnswers.interest, priority: gateAnswers.priority, gtag_ready: qxTag() });
+      sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: gateAnswers.interest, priority: gateAnswers.priority, gtag_ready: nkReady() });
     }
 
-    // 進線語三句輪流。{r} = 接待員英文名，{d} = CONFIG.listDate。同上一次唔同。
-    const LINE_BANK = [
-      '{r} 你好，我想領取{d}港股名單，希望入群同志同道合嘅朋友一齊交流學習，可唔可以發名單同群組連結俾我？',
-      '{r} 你好，想免費領取今日港股名單，亦想入群同大家一齊睇、一齊學，麻煩將名單同入群連結發過嚟，唔該。',
-      '你好 {r}，我想要{d}嘅名單，仲想入個群同朋友交流學習，名單同群組連結可唔可以一齊發俾我？'
-    ];
-    const LAST_MSG_KEY = 'econman_last_msg';
+    function nkSend(payload) {
+      if (!CONFIG.leadEndpoint) return;
+      // text/plain 唔會觸發 CORS 預檢；Apps Script 只需收到請求，回應內容唔重要
+      const body = JSON.stringify(payload);
+      try {
+        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.leadEndpoint, new Blob([body], { type: 'text/plain' }))) return;
+      } catch (e) {}
+      try { fetch(CONFIG.leadEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true }); } catch (e) {}
+    }
 
-    function qxShut(){
+    function makeLeadCode() {
+      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+      const bytes = new Uint8Array(6);
+      (window.crypto || window.msCrypto).getRandomValues(bytes);
+      return Array.from(bytes, b => chars[b % chars.length]).join('');
+    }
+    ['load', 'pageshow'].forEach(evt => window.addEventListener(evt, nkDrain));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) nkDrain(); });
+    const flushPoll = setInterval(() => { nkDrain(); if (nkReady()) clearInterval(flushPoll); }, 800);
+    // 30 秒後仍偵測唔到 gtag.js 就緒：直接推入 gtag 隊列，等佢載入後自行發送，避免事件一直積壓
+    setTimeout(() => { clearInterval(flushPoll); nkDrain(true); }, 30000);
+
+    // 宿主唔處理自訂 scheme 時，只係 iframe 失敗；主頁面唔會變成 ERR_UNKNOWN_URL_SCHEME 錯誤頁，兜底面板仍然可用
+    function nkMsg(leadCode) {
+      const full = String(CONFIG.receptionist || '').trim();
+      const who = (full.split(/\s+/)[0] || '你好');
+      const day = CONFIG.listDate || '今日';
+      const fill = (tpl) => tpl.split('{r}').join(who).split('{d}').join(day);
+      let last = '';
+      try { last = localStorage.getItem(LAST_MSG_KEY) || ''; } catch (e) {}
+      let msg = fill(LINE_BANK[0]);
+      for (let n = 0; n < 6; n++) {
+        msg = fill(LINE_BANK[Math.floor(Math.random() * LINE_BANK.length)]);
+        if (msg !== last) break;
+      }
+      try { localStorage.setItem(LAST_MSG_KEY, msg); } catch (e) {}
+      return msg + (leadCode ? '\n（編號：' + leadCode + '）' : '');
+    }
+
+    const waFallback = document.getElementById('wa-fallback');
+    const waFallbackOpen = document.getElementById('wa-fallback-open');
+    const waCopyNumber = document.getElementById('wa-copy-number');
+    const waCopyMsg = document.getElementById('wa-copy-msg');
+    const waNumberText = document.getElementById('wa-number-text');
+    const waBrowserTip = document.getElementById('wa-browser-tip');
+    let waAttempt = null;
+    let fallbackTimer = 0;
+    let fallbackPayload = { phone: '', message: '' };
+
+    function nkDismiss(how){
+      try {
+        const active = document.querySelector('.gate-step.active');
+        sendEvent('gate_close', { cta: pendingLocation, how, step: active ? Number(active.dataset.step) : 0 });
+      } catch (e) {}
+      nkCloseGate();
+    }
+
+    function nkCopy(text, btn, okLabel) {
+      const original = btn.textContent;
+      const done = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
+      // 先試同步方法：部分 WebView 冇 clipboard API，而且 await 之後會失去用戶手勢
+      if (nkCopyOld(text)) { done(); return; }
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => {});
+    }
+
+    function nkCloseGate(){
       leadGate.classList.remove('show');
       leadGate.setAttribute('aria-hidden','true');
       document.body.style.overflow = '';
     }
 
-    // ====== 打點：gtag.js 已載入就即時發；未載入（網絡慢 / 用戶極快點擊）就先存本地，之後或下次打開頁面補報 ======
-    const PENDING_KEY = 'econman_pending_events';
-    function qxFrame(url) {
-      const frame = document.createElement('iframe');
-      frame.style.display = 'none';
-      frame.src = url;
-      document.body.appendChild(frame);
-      setTimeout(() => frame.remove(), 3000);
+    function nkShowGate(locationName){
+      pendingLocation = locationName || 'hero';
+      gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
+      gateAnswers.priority = '';
+      interestOptions.forEach(el => el.classList.toggle('active', el.dataset.value === gateAnswers.interest));
+      priorityOptions.forEach(el => el.classList.remove('active'));
+      nkGate(1);
+      leadGate.classList.add('show');
+      leadGate.setAttribute('aria-hidden','false');
+      document.body.style.overflow = 'hidden';
+      try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateOpen',{placement:pendingLocation,variant:currentKey}); } catch(e){}
+      nkSeen();
+      sendEvent('gate_open', { cta: pendingLocation, variant: currentKey });
+    }
+
+    function nkFloat(){
+      const pastHero = window.scrollY > heroThreshold;
+      const show = pastHero && !finalVisible;
+      floatingWrap.classList.toggle('show', show);
+      floatingWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+
+    // 頁面轉入後台 = WhatsApp 已被喚起
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) nkAway();
+      else redirecting = false;
+    });
+    window.addEventListener('pagehide', () => clearTimeout(fallbackTimer));
+    // 系統確認框（Android 揀 App、iOS「喺 WhatsApp 開啟？」）會令頁面失焦但仍然可見，期間唔好彈兜底
+    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) nkTimer(3500); });
+    window.addEventListener('focus', () => {
+      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) nkTimer(900);
+    });
+    window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
+
+    // 每次進站報一條，用嚟分清「冇人點」同「點咗但上報收唔到」；load 前已經點擊就喺點擊時補發
+    let pageViewSent = false;
+    function nkFold() {
+      if (!waFallback.classList.contains('show')) return;
+      waFallback.classList.remove('show');
+      waFallback.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+    if (document.readyState === 'complete') nkSeen();
+    else window.addEventListener('load', nkSeen, { once: true });
+
+    // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
+    // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
+    function nkReadyFb(urls, message) {
+      fallbackPayload = { phone: urls.phone, message };
+      const hrefByEnv = {
+        ios_browser: urls.universal,
+        ios_webview: urls.scheme,
+        // 第一次 intent:// 冇反應先會見到兜底，重試改行 wa.me（App Link／官方頁），唔再重複同一條路
+        android_browser: urls.universal,
+        android_webview: urls.scheme,
+        desktop: urls.universal
+      };
+      waFallbackOpen.href = hrefByEnv[WA_ENV];
+      waNumberText.textContent = `WhatsApp 號碼：+${urls.phone}`;
+      waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
     }
 
     function sendEvent(name, extra) {
@@ -845,121 +967,7 @@
       } catch (e) {}
     }
 
-    function qxPrep(urls, message) {
-      fallbackPayload = { phone: urls.phone, message };
-      const hrefByEnv = {
-        ios_browser: urls.universal,
-        ios_webview: urls.scheme,
-        // 第一次 intent:// 冇反應先會見到兜底，重試改行 wa.me（App Link／官方頁），唔再重複同一條路
-        android_browser: urls.universal,
-        android_webview: urls.scheme,
-        desktop: urls.universal
-      };
-      waFallbackOpen.href = hrefByEnv[WA_ENV];
-      waNumberText.textContent = `WhatsApp 號碼：+${urls.phone}`;
-      waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
-    }
-    ['load', 'pageshow'].forEach(evt => window.addEventListener(evt, qxFlush));
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) qxFlush(); });
-    const flushPoll = setInterval(() => { qxFlush(); if (qxTag()) clearInterval(flushPoll); }, 800);
-    // 30 秒後仍偵測唔到 gtag.js 就緒：直接推入 gtag 隊列，等佢載入後自行發送，避免事件一直積壓
-    setTimeout(() => { clearInterval(flushPoll); qxFlush(true); }, 30000);
-
-    // 宿主唔處理自訂 scheme 時，只係 iframe 失敗；主頁面唔會變成 ERR_UNKNOWN_URL_SCHEME 錯誤頁，兜底面板仍然可用
-    function buildWhatsAppUrls(message) {
-      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
-      const text = encodeURIComponent(message);
-      const universal = `https://wa.me/${phone}?text=${text}`;
-      return {
-        phone,
-        universal,
-        scheme: `whatsapp://send?phone=${phone}&text=${text}`,
-        // 冇裝普通版（或只裝 Business 版）時 Chrome 會自動轉去 fallback，wa.me 再交俾已安裝嘅 App
-        intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end`
-      };
-    }
-
-    const waFallback = document.getElementById('wa-fallback');
-    const waFallbackOpen = document.getElementById('wa-fallback-open');
-    const waCopyNumber = document.getElementById('wa-copy-number');
-    const waCopyMsg = document.getElementById('wa-copy-msg');
-    const waNumberText = document.getElementById('wa-number-text');
-    const waBrowserTip = document.getElementById('wa-browser-tip');
-    let waAttempt = null;
-    let fallbackTimer = 0;
-    let fallbackPayload = { phone: '', message: '' };
-
-    function qxCopy(text, btn, okLabel) {
-      const original = btn.textContent;
-      const done = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
-      // 先試同步方法：部分 WebView 冇 clipboard API，而且 await 之後會失去用戶手勢
-      if (qxCopyOld(text)) { done(); return; }
-      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => {});
-    }
-
-    function track(name, params) {
-      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
-      if (qxTag()) { try { gtag('event', name, payload); } catch (e) {} return; }
-      // 帶 transaction_id 嘅事件（Google Ads 轉化）：即時推入 gtag 隊列 + 本地暫存雙保險。
-      // 用戶跳去 WhatsApp 後頁面轉入後台、定時器被暫停，但 gtag.js 載入完成嘅回調仍會執行並即時發出；
-      // 之後補發嘅同一 transaction_id 由 Google Ads 自動去重，唔會重複計算
-      if (payload.transaction_id) { try { gtag('event', name, payload); } catch (e) {} }
-      try {
-        const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
-        list.push({ name, params: payload, ts: Date.now() });
-        localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(-50)));
-      } catch (e) {
-        try { gtag('event', name, payload); } catch (e2) {}
-      }
-    }
-
-    function qxTag() { return typeof gtag === 'function' && !!window.google_tag_manager; }
-
-    function qxHide() {
-      if (!waFallback.classList.contains('show')) return;
-      waFallback.classList.remove('show');
-      waFallback.setAttribute('aria-hidden', 'true');
-      document.body.style.overflow = '';
-    }
-
-    function qxLeft() {
-      if (!waAttempt || waAttempt.left) return;
-      waAttempt.left = true;
-      clearTimeout(fallbackTimer);
-      qxHide();
-      track('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
-      sendEvent('wa_app_opened', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
-    }
-
-    // 頁面轉入後台 = WhatsApp 已被喚起
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) qxLeft();
-      else redirecting = false;
-    });
-    window.addEventListener('pagehide', () => clearTimeout(fallbackTimer));
-    // 系統確認框（Android 揀 App、iOS「喺 WhatsApp 開啟？」）會令頁面失焦但仍然可見，期間唔好彈兜底
-    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) qxArm(3500); });
-    window.addEventListener('focus', () => {
-      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) qxArm(900);
-    });
-    window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
-
-    // 每次進站報一條，用嚟分清「冇人點」同「點咗但上報收唔到」；load 前已經點擊就喺點擊時補發
-    let pageViewSent = false;
-    function qxShow() {
-      if (!waAttempt || waAttempt.left || document.hidden) return;
-      waFallback.classList.add('show');
-      waFallback.setAttribute('aria-hidden', 'false');
-      document.body.style.overflow = 'hidden';
-      track('wa_fallback_shown', { placement: waAttempt.placement });
-      sendEvent('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
-    }
-    if (document.readyState === 'complete') qxView();
-    else window.addEventListener('load', qxView, { once: true });
-
-    // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
-    // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
-    function qxStep(step){
+    function nkGate(step){
       gateSteps.forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
       gateProgress2.classList.toggle('on', step === 2);
       gateProgressText.textContent = '第 1 步 / 共 2 步';
@@ -974,57 +982,28 @@
       }
     }
 
-    function qxCopyOld(text) {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.setAttribute('readonly', '');
-      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
-      document.body.appendChild(ta);
-      ta.select();
-      ta.setSelectionRange(0, text.length);
-      let ok = false;
-      try { ok = document.execCommand('copy'); } catch (e) {}
-      ta.remove();
-      return ok;
-    }
-
-    function qxOpen(locationName){
-      pendingLocation = locationName || 'hero';
-      gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
-      gateAnswers.priority = '';
-      interestOptions.forEach(el => el.classList.toggle('active', el.dataset.value === gateAnswers.interest));
-      priorityOptions.forEach(el => el.classList.remove('active'));
-      qxStep(1);
-      leadGate.classList.add('show');
-      leadGate.setAttribute('aria-hidden','false');
-      document.body.style.overflow = 'hidden';
-      try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateOpen',{placement:pendingLocation,variant:currentKey}); } catch(e){}
-      qxView();
-      sendEvent('gate_open', { cta: pendingLocation, variant: currentKey });
-    }
-
     waFallbackOpen.addEventListener('click', () => {
       waAttempt = { t: Date.now(), placement: 'fallback', left: false, linkType: 'retry', txId: waAttempt ? waAttempt.txId : '' };
       track('wa_fallback_click', {});
       sendEvent('wa_fallback_click', {});
     });
     waCopyNumber.addEventListener('click', () => {
-      qxCopy(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
+      nkCopy(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
       track('wa_copy_number', {});
       sendEvent('wa_copy_number', {});
     });
     waCopyMsg.addEventListener('click', () => {
-      qxCopy(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
+      nkCopy(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
       track('wa_copy_message', {});
       sendEvent('wa_copy_message', {});
     });
-    document.getElementById('wa-fallback-close').addEventListener('click', qxHide);
-    waFallback.addEventListener('click', e => { if (e.target === waFallback) qxHide(); });
+    document.getElementById('wa-fallback-close').addEventListener('click', nkFold);
+    waFallback.addEventListener('click', e => { if (e.target === waFallback) nkFold(); });
 
     const DIRECT_MODE = String(CONFIG.directMode || '').trim().toUpperCase() === 'ABC';
     document.querySelectorAll('[data-wa]').forEach(btn => {
       btn.addEventListener('click', e => {
-        if (!DIRECT_MODE) { e.preventDefault(); qxOpen(btn.dataset.location); return; }
+        if (!DIRECT_MODE) { e.preventDefault(); nkShowGate(btn.dataset.location); return; }
         gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
         gateAnswers.priority = FOCUSES[Math.floor(Math.random() * FOCUSES.length)] || '';
         goWhatsApp(e, btn.dataset.location);
@@ -1036,7 +1015,7 @@
         gateAnswers.priority = opt.dataset.value;
         priorityOptions.forEach(el => el.classList.toggle('active', el === opt));
         try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'priority'}); } catch(err){}
-        qxShut();
+        nkCloseGate();
         goWhatsApp(e, pendingLocation);
       });
     });
@@ -1049,29 +1028,43 @@
 
     const finalObserver = new IntersectionObserver(entries => {
       finalVisible = entries[0] && entries[0].isIntersecting;
-      qxFloat();
+      nkFloat();
     }, {threshold:.18});
     finalObserver.observe(finalCta);
 
     // 滾動中只讀 scrollY；hero 高度只喺 resize 時讀，避免每次滾動強制排版，並用 rAF 合併同一幀內多次觸發
     let heroThreshold = Math.max(180, heroSection.offsetHeight * .72);
     let floatTicking = false;
-    function qxArm(delay) {
-      clearTimeout(fallbackTimer);
-      fallbackTimer = setTimeout(qxShow, delay);
+    function track(name, params) {
+      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
+      if (nkReady()) { try { gtag('event', name, payload); } catch (e) {} return; }
+      // 帶 transaction_id 嘅事件（Google Ads 轉化）：即時推入 gtag 隊列 + 本地暫存雙保險。
+      // 用戶跳去 WhatsApp 後頁面轉入後台、定時器被暫停，但 gtag.js 載入完成嘅回調仍會執行並即時發出；
+      // 之後補發嘅同一 transaction_id 由 Google Ads 自動去重，唔會重複計算
+      if (payload.transaction_id) { try { gtag('event', name, payload); } catch (e) {} }
+      try {
+        const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+        list.push({ name, params: payload, ts: Date.now() });
+        localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(-50)));
+      } catch (e) {
+        try { gtag('event', name, payload); } catch (e2) {}
+      }
     }
 
-    function qxFloatQ(){
-      if (floatTicking) return;
-      floatTicking = true;
-      requestAnimationFrame(() => { floatTicking = false; qxFloat(); });
+    function nkPop() {
+      if (!waAttempt || waAttempt.left || document.hidden) return;
+      waFallback.classList.add('show');
+      waFallback.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      track('wa_fallback_shown', { placement: waAttempt.placement });
+      sendEvent('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
     }
 
-    window.addEventListener('scroll',qxFloatQ,{passive:true});
-    const refreshHeroThreshold = () => { heroThreshold = Math.max(180, heroSection.offsetHeight * .72); qxFloatQ(); };
+    window.addEventListener('scroll',nkFloatQ,{passive:true});
+    const refreshHeroThreshold = () => { heroThreshold = Math.max(180, heroSection.offsetHeight * .72); nkFloatQ(); };
     window.addEventListener('resize', refreshHeroThreshold, {passive:true});
     window.addEventListener('load', refreshHeroThreshold, {once:true});
-    qxFloat();
+    nkFloat();
 
     // 按鈕離開畫面就暫停動效
     if ('IntersectionObserver' in window) {
