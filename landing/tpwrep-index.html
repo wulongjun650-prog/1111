@@ -16,20 +16,20 @@
   <link rel="preload" as="image" href="assets/econman-banner.webp" type="image/webp" fetchpriority="high">
   <link rel="preload" as="image" href="assets/hero-bg.webp" type="image/webp" fetchpriority="low">
 
-  <title>講經MAN｜10月12日港股名單｜免費領取</title>
-  <meta name="description" content="講經MAN整理10月9日港股收市數據：恒指大升425點重上24000，恒生科技升3.06%，小米飆近一成。附10月12日最新觀察名單，免費領取。">
+  <title>講經MAN｜10月13日港股名單｜免費領取</title>
+  <meta name="description" content="講經MAN整理10月12日港股收市數據：恒指連升兩日收24,271點，但跌股多過升股近一倍；北水連續5日淨買入26億。附10月13日最新觀察名單，免費領取。">
 
   <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-GVPNN75RYK"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-Q6YP0DZLSY"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
 
-  gtag('config', 'G-GVPNN75RYK');
-  // 冇 config AW-，send_to: 'AW-...' 嘅轉化唔會發出
-  gtag('config', 'AW-11421360067');
-</script>
+    gtag('config', 'G-Q6YP0DZLSY');
+    // 冇 config AW-，send_to: 'AW-...' 嘅轉化唔會發出
+    gtag('config', 'AW-11421360067');
+  </script>
 
   <!-- Meta Pixel：先建隊列，腳本延後到 load 之後或首次互動才載入，所有 fbq() 呼叫照常排隊 -->
   <script>
@@ -149,7 +149,7 @@
     /* 问卷抽屉样式：100% 完整保留 */
     .lead-gate{position:fixed;inset:0;z-index:60;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
     .lead-gate.show{display:flex}
-    .gate-panel{width:100%;max-width:520px;background:linear-gradient(180deg,#fcfbf8 0%,#f6f3ed 100%);border-radius:28px 28px 0 0;box-shadow:0 -16px 42px rgba(13,23,39,.18);padding:14px 18px calc(18px + env(safe-area-inset-bottom));overflow:hidden;border:1px solid rgba(255,255,255,.55)}
+    .gate-panel{width:100%;max-width:520px;background:linear-gradient(180deg,#fcfbf8 0%,#f6f3ed 100%);border-radius:28px 28px 0 0;box-shadow:0 -16px 42px rgba(13,23,39,.18);padding:14px 18px calc(18px + env(safe-area-inset-bottom));max-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border:1px solid rgba(255,255,255,.55)}
     .gate-handle{width:54px;height:5px;border-radius:999px;background:#d8d2c7;margin:0 auto 13px}
     .gate-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
     .gate-kicker{font-size:14px;font-weight:900;color:var(--orange2);letter-spacing:.02em}
@@ -166,13 +166,39 @@
     .gate-progress-dot{width:26px;height:6px;border-radius:999px;background:#e3ddd3}
     .gate-progress-dot.on{background:var(--orange)}
     .gate-progress-text{margin-left:4px;font-size:13px;font-weight:800;color:#6b7380}
-    .gate-picked{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 12px;border-radius:13px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:14px;font-weight:800}
-    .gate-picked b{color:#bc6d12}
-    .gate-back{margin-left:auto;min-height:32px;padding:0 12px;border:1px solid #e6cf9f;border-radius:999px;background:#fff;color:#9d5b07;font-size:13px;font-weight:900;cursor:pointer}
-    .gate-desc b{color:#1f7a45}
-    .gate-option-go{width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2fb867,#1f9d55);color:#fff;font-size:24px;font-weight:900;line-height:1;padding-bottom:2px}
-    .gate-go{border-color:#cfe9d9}
-    .gate-go:active{border-color:#2fb867;background:#effaf3}
+    .gate-panel.on-step2>.gate-top,.gate-panel.on-step2>.gate-progress{display:none}
+    .gate-top2{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .gate-step-text{font-size:15px;font-weight:900;color:#7e8795}
+    .gate-bar{height:6px;border-radius:999px;background:#e8e3da;overflow:hidden;margin-bottom:14px}
+    .gate-bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#f0a04a,#f6c979)}
+    .gate-intro{padding:13px 14px;border:1px solid #ebe5db;border-radius:18px;background:linear-gradient(180deg,#fffdfa,#f8f5ef);box-shadow:inset 0 1px 0 rgba(255,255,255,.82)}
+    .gate-intro strong{display:block;font-size:16px;color:#202f49;margin-bottom:4px}
+    .gate-intro p{margin:0;color:#5a6474;font-size:14px;line-height:1.55}
+    .gate-selected-tip{margin-top:10px;padding:9px 12px;border-radius:13px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:14px;font-weight:800}
+    .gate-selected-tip b{color:#bc6d12}
+    .gate-option-arrow{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-size:20px;color:#aeb7c4;background:#f7f8fa;border:1px solid #edf0f4}
+    .gate-option.active .gate-option-arrow{color:#e8881f;background:#fff1dc;border-color:#f7d9aa}
+    .gate-back{min-height:60px;padding:0 18px;border:1px solid #dfdad1;border-radius:15px;background:#f3f1ec;color:#556177;font-size:17px;font-weight:950;cursor:pointer}
+    .gate-back:active{transform:scale(.97);background:#eae6de;transition:transform .06s ease}
+    .gate-step[data-step="2"] .gate-intro{padding:11px 13px}
+    .gate-step[data-step="2"] .gate-intro p{font-size:13px}
+    .gate-step[data-step="2"] .gate-selected-tip{margin-top:8px;padding:7px 11px}
+    .gate-step[data-step="2"] .gate-title{margin-top:12px;font-size:20px}
+    .gate-step[data-step="2"] .gate-desc{margin-top:4px;font-size:14px}
+    .gate-step[data-step="2"] .gate-options{gap:9px;margin-top:12px}
+    .gate-step[data-step="2"] .gate-option{min-height:0;padding:11px 12px;gap:10px;font-size:15px}
+    .gate-step[data-step="2"] .gate-option-main{gap:10px}
+    .gate-step[data-step="2"] .gate-option-icon{width:36px;height:36px;font-size:15px}
+    .gate-step[data-step="2"] .gate-option small{font-size:12px;margin-top:3px}
+    .gate-step[data-step="2"] .gate-option-arrow{width:28px;height:28px;font-size:18px}
+    .gate-step[data-step="2"] .gate-actions{margin-top:14px}
+    .gate-step[data-step="2"] .gate-back{min-height:56px}
+    a.gate-option{-webkit-touch-callout:none}
+    .gate-go:active{border-color:#ee9a3a;background:#fff7eb}
+    .gate-go-tip{flex:1;display:flex;flex-direction:column;justify-content:center;padding:6px 12px;border-radius:15px;background:#effaf3;border:1px solid #cfe9d9;color:#3f6b52;font-size:13px;line-height:1.45;font-weight:800;text-align:center}
+    .gate-go-tip b{color:#1f7a45;font-size:16px;font-weight:950}
+    @media(max-height:700px){.on-step2 .gate-handle{margin-bottom:8px}.gate-step[data-step="2"] .gate-intro p,.gate-step[data-step="2"] .gate-desc{display:none}.gate-step[data-step="2"] .gate-title{margin-top:10px}.gate-go-tip br{display:none}.gate-go-tip b{font-size:15px}.gate-step[data-step="2"] .gate-back{min-height:50px}}
+    @media(max-height:600px){.gate-step[data-step="2"] .gate-option small,.on-step2 .gate-trust{display:none}.gate-step[data-step="2"] .gate-option{padding:10px 12px}}
     .gate-option-main{display:flex;align-items:center;gap:12px;min-width:0}
     .gate-option-icon{width:42px;height:42px;border-radius:12px;background:linear-gradient(180deg,#fff6e7,#fff1d5);color:#b96809;display:flex;align-items:center;justify-content:center;flex:none;font-size:17px;font-weight:950;border:1px solid #f2dfb9}
     .gate-option-title{display:block;color:#253550;line-height:1.3}
@@ -185,9 +211,8 @@
     .gate-actions{display:flex;gap:10px;margin-top:16px}
     .gate-cancel,.gate-confirm{min-height:60px;border-radius:15px;font-size:15px;font-weight:950;cursor:pointer}
     .gate-cancel{border:1px solid #dfdad1;background:#f3f1ec;color:#556177;padding:0 16px}
-    .gate-confirm{flex:1;border:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:19px;background:linear-gradient(135deg,#2fb867,#1f9d55);color:#fff;box-shadow:0 10px 22px rgba(31,157,85,.25)}
+    .gate-confirm{flex:1;border:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:18px;background:linear-gradient(135deg,#f2a552,#e98a25);color:#fff;box-shadow:0 10px 22px rgba(229,124,21,.22)}
     .gate-confirm[aria-disabled="true"]{opacity:.72;box-shadow:none;cursor:not-allowed;filter:saturate(.75);pointer-events:none}
-    .gate-confirm-sub{text-align:center;margin-top:9px;color:#1f7a45;font-size:14px;font-weight:800;line-height:1.5}
     .gate-trust{margin-top:10px;text-align:center;color:#6b7380;font-size:12px;line-height:1.55}
     .wa-fallback{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
     .wa-fallback.show{display:flex}
@@ -212,11 +237,11 @@
 
     <section class="hero" id="top">
       <div class="hero-inner">
-        <div class="eyebrow"><span class="dot"></span><span>10月12日 · 今日名單已更新</span></div>
-        <h1 class="hero-heading">港股大反彈<br><span class="hl">唔知跟邊隻？</span><br><span class="accent">今日名單免費送你</span></h1>
-        <p class="hero-lead">升市都要揀啱股。唔使識睇數據，<b>按一下，WhatsApp 直接收到。</b></p>
+        <div class="eyebrow"><span class="dot"></span><span>10月13日 · 今日名單已更新</span></div>
+        <h1 class="hero-heading">恒指連升兩日<br><span class="hl">你隻股仲跌緊？</span><br><span class="accent">今日名單免費送你</span></h1>
+        <p class="hero-lead">指數升，但多數股都跌緊，揀啱股最重要。<br><b>按一下，WhatsApp 直接收名單。</b></p>
 
-        <a class="cta cta-top" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
+        <a class="cta cta-top" href="https://wa.me/85294602874?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
         <div class="hero-cta-sub" id="hero-cta-sub"><i>✓</i>完全免費<span>·</span>答 2 條簡單問題即收名單</div>
 
         <div class="hero-steps" aria-label="領取步驟">
@@ -230,7 +255,7 @@
             <article class="hero-card" data-slide="blackhorse" tabindex="0">
               <span class="card-tag"><i></i>潛力黑馬</span>
               <h3>今日潛力黑馬名單</h3>
-              <p>大市反彈，邊啲股<b>有大戶跟緊</b>？我哋幫你揀出嚟，一份名單睇晒。</p>
+              <p>大市分化，邊啲股<b>有大戶跟緊</b>？我哋幫你揀出嚟，一份名單睇晒。</p>
               <div class="card-meta"><span>免費領取</span><span>每日更新</span><span>一睇就明</span></div>
             </article>
 
@@ -275,21 +300,21 @@
     </section>
 
     <section class="section-blue" id="market">
-      <div class="section-label">09 OCT 收市 · 今日焦點</div>
-      <h2><span class="hl-o">恒指大升425點</span><br>重上24,000點</h2>
-      <p class="section-intro">10月9日（周五）恒指收報<b>24,211.35點</b>，升425.56點（+1.79%），<b>重上24,000點</b>；恒生科技指數升3.06%至4,197.84點，三大指數集體反彈。全日成交2,092億港元。不過北水全日只淨買入約2.9億港元，反彈主要靠科技股帶動。周五晚美股亦向好，<b>中概金龍指數升2.69%</b>，阿里巴巴美股升5.36%。</p>
+      <div class="section-label">12 OCT 收市 · 今日焦點</div>
+      <h2><span class="hl-o">恒指連升兩日</span><br>但跌股多過升股近一倍</h2>
+      <p class="section-intro">10月12日（周一）恒指收報<b>24,271.20點</b>，升59.85點（+0.25%），兩日累計升485點；恒生科技指數就跌0.67%至4,169.57點。全日成交1,626億港元，比上周五明顯縮量。最重要係：<b>206隻股升、357隻股跌</b>，指數靠少數重磅股撐住，大部分股其實喺度跌。</p>
       <div class="stats">
-        <div class="stat"><div class="stat-label">恒生指數</div><div class="stat-value">24,211.35</div><div class="stat-change up">▲425.56點 · +1.79%</div></div>
-        <div class="stat"><div class="stat-label">恒生科技指數</div><div class="stat-value">4,197.84</div><div class="stat-change up">▲124.46點 · +3.06%</div></div>
-        <div class="stat"><div class="stat-label">全日成交</div><div class="stat-value">2,092億</div><div class="stat-change neutral">較前日小幅回升</div></div>
-        <div class="stat stat-hot"><div class="stat-label">北水淨買入</div><div class="stat-value">2.90億</div><div class="stat-change neutral">滬賣深買 · 明顯揀股</div></div>
+        <div class="stat"><div class="stat-label">恒生指數</div><div class="stat-value">24,271.20</div><div class="stat-change up">▲59.85點 · +0.25%</div></div>
+        <div class="stat"><div class="stat-label">恒生科技指數</div><div class="stat-value">4,169.57</div><div class="stat-change down">▼28.27點 · −0.67%</div></div>
+        <div class="stat"><div class="stat-label">全日成交</div><div class="stat-value">1,626億</div><div class="stat-change neutral">較上周五明顯縮量</div></div>
+        <div class="stat stat-hot"><div class="stat-label">北水淨買入</div><div class="stat-value">26.03億</div><div class="stat-change up">連續5日淨買入</div></div>
       </div>
       <div class="market-points">
-        <div class="market-point"><div class="num">01</div><div><strong>科技股領漲，小米飆近一成</strong><p>小米升9.72%至25.96元，係最大升幅藍籌；快手升5.47%、騰訊升3.26%、阿里升2.59%。美國債息回軟，科技股集體反彈，<b>恒生科技指數單日升逾3%</b>。</p></div></div>
-        <div class="market-point"><div class="num">02</div><div><strong>北水揀股：買友邦、阿里，沽小米、盈富</strong><p>北水全日只淨買約2.9億，但揀股好明顯：友邦獲<b>淨買約10.7億</b>，股價升2.89%；阿里獲淨買約6.1億。小米雖然大升，北水反而淨沽約9.2億，盈富基金亦遭淨沽約18.2億。升市入面有人買、有人趁高走，<b>揀啱股比追升更重要</b>。</p></div></div>
-        <div class="market-point"><div class="num">03</div><div><strong>金融、濠賭股跟升；今個星期留意美國銀行業績</strong><p>滙控升1.8%、中銀香港升2.5%；澳門國慶黃金周旅客按年升15.5%，銀娛升4.8%、新濠升5.4%。美國13日公布大型銀行業績、14日公布CPI，會影響港股走勢；另外19日（周一）重陽節補假，港股休市。</p></div></div>
+        <div class="market-point"><div class="num">01</div><div><strong>銀行股撐市，AI硬件股回吐</strong><p>招商銀行升3.1%、東方海外升4.4%、京東升2.8%；但小米跌5.5%、華虹跌5.0%、老鋪黃金跌7.9%。<b>指數升，唔代表你隻股會升</b>，揀錯股一樣蝕。</p></div></div>
+        <div class="market-point"><div class="num">02</div><div><strong>北水連續5日淨買入，趁跌撈小米</strong><p>北水全日淨買入<b>26.03億</b>（滬股通19.55億、深股通6.48億）。小米雖然跌5.5%，北水反而<b>淨買入約9.74億</b>；友邦亦獲淨買約7.29億，長飛光纖、中芯就遭淨賣出。大資金喺度揀股，<b>跟啱方向比跟大市更重要</b>。</p></div></div>
+        <div class="market-point"><div class="num">03</div><div><strong>債息高企，今個星期留意美國數據</strong><p>環球債息上升，加上美國對立訊精密、工業富聯展開調查，拖累AI硬件股，深成指跌2.03%。美國13日公布大型銀行業績、14日公布CPI，會影響港股走勢；另外19日（周一）重陽節補假，港股休市。</p></div></div>
       </div>
-      <div class="source-line">數據：10月9日收市 · 恒指 24,211.35（+1.79%）· 恒生科技 4,197.84（+3.06%）· 國企指數 8,147.87（+1.71%）· 全日成交約 2,092 億港元 · 港股通淨買入約 2.90 億港元 · 美股10月9日：道指 +0.83%、中概金龍指數 +2.69% · 按經濟通、證券時報數據寶等公開市場資訊整理</div>
+      <div class="source-line">數據：10月12日收市 · 恒指 24,271.20（+0.25%）· 恒生科技 4,169.57（−0.67%）· 國企指數 8,168.57（+0.25%）· 全日成交約 1,626 億港元 · 港股通淨買入約 26.03 億港元 · 綜合指數成份股 206 升 357 跌 · 按新華社、證券時報數據寶、香港電台等公開市場資訊整理</div>
     </section>
 
     <section class="section-blue" id="trust">
@@ -309,11 +334,11 @@
         <div class="trust-point"><i>✓</i><span>跟住成交、北水同公開消息整理，唔靠一句「我覺得」</span></div>
       </div>
       <div class="final-card" id="final-cta">
-        <div class="mini-label">12 OCT 名單已整理</div>
-        <h2 id="final-title">升市更要揀啱股<br>今日完整名單已經整理好</h2>
+        <div class="mini-label">13 OCT 名單已整理</div>
+        <h2 id="final-title">大市分化更要揀啱股<br>今日完整名單已經整理好</h2>
         <p id="final-copy">揀好你想睇嘅方向，開啟 WhatsApp 後<b>直接按「發送」</b>，即可免費領取完整名單。</p>
-        <a class="cta" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="final" id="final-button">免費領取今日潛力黑馬名單</a>
-        <div class="reception" id="reception-text">本次由助理Vanessa So 接待</div>
+        <a class="cta" href="https://wa.me/85294602874?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="final" id="final-button">免費領取今日潛力黑馬名單</a>
+        <div class="reception" id="reception-text">本次由助理Nicole 黃嘉欣 接待</div>
       </div>
     </section>
 
@@ -321,15 +346,15 @@
   </main>
 
   <div class="floating-cta-wrap" id="floating-cta-wrap" aria-hidden="true">
-    <a class="cta floating-cta" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="floating" id="floating-button">免費領取今日潛力黑馬名單</a>
+    <a class="cta floating-cta" href="https://wa.me/85294602874?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="floating" id="floating-button">免費領取今日潛力黑馬名單</a>
   </div>
 
-  <!-- 兩頁領取抽屉：第 1 頁揀名單（按首屏卡片預選），第 2 頁選項本身係 <a>，點擊經 goWhatsApp 跳轉，同原確認按鈕一樣 -->
+  <!-- 兩頁領取抽屉：第 1 頁揀名單（按首屏卡片預選），第 2 頁三個選項本身係 <a>，點擊經 goWhatsApp 跳轉，同原確認按鈕一樣 -->
   <div class="lead-gate" id="lead-gate" aria-hidden="true">
     <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="gate-title-1">
       <div class="gate-handle"></div>
       <div class="gate-top">
-        <div class="gate-kicker" id="gate-kicker">12 OCT 名單已整理好</div>
+        <div class="gate-kicker" id="gate-kicker">13 OCT 名單已整理好</div>
         <button class="gate-close-x" type="button" id="gate-cancel" aria-label="關閉">×</button>
       </div>
       <div class="gate-progress"><span class="gate-progress-dot on"></span><span class="gate-progress-dot" id="gate-progress-2"></span><span class="gate-progress-text" id="gate-progress-text">第 1 步 / 共 2 步</span></div>
@@ -339,7 +364,7 @@
         <p class="gate-desc">揀一份，即刻去下一步。</p>
         <div class="gate-options">
           <button class="gate-option" type="button" data-question="interest" data-value="近期潛力黑馬名單">
-            <span class="gate-option-main"><span class="gate-option-icon">黑</span><span><span class="gate-option-title">潛力黑馬名單</span><small>反彈市有大戶跟緊嘅方向</small></span></span><span class="gate-option-check"></span>
+            <span class="gate-option-main"><span class="gate-option-icon">黑</span><span><span class="gate-option-title">潛力黑馬名單</span><small>分化市有大戶跟緊嘅方向</small></span></span><span class="gate-option-check"></span>
           </button>
           <button class="gate-option" type="button" data-question="interest" data-value="今日心水股名單">
             <span class="gate-option-main"><span class="gate-option-icon">今</span><span><span class="gate-option-title">今日心水股名單</span><small>今日最值得先睇嘅幾隻，附原因</small></span></span><span class="gate-option-check"></span>
@@ -351,21 +376,30 @@
       </div>
 
       <div class="gate-step" data-step="2">
-        <div class="gate-picked">你揀咗：<b id="gate-picked-name">潛力黑馬名單</b> <button type="button" class="gate-back" id="gate-back">改</button></div>
-        <h3 class="gate-title">你而家嘅情況係？</h3>
-        <p class="gate-desc">揀一個，<b>即刻打開 WhatsApp 收名單</b>。</p>
-        <div class="gate-options">
-        <a class="gate-option gate-go" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="手上有股被套緊，想解套">
-          <span class="gate-option-main"><span class="gate-option-icon">套</span><span><span class="gate-option-title">手上有股被套緊</span><small>想知點樣解套</small></span></span><span class="gate-option-go">›</span>
-        </a>
-        <a class="gate-option gate-go" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="有閒錢，想揀隻好股入市">
-          <span class="gate-option-main"><span class="gate-option-icon">錢</span><span><span class="gate-option-title">有閒錢，想入市</span><small>想揀隻好股買入</small></span></span><span class="gate-option-go">›</span>
-        </a>
-        <a class="gate-option gate-go" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="想穩陣收息，長線慢慢等">
-          <span class="gate-option-main"><span class="gate-option-icon">穩</span><span><span class="gate-option-title">想穩陣收息</span><small>長線慢慢等，唔想大上大落</small></span></span><span class="gate-option-go">›</span>
-        </a>
+        <div class="gate-top2"><div class="gate-kicker">今日港股資料已整理</div><div class="gate-step-text">2 / 2</div></div>
+        <div class="gate-bar"><i></i></div>
+        <div class="gate-intro">
+          <strong>你揀嘅資料會附上以下重點</strong>
+          <p>再揀一項你最想一齊睇到的內容，我們就按這個方向發給你。</p>
+          <div class="gate-selected-tip">目前選擇：<b id="gate-picked-name">今日心水股名單</b></div>
         </div>
-        <div class="gate-confirm-sub">撳完直接打開 WhatsApp，按「發送」即收</div>
+        <h3 class="gate-title">名單入面，你最想一齊睇到咩資料？</h3>
+        <p class="gate-desc">揀一個你最關心嘅重點，方便直接對應內容。</p>
+        <div class="gate-options">
+          <a class="gate-option gate-go" href="https://wa.me/85294602874?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="股票名稱＋今日值得留意原因">
+            <span class="gate-option-main"><span class="gate-option-icon">01</span><span><span class="gate-option-title">股票名稱＋今日值得留意原因</span><small>想先知道係邊幾隻，以及點解今日值得睇</small></span></span><span class="gate-option-arrow">›</span>
+          </a>
+          <a class="gate-option gate-go" href="https://wa.me/85294602874?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="近期資金／成交異動重點">
+            <span class="gate-option-main"><span class="gate-option-icon">02</span><span><span class="gate-option-title">近期資金／成交異動重點</span><small>想先睇資金流向、成交變化同近期異動</small></span></span><span class="gate-option-arrow">›</span>
+          </a>
+          <a class="gate-option gate-go" href="https://wa.me/85294602874?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="所屬板塊＋後續觀察重點">
+            <span class="gate-option-main"><span class="gate-option-icon">03</span><span><span class="gate-option-title">所屬板塊＋後續觀察重點</span><small>想知道板塊位置，以及之後應該再觀察咩</small></span></span><span class="gate-option-arrow">›</span>
+          </a>
+        </div>
+        <div class="gate-actions">
+          <button class="gate-back" type="button" id="gate-back">返回</button>
+          <div class="gate-go-tip">揀上面任何一項<br><b>即刻打開 WhatsApp 收名單</b></div>
+        </div>
       </div>
 
       <div class="gate-trust">完全免費 · 不需要填姓名、電話或其他資料</div>
@@ -392,8 +426,8 @@
   <script>
     // ====== 日常設定區：換號 / 換接待只改這裡 ======
     const CONFIG = {
-      whatsappNumber: "85296400772",
-      receptionist: 'Vanessa So',
+      whatsappNumber: "85294602874",
+      receptionist: 'Nicole 黃嘉欣',
       googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq',
       // true = 第 2 題揀完即直接跳 WhatsApp（少一次點擊，可做 A/B）；false = 需再按「立即查看」
       autoJumpOnStep2: false,
@@ -407,9 +441,9 @@
       eventEndpoint: 'https://hhucuq.top/wa-events',
       // 'ABC' = 取消選擇框，按領取按鈕直接跳 WhatsApp（同彈窗綠色按鈕一樣由 <a> 預設導航跳轉）
       // 'CBA' = 換回選擇框（填其他值或留空都當 'CBA'）
-      directMode: 'CBA',
+      directMode: 'ABC',
       // 進線語入面嘅日期，每日更新數據時一併改
-      listDate: '10月12日'
+      listDate: '10月13日'
     };
 
     // ====== 廣告點擊 ID：首次帶參數進入時保存 90 日，之後冇參數再訪問都能對返 ======
@@ -486,19 +520,19 @@
         key:'blackhorse',
         label:'潛力黑馬',
         button:'免費領取今日潛力黑馬名單',
-        message:'你好，我想睇10月12日潛力黑馬名單，唔該發一份俾我。'
+        message:'你好，我想睇10月13日潛力黑馬名單，唔該發一份俾我。'
       },
       picks: {
         key:'picks',
         label:'今日心水',
         button:'免費領取今日心水股名單',
-        message:'你好，我想睇10月12日心水股名單，唔該發一份俾我。'
+        message:'你好，我想睇10月13日心水股名單，唔該發一份俾我。'
       },
       income: {
         key:'income',
         label:'高息收息',
         button:'免費領取高息收息精選名單',
-        message:'你好，我想睇10月12日高息收息股名單，唔該發一份俾我。'
+        message:'你好，我想睇10月13日高息收息股名單，唔該發一份俾我。'
       }
     };
 
@@ -610,19 +644,22 @@
     const interestOptions = [...document.querySelectorAll('.gate-option[data-question="interest"]')];
     const priorityOptions = [...document.querySelectorAll('.gate-option[data-question="priority"]')];
     const gatePickedName = document.getElementById('gate-picked-name');
+    const gatePanel = leadGate.querySelector('.gate-panel');
     const gateProgress2 = document.getElementById('gate-progress-2');
     const gateProgressText = document.getElementById('gate-progress-text');
     const gateKicker = document.getElementById('gate-kicker');
     const GATE_KICKER = gateKicker.textContent;
     const gateAnswers = { interest:'', priority:'' };
     const defaultInterestMap = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
-    const SITUATIONS = priorityOptions.map(el => el.dataset.value);
+    const FOCUSES = priorityOptions.map(el => el.dataset.value);
 
     function setGateStep(step){
       gateSteps.forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
       gateProgress2.classList.toggle('on', step === 2);
-      gateProgressText.textContent = step === 1 ? '第 1 步 / 共 2 步' : '最後一步';
-      gateKicker.textContent = step === 1 ? GATE_KICKER : '最後一步 · 揀完即收名單';
+      gateProgressText.textContent = '第 1 步 / 共 2 步';
+      gateKicker.textContent = GATE_KICKER;
+      gatePanel.classList.toggle('on-step2', step === 2);
+      gatePanel.scrollTop = 0;
       if (step === 2) {
         const picked = interestOptions.find(el => el.dataset.value === gateAnswers.interest);
         gatePickedName.textContent = picked ? picked.querySelector('.gate-option-title').textContent : gateAnswers.interest;
@@ -636,6 +673,7 @@
       gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
       gateAnswers.priority = '';
       interestOptions.forEach(el => el.classList.toggle('active', el.dataset.value === gateAnswers.interest));
+      priorityOptions.forEach(el => el.classList.remove('active'));
       setGateStep(1);
       leadGate.classList.add('show');
       leadGate.setAttribute('aria-hidden','false');
@@ -711,19 +749,25 @@
       close: ['，唔該晒。', '，唔該。', '，謝謝。', '，唔該你。', '，多謝！', '。']
     };
     const LIST_NAMES = { blackhorse:'潛力黑馬名單', picks:'心水股名單', income:'高息收息股名單' };
+    // 第 2 頁三個重點（data-value）對應嘅講法，每次隨機揀一句
+    const FOCUS_PHRASES = {
+      '股票名稱＋今日值得留意原因': ['想知係邊幾隻同埋點解值得留意', '想睇埋股票名稱同今日值得留意嘅原因', '最想知係邊幾隻股，同點解今日值得睇'],
+      '近期資金／成交異動重點': ['想睇埋近期資金同成交異動', '最想知近期資金流向同成交變化', '想一齊睇埋資金同成交異動重點'],
+      '所屬板塊＋後續觀察重點': ['想知埋所屬板塊同之後要留意咩', '想睇埋板塊位置同後續觀察重點', '最想知所屬板塊同後面點睇']
+    };
     const LAST_MSG_KEY = 'econman_last_msg';
 
-    function randomMessage(key, situation) {
+    function randomMessage(key, focus) {
       const pick = arr => arr[Math.floor(Math.random() * arr.length)];
       const d = CONFIG.listDate || '今日';
       const n = LIST_NAMES[key] || '精選名單';
       const r = String(CONFIG.receptionist || '').trim();
-      const s = situation ? `，我${situation}` : '';
+      const phrases = FOCUS_PHRASES[focus];
       let last = '';
       try { last = localStorage.getItem(LAST_MSG_KEY) || ''; } catch (e) {}
       let msg = '';
       for (let i = 0; i < 6 && (!msg || msg === last); i++) {
-        msg = (r ? pick(MSG_PARTS.greet).replace('{r}', r) : pick(MSG_PARTS.greetNoName)) + pick(MSG_PARTS.lead) + pick(MSG_PARTS.ask).replace('{d}', d).replace('{n}', n) + s + pick(MSG_PARTS.close);
+        msg = (r ? pick(MSG_PARTS.greet).replace('{r}', r) : pick(MSG_PARTS.greetNoName)) + pick(MSG_PARTS.lead) + pick(MSG_PARTS.ask).replace('{d}', d).replace('{n}', n) + (phrases ? '，' + pick(phrases) : '') + pick(MSG_PARTS.close);
       }
       try { localStorage.setItem(LAST_MSG_KEY, msg); } catch (e) {}
       return msg;
@@ -735,7 +779,7 @@
       const code = leadCode ? `\n（編號：${leadCode}）` : '';
       let msg = '';
       try { msg = randomMessage(key, gateAnswers.priority); } catch (e) {}
-      return (msg || VARIANTS[key].message || '你好，我想睇10月12日精選名單，唔該發一份俾我。') + code;
+      return (msg || VARIANTS[key].message || '你好，我想睇10月13日精選名單，唔該發一份俾我。') + code;
     }
 
     // ====== 打點：gtag.js 已載入就即時發；未載入（網絡慢 / 用戶極快點擊）就先存本地，之後或下次打開頁面補報 ======
@@ -799,7 +843,8 @@
       const hrefByEnv = {
         ios_browser: urls.universal,
         ios_webview: urls.scheme,
-        android_browser: ANDROID_INTENT_OK ? urls.intent : urls.universal,
+        // 第一次 intent:// 冇反應先會見到兜底，重試改行 wa.me（App Link／官方頁），唔再重複同一條路
+        android_browser: urls.universal,
         android_webview: urls.scheme,
         desktop: urls.universal
       };
@@ -980,7 +1025,7 @@
       btn.addEventListener('click', e => {
         if (!DIRECT_MODE) { e.preventDefault(); openLeadGate(btn.dataset.location); return; }
         gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
-        gateAnswers.priority = SITUATIONS[Math.floor(Math.random() * SITUATIONS.length)] || '';
+        gateAnswers.priority = FOCUSES[Math.floor(Math.random() * FOCUSES.length)] || '';
         goWhatsApp(e, btn.dataset.location);
       });
     });
@@ -988,6 +1033,7 @@
     priorityOptions.forEach(opt => {
       opt.addEventListener('click', e => {
         gateAnswers.priority = opt.dataset.value;
+        priorityOptions.forEach(el => el.classList.toggle('active', el === opt));
         try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'priority'}); } catch(err){}
         closeLeadGate();
         goWhatsApp(e, pendingLocation);
@@ -1036,5 +1082,5 @@
       [heroCta, finalButton].forEach(btn => ctaObserver.observe(btn));
     }
   </script>
-
 </body>
+</html>
