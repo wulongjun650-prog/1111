@@ -27,7 +27,11 @@
     gtag('js', new Date());
 
     gtag('config', 'G-Q6YP0DZLSY');
-    // 冇 config AW-，send_to: 'AW-...' 嘅轉化唔會發出
+  </script>
+  <!-- 冇 config AW-，send_to: 'AW-...' 嘅轉化唔會發出；獨立一段，分流系統換 GA4 代碼時唔會連帶刪走 -->
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = window.gtag || function(){dataLayer.push(arguments);};
     gtag('config', 'AW-364192896');
   </script>
 
@@ -972,9 +976,9 @@
           fbq('trackCustom', 'WhatsAppClick', { placement: locationName || 'unknown', variant: currentKey, wa_env: WA_ENV });
         }
       } catch (err) {}
+      sendPageView();
       track('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
       track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
-      sendPageView();
       sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: gateAnswers.interest, priority: gateAnswers.priority, gtag_ready: gtagReady() });
     }
 
