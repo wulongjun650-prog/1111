@@ -97,6 +97,7 @@ const labels = {
   logs: ['访问日志', '访问日志', '查看文档请求、设备、国家与分流结果。'],
   analysis: ['数据深度分析', '数据深度分析', '只看当前管理站点的香港访客请求和落地页事件。'],
   campaign: ['投放数据', '投放数据', '按版位看进站、点击和拉起。标红只提醒，不会自动改页面。'],
+  speed: ['网站测速', '网站测速', '看 PageSpeed 性能评分，并从香港或韩国实测网页打开速度。'],
   accounts: ['账号管理', '账号管理', isObserver(account) ? '查看用户名、角色和名下域名。密码不会显示。' : '创建代理或观察号，管理访问权限与域名归属。'],
 };
 const reasons = { blacklist: '命中黑名单', whitelist: '命中白名单', super_bot: '超级防爬虫', strict_bot: '严格防爬虫', bot_marker: '匹配机器人标记', ipv4: 'IPv4 限制', device: '设备限制', os_version: '系统版本限制', blocked_cidr: '命中屏蔽网段', country: '国家 / 地区限制', country_unknown: '国家未知', language: '语言限制', visit_limit: '超过访问次数', allowed: '规则通过', pass: '规则通过', force_a: '强制 A', force_b: '强制 B', protection_off: '防护已关闭' };
@@ -207,6 +208,7 @@ async function api(path, { method = 'GET', body, raw = false, timeout } = {}) {
       await loadDomains();
       if (selectedSite !== siteAtStart) error.stale = true;
     }
+    if (typeof data.detail === 'string') error.detail = data.detail;
     if ([400, 422].includes(response.status) && typeof data.detail === 'string') error.message += ` ${data.detail}`;
     throw error;
   }
@@ -616,8 +618,8 @@ async function loadLogs(page = 1, {quiet = false} = {}) {
   }
 }
 
-const siteFreeTabs = ['domains', 'accounts', 'analysis', 'campaign'];
-const alwaysOpenPanels = ['panel-domains', 'panel-accounts', 'panel-analysis', 'panel-campaign'];
+const siteFreeTabs = ['domains', 'accounts', 'analysis', 'campaign', 'speed'];
+const alwaysOpenPanels = ['panel-domains', 'panel-accounts', 'panel-analysis', 'panel-campaign', 'panel-speed'];
 let analysisRequest = 0;
 
 function clipCell(text, className = 'path-cell') {
@@ -1047,7 +1049,7 @@ async function selectTab(name, {load = true} = {}) {
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
   $('#breadcrumb-current').textContent = labels[name][0];
-  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',desk:'WORK ORDERS',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',analysis:'DEEP ANALYSIS',campaign:'CAMPAIGN',accounts:'ACCOUNTS'}[name];
+  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',desk:'WORK ORDERS',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',analysis:'DEEP ANALYSIS',campaign:'CAMPAIGN',speed:'SPEED',accounts:'ACCOUNTS'}[name];
   $('#page-title').textContent = labels[name][1]; $('#page-subtitle').textContent = labels[name][2];
   if (name !== 'content') closePreview();
   else if (state) await tracking.load();
@@ -1631,9 +1633,167 @@ on($('#domain-form'), 'submit', async event => {
   });
 });
 
+let speedToken = 0;
+let speedBusy = false;
+let speedHasRun = false;
+
+function speedMs(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '—';
+  return amount >= 100 ? `${Math.round(amount)}ms` : `${amount.toFixed(1)}ms`;
+}
+
+function speedBytes(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '—';
+  if (amount < 1024) return `${Math.round(amount)} B`;
+  if (amount < 1024 * 1024) return `${(amount / 1024).toFixed(1)} KB`;
+  return `${(amount / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function scoreTone(score) {
+  if (score >= 90) return 'good';
+  if (score >= 50) return 'mid';
+  return 'poor';
+}
+
+function setSpeedBusy(busy) {
+  speedBusy = busy;
+  $('#speed-start').disabled = busy;
+  $('#speed-again').disabled = busy || !speedHasRun;
+  for (const id of ['speed-url', 'speed-region', 'speed-repeats', 'speed-strategy', 'speed-use-domain']) $(`#${id}`).disabled = busy;
+}
+
+function renderSpeed(job) {
+  const status = $('#speed-status');
+  if (job.status === 'running') status.textContent = `正在检测第 ${job.completed + 1} / ${job.repeats} 次 · ${job.region_label}网速，以及 Google 实验室的${job.strategy_label}评分`;
+  else if (job.status === 'done') status.textContent = `${job.repeats} 次已完成。${job.pagespeed_note}${job.probe_note}`;
+  else status.textContent = job.error || '检测中断';
+  const summary = $('#speed-summary');
+  summary.replaceChildren();
+  if (!job.summary || (job.summary.score_avg === null && job.summary.total_ms_avg === null)) summary.hidden = true;
+  else {
+    summary.hidden = false;
+    if (job.summary.score_avg !== null) {
+      const card = element('article', 'stat-card');
+      const label = element('div', 'stat-label');
+      label.append(element('span', '', '平均性能评分'));
+      card.append(label, element('strong', `speed-score ${scoreTone(job.summary.score_avg)}`, String(job.summary.score_avg)), element('p', '', `${job.summary.score_count} 次${job.strategy_label}评分`));
+      summary.append(card);
+    }
+    if (job.summary.total_ms_avg !== null) {
+      const card = element('article', 'stat-card');
+      const label = element('div', 'stat-label');
+      label.append(element('span', '', '平均总响应'));
+      card.append(label, element('strong', '', speedMs(job.summary.total_ms_avg)), element('p', '', `${job.summary.probe_count} 次${job.region_label}探测`));
+      summary.append(card);
+    }
+  }
+  const body = $('#speed-rows');
+  body.replaceChildren();
+  if (!job.runs.length) {
+    const row = element('tr');
+    const cell = element('td', 'empty-state', job.status === 'running' ? '正在等待第一次结果…' : '还没有检测结果。');
+    cell.colSpan = 17;
+    row.append(cell);
+    body.append(row);
+    return;
+  }
+  for (const run of job.runs) {
+    const row = element('tr');
+    const score = element('td');
+    if (run.pagespeed) {
+      score.append(element('strong', `speed-score ${scoreTone(run.pagespeed.score)}`, String(run.pagespeed.score)));
+      if (run.pagespeed.source_label) score.append(element('small', '', run.pagespeed.source_label));
+    }
+    else score.textContent = run.pagespeed_error || '—';
+    const place = element('td');
+    if (run.probe) {
+      place.append(document.createTextNode([job.region_label, run.probe.city].filter(Boolean).join(' · ') || job.region_label));
+      if (run.probe.network) place.append(element('small', '', run.probe.network));
+    } else place.textContent = run.probe_error || '—';
+    const metrics = run.pagespeed || {};
+    row.append(
+      element('td', '', String(run.index)),
+      score,
+      element('td', '', speedMs(metrics.fcp_ms)),
+      element('td', '', speedMs(metrics.lcp_ms)),
+      element('td', '', speedMs(metrics.tbt_ms)),
+      element('td', '', metrics.cls === null || metrics.cls === undefined ? '—' : Number(metrics.cls).toFixed(3)),
+      element('td', '', speedMs(metrics.si_ms)),
+      place,
+      element('td', 'ip-cell', run.probe?.ip || '—'),
+      element('td', '', run.probe?.status ?? '—'),
+      element('td', '', speedMs(run.probe?.total_ms)),
+      element('td', '', speedMs(run.probe?.dns_ms)),
+      element('td', '', speedMs(run.probe?.tcp_ms)),
+      element('td', '', speedMs(run.probe?.tls_ms)),
+      element('td', '', speedMs(run.probe?.first_byte_ms)),
+      element('td', '', speedMs(run.probe?.download_ms)),
+      element('td', '', speedBytes(run.probe?.bytes)),
+    );
+    body.append(row);
+  }
+}
+
+async function watchSpeed(id, token) {
+  while (token === speedToken) {
+    const job = await api(`/api/speedcheck/${id}`);
+    if (token !== speedToken) return;
+    renderSpeed(job);
+    if (job.status !== 'running') return;
+    await new Promise(resolve => window.setTimeout(resolve, 1200));
+  }
+}
+
+async function runSpeedCheck() {
+  const token = ++speedToken;
+  const body = {
+    url: $('#speed-url').value.trim(),
+    region: $('#speed-region').value,
+    repeats: Number($('#speed-repeats').value),
+    strategy: $('#speed-strategy').value,
+  };
+  setSpeedBusy(true);
+  $('#speed-status').textContent = '正在开始…';
+  try {
+    const job = await api('/api/speedcheck', { method: 'POST', body });
+    if (token !== speedToken) return;
+    speedHasRun = true;
+    renderSpeed(job);
+    await watchSpeed(job.id, token);
+  } catch (error) {
+    if (token !== speedToken || error.stale) return;
+    $('#speed-status').textContent = error.detail || error.message;
+  } finally {
+    if (token === speedToken) setSpeedBusy(false);
+  }
+}
+
+on($('#speed-form'), 'submit', event => {
+  event.preventDefault();
+  if (speedBusy) return;
+  speedBusy = true;
+  void runSpeedCheck();
+});
+on($('#speed-again'), 'click', () => {
+  if (speedBusy) return;
+  $('#speed-form').requestSubmit();
+});
+on($('#speed-use-domain'), 'click', () => {
+  const domain = currentDomain();
+  if (!domain) {
+    toast('左上角没有可选的域名。', true);
+    return;
+  }
+  $('#speed-url').value = `https://${domain}/`;
+});
+
 if (isObserver(account)) {
   document.addEventListener('submit', event => {
-    if (event.target?.id === 'log-filters' || event.target?.id === 'analysis-filters') return;
+    if (event.target?.id === 'log-filters' || event.target?.id === 'analysis-filters' || event.target?.id === 'speed-form') return;
     event.preventDefault();
     event.stopPropagation();
   }, true);

@@ -40,6 +40,7 @@ from .rules import decide
 from .cloudflare import Cloudflare
 from .provisioning import ProvisioningError
 from .reputation import GoogleReputation
+from .speedcheck import SpeedBusy, SpeedCheckInput, SpeedChecker
 from .store import Conflict, Store
 from .auth import Auth, COOKIE, SESSION_SECONDS
 from .sites import Registry
@@ -187,8 +188,10 @@ class LocalBoundary:
                 # stays inside the reputation cache and does not change a site.
                 observer_may_refresh = scope['method'] == 'POST' and re.fullmatch(
                     r'/api/sites/(?:[a-f0-9]{32}|default)/reputation/check', scope['path'])
+                # A speed check only asks Google and an external probe. It does not change a site.
+                observer_may_probe = scope['method'] == 'POST' and scope['path'] == '/api/speedcheck'
                 if (session['role'] == 'observer' and scope['method'] not in ('GET', 'HEAD')
-                        and scope['path'] != '/api/logout' and not observer_may_refresh):
+                        and scope['path'] != '/api/logout' and not observer_may_refresh and not observer_may_probe):
                     await JSONResponse({'detail': '观察号只能查看'}, status_code=403)(scope, receive, send)
                     return
         state['csrf'] = csrf
@@ -383,6 +386,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     app.state.registry = registry
     reputation = GoogleReputation(registry, os.environ.get('AB_GOOGLE_WEB_RISK_KEY', ''))
     app.state.reputation = reputation
+    app.state.speedcheck = SpeedChecker()
     if cloudflare is None:
         cloudflare = Cloudflare(os.environ.get('AB_CLOUDFLARE_TOKEN', ''), os.environ.get('AB_CLOUDFLARE_TEMPLATE', ''), server_ip)
         if cloudflare.token:
@@ -1409,6 +1413,20 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         except FileNotFoundError:
             raise HTTPException(404, '当前发布页没有可导出的 HTML') from None
         return Response(payload, media_type='text/html; charset=utf-8', headers={'Content-Disposition': f'attachment; filename="landing-{slot}.html"'})
+
+    @app.post('/api/speedcheck')
+    def start_speedcheck(body: SpeedCheckInput, request: Request):
+        try:
+            return app.state.speedcheck.start(body, principal(request)['id'])
+        except SpeedBusy as error:
+            raise HTTPException(409, str(error)) from None
+
+    @app.get('/api/speedcheck/{job_id}')
+    def read_speedcheck(job_id: Annotated[str, PathParameter(pattern=r'^[a-f0-9]{24}$')], request: Request):
+        job = app.state.speedcheck.get(job_id, principal(request)['id'])
+        if job is None:
+            raise HTTPException(404, '检测不存在')
+        return job
 
     @app.post('/wa-events')
     async def wa_events(request: Request):

@@ -43,6 +43,7 @@
       <button class="nav-item" data-tab="logs"><span aria-hidden="true">≡</span>访问日志</button>
       <button class="nav-item" data-tab="analysis"><span aria-hidden="true">≡</span>数据深度分析</button>
       <button class="nav-item" data-tab="campaign"><span aria-hidden="true">▦</span>投放数据</button>
+      <button class="nav-item" data-tab="speed"><span aria-hidden="true">↯</span>网站测速</button>
       <button class="nav-item" data-tab="domains"><span aria-hidden="true">◎</span>域名管理</button>
       {% if account.role in ['admin', 'observer'] %}<button class="nav-item" data-tab="accounts"><span aria-hidden="true">◎</span>账号管理</button>{% endif %}
     </nav>
@@ -101,6 +102,26 @@
         <article class="card"><div class="card-heading"><div><h2>账号列表</h2><p class="card-caption">{{ '管理访问权限与密码' if account.role == 'admin' else '用户名、角色和名下域名' }}</p></div><button id="refresh-accounts" class="button secondary small">刷新</button></div><div id="account-list" class="table-scroll"><p class="empty-state">正在读取账号…</p></div></article>
       </section>
       {% endif %}
+
+      <section id="panel-speed" class="tab-panel" aria-label="网站测速" hidden>
+        <article class="card">
+          <div class="card-heading"><div><p class="eyebrow">PAGESPEED</p><h2>网站评分和网速</h2></div></div>
+          <p class="muted">性能评分优先用 Google PageSpeed Insights。免费额度用完时，改由本机 Lighthouse 按同一套性能算法打分，打分机器仍然不是香港或韩国。网速从你选的国家实测：选香港就从香港的探测点请求，选韩国就从韩国的探测点请求。连续次数选 3，就会按顺序测 3 次。</p>
+          <form id="speed-form" class="filter-bar speed-form">
+            <label class="grow">网址<input id="speed-url" name="url" required maxlength="500" placeholder="https://example.com" autocomplete="off" spellcheck="false"></label>
+            <label>地区<select id="speed-region" name="region"><option value="HK">香港</option><option value="KR">韩国</option><option value="TW">台湾</option><option value="JP">日本</option><option value="SG">新加坡</option><option value="US">美国</option></select></label>
+            <label>连续次数<select id="speed-repeats" name="repeats"><option value="1">1 次</option><option value="2">2 次</option><option value="3">3 次</option></select></label>
+            <label>评分设备<select id="speed-strategy" name="strategy"><option value="mobile">手机</option><option value="desktop">电脑</option></select></label>
+            <button class="button primary" type="submit" id="speed-start">开始检测</button>
+            <button class="button secondary" type="button" id="speed-again" disabled>一键重测</button>
+            <button class="button secondary small" type="button" id="speed-use-domain">填入当前域名</button>
+          </form>
+          <p id="speed-status" class="subtle" role="status">填写网址后开始。每一次都会让所选地区和 Google 实验室各打开一次这个网址。</p>
+          <div id="speed-summary" class="stats-grid" hidden></div>
+          <div class="table-scroll"><table><thead><tr><th>次数</th><th>性能评分</th><th>FCP</th><th>LCP</th><th>TBT</th><th>CLS</th><th>速度指数</th><th>探测点</th><th>解析 IP</th><th>状态</th><th>总响应</th><th>解析</th><th>建连</th><th>TLS</th><th>首包</th><th>下载</th><th>大小</th></tr></thead><tbody id="speed-rows"><tr><td class="empty-state" colspan="17">还没有检测结果。</td></tr></tbody></table></div>
+          <p class="subtle">探测点落在别的国家时，这次网速不计入。评分实验室不在香港或韩国。从外网打开落地页，会计入那个网站自己的访问。</p>
+        </article>
+      </section>
 
       <section id="panel-domains" class="tab-panel" aria-label="域名管理" hidden>
         <article class="card" id="domain-add-panel" hidden><div class="card-heading"><div><p class="eyebrow">ADD DOMAIN</p><h2>添加域名</h2></div><button id="cancel-domain-add" class="button secondary small">收起</button></div><p class="muted">填写你拥有的完整域名。不修改已有宝塔站点。</p>
