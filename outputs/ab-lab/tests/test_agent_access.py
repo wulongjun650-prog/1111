@@ -200,75 +200,114 @@ def sign_in(app, username, password):
     return client
 
 
-def test_observer_reads_every_domain_and_account_but_cannot_change_anything(accounts):
+def test_observer_reads_one_domain_and_the_rows_look_like_that_domain(accounts):
     app, auth, owner, a, b, one, two = accounts
     first, second = add(a, 'one.test'), add(b, 'two.test')
-    with app.state.registry.store(first['id']).connect() as db:
+    source = app.state.registry.store(first['id'])
+    with source.connect() as db:
         db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode) VALUES(?,?,?,?,?,?,?,?)',
                    (time.time()-60, '203.0.113.0/24', 'KR', 'mobile', 'B', 'allowed', '/', 'RULES'))
+    source.record_client_event('{"event":"whatsapp_click","transaction_id":"watch-me","page":"https://one.test/go","wa_env":"ios","link_type":"api"}', 'one.test')
+    source.record_access('watch-ua', '', '', '"18.0.0"', '?1', '', 'gclid=1', '85290001111', '', 'HK', '', 200, 1, '/')
     created = owner.post('/api/accounts', json={'username': 'watcher', 'password': 'watch-password-ok', 'role': 'observer'})
     assert created.status_code == 200, created.text
     assert created.json()['account']['role'] == 'observer'
     assert 'password' not in created.json()['account']
+    watcher_id = created.json()['account']['id']
     assert a.post('/api/accounts', json={'username': 'forged-watch', 'password': 'watch-password-ok', 'role': 'observer'}).status_code == 403
     watcher = sign_in(app, 'watcher', 'watch-password-ok')
     page = watcher.get('/')
     assert page.status_code == 200
-    assert 'data-tab="accounts"' in page.text and '观察账号' in page.text
+    assert 'data-tab="accounts"' not in page.text and '观察账号' in page.text
+    assert '只能看指定的这一个域名' in page.text
     assert 'id="analysis-clear"' not in page.text
     assert 'id="campaign-clear"' not in page.text
     assert '导出数据' in page.text
+    assert watcher.get('/api/sites').json()['sites'] == []
+    assert watcher.get('/api/accounts').status_code == 403
+    assert a.get('/api/accounts').status_code == 403
+    assert watcher.get(f"/api/sites/{first['id']}/state").status_code == 404
+    assert watcher.get(f"/api/sites/{second['id']}/logs").status_code == 404
+    mirror = add(owner, 'watch.test')
+    bound = owner.put(f"/api/sites/{mirror['id']}/mirror", json={'source_id': first['id'], 'observer_id': watcher_id})
+    assert bound.status_code == 200, bound.text
+    assert bound.json()['site']['mirror_domain'] == 'one.test'
     catalog = watcher.get('/api/sites')
     assert catalog.status_code == 200, catalog.text
-    assert {site['domain'] for site in catalog.json()['sites']} >= {'one.test', 'two.test'}
-    assert catalog.json()['sites'][-1]['owner_username'] == 'agent-two'
-    listed = watcher.get('/api/accounts')
-    assert listed.status_code == 200, listed.text
-    assert {item['username'] for item in listed.json()['items']} >= {'admin888', 'agent-one', 'agent-two', 'watcher'}
-    assert all('password' not in item for item in listed.json()['items'])
-    assert a.get('/api/accounts').status_code == 403
-    assert watcher.get(f"/api/sites/{second['id']}/state").status_code == 200
-    assert watcher.get(f"/api/sites/{first['id']}/logs").status_code == 200
-    assert watcher.get(f"/api/sites/{first['id']}/audit").status_code == 200
-    analytics = watcher.get('/api/analytics?scope=all')
+    assert [site['domain'] for site in catalog.json()['sites']] == ['watch.test']
+    assert 'mirror_source' not in catalog.json()['sites'][0]
+    assert 'one.test' not in catalog.text and 'two.test' not in catalog.text
+    admin_row = next(site for site in owner.get('/api/sites').json()['sites'] if site['id'] == mirror['id'])
+    assert admin_row['mirror_source'] == first['id'] and admin_row['mirror_domain'] == 'one.test'
+    assert watcher.get(f"/api/sites/{mirror['id']}/state").status_code == 200
+    assert watcher.get(f"/api/sites/{mirror['id']}/audit").status_code == 200
+    logs = watcher.get(f"/api/sites/{mirror['id']}/logs")
+    assert logs.status_code == 200, logs.text
+    assert logs.json()['total'] == 1
+    assert app.state.registry.store(mirror['id']).logs(7, '', 1)['total'] == 0
+    analytics = watcher.get(f"/api/sites/{mirror['id']}/analytics?scope=current")
     assert analytics.status_code == 200, analytics.text
     assert analytics.json()['summary']['total'] == 1
+    assert analytics.json()['recent'][0]['domain'] == 'watch.test'
+    assert analytics.json()['recent'][0]['site_id'] == mirror['id']
+    assert 'one.test' not in analytics.text
+    assert owner.get('/api/analytics?scope=all').json()['summary']['total'] == 1
+    campaign = watcher.get('/api/campaign?range=today&domain=watch.test')
+    assert campaign.status_code == 200, campaign.text
+    assert 'one.test' not in campaign.text and 'watch.test' in campaign.text
+    assert campaign.json()['totals']['clicks'] == 1
+    source_campaign = owner.get('/api/campaign?range=today&domain=one.test')
+    assert source_campaign.json()['totals']['clicks'] == 1
+    assert 'one.test' in source_campaign.text
+    analysis = watcher.get('/api/analysis?days=7&domain=watch.test')
+    assert analysis.status_code == 200, analysis.text
+    assert {item['domain'] for item in analysis.json()['events']['items']} == {'watch.test'}
+    assert {item['domain'] for item in analysis.json()['requests']['items']} == {'watch.test'}
+    assert 'one.test' not in analysis.text
+    assert owner.post('/api/analysis/clear?domain=watch.test').status_code == 400
+    assert owner.post(f"/api/sites/{mirror['id']}/logs/clear").status_code == 400
+    assert source.logs(7, '', 1)['total'] == 1
+    with source.connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM client_events').fetchone()[0] == 1
+    added = owner.post(f"/api/sites/{first['id']}/b-redirects/numbers", json={'phones': ['85290001111'], 'note': ''})
+    assert added.status_code == 200, added.text
+    assert [item['phone'] for item in app.state.registry.store(mirror['id']).whatsapp_numbers()] == ['85290001111']
     app.state.reputation.key = 'test-key'
     app.state.reputation.transport = httpx.MockTransport(lambda request: httpx.Response(200, json={}))
-    checked = watcher.post(f"/api/sites/{first['id']}/reputation/check", json={})
+    checked = watcher.post(f"/api/sites/{mirror['id']}/reputation/check", json={})
     assert checked.status_code == 200, checked.text
     assert checked.json()['result']['status'] == 'clean'
-    shown = next(site for site in watcher.get('/api/sites').json()['sites'] if site['id'] == first['id'])
+    shown = watcher.get('/api/sites').json()['sites'][0]
     assert shown['google_reputation']['status'] == 'clean'
     assert app.state.registry.get(first['id'])['owner_id'] == one['id']
     assert app.state.registry.get(first['id'])['enabled'] == 1
-    before = app.state.registry.store(first['id']).logs(7, '', 1)['total']
+    before = source.logs(7, '', 1)['total']
     writes = [
         ('POST', '/api/sites', {'domain': 'watcher.test'}),
-        ('PUT', f"/api/sites/{first['id']}/config", {}),
-        ('POST', f"/api/sites/{first['id']}/publish/A", {}),
-        ('POST', f"/api/sites/{first['id']}/simulate", {}),
-        ('POST', '/api/analysis/clear?domain=one.test', {}),
-        ('POST', '/api/campaign/clear?domain=one.test', {}),
-        ('POST', f"/api/sites/{first['id']}/logs/clear", {}),
-        ('POST', f"/api/sites/{first['id']}/logs/clear-foreign", {}),
-        ('POST', f"/api/sites/{first['id']}/desk/review", {'tickets': [], 'phone': ''}),
-        ('POST', f"/api/sites/{first['id']}/desk/quote", {}),
-        ('POST', f"/api/sites/{first['id']}/desk/sheet", {}),
-        ('POST', f"/api/sites/{first['id']}/desk/screen/click", {'x': 1, 'y': 1}),
-        ('POST', f"/api/sites/{first['id']}/cloudflare/status", {}),
-        ('POST', f"/api/sites/{first['id']}/cloudflare/purge", {}),
-        ('POST', f"/api/sites/{first['id']}/b-redirects/numbers/apply", {}),
-        ('POST', f"/api/sites/{first['id']}/b-redirects/links", {'app': 'band', 'urls': ['https://band.us/n/example']}),
-        ('POST', f"/api/sites/{first['id']}/b-redirects/links/apply", {}),
-        ('DELETE', f"/api/sites/{first['id']}/b-redirects/links/1", None),
-        ('POST', f"/api/sites/{first['id']}/b-redirects/numbers/reception", {'phone': '85211112222', 'display_name': 'Vivian', 'version_id': 'a' * 32}),
-        ('POST', f"/api/sites/{first['id']}/b-redirects/direct-entry", {'version_id': 'a' * 32, 'expected_published': 'a' * 32}),
-        ('PUT', f"/api/sites/{first['id']}/b-redirects/numbers/split", {'enabled': True, 'mode': 'random', 'members': []}),
+        ('PUT', f"/api/sites/{mirror['id']}/config", {}),
+        ('POST', f"/api/sites/{mirror['id']}/publish/A", {}),
+        ('POST', f"/api/sites/{mirror['id']}/simulate", {}),
+        ('POST', '/api/analysis/clear?domain=watch.test', {}),
+        ('POST', '/api/campaign/clear?domain=watch.test', {}),
+        ('POST', f"/api/sites/{mirror['id']}/logs/clear", {}),
+        ('POST', f"/api/sites/{mirror['id']}/logs/clear-foreign", {}),
+        ('POST', f"/api/sites/{mirror['id']}/desk/review", {'tickets': [], 'phone': ''}),
+        ('POST', f"/api/sites/{mirror['id']}/desk/quote", {}),
+        ('POST', f"/api/sites/{mirror['id']}/desk/sheet", {}),
+        ('POST', f"/api/sites/{mirror['id']}/desk/screen/click", {'x': 1, 'y': 1}),
+        ('POST', f"/api/sites/{mirror['id']}/cloudflare/status", {}),
+        ('POST', f"/api/sites/{mirror['id']}/cloudflare/purge", {}),
+        ('POST', f"/api/sites/{mirror['id']}/b-redirects/numbers/apply", {}),
+        ('POST', f"/api/sites/{mirror['id']}/b-redirects/links", {'app': 'band', 'urls': ['https://band.us/n/example']}),
+        ('POST', f"/api/sites/{mirror['id']}/b-redirects/links/apply", {}),
+        ('DELETE', f"/api/sites/{mirror['id']}/b-redirects/links/1", None),
+        ('POST', f"/api/sites/{mirror['id']}/b-redirects/numbers/reception", {'phone': '85211112222', 'display_name': 'Vivian', 'version_id': 'a' * 32}),
+        ('POST', f"/api/sites/{mirror['id']}/b-redirects/direct-entry", {'version_id': 'a' * 32, 'expected_published': 'a' * 32}),
+        ('PUT', f"/api/sites/{mirror['id']}/b-redirects/numbers/split", {'enabled': True, 'mode': 'random', 'members': []}),
         ('POST', '/api/accounts', {'username': 'another', 'password': 'watch-password-ok', 'role': 'agent'}),
         ('PATCH', f"/api/accounts/{one['id']}", {'enabled': False}),
-        ('PUT', f"/api/sites/{first['id']}/owner", {'owner_id': 'admin'}),
-        ('DELETE', f"/api/sites/{first['id']}", None),
+        ('PUT', f"/api/sites/{mirror['id']}/owner", {'owner_id': 'admin'}),
+        ('DELETE', f"/api/sites/{mirror['id']}", None),
     ]
     for method, path, body in writes:
         result = watcher.request(method, path, json=body)
@@ -308,6 +347,8 @@ def test_registry_owner_migration_preserves_existing_sites_and_worker_fields(tmp
     assert migrated.get(site['id'])['note'] == 'keep'
     assert migrated.get(site['id'])['generation'] == 42
     assert migrated.get(site['id'])['panel_id'] == 28
+    assert migrated.get(site['id'])['mirror_source'] == ''
+    assert migrated.get(site['id'])['observer_account'] == ''
     assert len(migrated.list('unassigned-agent')) == 0
 
 

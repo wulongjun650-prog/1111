@@ -1035,7 +1035,7 @@ class Store:
             if latest and latest % 200 == 0:
                 db.execute('DELETE FROM client_events WHERE created<?', (time.time() - 90 * 86400,))
 
-    def access_report(self, days=7, country=None, domain=''):
+    def access_report(self, days=7, country=None, domain='', rename_from=''):
         """Plain-text weekly export. Days are Hong Kong dates. Counts are requests."""
         since = time.time() - days * 86400
         where, args = 'created>=?', [since]
@@ -1051,7 +1051,11 @@ class Store:
                     CASE WHEN instr(lower(query), 'placement=')>0 THEN 1 ELSE 0 END placement,
                     COUNT(*) n
                 FROM access_log WHERE {where} GROUP BY 1,2,3,4,5 ORDER BY 1,2,3,4,5''', args).fetchall()
-            events = db.execute('SELECT created, body, origin FROM client_events WHERE created>=? ORDER BY id', (since,)).fetchall()
+            events = [dict(row) for row in db.execute('SELECT created, body, origin FROM client_events WHERE created>=? ORDER BY id', (since,))]
+        if rename_from and domain and rename_from != domain:
+            for row in events:
+                row['origin'] = (row.get('origin') or '').replace(rename_from, domain)
+                row['body'] = (row.get('body') or '').replace(rename_from, domain)
         scope = country or '全部'
         lines = [
             '访问日志周报',
