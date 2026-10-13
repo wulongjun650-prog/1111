@@ -24,6 +24,8 @@ OPTIMIZATION_SETTINGS = (
 )
 OPTIMIZATION_PHASES = ('http_request_cache_settings', 'http_config_settings')
 RULE_KEYS = ('expression', 'action', 'action_parameters', 'description', 'enabled', 'logging')
+# Cloudflare uses 0 for "Respect Existing Headers". Longer than an hour overrides the origin no-store.
+BROWSER_CACHE_MAX = 3600
 
 
 class CloudflareError(ProvisioningError):
@@ -105,6 +107,7 @@ class Cloudflare:
             zone = _zone_view(self._call(client, 'GET', '/zones/' + zone_id))
             if zone['name'] != domain:
                 raise CloudflareError('Cloudflare 站点与登记域名不一致')
+            self._limit_browser_cache(client, zone_id)
             self._call(client, 'POST', f'/zones/{zone_id}/purge_cache', payload={'purge_everything': True})
 
     def disable(self, zone_id, domain):
@@ -277,6 +280,10 @@ class Cloudflare:
             if not item or item.get('editable') is not True or 'value' not in item:
                 continue
             value = _rewrite(item['value'], template['name'], domain)
+            if name == 'browser_cache_ttl':
+                seconds = _ttl_seconds(value)
+                if seconds is not None and seconds > BROWSER_CACHE_MAX:
+                    value = 0
             result = self._call(client, 'PATCH', f'/zones/{zone_id}/settings/{name}', payload={'value': value}, soft=True)
             if result is None:
                 skipped += 1
@@ -291,13 +298,36 @@ class Cloudflare:
                 raise CloudflareError('模板上的优化规则过多或无法读取，没有整套复制')
             if not rules:
                 continue
-            body = [_rule(_rewrite(rule, template['name'], domain)) for rule in rules]
+            body = [_rule(_cap_rule_browser_ttl(_rewrite(rule, template['name'], domain))) for rule in rules]
             wrote = self._call(client, 'PUT', f'/zones/{zone_id}/rulesets/phases/{phase}/entrypoint', payload={'rules': body}, soft=True)
             if wrote is None:
                 skipped += 1
             else:
                 copied += 1
         return copied, skipped
+
+    def _limit_browser_cache(self, client, zone_id):
+        """A template can say 72000 seconds. Browsers then keep the previous landing for 20 hours."""
+        try:
+            current = self._call(client, 'GET', f'/zones/{zone_id}/settings/browser_cache_ttl', soft=True)
+            seconds = _ttl_seconds(current.get('value') if isinstance(current, dict) else None)
+            if seconds is not None and seconds > BROWSER_CACHE_MAX:
+                self._call(client, 'PATCH', f'/zones/{zone_id}/settings/browser_cache_ttl', payload={'value': 0}, soft=True)
+            phase = 'http_request_cache_settings'
+            current = self._call(client, 'GET', f'/zones/{zone_id}/rulesets/phases/{phase}/entrypoint', missing_ok=True, soft=True)
+            rules = current.get('rules') if isinstance(current, dict) else None
+            if not isinstance(rules, list) or len(rules) > 50:
+                return
+            body = []
+            changed = False
+            for rule in rules:
+                capped = _cap_rule_browser_ttl(rule)
+                changed = changed or capped is not rule
+                body.append(_rule(capped))
+            if changed:
+                self._call(client, 'PUT', f'/zones/{zone_id}/rulesets/phases/{phase}/entrypoint', payload={'rules': body}, soft=True)
+        except CloudflareError:
+            return
 
 
 def _zone_id(value):
@@ -359,6 +389,30 @@ def _safe_error(body, token):
     if not message or (token and token in message) or len(message) > 180:
         message = 'Cloudflare 没有完成这次操作'
     return message, '', (), code
+
+
+def _ttl_seconds(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def _cap_rule_browser_ttl(rule):
+    if not isinstance(rule, dict):
+        return rule
+    params = rule.get('action_parameters')
+    ttl = params.get('browser_ttl') if isinstance(params, dict) else None
+    seconds = _ttl_seconds(ttl.get('default') if isinstance(ttl, dict) else None)
+    if not isinstance(ttl, dict) or ttl.get('mode') != 'override_origin' or seconds is None or seconds <= BROWSER_CACHE_MAX:
+        return rule
+    updated = dict(rule)
+    updated['action_parameters'] = dict(params)
+    updated['action_parameters']['browser_ttl'] = {'mode': 'respect_origin'}
+    return updated
 
 
 def _rewrite(value, source, target):

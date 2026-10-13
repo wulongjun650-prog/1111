@@ -1103,13 +1103,17 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return data | {'published_version': store.slots()[slot]}
 
     @routes.post('/source/{slot}/{version_id}')
-    def save_source(slot: Slot, version_id: VersionId, body: SourceEdit, store=Depends(site_store)):
+    def save_source(slot: Slot, version_id: VersionId, body: SourceEdit, request: Request, store=Depends(site_store)):
         base = source_version(store, slot, version_id)
         try:
             version = store.save_source(slot, base, body.path, body.content, body.expected_published)
         except FileNotFoundError:
             raise HTTPException(404, '源码文件不存在') from None
-        return {'version': version, 'published_version': version['id']}
+        result = {'version': version, 'published_version': version['id']}
+        purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+        if purged is not None:
+            result['cloudflare'] = purged
+        return result
 
     @routes.post('/preview')
     def preview(body: VersionChoice, request: Request, store=Depends(site_store)):
