@@ -192,8 +192,12 @@
     .gate-step[data-step="2"] .gate-option small{font-size:12px;margin-top:3px}
     .gate-step[data-step="2"] .gate-option-arrow{width:28px;height:28px;font-size:18px}
     .gate-step[data-step="2"] .gate-actions{margin-top:14px}
-    .gate-step[data-step="2"] .gate-back,.gate-step[data-step="2"] .gate-confirm{min-height:56px}
-    @media(max-height:700px){.on-step2 .gate-handle{margin-bottom:8px}.gate-step[data-step="2"] .gate-intro p,.gate-step[data-step="2"] .gate-desc{display:none}.gate-step[data-step="2"] .gate-title{margin-top:10px}}
+    .gate-step[data-step="2"] .gate-back{min-height:56px}
+    a.gate-option{-webkit-touch-callout:none}
+    .gate-go:active{border-color:#ee9a3a;background:#fff7eb}
+    .gate-go-tip{flex:1;display:flex;flex-direction:column;justify-content:center;padding:6px 12px;border-radius:15px;background:#effaf3;border:1px solid #cfe9d9;color:#3f6b52;font-size:13px;line-height:1.45;font-weight:800;text-align:center}
+    .gate-go-tip b{color:#1f7a45;font-size:16px;font-weight:950}
+    @media(max-height:700px){.on-step2 .gate-handle{margin-bottom:8px}.gate-step[data-step="2"] .gate-intro p,.gate-step[data-step="2"] .gate-desc{display:none}.gate-step[data-step="2"] .gate-title{margin-top:10px}.gate-go-tip br{display:none}.gate-go-tip b{font-size:15px}.gate-step[data-step="2"] .gate-back{min-height:50px}}
     @media(max-height:600px){.gate-step[data-step="2"] .gate-option small,.on-step2 .gate-trust{display:none}.gate-step[data-step="2"] .gate-option{padding:10px 12px}}
     .gate-option-main{display:flex;align-items:center;gap:12px;min-width:0}
     .gate-option-icon{width:42px;height:42px;border-radius:12px;background:linear-gradient(180deg,#fff6e7,#fff1d5);color:#b96809;display:flex;align-items:center;justify-content:center;flex:none;font-size:17px;font-weight:950;border:1px solid #f2dfb9}
@@ -345,7 +349,7 @@
     <a class="cta floating-cta" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="floating" id="floating-button">免費領取今日潛力黑馬名單</a>
   </div>
 
-  <!-- 兩頁領取抽屉：第 1 頁揀名單（按首屏卡片預選），第 2 頁揀重點後按 #gate-confirm（<a>）經 goWhatsApp 跳轉，同原版一樣 -->
+  <!-- 兩頁領取抽屉：第 1 頁揀名單（按首屏卡片預選），第 2 頁三個選項本身係 <a>，點擊經 goWhatsApp 跳轉，同原確認按鈕一樣 -->
   <div class="lead-gate" id="lead-gate" aria-hidden="true">
     <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="gate-title-1">
       <div class="gate-handle"></div>
@@ -382,19 +386,19 @@
         <h3 class="gate-title">名單入面，你最想一齊睇到咩資料？</h3>
         <p class="gate-desc">揀一個你最關心嘅重點，方便直接對應內容。</p>
         <div class="gate-options">
-          <button class="gate-option" type="button" data-question="priority" data-value="股票名稱＋今日值得留意原因">
+          <a class="gate-option gate-go" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="股票名稱＋今日值得留意原因">
             <span class="gate-option-main"><span class="gate-option-icon">01</span><span><span class="gate-option-title">股票名稱＋今日值得留意原因</span><small>想先知道係邊幾隻，以及點解今日值得睇</small></span></span><span class="gate-option-arrow">›</span>
-          </button>
-          <button class="gate-option" type="button" data-question="priority" data-value="近期資金／成交異動重點">
+          </a>
+          <a class="gate-option gate-go" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="近期資金／成交異動重點">
             <span class="gate-option-main"><span class="gate-option-icon">02</span><span><span class="gate-option-title">近期資金／成交異動重點</span><small>想先睇資金流向、成交變化同近期異動</small></span></span><span class="gate-option-arrow">›</span>
-          </button>
-          <button class="gate-option" type="button" data-question="priority" data-value="所屬板塊＋後續觀察重點">
+          </a>
+          <a class="gate-option gate-go" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="所屬板塊＋後續觀察重點">
             <span class="gate-option-main"><span class="gate-option-icon">03</span><span><span class="gate-option-title">所屬板塊＋後續觀察重點</span><small>想知道板塊位置，以及之後應該再觀察咩</small></span></span><span class="gate-option-arrow">›</span>
-          </button>
+          </a>
         </div>
         <div class="gate-actions">
           <button class="gate-back" type="button" id="gate-back">返回</button>
-          <a class="gate-confirm" href="https://wa.me/85296400772?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" id="gate-confirm" role="button" aria-disabled="true">立即查看我揀嘅名單 →</a>
+          <div class="gate-go-tip">揀上面任何一項<br><b>即刻打開 WhatsApp 收名單</b></div>
         </div>
       </div>
 
@@ -641,7 +645,6 @@
     const priorityOptions = [...document.querySelectorAll('.gate-option[data-question="priority"]')];
     const gatePickedName = document.getElementById('gate-picked-name');
     const gatePanel = leadGate.querySelector('.gate-panel');
-    const gateConfirm = document.getElementById('gate-confirm');
     const gateProgress2 = document.getElementById('gate-progress-2');
     const gateProgressText = document.getElementById('gate-progress-text');
     const gateKicker = document.getElementById('gate-kicker');
@@ -649,7 +652,6 @@
     const gateAnswers = { interest:'', priority:'' };
     const defaultInterestMap = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
     const FOCUSES = priorityOptions.map(el => el.dataset.value);
-    function setConfirmEnabled(on){ gateConfirm.setAttribute('aria-disabled', on ? 'false' : 'true'); }
 
     function setGateStep(step){
       gateSteps.forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
@@ -672,7 +674,6 @@
       gateAnswers.priority = '';
       interestOptions.forEach(el => el.classList.toggle('active', el.dataset.value === gateAnswers.interest));
       priorityOptions.forEach(el => el.classList.remove('active'));
-      setConfirmEnabled(false);
       setGateStep(1);
       leadGate.classList.add('show');
       leadGate.setAttribute('aria-hidden','false');
@@ -1028,19 +1029,14 @@
       });
     });
 
-    priorityOptions.forEach(btn => {
-      btn.addEventListener('click', () => {
-        gateAnswers.priority = btn.dataset.value;
-        priorityOptions.forEach(el => el.classList.toggle('active', el === btn));
-        setConfirmEnabled(true);
+    priorityOptions.forEach(opt => {
+      opt.addEventListener('click', e => {
+        gateAnswers.priority = opt.dataset.value;
+        priorityOptions.forEach(el => el.classList.toggle('active', el === opt));
         try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'priority'}); } catch(err){}
+        closeLeadGate();
+        goWhatsApp(e, pendingLocation);
       });
-    });
-
-    gateConfirm.addEventListener('click', e => {
-      if (!gateAnswers.interest || !gateAnswers.priority) { e.preventDefault(); return; }
-      closeLeadGate();
-      goWhatsApp(e, pendingLocation);
     });
 
     // Mobile floating CTA: show after hero, hide at final CTA.
