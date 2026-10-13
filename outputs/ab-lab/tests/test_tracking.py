@@ -71,6 +71,37 @@ def test_snippets_keep_one_id_and_reject_fragments():
     raise AssertionError('conversion without send_to')
 
 
+def test_google_send_to_counts_as_conversion_code():
+    page = '''<!doctype html><html><head>
+<script>
+  gtag('config', 'G-GVPNN75RYK');
+  gtag('config', 'AW-11421360067');
+</script>
+</head><body><script>
+const CONFIG = {
+  googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq',
+};
+function go() {
+  track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
+}
+</script></body></html>'''
+    found = read_pages([('index.html', page.encode())])
+    assert found['ga4'] == 'G-GVPNN75RYK'
+    assert found['conversion'] == 'AW-11421360067/Z7iXCK6y948dEMO_kMYq'
+    assert "googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq'" in found['conversion_body']
+    assert "track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId })" in found['conversion_body']
+    assert 'gtag_report_conversion' not in found['conversion_body']
+    quoted = page.replace("googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq'", '"googleSendTo": "AW-11421360067/Z7iXCK6y948dEMO_kMYq"')
+    assert read_pages([('index.html', quoted.encode())])['conversion'] == 'AW-11421360067/Z7iXCK6y948dEMO_kMYq'
+    updated, changed = rewrite_pages([('index.html', page.encode())], None, CONVERSION.replace('Z7iXCK6y948dEMO_kMYq', 'NEWLABEL1234'))
+    text = dict(updated)['index.html'].decode()
+    assert changed
+    assert "googleSendTo: 'AW-11421360067/NEWLABEL1234'" in text
+    assert 'Z7iXCK6y948dEMO_kMYq' not in text
+    assert 'function gtag_report_conversion' not in text
+    assert "send_to: CONFIG.googleSendTo" in text
+
+
 def test_read_pages_returns_the_full_blocks():
     found = read_pages([('index.html', OLD_PAGE.encode())])
     assert found['ga4'] == 'G-OLDOLDOLD1'
@@ -120,6 +151,29 @@ def publish(http, prefix, slot, html, name='page.zip'):
     version = uploaded.json()['version']['id']
     assert http.post(prefix + f'/publish/{slot}', json={'version_id': version}).status_code == 200
     return version
+
+
+def test_published_google_send_to_page_reports_its_conversion(tmp_path):
+    http = client(tmp_path)
+    page = '''<!doctype html><html><head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-GVPNN75RYK"></script>
+<script>
+  function gtag(){dataLayer.push(arguments);}
+  gtag('config', 'G-GVPNN75RYK');
+  gtag('config', 'AW-11421360067');
+</script>
+</head><body><script>
+const CONFIG = { googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq', eventEndpoint: '' };
+function goWhatsApp() {
+  track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
+}
+</script></body></html>'''
+    publish(http, '/api', 'B', page, '10.13.zip')
+    info = http.get('/api/tracking').json()['published']['B']
+    assert info['ga4'] == 'G-GVPNN75RYK'
+    assert info['conversion'] == 'AW-11421360067/Z7iXCK6y948dEMO_kMYq'
+    assert 'googleSendTo' in info['conversion_body']
+    assert 'gtag_report_conversion' not in info['conversion_body']
 
 
 def test_saved_codes_are_shared_and_written_into_the_published_page(tmp_path):

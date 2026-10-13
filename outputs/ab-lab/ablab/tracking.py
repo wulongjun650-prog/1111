@@ -10,6 +10,7 @@ GA4_LOADER = re.compile(
     re.I,
 )
 SEND_TO = re.compile(r'''['"]send_to['"]\s*:\s*['"](AW-\d{5,15}/[A-Za-z0-9_-]{4,80})['"]''')
+GOOGLE_SEND_TO = re.compile(r'''(?:^|[{,\s])(?:googleSendTo|['"]googleSendTo['"])\s*:\s*['"](AW-\d{5,15}/[A-Za-z0-9_-]{4,80})['"]''', re.M)
 TEXT_SUFFIXES = {'.html', '.htm', '.js', '.mjs'}
 
 
@@ -47,10 +48,18 @@ def read_pages(pairs):
                 ga4 = found[0].upper()
                 ga4_body = _usable(_extract_first(text, _ga4_spans(text))) or _canonical_ga4(ga4)
         if not conversion:
-            found = SEND_TO.findall(text)
+            literal = SEND_TO.findall(text)
+            configured = GOOGLE_SEND_TO.findall(text)
+            found = literal or configured
             if found:
                 conversion = found[0]
-                conversion_body = _usable(_extract_first(text, _conversion_spans(text))) or _canonical_conversion(conversion)
+                extracted = _usable(_extract_first(text, _conversion_spans(text)))
+                if extracted:
+                    conversion_body = extracted
+                elif configured and not literal:
+                    conversion_body = _google_send_to_body(text)
+                else:
+                    conversion_body = _canonical_conversion(conversion)
         if ga4 and conversion:
             break
     return {'ga4': ga4, 'conversion': conversion, 'ga4_body': ga4_body, 'conversion_body': conversion_body}
@@ -68,7 +77,7 @@ def rewrite_pages(pairs, ga4_body=None, conversion_body=None):
             continue
         bom = payload.startswith(b'\xef\xbb\xbf')
         had_ga4 = had_ga4 or bool(GA4_SRC.search(text) or GA4_CONFIG.search(text))
-        had_conversion = had_conversion or bool(re.search(r'function\s+gtag_report_conversion\s*\(', text) or SEND_TO.search(text))
+        had_conversion = had_conversion or bool(re.search(r'function\s+gtag_report_conversion\s*\(', text) or SEND_TO.search(text) or GOOGLE_SEND_TO.search(text))
         decoded.append((name, payload, text, bom))
     edited = []
     changed = False
@@ -206,6 +215,18 @@ def _canonical_ga4(ga4_id):
     )
 
 
+def _google_send_to_body(text):
+    """The lines this page actually uses. Do not invent a gtag_report_conversion function."""
+    parts = []
+    assign = re.search(r'''^[^\n]*googleSendTo\s*:\s*['"]AW-\d{5,15}/[A-Za-z0-9_-]{4,80}['"][^\n]*''', text, re.M)
+    if assign:
+        parts.append(assign.group(0).strip().rstrip(','))
+    call = re.search(r'''track\(\s*['"]conversion['"]\s*,\s*\{[^}\n]*CONFIG\.googleSendTo[^}\n]*\}\)''', text)
+    if call:
+        parts.append(call.group(0).strip())
+    return _usable('\n'.join(parts))
+
+
 def _canonical_conversion(send_to):
     return (
         '<!-- Event snippet for conversion page\n'
@@ -319,4 +340,4 @@ def _swap_send_to(text, send_to):
     def replace(match):
         return match.group(0) if match.group(1) == send_to else match.group(0).replace(match.group(1), send_to, 1)
 
-    return SEND_TO.sub(replace, text)
+    return GOOGLE_SEND_TO.sub(replace, SEND_TO.sub(replace, text))
