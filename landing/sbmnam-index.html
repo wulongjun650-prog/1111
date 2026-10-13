@@ -16,8 +16,8 @@
   <link rel="preload" as="image" href="assets/econman-banner.webp" type="image/webp" fetchpriority="high">
   <link rel="preload" as="image" href="assets/hero-bg.webp" type="image/webp" fetchpriority="low">
 
-  <title>講經MAN｜10月13日港股名單｜免費領取</title>
-  <meta name="description" content="講經MAN整理10月12日港股收市數據：恒指連升兩日收24,271點，但跌股多過升股近一倍；北水連續5日淨買入26億。附10月13日最新觀察名單，免費領取。">
+  <title>講經MAN｜10月14日港股名單｜免費領取</title>
+  <meta name="description" content="講經MAN整理10月13日港股收市數據：恒指收24,345.22點，升0.30%；218隻升、348隻跌，恒生科技跌0.79%。附10月14日最新觀察名單，免費領取。">
 
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-Q6YP0DZLSY"></script>
@@ -33,6 +33,9 @@
     window.dataLayer = window.dataLayer || [];
     window.gtag = window.gtag || function(){dataLayer.push(arguments);};
     gtag('config', 'AW-364192896');
+  </script>
+  <script>
+    try { if (matchMedia('(max-width:860px)').matches) document.documentElement.classList.add('cta-below'); } catch (e) {}
   </script>
 
   <!-- Meta Pixel：先建隊列，腳本延後到 load 之後或首次互動才載入，所有 fbq() 呼叫照常排隊 -->
@@ -84,7 +87,7 @@
     .cta{-webkit-touch-callout:none;width:100%;min-height:60px;border:0;border-radius:15px;display:flex;align-items:center;justify-content:center;gap:8px;padding:15px 18px;margin-top:16px;color:#fff;background:linear-gradient(135deg,#f59a2e,#e77c15);font-size:19px;line-height:1.3;font-weight:900;box-shadow:0 11px 22px rgba(229,124,21,.22);cursor:pointer;-webkit-tap-highlight-color:transparent}
     .cta:active,.gate-confirm:active{transform:scale(.98) translateY(1px);opacity:.94;transition:transform .06s ease,opacity .06s ease}
     /* 領取按鈕動效：掃光 → 輕彈 → 箭頭前推，每 3 秒一輪。只動 transform（合成層），唔觸發重排、唔影響 CLS。
-       用偽元素實現，因為 setActive() 會用 textContent 改寫按鈕文字 */
+       用偽元素實現，因為 qxCard() 會用 textContent 改寫按鈕文字 */
     .cta[data-wa]{position:relative;overflow:hidden;isolation:isolate;animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite}
     .cta[data-wa]::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:-40%;width:28%;background:linear-gradient(105deg,rgba(255,255,255,0),rgba(255,255,255,.45) 50%,rgba(255,255,255,0));transform:skewX(-18deg);animation:cta-shine 3s ease-in-out 1.2s infinite;pointer-events:none}
     .cta[data-wa]::after{content:"";flex:none;width:8px;height:8px;margin-left:1px;border-top:2.5px solid currentColor;border-right:2.5px solid currentColor;transform:rotate(45deg);animation:cta-arrow 3s ease-in-out 1.2s infinite}
@@ -119,6 +122,17 @@
     .hero-heading .accent{color:var(--orange2)}.hero-heading .hl{color:var(--red)}
     .hero-lead{margin:8px 0 12px;color:#3a4558;font-size:16px;line-height:1.65;font-weight:700}
     .hero-lead b{color:#15233d;background:linear-gradient(transparent 60%,#ffe08a 60%)}
+
+    .lead-scroll{display:none}
+    @media (max-width:860px){
+      html.cta-below .hero-inner{display:flex;flex-direction:column}
+      html.cta-below .hero-above{order:1}
+      html.cta-below .slider-wrap,html.cta-below .slider-dots{order:2}
+      html.cta-below #hero-cta,html.cta-below #hero-cta-sub{order:3}
+      html.cta-below .hero-choice,html.cta-below .hero-qualify-note,html.cta-below .hero-proof{order:4}
+      html.cta-below .lead-tap{display:none}
+      html.cta-below .lead-scroll{display:inline}
+    }
     .hero-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:4px 0 14px}
     .hstep{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:8px 6px;background:rgba(255,255,255,.94);border:1px solid rgba(36,57,104,.12);border-radius:13px;font-size:15px;font-weight:900;color:#17243e;white-space:nowrap}
     .hstep-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--orange);color:#fff;font-size:14px;font-weight:950;display:flex;align-items:center;justify-content:center}
@@ -241,18 +255,19 @@
 
     <section class="hero" id="top">
       <div class="hero-inner">
-        <div class="eyebrow"><span class="dot"></span><span>10月13日 · 今日名單已更新</span></div>
-        <h1 class="hero-heading">恒指連升兩日<br><span class="hl">你隻股仲跌緊？</span><br><span class="accent">今日名單免費送你</span></h1>
-        <p class="hero-lead">指數升，但多數股都跌緊，揀啱股最重要。<br><b>按一下，WhatsApp 直接收名單。</b></p>
-
-        <a class="cta cta-top" href="https://wa.me/85265453614?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
-        <div class="hero-cta-sub" id="hero-cta-sub"><i>✓</i>完全免費<span>·</span>答 2 條簡單問題即收名單</div>
-
+        <div class="hero-above">
+        <div class="eyebrow"><span class="dot"></span><span>10月14日 · 今日名單已更新</span></div>
+        <h1 class="hero-heading">恒指再升到 24,345<br><span class="hl">你隻股仲跌緊？</span><br><span class="accent">今日名單免費送你</span></h1>
+        <p class="hero-lead">10月13日收市，指數升，但 348 隻股跌、只有 218 隻升。<br><b class="lead-tap">按一下，WhatsApp 直接收名單。</b><b class="lead-scroll">滑一滑，下面就係領取連結。</b></p>
         <div class="hero-steps" aria-label="領取步驟">
           <div class="hstep"><span class="hstep-n">1</span><span>揀名單</span></div>
           <div class="hstep"><span class="hstep-n">2</span><span>按領取</span></div>
           <div class="hstep"><span class="hstep-n">3</span><span>WhatsApp 收</span></div>
         </div>
+        </div>
+
+        <a class="cta cta-top" href="https://wa.me/85265453614?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8814%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
+        <div class="hero-cta-sub" id="hero-cta-sub"><i>✓</i>完全免費<span>·</span>答 2 條簡單問題即收名單</div>
 
         <div class="slider-wrap">
           <div class="slider" id="hero-slider" aria-label="今日精選分類">
@@ -286,9 +301,18 @@
         </div>
 
         <div class="hero-choice" id="hero-choice">目前選擇：潛力黑馬 · 打開後按「發送」即收</div>
-        <div class="hero-qualify-note">完全免費 · 唔使填任何資料 · 按一下即收</div>
+        <div class="hero-qualify-note">完全免費 · 唔使填任何資料 · 打開後按發送</div>
         <div class="hero-proof">每日開市前更新 · 內容按公開市場資訊整理</div>
       </div>
+      <script>
+        (function () {
+          if (!document.documentElement.classList.contains('cta-below')) return;
+          var btn = document.getElementById('hero-cta');
+          if (!btn) return;
+          var top = btn.getBoundingClientRect().top;
+          if (top < window.innerHeight + 8) btn.style.marginTop = (window.innerHeight + 16 - top) + 'px';
+        })();
+      </script>
     </section>
 
     <section class="section-white" id="method">
@@ -304,21 +328,21 @@
     </section>
 
     <section class="section-blue" id="market">
-      <div class="section-label">12 OCT 收市 · 今日焦點</div>
-      <h2><span class="hl-o">恒指連升兩日</span><br>但跌股多過升股近一倍</h2>
-      <p class="section-intro">10月12日（周一）恒指收報<b>24,271.20點</b>，升59.85點（+0.25%），兩日累計升485點；恒生科技指數就跌0.67%至4,169.57點。全日成交1,626億港元，比上周五明顯縮量。最重要係：<b>206隻股升、357隻股跌</b>，指數靠少數重磅股撐住，大部分股其實喺度跌。</p>
+      <div class="section-label">13 OCT 收市 · 今日焦點</div>
+      <h2><span class="hl-o">恒指再升 0.30%</span><br>但跌股仍然多過升股</h2>
+      <p class="section-intro">10月13日（周二）恒指收報<b>24,345.22點</b>，升74.02點（+0.30%）；恒生科技指數跌0.79%至4,136.63點。全日成交約1,276億港元，較上日縮約16.5%。最重要係：<b>218隻股升、348隻股跌</b>，指數靠少數重磅股撐住，大部分股其實喺度跌。</p>
       <div class="stats">
-        <div class="stat"><div class="stat-label">恒生指數</div><div class="stat-value">24,271.20</div><div class="stat-change up">▲59.85點 · +0.25%</div></div>
-        <div class="stat"><div class="stat-label">恒生科技指數</div><div class="stat-value">4,169.57</div><div class="stat-change down">▼28.27點 · −0.67%</div></div>
-        <div class="stat"><div class="stat-label">全日成交</div><div class="stat-value">1,626億</div><div class="stat-change neutral">較上周五明顯縮量</div></div>
-        <div class="stat stat-hot"><div class="stat-label">北水淨買入</div><div class="stat-value">26.03億</div><div class="stat-change up">連續5日淨買入</div></div>
+        <div class="stat"><div class="stat-label">恒生指數</div><div class="stat-value">24,345.22</div><div class="stat-change up">▲74.02點 · +0.30%</div></div>
+        <div class="stat"><div class="stat-label">恒生科技指數</div><div class="stat-value">4,136.63</div><div class="stat-change down">▼32.94點 · −0.79%</div></div>
+        <div class="stat"><div class="stat-label">全日成交</div><div class="stat-value">1,276億</div><div class="stat-change neutral">較上日縮約16.5%</div></div>
+        <div class="stat stat-hot"><div class="stat-label">北水淨賣出</div><div class="stat-value">4.57億</div><div class="stat-change down">當日轉為淨賣出</div></div>
       </div>
       <div class="market-points">
-        <div class="market-point"><div class="num">01</div><div><strong>銀行股撐市，AI硬件股回吐</strong><p>招商銀行升3.1%、東方海外升4.4%、京東升2.8%；但小米跌5.5%、華虹跌5.0%、老鋪黃金跌7.9%。<b>指數升，唔代表你隻股會升</b>，揀錯股一樣蝕。</p></div></div>
-        <div class="market-point"><div class="num">02</div><div><strong>北水連續5日淨買入，趁跌撈小米</strong><p>北水全日淨買入<b>26.03億</b>（滬股通19.55億、深股通6.48億）。小米雖然跌5.5%，北水反而<b>淨買入約9.74億</b>；友邦亦獲淨買約7.29億，長飛光纖、中芯就遭淨賣出。大資金喺度揀股，<b>跟啱方向比跟大市更重要</b>。</p></div></div>
-        <div class="market-point"><div class="num">03</div><div><strong>債息高企，今個星期留意美國數據</strong><p>環球債息上升，加上美國對立訊精密、工業富聯展開調查，拖累AI硬件股，深成指跌2.03%。美國13日公布大型銀行業績、14日公布CPI，會影響港股走勢；另外19日（周一）重陽節補假，港股休市。</p></div></div>
+        <div class="market-point"><div class="num">01</div><div><strong>指數升，大部分股份都跌</strong><p>綜合指數成份股<b>218隻升、348隻跌</b>。恒生科技指數收4,136.63點，跌0.79%。<b>指數升，唔代表你隻股會升</b>。</p></div></div>
+        <div class="market-point"><div class="num">02</div><div><strong>北水當日淨賣出 4.57 億</strong><p>港股通（滬）淨買入<b>0.44億</b>，港股通（深）淨賣出<b>5.01億</b>。淨賣出集中喺中芯國際、長飛光纖、華虹宏力。大資金喺度揀股，<b>跟資金方向比跟大市更重要</b>。</p></div></div>
+        <div class="market-point"><div class="num">03</div><div><strong>成交縮量，大市繼續分化</strong><p>全日成交約<b>1,276億港元</b>，較上日少約16.5%。量縮、升跌股又懸殊，開市前先睇清楚邊類股份有資金，再決定跟唔跟。</p></div></div>
       </div>
-      <div class="source-line">數據：10月12日收市 · 恒指 24,271.20（+0.25%）· 恒生科技 4,169.57（−0.67%）· 國企指數 8,168.57（+0.25%）· 全日成交約 1,626 億港元 · 港股通淨買入約 26.03 億港元 · 綜合指數成份股 206 升 357 跌 · 按新華社、證券時報數據寶、香港電台等公開市場資訊整理</div>
+      <div class="source-line">數據：10月13日收市 · 恒指 24,345.22（+0.30%）· 恒生科技 4,136.63（−0.79%）· 國企指數 8,174.72（+0.08%）· 全日成交約 1,276 億港元 · 港股通淨賣出約 4.57 億港元 · 綜合指數成份股 218 升 348 跌 · 按金十數據、證券時報數據寶、智通財經公開市場資訊整理</div>
     </section>
 
     <section class="section-blue" id="trust">
@@ -338,10 +362,10 @@
         <div class="trust-point"><i>✓</i><span>跟住成交、北水同公開消息整理，唔靠一句「我覺得」</span></div>
       </div>
       <div class="final-card" id="final-cta">
-        <div class="mini-label">13 OCT 名單已整理</div>
+        <div class="mini-label">14 OCT 名單已整理</div>
         <h2 id="final-title">大市分化更要揀啱股<br>今日完整名單已經整理好</h2>
         <p id="final-copy">揀好你想睇嘅方向，開啟 WhatsApp 後<b>直接按「發送」</b>，即可免費領取完整名單。</p>
-        <a class="cta" href="https://wa.me/85265453614?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="final" id="final-button">免費領取今日潛力黑馬名單</a>
+        <a class="cta" href="https://wa.me/85265453614?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8814%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="final" id="final-button">免費領取今日潛力黑馬名單</a>
         <div class="reception" id="reception-text">本次由助理Nicole 黃嘉欣 接待</div>
       </div>
     </section>
@@ -350,7 +374,7 @@
   </main>
 
   <div class="floating-cta-wrap" id="floating-cta-wrap" aria-hidden="true">
-    <a class="cta floating-cta" href="https://wa.me/85265453614?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-wa data-location="floating" id="floating-button">免費領取今日潛力黑馬名單</a>
+    <a class="cta floating-cta" href="https://wa.me/85265453614?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8814%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="floating" id="floating-button">免費領取今日潛力黑馬名單</a>
   </div>
 
   <!-- 兩頁領取抽屉：第 1 頁揀名單（按首屏卡片預選），第 2 頁三個選項本身係 <a>，點擊經 goWhatsApp 跳轉，同原確認按鈕一樣 -->
@@ -358,7 +382,7 @@
     <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="gate-title-1">
       <div class="gate-handle"></div>
       <div class="gate-top">
-        <div class="gate-kicker" id="gate-kicker">13 OCT 名單已整理好</div>
+        <div class="gate-kicker" id="gate-kicker">14 OCT 名單已整理好</div>
         <button class="gate-close-x" type="button" id="gate-cancel" aria-label="關閉">×</button>
       </div>
       <div class="gate-progress"><span class="gate-progress-dot on"></span><span class="gate-progress-dot" id="gate-progress-2"></span><span class="gate-progress-text" id="gate-progress-text">第 1 步 / 共 2 步</span></div>
@@ -390,13 +414,13 @@
         <h3 class="gate-title">名單入面，你最想一齊睇到咩資料？</h3>
         <p class="gate-desc">揀一個你最關心嘅重點，方便直接對應內容。</p>
         <div class="gate-options">
-          <a class="gate-option gate-go" href="https://wa.me/85265453614?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="股票名稱＋今日值得留意原因">
+          <a class="gate-option gate-go" href="https://wa.me/85265453614?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8814%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-question="priority" data-value="股票名稱＋今日值得留意原因">
             <span class="gate-option-main"><span class="gate-option-icon">01</span><span><span class="gate-option-title">股票名稱＋今日值得留意原因</span><small>想先知道係邊幾隻，以及點解今日值得睇</small></span></span><span class="gate-option-arrow">›</span>
           </a>
-          <a class="gate-option gate-go" href="https://wa.me/85265453614?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="近期資金／成交異動重點">
+          <a class="gate-option gate-go" href="https://wa.me/85265453614?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8814%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-question="priority" data-value="近期資金／成交異動重點">
             <span class="gate-option-main"><span class="gate-option-icon">02</span><span><span class="gate-option-title">近期資金／成交異動重點</span><small>想先睇資金流向、成交變化同近期異動</small></span></span><span class="gate-option-arrow">›</span>
           </a>
-          <a class="gate-option gate-go" href="https://wa.me/85265453614?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E5%85%8D%E8%B2%BB%E9%A0%98%E5%8F%96%E4%BB%8A%E6%97%A5%E7%B2%BE%E9%81%B8%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9%E7%99%BC%E7%B5%A6%E6%88%91%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" role="button" data-question="priority" data-value="所屬板塊＋後續觀察重點">
+          <a class="gate-option gate-go" href="https://wa.me/85265453614?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8814%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-question="priority" data-value="所屬板塊＋後續觀察重點">
             <span class="gate-option-main"><span class="gate-option-icon">03</span><span><span class="gate-option-title">所屬板塊＋後續觀察重點</span><small>想知道板塊位置，以及之後應該再觀察咩</small></span></span><span class="gate-option-arrow">›</span>
           </a>
         </div>
@@ -446,9 +470,15 @@
       // 'ABC' = 取消選擇框，按領取按鈕直接跳 WhatsApp（同彈窗綠色按鈕一樣由 <a> 預設導航跳轉）
       // 'CBA' = 換回選擇框（填其他值或留空都當 'CBA'）
       directMode: 'ABC',
+      // 'scroll' = 手機首屏唔顯示領取按鈕，滑一滑先見到；'top' 或留空 = 首屏顯示。分流系統只改 directMode，唔會清走呢個值
+      heroButton: 'scroll',
       // 進線語入面嘅日期，每日更新數據時一併改
-      listDate: '10月13日'
+      listDate: '10月14日'
     };
+
+    if (String(CONFIG.heroButton || '').trim().toLowerCase() !== 'scroll') {
+      document.documentElement.classList.remove('cta-below');
+    }
 
     // ====== 廣告點擊 ID：首次帶參數進入時保存 90 日，之後冇參數再訪問都能對返 ======
     const CLICK_IDS = (() => {
@@ -472,50 +502,41 @@
     })();
 
     // 6 位編號，去掉 0/O/1/I/L 等易混字元，方便客服肉眼核對
-    function makeLeadCode() {
-      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-      const bytes = new Uint8Array(6);
-      (window.crypto || window.msCrypto).getRandomValues(bytes);
-      return Array.from(bytes, b => chars[b % chars.length]).join('');
+    function qxLine(leadCode) {
+      const full = String(CONFIG.receptionist || '').trim();
+      const who = (full.split(/\s+/)[0] || '你好');
+      const day = CONFIG.listDate || '今日';
+      const fill = (tpl) => tpl.split('{r}').join(who).split('{d}').join(day);
+      let last = '';
+      try { last = localStorage.getItem(LAST_MSG_KEY) || ''; } catch (e) {}
+      let msg = fill(LINE_BANK[0]);
+      for (let n = 0; n < 6; n++) {
+        msg = fill(LINE_BANK[Math.floor(Math.random() * LINE_BANK.length)]);
+        if (msg !== last) break;
+      }
+      try { localStorage.setItem(LAST_MSG_KEY, msg); } catch (e) {}
+      return msg + (leadCode ? '\n（編號：' + leadCode + '）' : '');
     }
 
-    function sendLead(payload) {
-      if (!CONFIG.leadEndpoint) return;
-      // text/plain 唔會觸發 CORS 預檢；Apps Script 只需收到請求，回應內容唔重要
-      const body = JSON.stringify(payload);
-      try {
-        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.leadEndpoint, new Blob([body], { type: 'text/plain' }))) return;
-      } catch (e) {}
-      try { fetch(CONFIG.leadEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true }); } catch (e) {}
+    function qxFloat(){
+      const pastHero = window.scrollY > heroThreshold;
+      const show = pastHero && !finalVisible;
+      floatingWrap.classList.toggle('show', show);
+      floatingWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
     }
 
     // 每一步都獨立送一條；全部排喺跳轉之後、各自 try/catch，任何失敗都唔影響跳轉
     const PAGE_START = Date.now();
-    function sendEvent(name, extra) {
-      if (!CONFIG.eventEndpoint) return;
-      try {
-        const body = JSON.stringify(Object.assign({
-          event: name,
-          ts: Date.now(),
-          since_load_ms: Date.now() - PAGE_START,
-          wa_env: WA_ENV,
-          link_type: waAttempt ? waAttempt.linkType : '',
-          cta: waAttempt ? waAttempt.placement : '',
-          transaction_id: waAttempt ? (waAttempt.txId || '') : '',
-          placement_app: CLICK_IDS.placement || '',
-          creative: CLICK_IDS.creative || '',
-          device: CLICK_IDS.device || '',
-          gclid: CLICK_IDS.gclid || '',
-          gbraid: CLICK_IDS.gbraid || '',
-          wbraid: CLICK_IDS.wbraid || '',
-          number: CONFIG.whatsappNumber,
-          visible: !document.hidden,
-          page: location.origin + location.pathname,
-          ua: UA.slice(0, 300)
-        }, extra || {}));
-        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.eventEndpoint, new Blob([body], { type: 'text/plain' }))) return;
-        fetch(CONFIG.eventEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true });
-      } catch (e) {}
+    function qxFlush(force) {
+      if (!qxTag() && !(force && typeof gtag === 'function')) return;
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) {}
+      if (!list.length) return;
+      try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
+      const cutoff = Date.now() - 7 * 86400000;
+      list.filter(ev => ev && ev.ts > cutoff).forEach(ev => {
+        try { gtag('event', ev.name, Object.assign({}, ev.params, { deferred: 1 })); } catch (e) {}
+      });
     }
 
     // ====== 首屏三張卡：廣告參數決定預設卡，但用戶可自由左右滑 ======
@@ -524,19 +545,19 @@
         key:'blackhorse',
         label:'潛力黑馬',
         button:'免費領取今日潛力黑馬名單',
-        message:'你好，我想睇10月13日潛力黑馬名單，唔該發一份俾我。'
+        message:'你好，我想領取10月14日港股名單，亦想入群一齊交流學習，可唔可以發名單同群組連結俾我？'
       },
       picks: {
         key:'picks',
         label:'今日心水',
         button:'免費領取今日心水股名單',
-        message:'你好，我想睇10月13日心水股名單，唔該發一份俾我。'
+        message:'你好，想免費領取今日港股名單，亦想入群同大家一齊學習，麻煩發名單同入群連結，唔該。'
       },
       income: {
         key:'income',
         label:'高息收息',
         button:'免費領取高息收息精選名單',
-        message:'你好，我想睇10月13日高息收息股名單，唔該發一份俾我。'
+        message:'你好，我想要10月14日嘅名單，仲想入個群同朋友交流學習，名單同群組連結可唔可以一齊發俾我？'
       }
     };
 
@@ -570,7 +591,90 @@
       document.getElementById('hero-cta-sub').innerHTML = '<i>✓</i>完全免費<span>·</span>按一下即收名單';
     }
 
-    function setActive(key, {scroll=false, track=true} = {}) {
+    function makeLeadCode() {
+      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+      const bytes = new Uint8Array(6);
+      (window.crypto || window.msCrypto).getRandomValues(bytes);
+      return Array.from(bytes, b => chars[b % chars.length]).join('');
+    }
+
+    // Initial slide follows ad parameter
+    qxCard(currentKey, {scroll:false, track:true});
+    requestAnimationFrame(() => {
+      const card = cards.find(c => c.dataset.slide === currentKey);
+      if (card) slider.scrollLeft = card.offsetLeft - slider.offsetLeft;
+    });
+
+    // Detect which card is nearest the left edge after swiping
+    let scrollTimer;
+    slider.addEventListener('scroll', () => {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        const left = slider.scrollLeft;
+        let nearest = cards[0], min = Infinity;
+        cards.forEach(card => {
+          const d = Math.abs((card.offsetLeft - slider.offsetLeft) - left);
+          if (d < min) { min = d; nearest = card; }
+        });
+        if (nearest && nearest.dataset.slide !== currentKey) qxCard(nearest.dataset.slide, {scroll:false, track:true});
+      }, 90);
+    }, {passive:true});
+
+    // Any touch/drag stops the one-time auto hint
+    ['touchstart','pointerdown','wheel'].forEach(evt => {
+      slider.addEventListener(evt, () => { userInteracted = true; }, {passive:true});
+    });
+
+    dots.forEach(dot => dot.addEventListener('click', () => {
+      userInteracted = true;
+      qxCard(dot.dataset.dot, {scroll:true, track:true});
+    }));
+
+    // One gentle automatic nudge to show there are multiple cards, then stop.
+    // If the ad already opened on card 2 or 3, nudge to the next card; never loops continuously.
+    setTimeout(() => {
+      if (hadExplicitFocus || userInteracted || autoHintDone || document.visibilityState !== 'visible') return;
+      autoHintDone = true;
+      const i = ORDER.indexOf(currentKey);
+      const next = ORDER[Math.min(i + 1, ORDER.length - 1)];
+      if (next !== currentKey) qxCard(next, {scroll:true, track:true});
+    }, 3000);
+
+    let redirecting = false;
+    let pendingLocation = 'hero';
+    const leadGate = document.getElementById('lead-gate');
+    const gateCancel = document.getElementById('gate-cancel');
+    const gateBack = document.getElementById('gate-back');
+    const gateSteps = [...document.querySelectorAll('.gate-step')];
+    const interestOptions = [...document.querySelectorAll('.gate-option[data-question="interest"]')];
+    const priorityOptions = [...document.querySelectorAll('.gate-option[data-question="priority"]')];
+    const gatePickedName = document.getElementById('gate-picked-name');
+    const gatePanel = leadGate.querySelector('.gate-panel');
+    const gateProgress2 = document.getElementById('gate-progress-2');
+    const gateProgressText = document.getElementById('gate-progress-text');
+    const gateKicker = document.getElementById('gate-kicker');
+    const GATE_KICKER = gateKicker.textContent;
+    const gateAnswers = { interest:'', priority:'' };
+    const defaultInterestMap = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
+    const FOCUSES = priorityOptions.map(el => el.dataset.value);
+
+    function qxLead(payload) {
+      if (!CONFIG.leadEndpoint) return;
+      // text/plain 唔會觸發 CORS 預檢；Apps Script 只需收到請求，回應內容唔重要
+      const body = JSON.stringify(payload);
+      try {
+        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.leadEndpoint, new Blob([body], { type: 'text/plain' }))) return;
+      } catch (e) {}
+      try { fetch(CONFIG.leadEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true }); } catch (e) {}
+    }
+
+    function qxView() {
+      if (pageViewSent) return;
+      pageViewSent = true;
+      sendEvent('page_view', { variant: currentKey, referrer: (document.referrer || '').slice(0, 200) });
+    }
+
+    function qxCard(key, {scroll=false, track=true} = {}) {
       if (!VARIANTS[key]) return;
       currentKey = key;
       const data = VARIANTS[key];
@@ -595,124 +699,28 @@
       }
     }
 
-    // Initial slide follows ad parameter
-    setActive(currentKey, {scroll:false, track:true});
-    requestAnimationFrame(() => {
-      const card = cards.find(c => c.dataset.slide === currentKey);
-      if (card) slider.scrollLeft = card.offsetLeft - slider.offsetLeft;
-    });
-
-    // Detect which card is nearest the left edge after swiping
-    let scrollTimer;
-    slider.addEventListener('scroll', () => {
-      clearTimeout(scrollTimer);
-      scrollTimer = setTimeout(() => {
-        const left = slider.scrollLeft;
-        let nearest = cards[0], min = Infinity;
-        cards.forEach(card => {
-          const d = Math.abs((card.offsetLeft - slider.offsetLeft) - left);
-          if (d < min) { min = d; nearest = card; }
-        });
-        if (nearest && nearest.dataset.slide !== currentKey) setActive(nearest.dataset.slide, {scroll:false, track:true});
-      }, 90);
-    }, {passive:true});
-
-    // Any touch/drag stops the one-time auto hint
-    ['touchstart','pointerdown','wheel'].forEach(evt => {
-      slider.addEventListener(evt, () => { userInteracted = true; }, {passive:true});
-    });
-
-    dots.forEach(dot => dot.addEventListener('click', () => {
-      userInteracted = true;
-      setActive(dot.dataset.dot, {scroll:true, track:true});
-    }));
-
-    // One gentle automatic nudge to show there are multiple cards, then stop.
-    // If the ad already opened on card 2 or 3, nudge to the next card; never loops continuously.
-    setTimeout(() => {
-      if (hadExplicitFocus || userInteracted || autoHintDone || document.visibilityState !== 'visible') return;
-      autoHintDone = true;
-      const i = ORDER.indexOf(currentKey);
-      const next = ORDER[Math.min(i + 1, ORDER.length - 1)];
-      if (next !== currentKey) setActive(next, {scroll:true, track:true});
-    }, 3000);
-
-    let redirecting = false;
-    let pendingLocation = 'hero';
-    const leadGate = document.getElementById('lead-gate');
-    const gateCancel = document.getElementById('gate-cancel');
-    const gateBack = document.getElementById('gate-back');
-    const gateSteps = [...document.querySelectorAll('.gate-step')];
-    const interestOptions = [...document.querySelectorAll('.gate-option[data-question="interest"]')];
-    const priorityOptions = [...document.querySelectorAll('.gate-option[data-question="priority"]')];
-    const gatePickedName = document.getElementById('gate-picked-name');
-    const gatePanel = leadGate.querySelector('.gate-panel');
-    const gateProgress2 = document.getElementById('gate-progress-2');
-    const gateProgressText = document.getElementById('gate-progress-text');
-    const gateKicker = document.getElementById('gate-kicker');
-    const GATE_KICKER = gateKicker.textContent;
-    const gateAnswers = { interest:'', priority:'' };
-    const defaultInterestMap = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
-    const FOCUSES = priorityOptions.map(el => el.dataset.value);
-
-    function setGateStep(step){
-      gateSteps.forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
-      gateProgress2.classList.toggle('on', step === 2);
-      gateProgressText.textContent = '第 1 步 / 共 2 步';
-      gateKicker.textContent = GATE_KICKER;
-      gatePanel.classList.toggle('on-step2', step === 2);
-      gatePanel.scrollTop = 0;
-      if (step === 2) {
-        const picked = interestOptions.find(el => el.dataset.value === gateAnswers.interest);
-        gatePickedName.textContent = picked ? picked.querySelector('.gate-option-title').textContent : gateAnswers.interest;
-        try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateStep2',{variant:currentKey}); } catch(e){}
-        sendEvent('gate_step2', { cta: pendingLocation, variant: currentKey, interest: gateAnswers.interest });
-      }
-    }
-
-    function openLeadGate(locationName){
-      pendingLocation = locationName || 'hero';
-      gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
-      gateAnswers.priority = '';
-      interestOptions.forEach(el => el.classList.toggle('active', el.dataset.value === gateAnswers.interest));
-      priorityOptions.forEach(el => el.classList.remove('active'));
-      setGateStep(1);
-      leadGate.classList.add('show');
-      leadGate.setAttribute('aria-hidden','false');
-      document.body.style.overflow = 'hidden';
-      try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateOpen',{placement:pendingLocation,variant:currentKey}); } catch(e){}
-      sendPageView();
-      sendEvent('gate_open', { cta: pendingLocation, variant: currentKey });
-    }
-
-    function closeLeadGate(){
-      leadGate.classList.remove('show');
-      leadGate.setAttribute('aria-hidden','true');
-      document.body.style.overflow = '';
-    }
-
     interestOptions.forEach(btn => {
       btn.addEventListener('click', () => {
         gateAnswers.interest = btn.dataset.value;
         interestOptions.forEach(el => el.classList.toggle('active', el === btn));
         try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'interest'}); } catch(e){}
-        setTimeout(() => setGateStep(2), 120);
+        setTimeout(() => qxStep(2), 120);
       });
     });
 
-    gateBack.addEventListener('click', () => setGateStep(1));
+    gateBack.addEventListener('click', () => qxStep(1));
 
-    // 用戶自己關閉問卷（揀完答案跳轉時嘅 closeLeadGate 唔計）
-    function dismissLeadGate(how){
+    // 用戶自己關閉問卷（揀完答案跳轉時嘅 qxShut 唔計）
+    function qxDrop(how){
       try {
         const active = document.querySelector('.gate-step.active');
         sendEvent('gate_close', { cta: pendingLocation, how, step: active ? Number(active.dataset.step) : 0 });
       } catch (e) {}
-      closeLeadGate();
+      qxShut();
     }
-    gateCancel.addEventListener('click', () => dismissLeadGate('x'));
-    leadGate.addEventListener('click', e => { if (e.target === leadGate) dismissLeadGate('backdrop'); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) dismissLeadGate('esc'); });
+    gateCancel.addEventListener('click', () => qxDrop('x'));
+    leadGate.addEventListener('click', e => { if (e.target === leadGate) qxDrop('backdrop'); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && leadGate.classList.contains('show')) qxDrop('esc'); });
 
     // ====== WhatsApp 跳轉：先判斷打開環境，再揀喚起方式 ======
     const UA = navigator.userAgent || '';
@@ -729,187 +737,6 @@
                  : IS_ANDROID ? (ANDROID_WEBVIEW ? 'android_webview' : 'android_browser')
                  : 'desktop';
 
-    function buildWhatsAppUrls(message) {
-      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
-      const text = encodeURIComponent(message);
-      const universal = `https://wa.me/${phone}?text=${text}`;
-      return {
-        phone,
-        universal,
-        scheme: `whatsapp://send?phone=${phone}&text=${text}`,
-        // 冇裝普通版（或只裝 Business 版）時 Chrome 會自動轉去 fallback，wa.me 再交俾已安裝嘅 App
-        intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end`
-      };
-    }
-
-    // 進線語由四段隨機拼出（5×3×6×6 = 540 種），中間加入第 2 頁揀嘅情況；同上一次唔同；{r} = 接待助理（CONFIG.receptionist）、{d} = 日期、{n} = 名單名
-    const MSG_PARTS = {
-      greet: ['{r} 助理你好，', '{r} 助理您好，', '{r} 你好，', '你好 {r} 助理，', '{r} 助理，你好呀，'],
-      greetNoName: ['你好，', '您好，', '你好呀，'],
-      lead: ['', '', '睇到你哋嘅港股分享，', '啱啱睇到講經MAN，'],
-      ask: ['我想睇{d}嘅{n}', '想要一份{d}{n}', '可唔可以發{d}嘅{n}俾我', '我想免費領取{d}{n}', '想了解下{d}嘅{n}', '麻煩發一份{d}{n}俾我'],
-      close: ['，唔該晒。', '，唔該。', '，謝謝。', '，唔該你。', '，多謝！', '。']
-    };
-    const LIST_NAMES = { blackhorse:'潛力黑馬名單', picks:'心水股名單', income:'高息收息股名單' };
-    // 第 2 頁三個重點（data-value）對應嘅講法，每次隨機揀一句
-    const FOCUS_PHRASES = {
-      '股票名稱＋今日值得留意原因': ['想知係邊幾隻同埋點解值得留意', '想睇埋股票名稱同今日值得留意嘅原因', '最想知係邊幾隻股，同點解今日值得睇'],
-      '近期資金／成交異動重點': ['想睇埋近期資金同成交異動', '最想知近期資金流向同成交變化', '想一齊睇埋資金同成交異動重點'],
-      '所屬板塊＋後續觀察重點': ['想知埋所屬板塊同之後要留意咩', '想睇埋板塊位置同後續觀察重點', '最想知所屬板塊同後面點睇']
-    };
-    const LAST_MSG_KEY = 'econman_last_msg';
-
-    function randomMessage(key, focus) {
-      const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-      const d = CONFIG.listDate || '今日';
-      const n = LIST_NAMES[key] || '精選名單';
-      const r = String(CONFIG.receptionist || '').trim();
-      const phrases = FOCUS_PHRASES[focus];
-      let last = '';
-      try { last = localStorage.getItem(LAST_MSG_KEY) || ''; } catch (e) {}
-      let msg = '';
-      for (let i = 0; i < 6 && (!msg || msg === last); i++) {
-        msg = (r ? pick(MSG_PARTS.greet).replace('{r}', r) : pick(MSG_PARTS.greetNoName)) + pick(MSG_PARTS.lead) + pick(MSG_PARTS.ask).replace('{d}', d).replace('{n}', n) + (phrases ? '，' + pick(phrases) : '') + pick(MSG_PARTS.close);
-      }
-      try { localStorage.setItem(LAST_MSG_KEY, msg); } catch (e) {}
-      return msg;
-    }
-
-    function buildMessage(leadCode) {
-      const interestKey = Object.keys(defaultInterestMap).find(k => defaultInterestMap[k] === gateAnswers.interest);
-      const key = VARIANTS[interestKey] ? interestKey : (VARIANTS[currentKey] ? currentKey : 'blackhorse');
-      const code = leadCode ? `\n（編號：${leadCode}）` : '';
-      let msg = '';
-      try { msg = randomMessage(key, gateAnswers.priority); } catch (e) {}
-      return (msg || VARIANTS[key].message || '你好，我想睇10月13日精選名單，唔該發一份俾我。') + code;
-    }
-
-    // ====== 打點：gtag.js 已載入就即時發；未載入（網絡慢 / 用戶極快點擊）就先存本地，之後或下次打開頁面補報 ======
-    const PENDING_KEY = 'econman_pending_events';
-    function gtagReady() { return typeof gtag === 'function' && !!window.google_tag_manager; }
-
-    function track(name, params) {
-      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
-      if (gtagReady()) { try { gtag('event', name, payload); } catch (e) {} return; }
-      // 帶 transaction_id 嘅事件（Google Ads 轉化）：即時推入 gtag 隊列 + 本地暫存雙保險。
-      // 用戶跳去 WhatsApp 後頁面轉入後台、定時器被暫停，但 gtag.js 載入完成嘅回調仍會執行並即時發出；
-      // 之後補發嘅同一 transaction_id 由 Google Ads 自動去重，唔會重複計算
-      if (payload.transaction_id) { try { gtag('event', name, payload); } catch (e) {} }
-      try {
-        const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
-        list.push({ name, params: payload, ts: Date.now() });
-        localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(-50)));
-      } catch (e) {
-        try { gtag('event', name, payload); } catch (e2) {}
-      }
-    }
-
-    function flushPendingEvents(force) {
-      if (!gtagReady() && !(force && typeof gtag === 'function')) return;
-      let list = [];
-      try { list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) {}
-      if (!list.length) return;
-      try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
-      const cutoff = Date.now() - 7 * 86400000;
-      list.filter(ev => ev && ev.ts > cutoff).forEach(ev => {
-        try { gtag('event', ev.name, Object.assign({}, ev.params, { deferred: 1 })); } catch (e) {}
-      });
-    }
-    ['load', 'pageshow'].forEach(evt => window.addEventListener(evt, flushPendingEvents));
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) flushPendingEvents(); });
-    const flushPoll = setInterval(() => { flushPendingEvents(); if (gtagReady()) clearInterval(flushPoll); }, 800);
-    // 30 秒後仍偵測唔到 gtag.js 就緒：直接推入 gtag 隊列，等佢載入後自行發送，避免事件一直積壓
-    setTimeout(() => { clearInterval(flushPoll); flushPendingEvents(true); }, 30000);
-
-    // 宿主唔處理自訂 scheme 時，只係 iframe 失敗；主頁面唔會變成 ERR_UNKNOWN_URL_SCHEME 錯誤頁，兜底面板仍然可用
-    function openInHiddenFrame(url) {
-      const frame = document.createElement('iframe');
-      frame.style.display = 'none';
-      frame.src = url;
-      document.body.appendChild(frame);
-      setTimeout(() => frame.remove(), 3000);
-    }
-
-    const waFallback = document.getElementById('wa-fallback');
-    const waFallbackOpen = document.getElementById('wa-fallback-open');
-    const waCopyNumber = document.getElementById('wa-copy-number');
-    const waCopyMsg = document.getElementById('wa-copy-msg');
-    const waNumberText = document.getElementById('wa-number-text');
-    const waBrowserTip = document.getElementById('wa-browser-tip');
-    let waAttempt = null;
-    let fallbackTimer = 0;
-    let fallbackPayload = { phone: '', message: '' };
-
-    function prepareFallback(urls, message) {
-      fallbackPayload = { phone: urls.phone, message };
-      const hrefByEnv = {
-        ios_browser: urls.universal,
-        ios_webview: urls.scheme,
-        // 第一次 intent:// 冇反應先會見到兜底，重試改行 wa.me（App Link／官方頁），唔再重複同一條路
-        android_browser: urls.universal,
-        android_webview: urls.scheme,
-        desktop: urls.universal
-      };
-      waFallbackOpen.href = hrefByEnv[WA_ENV];
-      waNumberText.textContent = `WhatsApp 號碼：+${urls.phone}`;
-      waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
-    }
-
-    function showFallback() {
-      if (!waAttempt || waAttempt.left || document.hidden) return;
-      waFallback.classList.add('show');
-      waFallback.setAttribute('aria-hidden', 'false');
-      document.body.style.overflow = 'hidden';
-      track('wa_fallback_shown', { placement: waAttempt.placement });
-      sendEvent('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
-    }
-
-    function hideFallback() {
-      if (!waFallback.classList.contains('show')) return;
-      waFallback.classList.remove('show');
-      waFallback.setAttribute('aria-hidden', 'true');
-      document.body.style.overflow = '';
-    }
-
-    function armFallback(delay) {
-      clearTimeout(fallbackTimer);
-      fallbackTimer = setTimeout(showFallback, delay);
-    }
-
-    function markLeft() {
-      if (!waAttempt || waAttempt.left) return;
-      waAttempt.left = true;
-      clearTimeout(fallbackTimer);
-      hideFallback();
-      track('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
-      sendEvent('wa_app_opened', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
-    }
-
-    // 頁面轉入後台 = WhatsApp 已被喚起
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) markLeft();
-      else redirecting = false;
-    });
-    window.addEventListener('pagehide', () => clearTimeout(fallbackTimer));
-    // 系統確認框（Android 揀 App、iOS「喺 WhatsApp 開啟？」）會令頁面失焦但仍然可見，期間唔好彈兜底
-    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) armFallback(3500); });
-    window.addEventListener('focus', () => {
-      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) armFallback(900);
-    });
-    window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
-
-    // 每次進站報一條，用嚟分清「冇人點」同「點咗但上報收唔到」；load 前已經點擊就喺點擊時補發
-    let pageViewSent = false;
-    function sendPageView() {
-      if (pageViewSent) return;
-      pageViewSent = true;
-      sendEvent('page_view', { variant: currentKey, referrer: (document.referrer || '').slice(0, 200) });
-    }
-    if (document.readyState === 'complete') sendPageView();
-    else window.addEventListener('load', sendPageView, { once: true });
-
-    // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
-    // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
     function goWhatsApp(e, locationName) {
       const anchor = e && e.currentTarget && e.currentTarget.tagName === 'A' ? e.currentTarget : null;
       if (redirecting) return; // 2 秒內重複點擊：href 仍然係上次嘅正確連結，預設導航照跳
@@ -918,7 +745,7 @@
 
       const leadCode = CONFIG.leadEndpoint ? makeLeadCode() : '';
       const txId = Date.now().toString(36) + '-' + makeLeadCode();
-      const message = buildMessage(leadCode);
+      const message = qxLine(leadCode);
       const urls = buildWhatsAppUrls(message);
 
       let target = urls.universal, linkType = 'universal';
@@ -928,7 +755,7 @@
 
       if (WA_ENV === 'android_webview') {
         if (e) e.preventDefault();
-        openInHiddenFrame(urls.scheme);
+        qxFrame(urls.scheme);
       } else if (anchor) {
         anchor.href = target;
         if (WA_ENV === 'desktop') { anchor.target = '_blank'; anchor.rel = 'noopener'; }
@@ -941,12 +768,12 @@
       // ---------- 以下全部喺跳轉已交俾瀏覽器之後先執行 ----------
       waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false, linkType, txId };
       try {
-        prepareFallback(urls, message);
-        if (WA_ENV !== 'desktop') armFallback((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
+        qxPrep(urls, message);
+        if (WA_ENV !== 'desktop') qxArm((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
       } catch (err) {}
 
       try {
-        sendLead({
+        qxLead({
           code: leadCode,
           gclid: CLICK_IDS.gclid || '',
           gbraid: CLICK_IDS.gbraid || '',
@@ -976,13 +803,193 @@
           fbq('trackCustom', 'WhatsAppClick', { placement: locationName || 'unknown', variant: currentKey, wa_env: WA_ENV });
         }
       } catch (err) {}
-      sendPageView();
+      qxView();
       track('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
       track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
-      sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: gateAnswers.interest, priority: gateAnswers.priority, gtag_ready: gtagReady() });
+      sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: gateAnswers.interest, priority: gateAnswers.priority, gtag_ready: qxTag() });
     }
 
-    function legacyCopy(text) {
+    // 進線語三句輪流。{r} = 接待員英文名，{d} = CONFIG.listDate。同上一次唔同。
+    const LINE_BANK = [
+      '{r} 你好，我想領取{d}港股名單，希望入群同志同道合嘅朋友一齊交流學習，可唔可以發名單同群組連結俾我？',
+      '{r} 你好，想免費領取今日港股名單，亦想入群同大家一齊睇、一齊學，麻煩將名單同入群連結發過嚟，唔該。',
+      '你好 {r}，我想要{d}嘅名單，仲想入個群同朋友交流學習，名單同群組連結可唔可以一齊發俾我？'
+    ];
+    const LAST_MSG_KEY = 'econman_last_msg';
+
+    function qxShut(){
+      leadGate.classList.remove('show');
+      leadGate.setAttribute('aria-hidden','true');
+      document.body.style.overflow = '';
+    }
+
+    // ====== 打點：gtag.js 已載入就即時發；未載入（網絡慢 / 用戶極快點擊）就先存本地，之後或下次打開頁面補報 ======
+    const PENDING_KEY = 'econman_pending_events';
+    function qxFrame(url) {
+      const frame = document.createElement('iframe');
+      frame.style.display = 'none';
+      frame.src = url;
+      document.body.appendChild(frame);
+      setTimeout(() => frame.remove(), 3000);
+    }
+
+    function sendEvent(name, extra) {
+      if (!CONFIG.eventEndpoint) return;
+      try {
+        const body = JSON.stringify(Object.assign({
+          event: name,
+          ts: Date.now(),
+          since_load_ms: Date.now() - PAGE_START,
+          wa_env: WA_ENV,
+          link_type: waAttempt ? waAttempt.linkType : '',
+          cta: waAttempt ? waAttempt.placement : '',
+          transaction_id: waAttempt ? (waAttempt.txId || '') : '',
+          placement_app: CLICK_IDS.placement || '',
+          creative: CLICK_IDS.creative || '',
+          device: CLICK_IDS.device || '',
+          gclid: CLICK_IDS.gclid || '',
+          gbraid: CLICK_IDS.gbraid || '',
+          wbraid: CLICK_IDS.wbraid || '',
+          number: CONFIG.whatsappNumber,
+          visible: !document.hidden,
+          page: location.origin + location.pathname,
+          ua: UA.slice(0, 300)
+        }, extra || {}));
+        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.eventEndpoint, new Blob([body], { type: 'text/plain' }))) return;
+        fetch(CONFIG.eventEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true });
+      } catch (e) {}
+    }
+
+    function qxPrep(urls, message) {
+      fallbackPayload = { phone: urls.phone, message };
+      const hrefByEnv = {
+        ios_browser: urls.universal,
+        ios_webview: urls.scheme,
+        // 第一次 intent:// 冇反應先會見到兜底，重試改行 wa.me（App Link／官方頁），唔再重複同一條路
+        android_browser: urls.universal,
+        android_webview: urls.scheme,
+        desktop: urls.universal
+      };
+      waFallbackOpen.href = hrefByEnv[WA_ENV];
+      waNumberText.textContent = `WhatsApp 號碼：+${urls.phone}`;
+      waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
+    }
+    ['load', 'pageshow'].forEach(evt => window.addEventListener(evt, qxFlush));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) qxFlush(); });
+    const flushPoll = setInterval(() => { qxFlush(); if (qxTag()) clearInterval(flushPoll); }, 800);
+    // 30 秒後仍偵測唔到 gtag.js 就緒：直接推入 gtag 隊列，等佢載入後自行發送，避免事件一直積壓
+    setTimeout(() => { clearInterval(flushPoll); qxFlush(true); }, 30000);
+
+    // 宿主唔處理自訂 scheme 時，只係 iframe 失敗；主頁面唔會變成 ERR_UNKNOWN_URL_SCHEME 錯誤頁，兜底面板仍然可用
+    function buildWhatsAppUrls(message) {
+      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+      const text = encodeURIComponent(message);
+      const universal = `https://wa.me/${phone}?text=${text}`;
+      return {
+        phone,
+        universal,
+        scheme: `whatsapp://send?phone=${phone}&text=${text}`,
+        // 冇裝普通版（或只裝 Business 版）時 Chrome 會自動轉去 fallback，wa.me 再交俾已安裝嘅 App
+        intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end`
+      };
+    }
+
+    const waFallback = document.getElementById('wa-fallback');
+    const waFallbackOpen = document.getElementById('wa-fallback-open');
+    const waCopyNumber = document.getElementById('wa-copy-number');
+    const waCopyMsg = document.getElementById('wa-copy-msg');
+    const waNumberText = document.getElementById('wa-number-text');
+    const waBrowserTip = document.getElementById('wa-browser-tip');
+    let waAttempt = null;
+    let fallbackTimer = 0;
+    let fallbackPayload = { phone: '', message: '' };
+
+    function qxCopy(text, btn, okLabel) {
+      const original = btn.textContent;
+      const done = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
+      // 先試同步方法：部分 WebView 冇 clipboard API，而且 await 之後會失去用戶手勢
+      if (qxCopyOld(text)) { done(); return; }
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => {});
+    }
+
+    function track(name, params) {
+      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
+      if (qxTag()) { try { gtag('event', name, payload); } catch (e) {} return; }
+      // 帶 transaction_id 嘅事件（Google Ads 轉化）：即時推入 gtag 隊列 + 本地暫存雙保險。
+      // 用戶跳去 WhatsApp 後頁面轉入後台、定時器被暫停，但 gtag.js 載入完成嘅回調仍會執行並即時發出；
+      // 之後補發嘅同一 transaction_id 由 Google Ads 自動去重，唔會重複計算
+      if (payload.transaction_id) { try { gtag('event', name, payload); } catch (e) {} }
+      try {
+        const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+        list.push({ name, params: payload, ts: Date.now() });
+        localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(-50)));
+      } catch (e) {
+        try { gtag('event', name, payload); } catch (e2) {}
+      }
+    }
+
+    function qxTag() { return typeof gtag === 'function' && !!window.google_tag_manager; }
+
+    function qxHide() {
+      if (!waFallback.classList.contains('show')) return;
+      waFallback.classList.remove('show');
+      waFallback.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function qxLeft() {
+      if (!waAttempt || waAttempt.left) return;
+      waAttempt.left = true;
+      clearTimeout(fallbackTimer);
+      qxHide();
+      track('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
+      sendEvent('wa_app_opened', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+    }
+
+    // 頁面轉入後台 = WhatsApp 已被喚起
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) qxLeft();
+      else redirecting = false;
+    });
+    window.addEventListener('pagehide', () => clearTimeout(fallbackTimer));
+    // 系統確認框（Android 揀 App、iOS「喺 WhatsApp 開啟？」）會令頁面失焦但仍然可見，期間唔好彈兜底
+    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) qxArm(3500); });
+    window.addEventListener('focus', () => {
+      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) qxArm(900);
+    });
+    window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
+
+    // 每次進站報一條，用嚟分清「冇人點」同「點咗但上報收唔到」；load 前已經點擊就喺點擊時補發
+    let pageViewSent = false;
+    function qxShow() {
+      if (!waAttempt || waAttempt.left || document.hidden) return;
+      waFallback.classList.add('show');
+      waFallback.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      track('wa_fallback_shown', { placement: waAttempt.placement });
+      sendEvent('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+    }
+    if (document.readyState === 'complete') qxView();
+    else window.addEventListener('load', qxView, { once: true });
+
+    // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
+    // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
+    function qxStep(step){
+      gateSteps.forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
+      gateProgress2.classList.toggle('on', step === 2);
+      gateProgressText.textContent = '第 1 步 / 共 2 步';
+      gateKicker.textContent = GATE_KICKER;
+      gatePanel.classList.toggle('on-step2', step === 2);
+      gatePanel.scrollTop = 0;
+      if (step === 2) {
+        const picked = interestOptions.find(el => el.dataset.value === gateAnswers.interest);
+        gatePickedName.textContent = picked ? picked.querySelector('.gate-option-title').textContent : gateAnswers.interest;
+        try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateStep2',{variant:currentKey}); } catch(e){}
+        sendEvent('gate_step2', { cta: pendingLocation, variant: currentKey, interest: gateAnswers.interest });
+      }
+    }
+
+    function qxCopyOld(text) {
       const ta = document.createElement('textarea');
       ta.value = text;
       ta.setAttribute('readonly', '');
@@ -996,12 +1003,19 @@
       return ok;
     }
 
-    function copyText(text, btn, okLabel) {
-      const original = btn.textContent;
-      const done = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
-      // 先試同步方法：部分 WebView 冇 clipboard API，而且 await 之後會失去用戶手勢
-      if (legacyCopy(text)) { done(); return; }
-      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => {});
+    function qxOpen(locationName){
+      pendingLocation = locationName || 'hero';
+      gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
+      gateAnswers.priority = '';
+      interestOptions.forEach(el => el.classList.toggle('active', el.dataset.value === gateAnswers.interest));
+      priorityOptions.forEach(el => el.classList.remove('active'));
+      qxStep(1);
+      leadGate.classList.add('show');
+      leadGate.setAttribute('aria-hidden','false');
+      document.body.style.overflow = 'hidden';
+      try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateOpen',{placement:pendingLocation,variant:currentKey}); } catch(e){}
+      qxView();
+      sendEvent('gate_open', { cta: pendingLocation, variant: currentKey });
     }
 
     waFallbackOpen.addEventListener('click', () => {
@@ -1010,22 +1024,22 @@
       sendEvent('wa_fallback_click', {});
     });
     waCopyNumber.addEventListener('click', () => {
-      copyText(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
+      qxCopy(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
       track('wa_copy_number', {});
       sendEvent('wa_copy_number', {});
     });
     waCopyMsg.addEventListener('click', () => {
-      copyText(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
+      qxCopy(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
       track('wa_copy_message', {});
       sendEvent('wa_copy_message', {});
     });
-    document.getElementById('wa-fallback-close').addEventListener('click', hideFallback);
-    waFallback.addEventListener('click', e => { if (e.target === waFallback) hideFallback(); });
+    document.getElementById('wa-fallback-close').addEventListener('click', qxHide);
+    waFallback.addEventListener('click', e => { if (e.target === waFallback) qxHide(); });
 
     const DIRECT_MODE = String(CONFIG.directMode || '').trim().toUpperCase() === 'ABC';
     document.querySelectorAll('[data-wa]').forEach(btn => {
       btn.addEventListener('click', e => {
-        if (!DIRECT_MODE) { e.preventDefault(); openLeadGate(btn.dataset.location); return; }
+        if (!DIRECT_MODE) { e.preventDefault(); qxOpen(btn.dataset.location); return; }
         gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
         gateAnswers.priority = FOCUSES[Math.floor(Math.random() * FOCUSES.length)] || '';
         goWhatsApp(e, btn.dataset.location);
@@ -1037,7 +1051,7 @@
         gateAnswers.priority = opt.dataset.value;
         priorityOptions.forEach(el => el.classList.toggle('active', el === opt));
         try { if (typeof fbq === 'function') fbq('trackCustom','LeadGateAnswer',{question:'priority'}); } catch(err){}
-        closeLeadGate();
+        qxShut();
         goWhatsApp(e, pendingLocation);
       });
     });
@@ -1050,31 +1064,29 @@
 
     const finalObserver = new IntersectionObserver(entries => {
       finalVisible = entries[0] && entries[0].isIntersecting;
-      updateFloatingCTA();
+      qxFloat();
     }, {threshold:.18});
     finalObserver.observe(finalCta);
 
     // 滾動中只讀 scrollY；hero 高度只喺 resize 時讀，避免每次滾動強制排版，並用 rAF 合併同一幀內多次觸發
     let heroThreshold = Math.max(180, heroSection.offsetHeight * .72);
     let floatTicking = false;
-    function scheduleFloatingCTA(){
+    function qxArm(delay) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(qxShow, delay);
+    }
+
+    function qxFloatQ(){
       if (floatTicking) return;
       floatTicking = true;
-      requestAnimationFrame(() => { floatTicking = false; updateFloatingCTA(); });
+      requestAnimationFrame(() => { floatTicking = false; qxFloat(); });
     }
 
-    function updateFloatingCTA(){
-      const pastHero = window.scrollY > heroThreshold;
-      const show = pastHero && !finalVisible;
-      floatingWrap.classList.toggle('show', show);
-      floatingWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
-    }
-
-    window.addEventListener('scroll',scheduleFloatingCTA,{passive:true});
-    const refreshHeroThreshold = () => { heroThreshold = Math.max(180, heroSection.offsetHeight * .72); scheduleFloatingCTA(); };
+    window.addEventListener('scroll',qxFloatQ,{passive:true});
+    const refreshHeroThreshold = () => { heroThreshold = Math.max(180, heroSection.offsetHeight * .72); qxFloatQ(); };
     window.addEventListener('resize', refreshHeroThreshold, {passive:true});
     window.addEventListener('load', refreshHeroThreshold, {once:true});
-    updateFloatingCTA();
+    qxFloat();
 
     // 按鈕離開畫面就暫停動效
     if ('IntersectionObserver' in window) {
