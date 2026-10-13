@@ -687,17 +687,44 @@ def test_secret_weapon_fills_abc_and_leaves_the_rest_of_the_page(console):
     again = client.post('/api/b-redirects/direct-entry', json={
         'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
     assert again.status_code == 200, again.text
-    assert again.json()['kind'] == 'cba'
-    restored = published_html(app)
-    assert restored == base_text.replace("directMode: '',", "directMode: 'CBA',", 1)
-    assert client.get('/api/state').json()['direct_mode'] == 'CBA'
+    assert again.json()['kind'] == 'abcabc'
+    marked = published_html(app)
+    assert marked == base_text.replace("directMode: '',", "directMode: 'ABCABC',", 1)
+    assert client.get('/api/state').json()['direct_mode'] == 'ABCABC'
+    assert 'id="lead-gate"' in marked
+    _same_function(ABC_PAGE, marked, 'goWhatsApp')
     third = client.post('/api/b-redirects/direct-entry', json={
         'version_id': again.json()['version']['id'], 'expected_published': again.json()['version']['id']})
     assert third.status_code == 200, third.text
-    assert third.json()['kind'] == 'abc'
+    assert third.json()['kind'] == 'cba'
+    restored = published_html(app)
+    assert restored == base_text.replace("directMode: '',", "directMode: 'CBA',", 1)
+    assert client.get('/api/state').json()['direct_mode'] == 'CBA'
+    fourth = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': third.json()['version']['id'], 'expected_published': third.json()['version']['id']})
+    assert fourth.status_code == 200, fourth.text
+    assert fourth.json()['kind'] == 'abc'
     assert published_html(app) == text
-    assert app.state.store.slots()['B'] == third.json()['version']['id']
+    assert app.state.store.slots()['B'] == fourth.json()['version']['id']
     assert app.state.store.slots()['B'] != base
+
+
+def test_secret_weapon_keeps_abcabc_distinct_from_abc(console):
+    client, app = console
+    page = ABC_PAGE.replace("directMode: '',", "directMode: 'abcabc',")
+    base = _upload_html(client, page)
+    assert client.get('/api/state').json()['direct_mode'] == 'ABCABC'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'cba'
+    text = published_html(app)
+    base_text = (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+    assert text == base_text.replace("directMode: 'abcabc',", "directMode: 'CBA',", 1)
+    assert "directMode: 'ABC'," not in text
+    assert "directMode: 'ABCABC'," not in text
+    _same_function(page, text, 'goWhatsApp')
 
 
 def test_secret_weapon_does_not_rewrite_an_unrecognized_abc_switch(console):
