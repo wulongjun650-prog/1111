@@ -63,6 +63,16 @@ class PanelSites(PanelPreflight):
         return normalized
 
     def _sites(self, domain):
+        # aaPanel 8.0.7 crashes getData whenever the site search is non-empty and
+        # returns {result: traceback} instead of {data: []}. Read the full list then.
+        rows = self._site_pages(domain)
+        if rows is None and domain:
+            rows = self._site_pages('')
+        if rows is None:
+            raise ProvisioningError('面板站点列表格式不兼容')
+        return rows
+
+    def _site_pages(self, domain):
         rows, seen = [], set()
         # Stop only on an empty page, not a short page: panels may clamp limit.
         for page in range(1, 102):
@@ -71,7 +81,7 @@ class PanelSites(PanelPreflight):
             })
             batch = message.get('data') if isinstance(message, dict) else None
             if not isinstance(batch, list):
-                raise ProvisioningError('面板站点列表格式不兼容')
+                return None
             if not batch:
                 return rows
             for row in batch:

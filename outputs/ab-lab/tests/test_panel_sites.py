@@ -266,6 +266,50 @@ def test_delete_owned_leaves_a_missing_or_foreign_site():
     assert all(action != 'DeleteSite' for action, _fields in requests)
 
 
+def test_crashing_site_search_uses_the_unfiltered_list():
+    def respond(request):
+        fields = {key: values[0] for key, values in parse_qs(request.content.decode(), keep_blank_values=True).items()}
+        action = request.url.params['action']
+        expected = hashlib.md5((fields['request_time'] + hashlib.md5(b'example-key').hexdigest()).encode()).hexdigest()
+        assert fields['request_token'] == expected
+        if action == 'getData' and fields['table'] == 'domain':
+            message = [domain(IDENTITY['domain'])]
+        elif action == 'getData' and fields['table'] == 'binding':
+            message = []
+        elif action == 'getData' and fields.get('search'):
+            message = {'result': 'Traceback (most recent call last): TypeError: string indices must be integers'}
+        else:
+            assert fields['search'] == ''
+            message = {'data': [owned_site()] if fields['p'] == '1' else []}
+        return httpx.Response(200, json={'status': 0, 'message': message})
+
+    assert adapter(respond).inspect(IDENTITY['domain'], IDENTITY['path']) == dict(IDENTITY, panel_id=22)
+
+
+def test_crashing_site_search_does_not_invent_a_missing_site():
+    def respond(request):
+        fields = {key: values[0] for key, values in parse_qs(request.content.decode(), keep_blank_values=True).items()}
+        if fields.get('table') == 'sites' and fields.get('search'):
+            message = {'result': 'Traceback (most recent call last): TypeError'}
+        elif fields.get('table') == 'sites':
+            message = {'data': [owned_site(id=99, name='other.example.net')] if fields['p'] == '1' else []}
+        else:
+            message = []
+        return httpx.Response(200, json={'status': 0, 'message': message})
+
+    assert adapter(respond).inspect(IDENTITY['domain'], IDENTITY['path']) is None
+
+
+def test_site_list_without_a_data_array_still_stops():
+    def respond(request):
+        fields = {key: values[0] for key, values in parse_qs(request.content.decode(), keep_blank_values=True).items()}
+        message = [] if fields.get('table') in ('domain', 'binding') else {'result': 'Traceback'}
+        return httpx.Response(200, json={'status': 0, 'message': message})
+
+    with pytest.raises(ProvisioningError, match='面板站点列表格式不兼容'):
+        adapter(respond).inspect(IDENTITY['domain'], IDENTITY['path'])
+
+
 def test_unrelated_subdirectory_does_not_block_new_site():
     response, requests = fixture(bindings=[
         {'id': 8, 'pid': 99, 'domain': 'shop.example.net', 'path': 'shop', 'port': 80, 'addtime': '2026-09-21'}])
