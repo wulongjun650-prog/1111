@@ -346,14 +346,14 @@ def parse_probe(payload, country, region_label):
 
 
 def _lighthouse_binary():
-    for candidate in (os.environ.get('AB_LIGHTHOUSE_BIN', '').strip(), '/opt/ab-lab-lighthouse/node_modules/.bin/lighthouse', shutil.which('lighthouse') or ''):
+    for candidate in (os.environ.get('AB_LIGHTHOUSE_BIN', '').strip(), '/opt/ab-lab-lighthouse/bin/lighthouse', '/opt/ab-lab-lighthouse/node_modules/.bin/lighthouse', shutil.which('lighthouse') or ''):
         if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
     return ''
 
 
 def _chrome_binary():
-    for candidate in (os.environ.get('AB_CHROME_PATH', '').strip(), '/usr/bin/google-chrome-stable', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', shutil.which('google-chrome') or '', shutil.which('chromium') or ''):
+    for candidate in (os.environ.get('AB_CHROME_PATH', '').strip(), '/usr/bin/google-chrome-stable', '/usr/bin/google-chrome', '/bin/google-chrome-stable', '/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', shutil.which('google-chrome') or '', shutil.which('chromium') or ''):
         if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
     return ''
