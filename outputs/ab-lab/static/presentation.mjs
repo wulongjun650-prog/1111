@@ -39,6 +39,7 @@ const icons = {
   simulate:'m9 3 6 0 M10 3v6L4 19q-1 2 2 2h12q3 0 2-2L14 9V3 M8 14h8',
   logs:'M7 3h10l3 3v15H4V3z M8 9h8 M8 13h8 M8 17h5',
   domains:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M3 12h18 M12 3c-6 6-6 12 0 18 6-6 6-12 0-18',
+  speed:'M4 16a8 8 0 0 1 16 0 M12 16V8 M12 8l3 3',
   mobile:'M8 2h8q2 0 2 2v16q0 2-2 2H8q-2 0-2-2V4q0-2 2-2 M10 18h4',
   desktop:'M3 4h18v12H3z M12 16v4 M8 21h8',
   unknown:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M10 8a2 2 0 0 1 4 0c0 2-2 2-2 4 M12 16h.01',

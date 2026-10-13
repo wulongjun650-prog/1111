@@ -78,6 +78,14 @@ tr.campaign-alert td{background:#fff4f4;color:#8d3b3b}
 .button.quiet { background: transparent; border-color: transparent; color: #8b93a7; }
 @media (max-width: 760px) { .tracking-current { grid-template-columns: 1fr; } }
 .ip-cell { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: nowrap; }
+.speed-form { flex-wrap: wrap; }
+.speed-form .grow { flex: 1; min-width: 240px; }
+.speed-score { font-variant-numeric: tabular-nums; }
+.speed-score.good { color: #34876a; }
+.speed-score.mid { color: #bf9455; }
+.speed-score.poor { color: #b65353; }
+#speed-summary { margin-top: 8px; }
+#speed-summary .stat-card > strong { font-size: 28px; }
 .logs-card .country-name .country-label,
 .recent-card .country-name .country-label {
   gap: 8px;
