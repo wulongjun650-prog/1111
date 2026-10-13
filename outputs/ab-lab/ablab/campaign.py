@@ -14,7 +14,7 @@ HK = timezone(timedelta(hours=8))
 _ANDROID = re.compile(r'^mobileapp::2-(.+)$', re.I)
 _IOS = re.compile(r'^mobileapp::1-(.+)$', re.I)
 _ADSENSE = re.compile(r'^(?:(?:\d+)\.)*(android|iphone|ipad)\.(.+)\.adsenseformobileapps\.com$', re.I)
-_PLATFORM = {'android': 'Android', 'iphone': 'iPhone', 'ipad': 'iPad'}
+_PLATFORM = {'android': 'Android', 'iphone': 'iOS', 'ipad': 'iOS'}
 _SYSTEM_ORDER = ('iPhone', 'iPad', 'iPod', 'Android', '其他')
 _IOS_VERSION = re.compile(r'(?:CPU (?:iPhone |iPad )?OS|CPU OS)\s+(\d+)[_.](\d+)(?:[_.](\d+))?', re.I)
 _ANDROID_VERSION = re.compile(r'Android\s+(\d+(?:\.\d+)*)', re.I)
@@ -68,7 +68,9 @@ def placement_label(value):
     text = (value or '').strip()
     if not text:
         return '未知'
-    if text.startswith(('Android App · ', 'iPhone App · ', 'iPad App · ', 'iOS App · ', 'YouTube')):
+    if text.startswith(('iPhone App · ', 'iPad App · ')):
+        return 'iOS App · ' + text.split(' · ', 1)[1].strip()
+    if text.startswith(('Android App · ', 'iOS App · ', 'YouTube')):
         return text
     android = _ANDROID.match(text)
     if android:
@@ -196,12 +198,19 @@ def _ratio(part, whole):
     return round(part / whole, 4)
 
 
+def _limited_opens(open_ids, click_ids, people):
+    """One open per clicked transaction, and never more than the click people."""
+    opened = len(set(open_ids) & set(click_ids))
+    return min(opened, len(set(click_ids)), people)
+
+
 def _percent(value):
     return f'{value * 100:.1f}%'
 
 
 _DEST_APPS = ('whatsapp', 'band', 'kakao')
 _DEST_LABELS = {'whatsapp': 'WhatsApp', 'band': 'BAND', 'kakao': 'Kakao'}
+_FUNNEL = ('page_view', 'gate_open', 'gate_step2', 'gate_close')
 _EVENT_KINDS = {
     'whatsapp_click': 'click',
     'band_click': 'click',
@@ -412,12 +421,17 @@ def _blank_row(item):
         'clicks': 0,
         'click_times': 0,
         'opens': 0,
+        'page_view': 0,
+        'gate_open': 0,
+        'gate_step2': 0,
+        'gate_close': 0,
         'fallbacks': 0,
         'fallback_click': 0,
         'copy_number': 0,
         'copy_message': 0,
         'click_ids': set(),
         'click_people': set(),
+        'open_ids': set(),
         'visit_keys': set(),
         'seen_at': 0,
         'first_at': 0,
@@ -452,12 +466,15 @@ def _click_person(item):
 
 def _add_event(row, item):
     _note_time(row, item.get('created'))
-    kind = _EVENT_KINDS.get(item['event'])
+    name = item['event']
+    if name in _FUNNEL:
+        row[name] += 1
+    kind = _EVENT_KINDS.get(name)
     if kind == 'click':
         row['click_ids'].add(item['tx_key'])
         row['click_people'].add(_click_person(item))
     elif kind == 'open':
-        row['opens'] += 1
+        row['open_ids'].add(item['tx_key'])
     elif kind == 'fallback':
         row['fallbacks'] += 1
     elif kind == 'fallback_click':
@@ -515,24 +532,25 @@ def inherit_transaction(events):
 
 def _env_rates(events):
     clicks = defaultdict(set)
-    opens = defaultdict(int)
+    opens = defaultdict(set)
     for item in events:
         kind = _EVENT_KINDS.get(item['event'])
         key = (item['dest_app'], item['wa_env'])
         if kind == 'click':
             clicks[key].add(item['tx_key'])
         elif kind == 'open':
-            opens[key] += 1
+            opens[key].add(item['tx_key'])
     rates = {}
     for key in set(clicks) | set(opens):
         app, env = key
-        rates.setdefault(app, {})[env] = _ratio(opens[key], len(clicks[key]))
+        rates.setdefault(app, {})[env] = _ratio(len(opens[key] & clicks[key]), len(clicks[key]))
     return rates
 
 
 def _mark_alerts(rows, events):
     """Red means look at it. The rate is for one destination app in that wa_env."""
     rates = _env_rates(events)
+    clicked_places = {(row['domain'], row['placement']) for row in rows if row['clicks']}
     parent = defaultdict(lambda: {'clicks': 0, 'opens': 0})
     for row in rows:
         bucket = parent[(row['domain'], row['placement'], row['wa_env'], row['dest_app'])]
@@ -544,7 +562,12 @@ def _mark_alerts(rows, events):
         env_rate = rates.get(row['dest_app'], {}).get(row['wa_env'])
         low_absolute = rate is not None and rate < 0.5
         low_relative = rate is not None and env_rate is not None and rate < env_rate * 0.6
-        if bucket['clicks'] >= 30 and (low_absolute or low_relative):
+        place = (row['domain'], row['placement'])
+        # A browser slice with visits and no clicks is normal. Red only when the whole placement got no clicks.
+        if row['visits'] > 100 and row['clicks'] == 0 and place not in clicked_places:
+            row['alert'] = True
+            row['alert_reason'] = f'进站 {row["visits"]}，点击 0'
+        elif bucket['clicks'] >= 30 and (low_absolute or low_relative):
             parts = [f'拉起率 {_percent(rate)}']
             if low_absolute:
                 parts.append('低于 50%')
@@ -580,14 +603,19 @@ def build_campaign(visit_rows, event_rows, filters=None):
             row = _blank_row(item)
             rows[key] = row
         _add_event(row, item)
-    joined = defaultdict(set)
+    click_keys = defaultdict(set)
+    other_keys = defaultdict(set)
     for item in chosen_events:
-        if item['gclid']:
-            joined[(item['domain'], item['gclid'])].add(_row_key(item))
+        if not item['gclid']:
+            continue
+        target = click_keys if _EVENT_KINDS.get(item['event']) == 'click' else other_keys
+        target[(item['domain'], item['gclid'])].add(_row_key(item))
     event_filters = any((filters.get(field) or '').strip() for field in ('device', 'wa_env', 'link_type', 'dest_app', 'youtube'))
     counted = set()
     for visit in chosen_visits:
-        targets = joined.get((visit['domain'], visit['gclid']), set()) if visit['gclid'] else set()
+        pair = (visit['domain'], visit['gclid'])
+        # A clicked visit belongs on the click row. Copying it onto page_view made that row look like 进站很多、点击 0.
+        targets = (click_keys.get(pair) or other_keys.get(pair) or set()) if visit['gclid'] else set()
         if not targets and not event_filters:
             targets = {_row_key(visit)}
         for key in targets:
@@ -608,13 +636,15 @@ def build_campaign(visit_rows, event_rows, filters=None):
         row['visits'] = len(row['visit_keys'])
         row['clicks'] = len(row['click_people'])
         row['click_times'] = len(row['click_ids'])
+        row['opens'] = _limited_opens(row['open_ids'], row['click_ids'], row['clicks'])
         row['click_rate'] = _ratio(row['clicks'], row['visits'])
         row['open_rate'] = _ratio(row['opens'], row['clicks'])
         del row['click_ids']
         del row['click_people']
+        del row['open_ids']
         del row['visit_keys']
         table.append(row)
-    env_rates = _mark_alerts(table, events)
+    env_rates = _mark_alerts(table, chosen_events)
     table.sort(key=lambda item: (item['domain'], item['dest_app'], item['placement_label'], item['wa_env'], item['link_type'], item['device'], item['model'], -item['clicks']))
 
     def counted_events(kind):
@@ -624,11 +654,18 @@ def build_campaign(visit_rows, event_rows, filters=None):
         return len(chosen)
 
     click_events = [item for item in chosen_events if _EVENT_KINDS.get(item['event']) == 'click']
+    open_events = [item for item in chosen_events if _EVENT_KINDS.get(item['event']) == 'open']
+    click_people = counted_events('click')
+    click_ids = {item['tx_key'] for item in click_events}
     totals = {
         'visits': len(counted),
-        'clicks': counted_events('click'),
-        'click_times': len({item['tx_key'] for item in click_events}),
-        'opens': counted_events('open'),
+        'clicks': click_people,
+        'click_times': len(click_ids),
+        'opens': _limited_opens({item['tx_key'] for item in open_events}, click_ids, click_people),
+        'page_view': sum(item['event'] == 'page_view' for item in chosen_events),
+        'gate_open': sum(item['event'] == 'gate_open' for item in chosen_events),
+        'gate_step2': sum(item['event'] == 'gate_step2' for item in chosen_events),
+        'gate_close': sum(item['event'] == 'gate_close' for item in chosen_events),
         'fallbacks': counted_events('fallback'),
         'fallback_click': counted_events('fallback_click'),
         'copy_number': counted_events('copy_number'),
@@ -645,28 +682,34 @@ def _systems(visits, events):
     for visit in visits:
         if visit.get('gclid'):
             by_gclid.setdefault(visit['gclid'], system_name(visit))
-    buckets = {name: {'visits': set(), 'people': set(), 'times': set(), 'opens': 0} for name in _SYSTEM_ORDER}
+    buckets = {
+        name: {'visits': set(), 'people': set(), 'times': set(), 'open_ids': set(), **{kind: 0 for kind in _FUNNEL}}
+        for name in _SYSTEM_ORDER
+    }
     for visit in visits:
         buckets[system_name(visit)]['visits'].add(visit['key'])
     for item in events:
         kind = _EVENT_KINDS.get(item['event'])
-        if kind not in ('click', 'open'):
+        funnel = item['event'] in _FUNNEL
+        if kind not in ('click', 'open') and not funnel:
             continue
         name = system_name(item)
         if name == '其他' and item.get('gclid') in by_gclid:
             name = by_gclid[item['gclid']]
         bucket = buckets[name]
+        if funnel:
+            bucket[item['event']] += 1
         if kind == 'click':
             bucket['people'].add(_click_person(item))
             bucket['times'].add(item['tx_key'])
-        else:
-            bucket['opens'] += 1
+        elif kind == 'open':
+            bucket['open_ids'].add(item['tx_key'])
     rows = []
     for name in _SYSTEM_ORDER:
         bucket = buckets[name]
         visit_count = len(bucket['visits'])
         click_count = len(bucket['people'])
-        if not visit_count and not click_count and not bucket['times'] and not bucket['opens']:
+        if not visit_count and not click_count and not bucket['times'] and not bucket['open_ids'] and not any(bucket[kind] for kind in _FUNNEL):
             continue
         alert = visit_count > 100 and click_count == 0
         rows.append({
@@ -674,11 +717,23 @@ def _systems(visits, events):
             'visits': visit_count,
             'clicks': click_count,
             'click_times': len(bucket['times']),
-            'opens': bucket['opens'],
+            'opens': _limited_opens(bucket['open_ids'], bucket['times'], click_count),
+            'page_view': bucket['page_view'],
+            'gate_open': bucket['gate_open'],
+            'gate_step2': bucket['gate_step2'],
+            'gate_close': bucket['gate_close'],
             'alert': alert,
             'alert_reason': f'{name} 进站 {visit_count}，点击 0' if alert else '',
         })
     return rows
+
+
+def _placement_alert(visits, clicks, rate):
+    if visits > 100 and clicks == 0:
+        return True, f'进站 {visits}，点击 0'
+    if clicks >= 30 and rate is not None and rate < 0.5:
+        return True, f'拉起率 {_percent(rate)}，低于 50%'
+    return False, ''
 
 
 def _placements(visits, events):
@@ -686,33 +741,48 @@ def _placements(visits, events):
     buckets = {}
 
     def bucket(label):
-        return buckets.setdefault(label, {'visits': set(), 'people': set(), 'times': set(), 'opens': 0})
+        return buckets.setdefault(label, {
+            'visits': set(), 'people': set(), 'times': set(), 'open_ids': set(),
+            **{kind: 0 for kind in _FUNNEL},
+        })
 
     for visit in visits:
         bucket(placement_label(visit.get('placement') or ''))['visits'].add(visit['key'])
     for item in events:
         kind = _EVENT_KINDS.get(item['event'])
-        if kind not in ('click', 'open'):
+        funnel = item['event'] in _FUNNEL
+        if kind not in ('click', 'open') and not funnel:
             continue
         row = bucket(placement_label(item.get('placement') or ''))
+        if funnel:
+            row[item['event']] += 1
         if kind == 'click':
             row['people'].add(_click_person(item))
             row['times'].add(item['tx_key'])
-        else:
-            row['opens'] += 1
+        elif kind == 'open':
+            row['open_ids'].add(item['tx_key'])
     rows = []
     for label, item in buckets.items():
         visit_count = len(item['visits'])
         click_count = len(item['people'])
-        if not visit_count and not click_count and not item['times'] and not item['opens']:
+        opens = _limited_opens(item['open_ids'], item['times'], click_count)
+        if not visit_count and not click_count and not item['times'] and not opens and not any(item[kind] for kind in _FUNNEL):
             continue
+        rate = _ratio(opens, click_count)
+        alert, reason = _placement_alert(visit_count, click_count, rate)
         rows.append({
             'placement': label,
             'visits': visit_count,
             'clicks': click_count,
             'click_times': len(item['times']),
-            'opens': item['opens'],
-            'open_rate': _ratio(item['opens'], click_count),
+            'opens': opens,
+            'open_rate': rate,
+            'page_view': item['page_view'],
+            'gate_open': item['gate_open'],
+            'gate_step2': item['gate_step2'],
+            'gate_close': item['gate_close'],
+            'alert': alert,
+            'alert_reason': reason,
         })
     rows.sort(key=lambda item: (-item['visits'], -item['click_times'], item['placement']))
     return rows

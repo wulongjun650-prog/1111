@@ -29,6 +29,8 @@ def test_placement_names_keep_a_platform_and_drop_the_version():
     assert normalize_placement('3.4.20.iphone.com.etnet.quote.iq-streaming.adsenseformobileapps.com') == 'iOS · com.etnet.quote.iq-streaming'
     assert normalize_placement('mobileapp::1-123456789') == 'iOS · 123456789'
     assert normalize_placement('iOS App · 123456789 · ETNet') == 'iOS · 123456789 · ETNet'
+    assert normalize_placement('iPhone App · com.etnet.quote.iq-streaming') == 'iOS · com.etnet.quote.iq-streaming'
+    assert normalize_placement('iPad App · com.example.pad') == 'iOS · com.example.pad'
     assert normalize_placement('https://news.example/story') == '网站 · news.example'
     assert normalize_placement('news.example') == '网站 · news.example'
     assert flow_system_of(IPHONE) == 'iOS'

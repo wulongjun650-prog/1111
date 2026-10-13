@@ -7,15 +7,10 @@ from collections import defaultdict
 from datetime import datetime
 from urllib.parse import urlsplit
 
-from .campaign import HK, _EVENT_KINDS, is_html_path, query_value
+from .campaign import HK, _EVENT_KINDS, is_html_path, placement_label, query_value
 from .devices import open_app
 
 
-_ANDROID_LABEL = re.compile(r'^(?:Android App · |Android · )(.+)$')
-_IOS_LABEL = re.compile(r'^(?:iOS App · |iPhone App · |iPad App · |iOS · )(.+)$')
-_MOBILE_ANDROID = re.compile(r'^mobileapp::2-(.+)$', re.I)
-_MOBILE_IOS = re.compile(r'^mobileapp::1-(.+)$', re.I)
-_ADSENSE = re.compile(r'^(?:(?:\d+)\.)*(android|iphone|ipad)\.(.+)\.adsenseformobileapps\.com$', re.I)
 _HOST = re.compile(r'^(?:[a-z0-9-]+\.)+[a-z]{2,}$', re.I)
 _SYSTEM_ORDER = ('iOS', 'Android', '桌面', '其他')
 _ALIGN_WINDOW = 30 * 60
@@ -36,23 +31,13 @@ def normalize_placement(value):
     text = (value or '').strip()
     if not text:
         return '网站 · 未知'
-    labeled = _ANDROID_LABEL.match(text)
-    if labeled:
-        return 'Android · ' + labeled.group(1).strip()
-    labeled = _IOS_LABEL.match(text)
-    if labeled:
-        return 'iOS · ' + labeled.group(1).strip()
-    android = _MOBILE_ANDROID.match(text)
-    if android:
-        return 'Android · ' + android.group(1).strip()
-    ios = _MOBILE_IOS.match(text)
-    if ios:
-        return 'iOS · ' + ios.group(1).strip()
-    host = _hostname(text) or text
-    adsense = _ADSENSE.match(host)
-    if adsense:
-        platform = 'Android' if adsense.group(1).lower() == 'android' else 'iOS'
-        return f'{platform} · {adsense.group(2).strip()}'
+    label = placement_label(text)
+    if label.startswith('Android App · '):
+        return 'Android · ' + label.split(' · ', 1)[1].strip()
+    if label.startswith('iOS App · '):
+        return 'iOS · ' + label.split(' · ', 1)[1].strip()
+    if label.startswith('YouTube'):
+        return label
     domain = _hostname(text) or _bare_host(text)
     return '网站 · ' + (domain or '未知')
 
@@ -374,7 +359,7 @@ def _event_placement(event):
 
 
 def _blank_metrics():
-    return {'people': set(), 'click_people': set(), 'click_times': set(), 'opens': 0, 'fallbacks': 0}
+    return {'people': set(), 'click_people': set(), 'click_times': set(), 'open_ids': set(), 'fallbacks': 0}
 
 
 def _add_metrics(bucket, event):
@@ -383,21 +368,25 @@ def _add_metrics(bucket, event):
             bucket['click_people'].add(event['gclid'])
         bucket['click_times'].add(event['tx_key'])
     elif event['kind'] == 'open':
-        bucket['opens'] += 1
+        bucket['open_ids'].add(event['tx_key'])
     elif event['kind'] == 'fallback':
         bucket['fallbacks'] += 1
 
 
 def _finish_metrics(bucket, name, system):
     clicks = len(bucket['click_people'])
-    rate = _ratio(bucket['opens'], clicks)
+    times = len(bucket['click_times'])
+    opens = min(len(bucket['open_ids'] & bucket['click_times']), times)
+    if clicks:
+        opens = min(opens, clicks)
+    rate = _ratio(opens, clicks)
     return {
         'name': name,
         'system': system,
         'visits': len(bucket['people']),
         'clicks': clicks,
-        'click_times': len(bucket['click_times']),
-        'opens': bucket['opens'],
+        'click_times': times,
+        'opens': opens,
         'fallbacks': bucket['fallbacks'],
         'open_rate': rate,
         'alert': False,
