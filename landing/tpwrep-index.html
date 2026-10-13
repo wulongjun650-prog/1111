@@ -28,7 +28,7 @@
 
     gtag('config', 'G-Q6YP0DZLSY');
     // 冇 config AW-，send_to: 'AW-...' 嘅轉化唔會發出
-    gtag('config', 'AW-11421360067');
+    gtag('config', 'AW-364192896');
   </script>
 
   <!-- Meta Pixel：先建隊列，腳本延後到 load 之後或首次互動才載入，所有 fbq() 呼叫照常排隊 -->
@@ -428,7 +428,7 @@
     const CONFIG = {
       whatsappNumber: "85294602874",
       receptionist: 'Nicole 黃嘉欣',
-      googleSendTo: 'AW-11421360067/Z7iXCK6y948dEMO_kMYq',
+      googleSendTo: 'AW-364192896/4AipCP_viZYdEIDJ1K0B',
       // true = 第 2 題揀完即直接跳 WhatsApp（少一次點擊，可做 A/B）；false = 需再按「立即查看」
       autoJumpOnStep2: false,
       // 喚起後多少毫秒頁面仍在前台，就彈出兜底面板；App 內置瀏覽器由宿主即時決定放唔放行，可以更快彈
@@ -561,11 +561,9 @@
 
     receptionText.textContent = `本次由助理${CONFIG.receptionist} 接待`;
 
-    // ABC（冇選擇框）：領取按鈕放返卡片下面原位；CBA：留喺首屏突出顯示
+    // 兩個模式都將領取按鈕留喺首屏突出位置；ABC 冇問卷，副標改講一按即收
     if (String(CONFIG.directMode || '').trim().toUpperCase() === 'ABC') {
-      heroCta.classList.remove('cta-top');
-      document.getElementById('hero-cta-sub').hidden = true;
-      heroChoice.before(heroCta);
+      document.getElementById('hero-cta-sub').innerHTML = '<i>✓</i>完全免費<span>·</span>按一下即收名單';
     }
 
     function setActive(key, {scroll=false, track=true} = {}) {

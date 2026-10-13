@@ -561,11 +561,9 @@
 
     receptionText.textContent = `本次由助理${CONFIG.receptionist} 接待`;
 
-    // ABC（冇選擇框）：領取按鈕放返卡片下面原位；CBA：留喺首屏突出顯示
+    // 兩個模式都將領取按鈕留喺首屏突出位置；ABC 冇問卷，副標改講一按即收
     if (String(CONFIG.directMode || '').trim().toUpperCase() === 'ABC') {
-      heroCta.classList.remove('cta-top');
-      document.getElementById('hero-cta-sub').hidden = true;
-      heroChoice.before(heroCta);
+      document.getElementById('hero-cta-sub').innerHTML = '<i>✓</i>完全免費<span>·</span>按一下即收名單';
     }
 
     function setActive(key, {scroll=false, track=true} = {}) {
