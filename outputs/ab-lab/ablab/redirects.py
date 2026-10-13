@@ -1562,24 +1562,35 @@ def strip_lead_gate(text):
 
 
 _DIRECT_MODE = re.compile(r"(directMode\s*:\s*)(['\"])(.*?)\2")
+DIRECT_MODES = ('ABC', 'CBA', 'ABCABC')
+_NEXT_DIRECT_MODE = {'ABC': 'ABCABC', 'ABCABC': 'CBA', 'CBA': 'ABC'}
 
 
 def read_direct_mode(text):
-    """ABC skips the popup. CBA, blank, and every other value bring the choices back."""
+    """ABC skips the popup. ABCABC is the third switch. CBA, blank, and every other value bring the choices back."""
     if not isinstance(text, str) or not re.search(r'directMode\s*:', text):
         return None
     matches = list(_DIRECT_MODE.finditer(text))
     if not matches:
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
-    if any(match.group(3).strip().upper() == 'ABC' for match in matches):
-        return 'ABC'
+    tokens = [match.group(3).strip().upper() for match in matches]
+    for mode in ('ABCABC', 'ABC', 'CBA'):
+        if mode in tokens:
+            return mode
     return 'CBA'
 
 
+def next_direct_mode(mode):
+    """ABC, then ABCABC, then CBA, then ABC again. A blank switch counts as CBA."""
+    if mode not in _NEXT_DIRECT_MODE:
+        raise ValueError('开关只能是 ABC、CBA 或 ABCABC')
+    return _NEXT_DIRECT_MODE[mode]
+
+
 def set_direct_mode(text, mode):
-    """Write ABC or CBA into the page's own switch. Nothing else moves."""
-    if mode not in ('ABC', 'CBA'):
-        raise ValueError('开关只能是 ABC 或 CBA')
+    """Write ABC, CBA, or ABCABC into the page's own switch. Nothing else moves."""
+    if mode not in DIRECT_MODES:
+        raise ValueError('开关只能是 ABC、CBA 或 ABCABC')
     if not re.search(r'directMode\s*:', text):
         return None
     if not _DIRECT_MODE.search(text):

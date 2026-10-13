@@ -594,7 +594,7 @@ class Store:
     def publish_direct_entry(self, base, expected_published, commit_guard=None):
         """Publish the current B page with the popup skipped."""
         from .archives import MAX_TOTAL, read_source, source_files, validate_file, write_bundle
-        from .redirects import read_direct_mode, set_direct_mode, strip_lead_gate
+        from .redirects import next_direct_mode, read_direct_mode, set_direct_mode, strip_lead_gate
         if base['slot'] != 'B':
             raise KeyError('B 版本不存在')
         files = source_files(self.pages / base['id'])
@@ -621,7 +621,7 @@ class Store:
                         fallback_mode = mode
             decoded.append((path, data, bom, text))
         if saw_direct:
-            target = 'CBA' if (index_mode or fallback_mode) == 'ABC' else 'ABC'
+            target = next_direct_mode(index_mode or fallback_mode)
             total, edited, digest = 0, [], hashlib.sha256()
             changed_any = False
             for path, data, bom, text in decoded:
@@ -669,7 +669,7 @@ class Store:
         return committed, changed, 'gate'
 
     def published_direct_mode(self):
-        """ABC, CBA, or None for the B page visitors are being served."""
+        """ABC, ABCABC, CBA, or None for the B page visitors are being served."""
         from .redirects import read_direct_mode
         version_id = self.slots()['B']
         if not version_id:
