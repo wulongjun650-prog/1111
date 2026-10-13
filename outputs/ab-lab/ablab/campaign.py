@@ -550,6 +550,7 @@ def _env_rates(events):
 def _mark_alerts(rows, events):
     """Red means look at it. The rate is for one destination app in that wa_env."""
     rates = _env_rates(events)
+    clicked_places = {(row['domain'], row['placement']) for row in rows if row['clicks']}
     parent = defaultdict(lambda: {'clicks': 0, 'opens': 0})
     for row in rows:
         bucket = parent[(row['domain'], row['placement'], row['wa_env'], row['dest_app'])]
@@ -561,7 +562,9 @@ def _mark_alerts(rows, events):
         env_rate = rates.get(row['dest_app'], {}).get(row['wa_env'])
         low_absolute = rate is not None and rate < 0.5
         low_relative = rate is not None and env_rate is not None and rate < env_rate * 0.6
-        if row['visits'] > 100 and row['clicks'] == 0:
+        place = (row['domain'], row['placement'])
+        # A browser slice with visits and no clicks is normal. Red only when the whole placement got no clicks.
+        if row['visits'] > 100 and row['clicks'] == 0 and place not in clicked_places:
             row['alert'] = True
             row['alert_reason'] = f'进站 {row["visits"]}，点击 0'
         elif bucket['clicks'] >= 30 and (low_absolute or low_relative):
@@ -600,14 +603,19 @@ def build_campaign(visit_rows, event_rows, filters=None):
             row = _blank_row(item)
             rows[key] = row
         _add_event(row, item)
-    joined = defaultdict(set)
+    click_keys = defaultdict(set)
+    other_keys = defaultdict(set)
     for item in chosen_events:
-        if item['gclid']:
-            joined[(item['domain'], item['gclid'])].add(_row_key(item))
+        if not item['gclid']:
+            continue
+        target = click_keys if _EVENT_KINDS.get(item['event']) == 'click' else other_keys
+        target[(item['domain'], item['gclid'])].add(_row_key(item))
     event_filters = any((filters.get(field) or '').strip() for field in ('device', 'wa_env', 'link_type', 'dest_app', 'youtube'))
     counted = set()
     for visit in chosen_visits:
-        targets = joined.get((visit['domain'], visit['gclid']), set()) if visit['gclid'] else set()
+        pair = (visit['domain'], visit['gclid'])
+        # A clicked visit belongs on the click row. Copying it onto page_view made that row look like 进站很多、点击 0.
+        targets = (click_keys.get(pair) or other_keys.get(pair) or set()) if visit['gclid'] else set()
         if not targets and not event_filters:
             targets = {_row_key(visit)}
         for key in targets:
@@ -636,7 +644,7 @@ def build_campaign(visit_rows, event_rows, filters=None):
         del row['open_ids']
         del row['visit_keys']
         table.append(row)
-    env_rates = _mark_alerts(table, events)
+    env_rates = _mark_alerts(table, chosen_events)
     table.sort(key=lambda item: (item['domain'], item['dest_app'], item['placement_label'], item['wa_env'], item['link_type'], item['device'], item['model'], -item['clicks']))
 
     def counted_events(kind):

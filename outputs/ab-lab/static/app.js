@@ -974,7 +974,7 @@ async function loadCampaign() {
     if (request !== campaignRequest) return;
     const totals = data.totals || {};
     $('#campaign-summary').textContent = `${domain} · 进站 ${number(totals.visits)} · page_view ${number(totals.page_view)} · gate_open ${number(totals.gate_open)} · gate_step2 ${number(totals.gate_step2)} · gate_close ${number(totals.gate_close)} · 点击人数 ${number(totals.clicks)} · 点击次数 ${number(totals.click_times)} · 拉起 ${number(totals.opens)} · 拉起率 ${percent(totals.open_rate)}`;
-    $('#campaign-note').textContent = `只显示 ${domain}。同一个 App 的版本号会并成一行，iPhone 和 iPad 应用都写成 iOS App。page_view、gate_open、gate_step2、gate_close 按上报次数单列。点击人数按 gclid 算，同一个人多次点击只算 1 人，点击次数另外显示。拉起按 transaction_id 去重，不超过点击人数。某一行进站超过 100 且点击为 0，或点击至少 30 且拉起率过低，标红列写出原因。打开是进来的应用或浏览器，例如微信、华为浏览器、Chrome。接收地址 ${data.endpoint || ''}。时间是香港时间，精确到秒；一行里有多次时显示最晚的一次。进站只算打到源站的 HTML，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
+    $('#campaign-note').textContent = `只显示 ${domain}。同一个 App 的版本号会并成一行，iPhone 和 iPad 应用都写成 iOS App。page_view、gate_open、gate_step2、gate_close 按上报次数单列。点击人数按 gclid 算，同一个人多次点击只算 1 人，点击次数另外显示。拉起按 transaction_id 去重，不超过点击人数。某个版位或系统进站超过 100 且整体点击为 0，或某一行点击至少 30 且拉起率过低，标红列写出原因。同一个版位已经有点击时，其余没点到的行不标红。打开是进来的应用或浏览器，例如微信、华为浏览器、Chrome。接收地址 ${data.endpoint || ''}。时间是香港时间，精确到秒；一行里有多次时显示最晚的一次。进站只算打到源站的 HTML，没有 gclid 时按 IP 和浏览器标识算一人。缓存命中不到源站。标红只提醒，不会自动改页面或跳转。去向是 WhatsApp、BAND 或 Kakao。频道来自 YouTube 网址，视频网址会显示频道名。`;
     renderCampaignSystems(data.systems || []);
     renderCampaignPlacements(data.placements || []);
     if (!data.rows.length) {

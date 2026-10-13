@@ -97,6 +97,33 @@ def test_funnel_counts_and_opens_cannot_pass_the_click_people():
     assert detail['placement_label'] == 'iOS App · com.etnet.quote.iq-streaming'
     assert sum(item['page_view'] for item in report['rows']) == 2
     assert sum(item['gate_close'] for item in report['rows']) == 1
+    viewed = next(item for item in report['rows'] if item['page_view'])
+    assert viewed['visits'] == 0 and viewed['alert'] is False
+
+
+def test_a_page_view_slice_does_not_turn_red_when_the_app_has_clicks():
+    ua = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36'
+    placement = 'mobileapp::2-com.aastocks.dzh'
+    visits = [
+        {'domain': 'one.test', 'query': f'gclid=p{index}&placement={placement}', 'ip': f'203.0.113.{index % 200}', 'ua': ua, 'path': '/', 'created': index}
+        for index in range(102)
+    ]
+    events = []
+    for index in range(102):
+        events.append({'domain': 'one.test', 'id': index, 'created': index, 'origin': 'one.test', 'body': json.dumps({
+            'event': 'page_view', 'gclid': f'p{index}', 'placement': placement, 'device': 'm', 'ua': ua,
+        })})
+    events.append({'domain': 'one.test', 'id': 500, 'created': 500, 'origin': 'one.test', 'body': json.dumps({
+        'event': 'whatsapp_click', 'transaction_id': 'tx-p0', 'gclid': 'p0', 'placement': placement,
+        'device': 'mobile', 'wa_env': 'android_browser', 'link_type': 'intent', 'ua': ua,
+    })})
+    report = build_campaign(visits, events, {})
+    view = next(row for row in report['rows'] if row['device'] == 'm')
+    click = next(row for row in report['rows'] if row['clicks'])
+    assert view['page_view'] == 102 and view['visits'] == 101 and view['clicks'] == 0 and view['alert'] is False
+    assert click['visits'] == 1 and click['clicks'] == 1 and click['alert'] is False
+    assert all(row['alert'] is False for row in report['rows'])
+    assert all(row['alert'] is False for row in report['placements'])
 
 
 def test_campaign_rows_split_by_the_app_that_opened_the_page():
