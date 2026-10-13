@@ -62,6 +62,43 @@ def test_placement_totals_keep_one_row_when_the_detail_splits_by_browser():
     assert [row['placement'] for row in report['placements'][:2]] == ['Android App · com.aastocks.dzh', 'Android App · com.etnet.android.iq']
 
 
+def test_funnel_counts_and_opens_cannot_pass_the_click_people():
+    ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)'
+    placement = '3.4.19.iphone.com.etnet.quote.iq-streaming.adsenseformobileapps.com'
+
+    def beacon(name, token, row_id, **extra):
+        body = {'event': name, 'transaction_id': token, 'gclid': 'person', 'placement': placement, 'ua': ua, 'wa_env': 'ios_browser', 'device': 'mobile'}
+        body.update(extra)
+        return {'domain': 'one.test', 'id': row_id, 'created': row_id, 'origin': 'one.test', 'body': json.dumps(body)}
+
+    events = [
+        beacon('page_view', '', 1),
+        beacon('page_view', '', 2),
+        beacon('gate_open', '', 3),
+        beacon('gate_step2', '', 4),
+        beacon('gate_close', '', 5),
+        beacon('whatsapp_click', 'tx-a', 6),
+        beacon('whatsapp_click', 'tx-b', 7),
+        beacon('wa_app_opened', 'tx-a', 8),
+        beacon('wa_app_opened', 'tx-a', 9),
+        beacon('wa_app_opened', 'tx-b', 10),
+        beacon('wa_app_opened', 'tx-c', 11),
+    ]
+    report = build_campaign([
+        {'domain': 'one.test', 'query': f'gclid=person&placement={placement}', 'ip': '203.0.113.8', 'ua': ua, 'path': '/', 'created': 1},
+    ], events, {})
+    row = next(item for item in report['placements'] if item['placement'] == 'iOS App · com.etnet.quote.iq-streaming')
+    assert row['page_view'] == 2 and row['gate_open'] == 1 and row['gate_step2'] == 1 and row['gate_close'] == 1
+    assert row['clicks'] == 1 and row['click_times'] == 2 and row['opens'] == 1 and row['open_rate'] == 1
+    assert report['totals']['page_view'] == 2 and report['totals']['gate_open'] == 1
+    assert report['totals']['opens'] == 1
+    detail = next(item for item in report['rows'] if item['clicks'])
+    assert detail['opens'] == 1 and detail['open_rate'] == 1
+    assert detail['placement_label'] == 'iOS App · com.etnet.quote.iq-streaming'
+    assert sum(item['page_view'] for item in report['rows']) == 2
+    assert sum(item['gate_close'] for item in report['rows']) == 1
+
+
 def test_campaign_rows_split_by_the_app_that_opened_the_page():
     wechat = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 MicroMessenger/8.0.42'
     huawei = 'Mozilla/5.0 (Linux; Android 10; LYA-AL00) AppleWebKit/537.36 Chrome/83.0.4103.106 HuaweiBrowser/11.0.3.300 Mobile Safari/537.36'
@@ -93,8 +130,10 @@ def test_placement_and_phone_labels():
     assert placement_label('mobileapp::1-12345') == 'iOS App · 12345'
     assert placement_label('132.android.com.etnet.android.iq.adsenseformobileapps.com') == 'Android App · com.etnet.android.iq'
     assert placement_label('7.android.com.etnet.android.iq.adsenseformobileapps.com') == 'Android App · com.etnet.android.iq'
-    assert placement_label('3.4.19.iphone.com.etnet.quote.iq-streaming.adsenseformobileapps.com') == 'iPhone App · com.etnet.quote.iq-streaming'
-    assert placement_label('3.4.20.iphone.com.etnet.quote.iq-streaming.adsenseformobileapps.com') == 'iPhone App · com.etnet.quote.iq-streaming'
+    assert placement_label('3.4.19.iphone.com.etnet.quote.iq-streaming.adsenseformobileapps.com') == 'iOS App · com.etnet.quote.iq-streaming'
+    assert placement_label('3.4.20.iphone.com.etnet.quote.iq-streaming.adsenseformobileapps.com') == 'iOS App · com.etnet.quote.iq-streaming'
+    assert placement_label('iPhone App · com.etnet.quote.iq-streaming') == 'iOS App · com.etnet.quote.iq-streaming'
+    assert placement_label('iPad App · com.example.pad') == 'iOS App · com.example.pad'
     assert placement_label('Android App · com.etnet.android.iq') == 'Android App · com.etnet.android.iq'
     assert placement_label('news.example') == 'news.example'
     assert youtube_from('https://www.youtube.com/@FinanceDaily')['channel'] == '@FinanceDaily'
@@ -135,10 +174,10 @@ def test_app_versions_merge_and_clicks_count_people():
     })})
     report = build_campaign(visits, events, {})
     labels = {row['placement_label'] for row in report['rows']}
-    assert 'iPhone App · com.etnet.quote.iq-streaming' in labels
+    assert 'iOS App · com.etnet.quote.iq-streaming' in labels
     assert 'Android App · com.etnet.android.iq' in labels
-    assert sum(row['placement_label'] == 'iPhone App · com.etnet.quote.iq-streaming' for row in report['rows']) == 1
-    iphone_row = next(row for row in report['rows'] if row['placement_label'] == 'iPhone App · com.etnet.quote.iq-streaming' and row['clicks'])
+    assert sum(row['placement_label'] == 'iOS App · com.etnet.quote.iq-streaming' for row in report['rows']) == 1
+    iphone_row = next(row for row in report['rows'] if row['placement_label'] == 'iOS App · com.etnet.quote.iq-streaming' and row['clicks'])
     assert iphone_row['clicks'] == 1 and iphone_row['click_times'] == 5 and iphone_row['opens'] == 1
     assert report['totals']['clicks'] == 1 and report['totals']['click_times'] == 5
     systems = {row['system']: row for row in report['systems']}
@@ -146,11 +185,11 @@ def test_app_versions_merge_and_clicks_count_people():
     assert systems['iPhone']['alert'] is False
     assert systems['Android']['visits'] == 1 and systems['Android']['clicks'] == 0 and systems['Android']['alert'] is False
     apps = {row['placement']: row for row in report['placements']}
-    assert apps['iPhone App · com.etnet.quote.iq-streaming']['visits'] == 1
-    assert apps['iPhone App · com.etnet.quote.iq-streaming']['clicks'] == 1
-    assert apps['iPhone App · com.etnet.quote.iq-streaming']['click_times'] == 5
-    assert apps['iPhone App · com.etnet.quote.iq-streaming']['opens'] == 1
-    assert apps['iPhone App · com.etnet.quote.iq-streaming']['open_rate'] == 1
+    assert apps['iOS App · com.etnet.quote.iq-streaming']['visits'] == 1
+    assert apps['iOS App · com.etnet.quote.iq-streaming']['clicks'] == 1
+    assert apps['iOS App · com.etnet.quote.iq-streaming']['click_times'] == 5
+    assert apps['iOS App · com.etnet.quote.iq-streaming']['opens'] == 1
+    assert apps['iOS App · com.etnet.quote.iq-streaming']['open_rate'] == 1
     assert apps['Android App · com.etnet.android.iq']['visits'] == 1
     assert apps['Android App · com.etnet.android.iq']['clicks'] == 0
     assert apps['Android App · com.etnet.android.iq']['open_rate'] is None
@@ -163,8 +202,14 @@ def test_app_versions_merge_and_clicks_count_people():
     marked = next(row for row in flagged['systems'] if row['system'] == 'iPhone')
     assert marked['visits'] == 101 and marked['clicks'] == 0 and marked['alert'] is True
     assert '点击 0' in marked['alert_reason']
+    quiet_row = next(row for row in flagged['rows'] if row['visits'] == 101)
+    assert quiet_row['alert'] is True and quiet_row['alert_reason'] == '进站 101，点击 0'
+    quiet_place = next(row for row in flagged['placements'] if row['visits'] == 101)
+    assert quiet_place['alert'] is True and '点击 0' in quiet_place['alert_reason']
     under = build_campaign(quiet[:100], [], {})
     assert next(row for row in under['systems'] if row['system'] == 'iPhone')['alert'] is False
+    assert all(row['alert'] is False for row in under['rows'])
+    assert all(row['alert'] is False for row in under['placements'])
 
 
 def test_campaign_counts_visits_clicks_and_red_rows():

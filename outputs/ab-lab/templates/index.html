@@ -232,7 +232,7 @@
       </section>
 
       <section id="panel-campaign" class="tab-panel" aria-label="投放数据" hidden>
-        <div class="notice"><span aria-hidden="true">ⓘ</span><p id="campaign-note">只显示左上角当前管理站点。同一个 App 的版本号会并成一行。点击人数按 gclid 算，同一个人多次点击只算 1 人，点击次数另外显示。某个系统进站超过 100 且点击为 0 会标红。打开是进来的应用或浏览器，例如微信、华为浏览器、Chrome。进站只算打到源站的 HTML。没有 gclid 时按 IP 和浏览器标识算一人。标红只提醒，不会自动改页面或跳转。</p></div>
+        <div class="notice"><span aria-hidden="true">ⓘ</span><p id="campaign-note">只显示左上角当前管理站点。同一个 App 的版本号会并成一行，iPhone 和 iPad 应用都写成 iOS App。page_view、gate_open、gate_step2、gate_close 按上报次数单列。点击人数按 gclid 算，同一个人多次点击只算 1 人，点击次数另外显示。拉起按 transaction_id 去重，不超过点击人数。某一行进站超过 100 且点击为 0，或点击至少 30 且拉起率过低，标红列写出原因。打开是进来的应用或浏览器，例如微信、华为浏览器、Chrome。进站只算打到源站的 HTML。没有 gclid 时按 IP 和浏览器标识算一人。标红只提醒，不会自动改页面或跳转。</p></div>
         <article class="card logs-card">
           <div class="card-heading">
             <div><p class="eyebrow">CAMPAIGN</p><h2>投放数据</h2><p id="campaign-summary" class="muted">进入此页后加载。</p></div>
@@ -253,10 +253,10 @@
             <label>机型 / 系统<input id="campaign-model" name="model" placeholder="全部，可填机型或系统"></label>
             <button class="button secondary" type="submit">查询</button>
           </form>
-          <div class="table-scroll"><table><caption class="sr-only">按系统汇总</caption><thead><tr><th>系统</th><th>进站</th><th>点击人数</th><th>点击次数</th><th>拉起</th></tr></thead><tbody id="campaign-systems"><tr><td colspan="5" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
-          <p id="campaign-placement-note" class="muted">按版位统计。同一个 App 只占一行，不同浏览器和机型的访问、点击、拉起合在一起。拉起率是拉起除以点击人数。</p>
-          <div class="table-scroll"><table><caption class="sr-only">按版位统计</caption><thead><tr><th>版位</th><th>访问</th><th>点击人数</th><th>点击次数</th><th>拉起</th><th>拉起率</th></tr></thead><tbody id="campaign-placements"><tr><td colspan="6" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
-          <div class="table-scroll"><table><caption class="sr-only">投放数据</caption><thead><tr><th>时间</th><th>域名</th><th>去向</th><th>版位</th><th>频道</th><th>打开</th><th>device</th><th>wa_env</th><th>link_type</th><th>机型 / 系统</th><th>进站</th><th>点击人数</th><th>点击次数</th><th>拉起</th><th>兜底</th><th>点击率</th><th>拉起率</th><th>兜底后</th><th></th></tr></thead><tbody id="campaign-rows"><tr><td colspan="19" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
+          <div class="table-scroll"><table><caption class="sr-only">按系统汇总</caption><thead><tr><th>系统</th><th>进站</th><th>page_view</th><th>gate_open</th><th>gate_step2</th><th>gate_close</th><th>点击人数</th><th>点击次数</th><th>拉起</th><th>标红</th></tr></thead><tbody id="campaign-systems"><tr><td colspan="10" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
+          <p id="campaign-placement-note" class="muted">按版位统计。同一个 App 只占一行，iPhone 和 iPad 都归为 iOS App。拉起按 transaction_id 去重，不超过点击人数。拉起率是拉起除以点击人数。</p>
+          <div class="table-scroll"><table><caption class="sr-only">按版位统计</caption><thead><tr><th>版位</th><th>访问</th><th>page_view</th><th>gate_open</th><th>gate_step2</th><th>gate_close</th><th>点击人数</th><th>点击次数</th><th>拉起</th><th>拉起率</th><th>标红</th></tr></thead><tbody id="campaign-placements"><tr><td colspan="11" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
+          <div class="table-scroll"><table><caption class="sr-only">投放数据</caption><thead><tr><th>时间</th><th>域名</th><th>去向</th><th>版位</th><th>频道</th><th>打开</th><th>device</th><th>wa_env</th><th>link_type</th><th>机型 / 系统</th><th>进站</th><th>page_view</th><th>gate_open</th><th>gate_step2</th><th>gate_close</th><th>点击人数</th><th>点击次数</th><th>拉起</th><th>兜底</th><th>点击率</th><th>拉起率</th><th>兜底后</th><th>标红</th></tr></thead><tbody id="campaign-rows"><tr><td colspan="23" class="empty-state">进入此页后加载。</td></tr></tbody></table></div>
         </article>
         <article class="card logs-card">
           <div class="card-heading">
