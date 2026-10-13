@@ -67,6 +67,8 @@ class Registry:
                 ('cf_nameservers', "TEXT NOT NULL DEFAULT ''"),
                 ('cf_status', "TEXT NOT NULL DEFAULT ''"),
                 ('cf_detail', "TEXT NOT NULL DEFAULT ''"),
+                ('mirror_source', "TEXT NOT NULL DEFAULT ''"),
+                ('observer_account', "TEXT NOT NULL DEFAULT ''"),
             ):
                 if name not in columns:
                     db.execute(f'ALTER TABLE sites ADD COLUMN {name} {definition}')
@@ -157,6 +159,8 @@ class Registry:
             row = db.execute('SELECT * FROM sites WHERE id=?', (site_id,)).fetchone()
             if row is None:
                 raise KeyError(site_id)
+            if db.execute('SELECT 1 FROM sites WHERE mirror_source=?', (site_id,)).fetchone():
+                raise ValueError('先取消跟着这个域名的观察域名，再删除')
             snapshot = dict(row)
             tables = {item[0] for item in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             db.execute('DELETE FROM site_events WHERE site_id=?', (site_id,))
@@ -184,6 +188,60 @@ class Registry:
             if site['owner_id'] != owner_id:
                 db.execute('UPDATE sites SET owner_id=?,owner_epoch=owner_epoch+1 WHERE id=?', (owner_id, site_id))
                 self._event(db, site_id, site['stage'], '管理员调整域名归属')
+        return self.get(site_id)
+
+    def site_for_observer(self, account_id):
+        if not isinstance(account_id, str) or not account_id:
+            return None
+        with self.connect() as db:
+            row = db.execute(
+                'SELECT * FROM sites WHERE observer_account=? ORDER BY created LIMIT 1',
+                (account_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def mirrors_of(self, source_id):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute(
+                'SELECT * FROM sites WHERE mirror_source=? ORDER BY created', (source_id,))]
+
+    def bind_mirror(self, site_id, source_id, observer_id):
+        """Tie one observer domain to one source domain, or clear both when they are empty."""
+        source_id = source_id or ''
+        observer_id = observer_id or ''
+        if bool(source_id) != bool(observer_id):
+            raise ValueError('观察域名要同时指定投放域名和观察号')
+        if source_id and source_id == site_id:
+            raise ValueError('观察域名不能观察自己')
+        if source_id and not re.fullmatch(r'default|[a-f0-9]{32}', source_id):
+            raise ValueError('投放域名不存在')
+        if observer_id and not re.fullmatch(r'[a-f0-9]{32}', observer_id):
+            raise ValueError('观察号不存在')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            site = db.execute('SELECT * FROM sites WHERE id=?', (site_id,)).fetchone()
+            if site is None:
+                raise KeyError(site_id)
+            if not source_id:
+                db.execute("UPDATE sites SET mirror_source='',observer_account='' WHERE id=?", (site_id,))
+                self._event(db, site_id, site['stage'], '已取消观察')
+            else:
+                if db.execute('SELECT 1 FROM sites WHERE mirror_source=?', (site_id,)).fetchone():
+                    raise ValueError('这个域名已经有观察域名跟着它，不能再改成观察域名')
+                source = db.execute('SELECT id,mirror_source FROM sites WHERE id=?', (source_id,)).fetchone()
+                if source is None:
+                    raise ValueError('投放域名不存在')
+                if source['mirror_source']:
+                    raise ValueError('投放域名不能是另一个观察域名')
+                db.execute(
+                    "UPDATE sites SET mirror_source='',observer_account='' WHERE observer_account=? AND id!=?",
+                    (observer_id, site_id),
+                )
+                db.execute(
+                    'UPDATE sites SET mirror_source=?,observer_account=? WHERE id=?',
+                    (source_id, observer_id, site_id),
+                )
+                self._event(db, site_id, site['stage'], '已设为观察域名')
         return self.get(site_id)
 
     def store(self, site_id):

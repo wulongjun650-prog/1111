@@ -1614,3 +1614,10 @@ def set_direct_mode(text, mode):
         if (old is None) != (new is None) or (old and text[old[0]:old[1]] != updated[new[0]:new[1]]):
             raise ValueError('跳转代码发生了变化，已取消')
     return updated
+
+
+def blank_direct_mode(text):
+    """Clear the switch value so this copy stays on the questionnaire. Jump code stays."""
+    if not isinstance(text, str) or not _DIRECT_MODE.search(text):
+        return text
+    return _DIRECT_MODE.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(2)}", text)

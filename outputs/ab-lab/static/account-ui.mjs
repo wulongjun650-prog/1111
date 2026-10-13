@@ -2,7 +2,7 @@ import { sitePath } from './helpers.mjs';
 
 export const isAdmin = account => account?.role === 'admin';
 export const isObserver = account => account?.role === 'observer';
-export const seesAll = account => isAdmin(account) || isObserver(account);
+export const seesAll = account => isAdmin(account);
 export const chooseSite = (current, sites) => sites.some(site => site.id === current) ? current : sites[0]?.id || null;
 
 export function accountSitePath(path, siteId) {

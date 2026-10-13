@@ -97,7 +97,7 @@ const labels = {
   analysis: ['数据深度分析', '数据深度分析', '只看当前管理站点的香港访客请求和落地页事件。'],
   campaign: ['投放数据', '投放数据', '按版位看进站、点击和拉起。标红只提醒，不会自动改页面。'],
   speed: ['网站测速', '网站测速', '看 PageSpeed 性能评分，并从香港或韩国实测网页打开速度。'],
-  accounts: ['账号管理', '账号管理', isObserver(account) ? '查看用户名、角色和名下域名。密码不会显示。' : '创建代理或观察号，管理访问权限与域名归属。'],
+  accounts: ['账号管理', '账号管理', '创建代理或观察号。观察号只看指定的一个域名。'],
 };
 const reasons = { blacklist: '命中黑名单', whitelist: '命中白名单', super_bot: '超级防爬虫', strict_bot: '严格防爬虫', bot_marker: '匹配机器人标记', ipv4: 'IPv4 限制', device: '设备限制', os_version: '系统版本限制', blocked_cidr: '命中屏蔽网段', country: '国家 / 地区限制', country_unknown: '国家未知', language: '语言限制', visit_limit: '超过访问次数', allowed: '规则通过', pass: '规则通过', force_a: '强制 A', force_b: '强制 B', protection_off: '防护已关闭' };
 const formatDate = value => {
@@ -1069,10 +1069,18 @@ async function selectTab(name, {load = true} = {}) {
 }
 
 on($('#analysis-filters'), 'submit', event => { event.preventDefault(); return loadAnalysis(); });
+function selectedMirror() {
+  return catalog?.sites.find(item => item.id === selectedSite && item.mirror_source) || null;
+}
+
 const analysisClear = $('#analysis-clear');
 if (analysisClear) on(analysisClear, 'click', event => busy(event.currentTarget, async () => {
   const domain = currentDomain();
   if (!domain) throw new Error('请先在左上角选择域名。');
+  if (selectedMirror()) {
+    toast('观察域名只读取投放域名的记录，不能在这里清空。', true);
+    return;
+  }
   if (!await confirmAction(`删除 ${domain} 的全部请求记录和落地页事件？访问日志不动。删掉后不能恢复，其他域名也不受影响。`)) return;
   const result = await api(`/api/analysis/clear?domain=${encodeURIComponent(domain)}`, { method: 'POST', body: {} });
   toast(`已删除 ${domain} 的 ${number(result.access)} 条请求、${number(result.events)} 条落地页事件。`);
@@ -1083,6 +1091,10 @@ const campaignClear = $('#campaign-clear');
 if (campaignClear) on(campaignClear, 'click', event => busy(event.currentTarget, async () => {
   const domain = currentDomain();
   if (!domain) throw new Error('请先在左上角选择域名。');
+  if (selectedMirror()) {
+    toast('观察域名只读取投放域名的记录，不能在这里清空。', true);
+    return;
+  }
   if (!await confirmAction(`清空 ${domain} 的全部投放数据？进站请求和落地页事件都会删掉，数据深度分析里这个域名也会空掉。访问日志不动，其他域名也不动。删掉后不能恢复。`)) return;
   const result = await api(`/api/campaign/clear?domain=${encodeURIComponent(domain)}`, { method: 'POST', body: {} });
   toast(`已清空 ${domain} 的 ${number(result.access)} 条进站请求、${number(result.events)} 条落地页事件。`);
@@ -1186,6 +1198,10 @@ on($('#log-filters'), 'change', () => loadLogs());
 on($('#logs-prev'), 'click', () => loadLogs(logPage - 1));
 on($('#logs-next'), 'click', () => loadLogs(logPage + 1));
 on($('#clear-logs'), 'click', event => busy(event.currentTarget, async () => {
+  if (selectedMirror()) {
+    toast('观察域名只读取投放域名的记录，不能在这里清空。', true);
+    return;
+  }
   const domain = currentDomain() || '当前域名';
   if (!await confirmAction(`清空 ${domain} 的全部访问记录？删掉后不能恢复。其他域名不受影响。`)) return;
   const result = await api('/api/logs/clear', { method: 'POST', body: {} });
@@ -1194,6 +1210,10 @@ on($('#clear-logs'), 'click', event => busy(event.currentTarget, async () => {
   await loadLogs();
 }));
 on($('#clear-foreign-logs'), 'click', event => busy(event.currentTarget, async () => {
+  if (selectedMirror()) {
+    toast('观察域名只读取投放域名的记录，不能在这里清空。', true);
+    return;
+  }
   const domain = currentDomain() || '当前域名';
   if (!await confirmAction(`只删除 ${domain} 里显示成其他国家的访问记录？显示（香港）的会留下，包括以前存成日本、现在显示成香港的。删掉后不能恢复。其他域名不受影响。`)) return;
   const result = await api('/api/logs/clear-foreign', { method: 'POST', body: {} });
@@ -1282,6 +1302,67 @@ async function assignOwner(site) {
     });
     actions.append(cancel,save); form.append(label,element('p','subtle','转移后原代理无法继续访问此域名及相关数据；页面、规则和记录继续保留。'),actions);
     dialog.append(heading,element('p','muted',site.domain || '原有站点'),form); document.body.append(dialog); dialog.showModal(); select.focus();
+  });
+}
+
+async function bindMirror(site) {
+  if (!isAdmin(account)) return;
+  const {items} = await api('/api/accounts');
+  const observers = items.filter(item => item.role === 'observer');
+  const sources = (catalog?.sites || []).filter(item => item.id !== site.id && !item.mirror_source);
+  return new Promise(resolve => {
+    const dialog = element('dialog','confirm-dialog account-dialog'), heading = element('h2','','设为观察域名');
+    heading.id = 'mirror-dialog-title';
+    dialog.setAttribute('aria-labelledby', heading.id);
+    const form = element('form');
+    const observerLabel = element('label','','观察号'), observerSelect = element('select');
+    observerSelect.name = 'observer_id';
+    observerSelect.append(element('option','','不绑定'));
+    for (const item of observers) {
+      const option = element('option','', `${item.username}${item.enabled ? '' : '（已停用）'}`);
+      option.value = item.id;
+      observerSelect.append(option);
+    }
+    if (site.observer_account) observerSelect.value = site.observer_account;
+    observerLabel.append(observerSelect);
+    const sourceLabel = element('label','','投放域名'), sourceSelect = element('select');
+    sourceSelect.name = 'source_id';
+    sourceSelect.append(element('option','','不绑定'));
+    for (const item of sources) {
+      const option = element('option','', item.domain || '原有站点');
+      option.value = item.id;
+      sourceSelect.append(option);
+    }
+    if (site.mirror_source && sources.some(item => item.id === site.mirror_source)) sourceSelect.value = site.mirror_source;
+    sourceLabel.append(sourceSelect);
+    const actions = element('div','actions'), cancel = element('button','button secondary','取消'), save = element('button','button primary','保存');
+    cancel.type = 'button';
+    save.type = 'submit';
+    const finish = () => { dialog.close(); dialog.remove(); resolve(); };
+    cancel.addEventListener('click', finish);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); finish(); });
+    on(form, 'submit', async event => {
+      event.preventDefault();
+      const observerId = observerSelect.value;
+      const sourceId = sourceSelect.value;
+      if (Boolean(observerId) !== Boolean(sourceId)) {
+        toast('观察号和投放域名要一起选，或者一起留空。', true);
+        return;
+      }
+      await busy(save, async () => {
+        await api(`/api/sites/${site.id}/mirror`, {method:'PUT', body:{source_id:sourceId, observer_id:observerId}});
+        finish();
+        await loadDomains();
+        if (site.id === selectedSite) await refreshState();
+        toast(observerId ? '观察域名已接上。记录会显示成这个域名，页面保持问卷。' : '已取消观察。');
+      });
+    });
+    actions.append(cancel, save);
+    form.append(observerLabel, sourceLabel, element('p','subtle','观察号只能看这一个域名。访问记录直接读取投放域名，列表里写的是观察域名。页面、号码和跳转跟着投放域名，观察域名始终是问卷版。'), actions);
+    dialog.append(heading, element('p','muted', site.domain || '原有站点'), form);
+    document.body.append(dialog);
+    dialog.showModal();
+    observerSelect.focus();
   });
 }
 
@@ -1380,6 +1461,7 @@ function renderDomains() {
       if (isAdmin(account)) owner.append(actionButton('分配',()=>assignOwner(site),'text-button small'));
       name.append(owner);
     }
+    if (isAdmin(account) && site.mirror_source) name.append(element('small','domain-detail',`观察域名 · 读取 ${site.mirror_domain || '投放域名'} 的记录，页面保持问卷`));
     health.dataset.reputationSite = site.id;
     renderReputation(site,health);
     const healthText = site.stage === 'active' ? '已验收' : ['failed','unsupported'].includes(site.stage) ? '需处理' : site.stage === 'legacy' ? '待核验' : '接入中';
@@ -1444,6 +1526,7 @@ function renderDomains() {
       await loadDomains();
       toast(result.cloudflare?.ok ? '已重新套用 Cloudflare 规则。' : (result.cloudflare?.detail || 'Cloudflare 未完成'), !result.cloudflare?.ok);
     },'text-button small'));
+    if (isAdmin(account)) actions.append(actionButton(site.mirror_source ? '调整观察' : '设为观察', () => bindMirror(site), 'text-button small'));
     if (isAdmin(account) && site.id !== 'default') actions.append(actionButton('彻底删除',async()=>{
       if (!await confirmAction(`彻底删除 ${site.domain}？页面、证书、访问记录和宝塔站点都会删掉，域名列表和上方的站点选择也会一起消失，删了不能恢复。`)) return;
       const result = await api(`/api/sites/${site.id}`,{method:'DELETE'});

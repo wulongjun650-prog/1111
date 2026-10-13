@@ -43,10 +43,13 @@ def summarize(registry, site_id, period, scope, tz_offset, now, owner_id=None):
     domains, countries, reasons, recent = [], {}, Counter(), []
 
     for site in sites:
+        if scope == 'all' and (site.get('mirror_source') or ''):
+            continue
+        read_id = (site.get('mirror_source') or '').strip() or site['id']
         domain = {'id': site['id'], 'domain': site['domain'], **counts()}
-        if site['id'] != 'default' and not re.fullmatch('[a-f0-9]{32}', site['id']):
+        if read_id != 'default' and not re.fullmatch('[a-f0-9]{32}', read_id):
             raise ValueError('站点ID格式错误')
-        db_path = (registry.root if site['id'] == 'default' else registry.root / 'sites' / site['id']) / 'app.db'
+        db_path = (registry.root if read_id == 'default' else registry.root / 'sites' / read_id) / 'app.db'
         if not db_path.exists():
             domains.append(domain)
             continue

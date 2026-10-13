@@ -77,6 +77,11 @@ class SiteOwner(StrictModel):
     owner_id: str = Field(min_length=1, max_length=64, strict=True)
 
 
+class MirrorBind(StrictModel):
+    source_id: str = Field(default='', max_length=64, strict=True)
+    observer_id: str = Field(default='', max_length=64, strict=True)
+
+
 def preview_signature(store, account_store, site, expiry, version_id, issuer, local_only):
     # Account revocation and ownership transfers also revoke private drafts.
     # Target reads identity only; it must not initialize or migrate Auth tables.
@@ -179,7 +184,10 @@ class LocalBoundary:
                 if match:
                     try:
                         owned = self.registry.get(match.group(1))
-                        if session['role'] not in ('admin', 'observer') and owned['owner_id'] != session['account_id']:
+                        if session['role'] == 'observer':
+                            if owned.get('observer_account') != session['account_id']:
+                                raise KeyError(match.group(1))
+                        elif session['role'] != 'admin' and owned['owner_id'] != session['account_id']:
                             raise KeyError(match.group(1))
                     except KeyError:
                         await JSONResponse({'detail': '站点不存在'}, status_code=404)(scope, receive, send)
@@ -416,7 +424,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return accounts.admin_account() or {'id': 'admin', 'username': '本地管理员', 'role': 'admin', 'enabled': True, 'created': 0}
 
     def sees_everything(account):
-        return account['role'] in ('admin', 'observer')
+        return account['role'] == 'admin'
 
     def require_admin(request):
         account = principal(request)
@@ -427,22 +435,56 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def authorized_site(request, site_id):
         site = registry.get(site_id)
         account = principal(request)
-        if not sees_everything(account) and site['owner_id'] != account['id']:
+        if account['role'] == 'admin':
+            return site
+        if account['role'] == 'observer':
+            if site.get('observer_account') != account['id']:
+                raise HTTPException(404, '站点不存在')
+            return site
+        if site['owner_id'] != account['id']:
             raise HTTPException(404, '站点不存在')
         return site
 
     def site_store(request: Request):
-        if 'site_id' not in request.path_params and not sees_everything(principal(request)):
+        if 'site_id' not in request.path_params and principal(request)['role'] != 'admin':
             raise HTTPException(404, '请使用当前域名的操作入口')
         site_id = request.path_params.get('site_id', 'default')
         authorized_site(request, site_id)
         return registry.store(site_id)
 
+    def records_of(site):
+        """Visit rows for a mirror are read from its source. The mirror's own pages stay put."""
+        source_id = (site.get('mirror_source') or '').strip()
+        if not source_id:
+            return registry.store(site['id']), False
+        try:
+            registry.get(source_id)
+        except KeyError:
+            return registry.store(site['id']), False
+        return registry.store(source_id), True
+
+    def source_domain_of(site):
+        source_id = (site.get('mirror_source') or '').strip()
+        if not source_id:
+            return ''
+        try:
+            return registry.get(source_id).get('domain') or ''
+        except KeyError:
+            return ''
+
+    def relabel_row(row, source_name, label):
+        if source_name and source_name != label:
+            for key, value in list(row.items()):
+                if isinstance(value, str) and source_name in value:
+                    row[key] = value.replace(source_name, label)
+        return row
+
     def state(store, site_id):
         config, revision = store.config()
         site = registry.get(site_id)
+        reading, _mirror = records_of(site)
         visit_url = target_url if site_id == 'default' else (f'https://{site["domain"]}' if deployment else f'{target_url}/_sites/{site_id}/')
-        return {'config': config.model_dump(), 'revision': revision, 'versions': store.versions(), 'slots': store.slots(), 'links': store.links(), 'stats': store.stats(), 'health': {'geoip': geo_ready(), 'geoip_detail': geo_status(), 'local_only': deployment is None}, 'site': site, 'target_url': visit_url, 'preview_origin': target_url, 'direct_mode': store.published_direct_mode()}
+        return {'config': config.model_dump(), 'revision': revision, 'versions': store.versions(), 'slots': store.slots(), 'links': store.links(), 'stats': reading.stats(), 'health': {'geoip': geo_ready(), 'geoip_detail': geo_status(), 'local_only': deployment is None}, 'site': site, 'target_url': visit_url, 'preview_origin': target_url, 'direct_mode': store.published_direct_mode()}
 
     def purge_site_cache(site):
         """Drop the cached landing page so a slot change is what visitors see."""
@@ -454,15 +496,52 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             return {'ok': False, 'detail': str(error)[:180]}
         return {'ok': True}
 
+    def sync_followers(site_id):
+        from .mirror import sync_mirror_content
+        for mirror in registry.mirrors_of(site_id):
+            try:
+                changed = sync_mirror_content(registry.store(site_id), registry.store(mirror['id']))
+            except Exception:
+                LOGGER.exception('观察域名内容没有同步')
+                continue
+            if changed:
+                purge_site_cache(mirror)
+
+    def after_site_change(site_id):
+        site = registry.get(site_id)
+        purged = purge_site_cache(site)
+        if not (site.get('mirror_source') or ''):
+            sync_followers(site_id)
+        return purged
+
+    def guard_mirror(request):
+        site_id = request.path_params.get('site_id', 'default')
+        site = registry.get(site_id)
+        if site.get('mirror_source'):
+            raise HTTPException(400, '观察域名跟着投放域名，请在投放域名上修改')
+        return site_id
+
     @app.get('/api/sites')
     def list_sites(request: Request):
         account = principal(request)
-        everything = sees_everything(account)
-        sites = reputation.catalog(registry.list(None if everything else account['id']))
-        if everything:
+        if account['role'] == 'observer':
+            bound = registry.site_for_observer(account['id'])
+            rows = [bound] if bound else []
+        elif account['role'] == 'admin':
+            rows = registry.list()
+        else:
+            rows = registry.list(account['id'])
+        sites = reputation.catalog(rows)
+        if account['role'] == 'admin':
             names = {row['id']: row['username'] for row in accounts.list_accounts()}
+            domains = {row['id']: row.get('domain') or '' for row in sites}
             for site in sites:
                 site['owner_username'] = names.get(site['owner_id'], account['username'] if site['owner_id'] == 'admin' else '账号不存在')
+                site['mirror_domain'] = domains.get(site.get('mirror_source') or '', '')
+        else:
+            for site in sites:
+                site.pop('mirror_source', None)
+                site.pop('observer_account', None)
         return {'sites': sites, 'account': account, 'google_reputation_configured': reputation.configured,
                 'cloudflare_configured': cloudflare.configured, 'cloudflare_template': cloudflare.template_label,
                 'server_ip': server_ip, 'record_type': 'A', 'local_only': deployment is None}
@@ -505,6 +584,31 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if target['role'] not in ('admin', 'agent'):
             raise ValueError('观察号不能作为域名归属')
         return {'site': registry.assign_owner(site_id, body.owner_id)}
+
+    @app.put('/api/sites/{site_id}/mirror')
+    def bind_site_mirror(site_id: str, request: Request, body: MirrorBind):
+        require_admin(request)
+        registry.get(site_id)
+        if body.observer_id:
+            account = accounts.get_account(body.observer_id)
+            if account['role'] != 'observer':
+                raise ValueError('只能把观察号绑到观察域名')
+            if not account['enabled']:
+                raise ValueError('观察号已停用')
+        site = registry.bind_mirror(site_id, body.source_id, body.observer_id)
+        if site.get('mirror_source'):
+            try:
+                from .mirror import sync_mirror_content
+                if sync_mirror_content(registry.store(site['mirror_source']), registry.store(site['id'])):
+                    purge_site_cache(site)
+            except Exception:
+                LOGGER.exception('观察域名内容没有同步')
+        site = registry.get(site_id)
+        try:
+            site['mirror_domain'] = registry.get(site['mirror_source']).get('domain') or '' if site.get('mirror_source') else ''
+        except KeyError:
+            site['mirror_domain'] = ''
+        return {'site': site}
 
     @app.post('/api/sites/{site_id}/reputation/check')
     def check_site_reputation(site_id: str, request: Request):
@@ -625,6 +729,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if not cloudflare.configured:
             raise ValueError('服务器未配置 Cloudflare')
         cloudflare.purge(site['cf_zone_id'], site['domain'])
+        for mirror in registry.mirrors_of(site_id):
+            purge_site_cache(mirror)
         return {'ok': True}
 
     @app.patch('/api/sites/{site_id}/metadata')
@@ -697,7 +803,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.get('/state')
     def get_state(request: Request, store=Depends(site_store)):
-        return state(store, request.path_params.get('site_id', 'default'))
+        payload = state(store, request.path_params.get('site_id', 'default'))
+        if principal(request)['role'] == 'observer':
+            shown = dict(payload['site'])
+            shown.pop('mirror_source', None)
+            shown.pop('observer_account', None)
+            payload['site'] = shown
+        return payload
 
     @routes.get('/analytics')
     def analytics(request: Request, period: Literal['today', 'yesterday', '7d', '30d'] = '7d',
@@ -705,6 +817,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                   tz_offset: int = Query(default=480, ge=-840, le=840)):
         site_id = request.path_params.get('site_id', 'default')
         account = principal(request)
+        if account['role'] == 'observer':
+            bound = registry.site_for_observer(account['id'])
+            if bound is None:
+                return summarize(registry, 'default', period, 'all', tz_offset, time.time(), '__no_observer_site__')
+            if 'site_id' in request.path_params and site_id != bound['id']:
+                raise HTTPException(404, '站点不存在')
+            return summarize(registry, bound['id'], period, 'current', tz_offset, time.time(), None)
         everything = sees_everything(account)
         if scope != 'all' and 'site_id' not in request.path_params and not everything:
             raise HTTPException(404, '请使用当前域名的操作入口')
@@ -714,16 +833,17 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.put('/config')
     def update_config(body: ConfigUpdate, request: Request, store=Depends(site_store)):
-        site_id = request.path_params.get('site_id', 'default')
+        site_id = guard_mirror(request)
         store.save_config(body.config, body.revision)
         result = state(store, site_id)
-        purged = purge_site_cache(registry.get(site_id))
+        purged = after_site_change(site_id)
         if purged is not None:
             result['cloudflare'] = purged
         return result
 
     @routes.post('/upload/{slot}')
     async def upload(slot: Slot, request: Request, name: str = Query(min_length=1, max_length=200), store=Depends(site_store)):
+        guard_mirror(request)
         data = await request.body()
         # CPU/disk work in worker thread keeps health and UI requests responsive.
         from starlette.concurrency import run_in_threadpool
@@ -738,20 +858,23 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.post('/publish/{slot}')
     def publish(slot: Slot, body: VersionChoice, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         store.publish(slot, body.version_id)
         result = {'ok': True}
-        purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+        purged = after_site_change(site_id)
         if purged is not None:
             result['cloudflare'] = purged
         return result
 
     @routes.delete('/versions/{slot}/{version_id}')
-    def delete_slot_version(slot: Slot, version_id: VersionId, store=Depends(site_store)):
+    def delete_slot_version(slot: Slot, version_id: VersionId, request: Request, store=Depends(site_store)):
+        guard_mirror(request)
         store.delete_version(version_id, slot)
         return {'ok': True}
 
     @routes.post('/versions/{slot}/cleanup')
-    def cleanup_slot_versions(slot: Slot, store=Depends(site_store)):
+    def cleanup_slot_versions(slot: Slot, request: Request, store=Depends(site_store)):
+        guard_mirror(request)
         return {'deleted': len(store.delete_unpublished_versions(slot))}
 
     def source_version(store, slot, version_id):
@@ -815,21 +938,27 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.put('/b-redirects/split')
     def save_b_redirect_split(body: RedirectSplit, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         result = {'split': store.save_redirect_split(body.enabled, body.mode, body.members)}
         # The link-split picker is added when the page is served, so drop the
         # cached copy or visitors keep the previous split for up to the edge TTL.
-        purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+        purged = after_site_change(site_id)
         if purged is not None:
             result['cloudflare'] = purged
         return result
 
     @routes.post('/b-redirects/presets')
-    def add_b_redirect_presets(body: RedirectPresetInput, store=Depends(site_store)):
-        return {'presets':store.add_redirect_presets(body.urls, body.note)}
+    def add_b_redirect_presets(body: RedirectPresetInput, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
+        saved = store.add_redirect_presets(body.urls, body.note)
+        sync_followers(site_id)
+        return {'presets': saved}
 
     @routes.delete('/b-redirects/presets/{preset_id}')
-    def delete_b_redirect_preset(preset_id: int, store=Depends(site_store)):
+    def delete_b_redirect_preset(preset_id: int, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         store.delete_redirect_preset(preset_id)
+        sync_followers(site_id)
         return {'ok':True}
 
     @routes.post('/b-redirects/presets/{preset_id}/check')
@@ -841,6 +970,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.post('/b-redirects/apply')
     def apply_b_redirects(body: RedirectApply, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         guard = redirect_commit_guard(request, store)
         base = source_version(store, 'B', body.version_id)
         if store.slots()['B'] != body.expected_published:
@@ -859,17 +989,21 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         version, changed = store.apply_redirects(base, preset, body.occurrence_ids, body.expected_published, guard)
         response = {'version': version, 'check': result, 'changed': changed}
         if changed:
-            purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+            purged = after_site_change(site_id)
             if purged is not None:
                 response['cloudflare'] = purged
         return response
 
     @routes.post('/b-redirects/numbers')
-    def add_whatsapp_numbers(body: WhatsAppNumberInput, store=Depends(site_store)):
-        return {'numbers':store.add_whatsapp_numbers(body.phones, body.note, body.display_name)}
+    def add_whatsapp_numbers(body: WhatsAppNumberInput, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
+        saved = store.add_whatsapp_numbers(body.phones, body.note, body.display_name)
+        sync_followers(site_id)
+        return {'numbers': saved}
 
     @routes.post('/b-redirects/numbers/reception')
     def publish_whatsapp_reception(body: WhatsAppReception, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         guard = redirect_commit_guard(request, store)
         number = store.upsert_whatsapp_name(body.phone, body.display_name)
         base = source_version(store, 'B', body.version_id)
@@ -878,49 +1012,49 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         version, changed = store.publish_reception(base, body.display_name, body.expected_published, guard)
         response = {'number': number, 'version': version, 'changed': changed, 'sentence': f'本次由助理{body.display_name} 接待'}
         if changed:
-            purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+            purged = after_site_change(site_id)
             if purged is not None:
                 response['cloudflare'] = purged
+        else:
+            sync_followers(site_id)
         return response
 
     @routes.post('/b-redirects/direct-entry')
     def publish_direct_entry(body: DirectEntry, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         guard = redirect_commit_guard(request, store)
         base = source_version(store, 'B', body.version_id)
         if store.slots()['B'] != body.expected_published:
             raise Conflict('当前 B 发布版本已变化，请重新扫描后再换号')
         version, changed, kind = store.publish_direct_entry(base, body.expected_published, guard)
-        site = registry.get(request.path_params.get('site_id', 'default'))
-        purged = None
-        if changed and site.get('cf_zone_id') and cloudflare.configured:
-            try:
-                cloudflare.purge(site['cf_zone_id'], site['domain'])
-                purged = {'ok': True}
-            except ProvisioningError as error:
-                purged = {'ok': False, 'detail': str(error)[:180]}
+        purged = after_site_change(site_id) if changed else None
         return {'version': version, 'changed': changed, 'kind': kind, 'cloudflare': purged}
 
     @routes.put('/b-redirects/numbers/split')
     def save_whatsapp_number_split(body: WhatsAppSplit, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         saved = store.save_whatsapp_split(body.enabled, body.mode, body.members)
         result = {'number_split': saved}
         # The landing stays cached for the speed rule. Drop that copy so the
         # shared picker script lists the pool that was just saved.
-        purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+        purged = after_site_change(site_id)
         if purged is not None:
             result['cloudflare'] = purged
         return result
 
     @routes.delete('/b-redirects/numbers/{number_id}')
     def delete_whatsapp_number(number_id: int, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         store.delete_whatsapp_number(number_id)
         result = {'ok': True}
         # A deleted number drops out of the served split picker, so refresh the
         # cached page when a split is live.
         if store.whatsapp_split()['enabled']:
-            purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+            purged = after_site_change(site_id)
             if purged is not None:
                 result['cloudflare'] = purged
+        else:
+            sync_followers(site_id)
         return result
 
     @routes.post('/wa-trust/screen/{token}')
@@ -933,11 +1067,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return {'ok': True}
 
     @routes.post('/b-redirects/numbers/{number_id}/trust')
-    def check_whatsapp_trust(number_id: int, store=Depends(site_store)):
+    def check_whatsapp_trust(number_id: int, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         number = store.whatsapp_number(number_id)
 
         def persist(outcome):
-            return store.save_whatsapp_trust(number_id, outcome['status'], outcome.get('reason') or '')
+            saved = store.save_whatsapp_trust(number_id, outcome['status'], outcome.get('reason') or '')
+            sync_followers(site_id)
+            return saved
 
         result = app.state.trust_checker.check(number['phone'], persist)
         if result.get('busy'):
@@ -1005,6 +1142,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.post('/b-redirects/numbers/apply')
     def apply_whatsapp_numbers(body: WhatsAppNumberApply, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         guard = redirect_commit_guard(request, store)
         base = source_version(store, 'B', body.version_id)
         if store.slots()['B'] != body.expected_published:
@@ -1017,41 +1155,33 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             raise ValueError('号码预设只能更换 WhatsApp 号码')
         number = store.whatsapp_number(body.number_id)
         version, changed = store.apply_whatsapp_number(base, number, body.occurrence_ids, body.expected_published, guard)
-        site = registry.get(request.path_params.get('site_id', 'default'))
-        purged = None
-        if changed and site.get('cf_zone_id') and cloudflare.configured:
-            try:
-                cloudflare.purge(site['cf_zone_id'], site['domain'])
-                purged = {'ok': True}
-            except ProvisioningError as error:
-                purged = {'ok': False, 'detail': str(error)[:180]}
+        purged = after_site_change(site_id) if changed else None
         return {'version':version, 'changed':changed, 'cloudflare':purged}
 
     @routes.post('/b-redirects/links')
-    def add_contact_links(body: ContactLinkInput, store=Depends(site_store)):
-        return {'links': store.add_contact_links(body.app, body.urls, body.note)}
+    def add_contact_links(body: ContactLinkInput, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
+        saved = store.add_contact_links(body.app, body.urls, body.note)
+        sync_followers(site_id)
+        return {'links': saved}
 
     @routes.delete('/b-redirects/links/{link_id}')
-    def delete_contact_link(link_id: int, store=Depends(site_store)):
+    def delete_contact_link(link_id: int, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         store.delete_contact_link(link_id)
+        sync_followers(site_id)
         return {'ok': True}
 
     @routes.post('/b-redirects/links/apply')
     def apply_contact_links(body: ContactLinkApply, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         guard = redirect_commit_guard(request, store)
         link = store.contact_link(body.link_id)
         base = source_version(store, 'B', body.version_id)
         if store.slots()['B'] != body.expected_published:
             raise Conflict('当前 B 发布版本已变化，请重新扫描后再换')
         version, changed, summary = store.apply_contact_link(base, link, body.expected_published, guard)
-        site = registry.get(request.path_params.get('site_id', 'default'))
-        purged = None
-        if changed and site.get('cf_zone_id') and cloudflare.configured:
-            try:
-                cloudflare.purge(site['cf_zone_id'], site['domain'])
-                purged = {'ok': True}
-            except ProvisioningError as error:
-                purged = {'ok': False, 'detail': str(error)[:180]}
+        purged = after_site_change(site_id) if changed else None
         return {'version': version, 'changed': changed, 'contact_app': summary['contact_app'], 'url': summary['url'], 'contact_value': summary['contact_value'], 'cloudflare': purged}
 
     @routes.get('/tracking')
@@ -1070,6 +1200,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.post('/tracking/apply')
     def apply_tracking(body: TrackingApply, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         if body.ga4_id is None and body.conversion_id is None:
             raise ValueError('请选择要写入的 GA4 或转化代码')
         ga4 = registry.tracking_snippet(body.ga4_id) if body.ga4_id else None
@@ -1079,14 +1210,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if conversion and conversion['kind'] != 'conversion':
             raise ValueError('选中的不是转化代码')
         version = store.apply_tracking(body.slot, ga4['body'] if ga4 else None, conversion['body'] if conversion else None, body.expected_published)
-        site = registry.get(request.path_params.get('site_id', 'default'))
-        purged = None
-        if site.get('cf_zone_id') and cloudflare.configured:
-            try:
-                cloudflare.purge(site['cf_zone_id'], site['domain'])
-                purged = {'ok': True}
-            except ProvisioningError as error:
-                purged = {'ok': False, 'detail': str(error)[:180]}
+        purged = after_site_change(site_id)
         return {'version': version, 'published': store.published_tracking(), 'cloudflare': purged}
 
     @routes.get('/source/{slot}/{version_id}')
@@ -1104,13 +1228,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.post('/source/{slot}/{version_id}')
     def save_source(slot: Slot, version_id: VersionId, body: SourceEdit, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         base = source_version(store, slot, version_id)
         try:
             version = store.save_source(slot, base, body.path, body.content, body.expected_published)
         except FileNotFoundError:
             raise HTTPException(404, '源码文件不存在') from None
         result = {'version': version, 'published_version': version['id']}
-        purged = purge_site_cache(registry.get(request.path_params.get('site_id', 'default')))
+        purged = after_site_change(site_id)
         if purged is not None:
             result['cloudflare'] = purged
         return result
@@ -1129,17 +1254,22 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return {'url': f'{target_url}{prefix}/_preview/{expiry}/{body.version_id}/{issuer}/{signature}/index.html'}
 
     @routes.post('/links')
-    def add_links(body: LinkInput, store=Depends(site_store)):
+    def add_links(body: LinkInput, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         store.add_links(body.slot, body.urls)
+        sync_followers(site_id)
         return {'ok': True}
 
     @routes.delete('/links/{link_id}')
-    def delete_link(link_id: int, store=Depends(site_store)):
+    def delete_link(link_id: int, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
         store.delete_link(link_id)
+        sync_followers(site_id)
         return {'ok': True}
 
     @routes.post('/counters/reset')
-    def reset_counts(store=Depends(site_store)):
+    def reset_counts(request: Request, store=Depends(site_store)):
+        guard_mirror(request)
         store.reset_counts()
         return {'ok': True}
 
@@ -1148,38 +1278,66 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         config, _ = store.config()
         return decide(config, body)
 
+    def viewed_records(request):
+        site = registry.get(request.path_params.get('site_id', 'default'))
+        reading, mirror = records_of(site)
+        return site, reading, mirror
+
+    def present_record_rows(site, rows, mirror):
+        if not mirror:
+            return rows
+        source_name = source_domain_of(site)
+        label = site.get('domain') or '本地站点'
+        for row in rows:
+            relabel_row(row, source_name, label)
+        return rows
+
     @routes.get('/logs')
-    def logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', page: int = Query(default=1, ge=1, le=10000), store=Depends(site_store)):
-        return _present_logs(store.logs(days, slot, page))
+    def logs(request: Request, days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', page: int = Query(default=1, ge=1, le=10000), store=Depends(site_store)):
+        site, reading, mirror = viewed_records(request)
+        data = _present_logs(reading.logs(days, slot, page))
+        present_record_rows(site, data['items'], mirror)
+        return data
 
     @routes.get('/access-report')
     def access_report(request: Request, days: int = Query(default=7, ge=1, le=90), country: str = '', store=Depends(site_store)):
         code = country.strip().upper()
         if code and not re.fullmatch(r'[A-Z]{2}', code):
             raise HTTPException(400, '国家代码应为两位字母')
-        site = registry.get(request.path_params.get('site_id', 'default'))
-        text = store.access_report(days, code or None, site.get('domain') or '本地站点')
+        site, reading, mirror = viewed_records(request)
+        label = site.get('domain') or '本地站点'
+        text = reading.access_report(days, code or None, label, rename_from=source_domain_of(site) if mirror else '')
         return Response(text, media_type='text/plain; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="access-report.txt"'})
 
     @routes.get('/logs/rate')
-    def log_rate(store=Depends(site_store)):
-        return {'count': store.recent_count(60), 'seconds': 60}
+    def log_rate(request: Request, store=Depends(site_store)):
+        _site, reading, _mirror = viewed_records(request)
+        return {'count': reading.recent_count(60), 'seconds': 60}
 
     @routes.post('/logs/clear')
-    def clear_logs(store=Depends(site_store)):
+    def clear_logs(request: Request, store=Depends(site_store)):
+        site = registry.get(request.path_params.get('site_id', 'default'))
+        if site.get('mirror_source'):
+            raise HTTPException(400, '观察域名只读取投放域名的记录，不能在这里清空')
         return {'deleted': store.clear_logs()}
 
     @routes.post('/logs/clear-foreign')
-    def clear_foreign_logs(store=Depends(site_store)):
+    def clear_foreign_logs(request: Request, store=Depends(site_store)):
+        site = registry.get(request.path_params.get('site_id', 'default'))
+        if site.get('mirror_source'):
+            raise HTTPException(400, '观察域名只读取投放域名的记录，不能在这里清空')
         return store.clear_logs_unless(displayed_hong_kong)
 
     @routes.get('/logs.csv')
-    def export_logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', store=Depends(site_store)):
+    def export_logs(request: Request, days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', store=Depends(site_store)):
+        site, reading, mirror = viewed_records(request)
         fields = ['id', 'created', 'country', 'ip', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
         writer.writerow(fields)
-        for row in _present_logs(store.logs(days, slot, page_size=10000))['items']:
+        rows = _present_logs(reading.logs(days, slot, page_size=10000))['items']
+        present_record_rows(site, rows, mirror)
+        for row in rows:
             details = row.get('device_details') or {}
             if '/' in str(row.get('ip') or ''):
                 row['ip'] = ''
@@ -1197,20 +1355,42 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             items = [item for item in items if item['action'] in site_actions]
         return {'items': items}
 
-    def analysis_sites(request):
+    def analysis_sites(request, include_mirrors=False):
         account = principal(request)
-        owner = None if sees_everything(account) else account['id']
-        return registry.list(owner)
+        if account['role'] == 'observer':
+            site = registry.site_for_observer(account['id'])
+            return [site] if site else []
+        owner = None if account['role'] == 'admin' else account['id']
+        sites = registry.list(owner)
+        if not include_mirrors:
+            sites = [site for site in sites if not (site.get('mirror_source') or '')]
+        return sites
 
     def analysis_domain(site):
         return site.get('domain') or '本地站点'
 
     def scoped_analysis_sites(request, domain=''):
-        sites = analysis_sites(request)
         wanted = (domain or '').strip().lower()
+        sites = analysis_sites(request, include_mirrors=bool(wanted))
         if not wanted:
             return sites
         return [site for site in sites if analysis_domain(site).lower() == wanted]
+
+    def stamp_rows(site, rows, kind):
+        mirror = bool((site.get('mirror_source') or '').strip())
+        label = analysis_domain(site)
+        source_name = source_domain_of(site) if mirror else ''
+        for row in rows:
+            if mirror:
+                relabel_row(row, source_name, label)
+                row['domain'] = label
+            elif kind == 'event':
+                row['domain'] = displayed_event_domain(registry, row, label)
+            elif kind == 'intake':
+                row['domain'] = displayed_intake_domain(registry, row, label)
+            else:
+                row['domain'] = label
+        return rows
 
     @app.get('/api/analysis')
     def analysis(request: Request, days: int = Query(default=7, ge=1, le=90), domain: str = ''):
@@ -1220,18 +1400,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         requests, events = [], []
         request_total = event_total = 0
         for site in sites:
-            store = registry.store(site['id'])
-            access_count, access_rows = store.recent_access(since, 200)
-            event_count, event_rows = store.recent_client_events(since, 200)
+            reading, _mirror = records_of(site)
+            access_count, access_rows = reading.recent_access(since, 200)
+            event_count, event_rows = reading.recent_client_events(since, 200)
             request_total += access_count
             event_total += event_count
-            site_domain = analysis_domain(site)
-            for row in access_rows:
-                row['domain'] = site_domain
-                requests.append(row)
-            for row in event_rows:
-                row['domain'] = displayed_event_domain(registry, row, site_domain)
-                events.append(row)
+            requests.extend(stamp_rows(site, access_rows, 'visit'))
+            events.extend(stamp_rows(site, event_rows, 'event'))
         requests.sort(key=lambda row: row['created'], reverse=True)
         events.sort(key=lambda row: row['created'], reverse=True)
         return {
@@ -1248,6 +1423,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         sites = scoped_analysis_sites(request, wanted)
         if len(sites) != 1:
             raise HTTPException(404, '没有这个域名')
+        if sites[0].get('mirror_source'):
+            raise HTTPException(400, '观察域名只读取投放域名的记录，不能在这里清空')
         counts = registry.store(sites[0]['id']).clear_analysis()
         counts['domain'] = analysis_domain(sites[0])
         return counts
@@ -1264,31 +1441,36 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def analysis_report(request: Request, days: int = Query(default=7, ge=1, le=90), domain: str = ''):
         parts = []
         for site in scoped_analysis_sites(request, domain):
-            text = registry.store(site['id']).access_report(days, 'HK', analysis_domain(site))
+            reading, mirror = records_of(site)
+            text = reading.access_report(days, 'HK', analysis_domain(site), rename_from=source_domain_of(site) if mirror else '')
             parts.append(f'===== {analysis_domain(site)} =====\n{text}')
         body = '\n'.join(parts) if parts else '没有可查看的域名。\n'
         return Response(body, media_type='text/plain; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="analysis-report.txt"'})
 
-    def collect_campaign(request, since, until):
+    def watched_sites(request, domain):
+        account = principal(request)
+        wanted = (domain or '').strip().lower()
+        chosen = []
+        for site in analysis_sites(request, include_mirrors=True):
+            mirror = bool((site.get('mirror_source') or '').strip())
+            if mirror and account['role'] != 'observer' and analysis_domain(site).lower() != wanted:
+                continue
+            chosen.append(site)
+        return chosen
+
+    def collect_campaign(request, since, until, domain=''):
         visits, events = [], []
-        for site in analysis_sites(request):
-            site_store = registry.store(site['id'])
-            domain = analysis_domain(site)
-            for row in site_store.campaign_access(since, until):
-                row['domain'] = domain
-                visits.append(row)
-            for row in site_store.campaign_events(since, until):
-                row['domain'] = displayed_event_domain(registry, row, domain)
-                events.append(row)
+        for site in watched_sites(request, domain):
+            reading, _mirror = records_of(site)
+            visits.extend(stamp_rows(site, reading.campaign_access(since, until), 'visit'))
+            events.extend(stamp_rows(site, reading.campaign_events(since, until), 'event'))
         return visits, events
 
-    def collect_intake(request, since, until):
+    def collect_intake(request, since, until, domain=''):
         rows = []
-        for site in analysis_sites(request):
-            domain = analysis_domain(site)
-            for row in registry.store(site['id']).intake_between(since, until):
-                row['domain'] = displayed_intake_domain(registry, row, domain)
-                rows.append(row)
+        for site in watched_sites(request, domain):
+            reading, _mirror = records_of(site)
+            rows.extend(stamp_rows(site, reading.intake_between(since, until), 'intake'))
         return rows
 
     def campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact=False, dest_app='', youtube='', opener=''):
@@ -1312,7 +1494,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                        start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
                        wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', opener: str = '', placement_exact: bool = False):
         since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube, opener)
-        visits, events = collect_campaign(request, since, until)
+        visits, events = collect_campaign(request, since, until, filters['domain'])
         report = _with_youtube_channels(build_campaign(visits, events, filters))
         report['endpoint'] = jump_event_endpoint(deployment)
         report['range'] = span
@@ -1325,7 +1507,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                      start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
                      wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', opener: str = '', placement_exact: bool = False):
         since, until, filters = campaign_arguments(slot, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube, opener)
-        visits, events = collect_campaign(request, since, until)
+        visits, events = collect_campaign(request, since, until, filters['domain'])
         report = _with_youtube_channels(build_campaign(visits, events, filters))
         fields = ['时间', '域名', '去向', '版位', '频道', '打开', 'device', 'wa_env', 'link_type', '机型', '系统', '进站数', 'page_view', 'gate_open', 'gate_step2', 'gate_close', '点击人数', '点击次数', '拉起数', '兜底数', '点击率', '拉起率', '兜底点击', '复制号码', '复制消息', '标红', '原因']
         stream = io.StringIO(newline='')
@@ -1353,7 +1535,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                                start: str = '', end: str = '', domain: str = '', placement: str = '', device: str = '',
                                wa_env: str = '', link_type: str = '', model: str = '', dest_app: str = '', youtube: str = '', opener: str = '', placement_exact: bool = False):
         since, until, filters = campaign_arguments(span, start, end, domain, placement, device, wa_env, link_type, model, placement_exact, dest_app, youtube, opener)
-        _visits, events = collect_campaign(request, since, until)
+        _visits, events = collect_campaign(request, since, until, filters['domain'])
         payload = json.dumps(export_events(events, filters), ensure_ascii=False, separators=(',', ':'))
         return Response(payload, media_type='application/json; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="campaign-events.json"'})
 
@@ -1365,8 +1547,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     def flow_report(request, span, start, end, domain):
         since, until = flow_window(span, start, end)
-        visits, events = collect_campaign(request, since, until)
-        return build_flow(visits, events, collect_intake(request, since, until), domain)
+        visits, events = collect_campaign(request, since, until, domain)
+        return build_flow(visits, events, collect_intake(request, since, until, domain), domain)
 
     @app.get('/api/campaign/flow')
     def campaign_flow(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
@@ -1375,7 +1557,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         report['visits_total'] = len(report['visits'])
         report['visits'] = report['visits'][:200]
         since, until = flow_window(span, start, end)
-        intake = collect_intake(request, since, until)
+        intake = collect_intake(request, since, until, domain)
         if domain.strip():
             intake = [row for row in intake if (row.get('domain') or '').lower() == domain.strip().lower()]
         report['intake_total'] = len(intake)
@@ -1399,7 +1581,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def campaign_intake_csv(request: Request, span: Literal['today', 'yesterday', '7d', 'custom'] = Query(default='today', alias='range'),
                             start: str = '', end: str = '', domain: str = ''):
         since, until = flow_window(span, start, end)
-        rows = collect_intake(request, since, until)
+        rows = collect_intake(request, since, until, domain)
         if domain.strip():
             rows = [row for row in rows if (row.get('domain') or '').lower() == domain.strip().lower()]
         return flow_csv(intake_csv(rows), 'flow-intake.csv')

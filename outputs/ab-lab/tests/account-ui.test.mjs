@@ -11,7 +11,7 @@ test('account management depends only on an explicit admin role', () => {
   assert.equal(accounts.isAdmin(null), false);
   assert.equal(accounts.isObserver({role:'observer'}), true);
   assert.equal(accounts.isObserver({role:'admin'}), false);
-  assert.equal(accounts.seesAll({role:'observer'}), true);
+  assert.equal(accounts.seesAll({role:'observer'}), false);
   assert.equal(accounts.seesAll({role:'admin'}), true);
   assert.equal(accounts.seesAll({role:'agent'}), false);
 });
