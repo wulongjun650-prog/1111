@@ -115,6 +115,58 @@ def test_read_pages_returns_the_full_blocks():
     assert bare['conversion_body'] == ''
 
 
+def test_ga4_replace_keeps_an_aw_config_and_adds_one_when_the_target_has_none():
+    mixed = '''<!doctype html><html><head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-OLDOLDOLD1"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-OLDOLDOLD1');
+  gtag('config','AW-10000000000');
+</script>
+</head><body>
+<script>
+function gtag_report_conversion(url) {
+  gtag('event', 'conversion', {'send_to': 'AW-10000000000/oldlabelxx', 'event_callback': function(){}});
+  return false;
+}
+</script>
+<p>正文保留</p></body></html>'''
+    updated, changed = rewrite_pages([('index.html', mixed.encode())], GA4, None)
+    text = dict(updated)['index.html'].decode()
+    assert changed
+    assert 'G-OLDOLDOLD1' not in text
+    assert "gtag('config', 'G-GVPNN75RYK');" in text
+    assert "gtag('config', 'AW-10000000000');" in text
+    assert text.count("gtag('config', 'AW-10000000000')") == 1
+    assert 'AW-10000000000/oldlabelxx' in text
+    assert '正文保留' in text
+    again, second = rewrite_pages(updated, GA4, None)
+    assert second is False
+    assert dict(again)['index.html'] == dict(updated)['index.html']
+    bare = '''<!doctype html><html><head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-OLDOLDOLD1"></script>
+<script>
+  function gtag(){dataLayer.push(arguments);}
+  gtag('config', 'G-OLDOLDOLD1');
+</script>
+<script>
+function gtag_report_conversion(url) {
+  gtag('event', 'conversion', {'send_to': 'AW-11421360067/Z7iXCK6y948dEMO_kMYq'});
+  return false;
+}
+</script>
+</head><body>正文</body></html>'''
+    added, changed = rewrite_pages([('index.html', bare.encode())], GA4, None)
+    page = dict(added)['index.html'].decode()
+    assert changed
+    assert "gtag('config', 'AW-11421360067');" in page
+    assert page.count("gtag('config', 'AW-11421360067')") == 1
+    assert 'AW-11421360067/Z7iXCK6y948dEMO_kMYq' in page
+
+
 def test_existing_blocks_are_replaced_and_missing_blocks_are_inserted():
     replaced, changed = rewrite_pages([('index.html', OLD_PAGE.encode()), ('more.htm', '<p>不动</p>'.encode())], GA4, CONVERSION)
     page = dict(replaced)['index.html'].decode()

@@ -43,6 +43,9 @@ class Api:
         self.polish = polish
         self.ssl = 'flexible'
         self.calls = []
+        self.browser_cache_ttl = 0
+        self.template_browser_cache = None
+        self.template_rule_browser_ttl = None
 
     def transport(self):
         return httpx.MockTransport(self.respond)
@@ -96,14 +99,23 @@ class Api:
             self.ssl = 'strict'
             return envelope({'id': 'ssl', 'value': 'strict'})
         if rest == 'settings' and request.method == 'GET':
-            return envelope([
+            rows = [
                 {'id': 'brotli', 'value': 'on', 'editable': True},
                 {'id': 'minify', 'value': {'css': 'on', 'html': 'off', 'js': 'on'}, 'editable': True},
                 {'id': 'polish', 'value': 'lossless', 'editable': True},
                 {'id': 'development_mode', 'value': 'on', 'editable': True},
                 {'id': 'ssl', 'value': 'full', 'editable': True},
                 {'id': 'rocket_loader', 'value': 'off', 'editable': False},
-            ])
+            ]
+            if self.template_browser_cache is not None:
+                rows.append({'id': 'browser_cache_ttl', 'value': self.template_browser_cache, 'editable': True})
+            return envelope(rows)
+        if rest == 'settings/browser_cache_ttl' and request.method == 'GET':
+            return envelope({'id': 'browser_cache_ttl', 'value': self.browser_cache_ttl, 'editable': True})
+        if rest == 'settings/browser_cache_ttl' and request.method == 'PATCH':
+            assert json.loads(request.content) == {'value': 0}
+            self.browser_cache_ttl = 0
+            return envelope({'id': 'browser_cache_ttl', 'value': 0})
         if rest.startswith('settings/') and request.method == 'PATCH':
             setting = rest.removeprefix('settings/')
             assert setting in ('brotli', 'minify', 'polish')
@@ -111,9 +123,13 @@ class Api:
                 return failure(9000, 'plan does not include polish')
             return envelope({'id': setting, 'value': json.loads(request.content)['value']})
         if rest == 'rulesets/phases/http_request_cache_settings/entrypoint' and request.method == 'GET':
+            parameters = {'cache': True}
+            if self.template_rule_browser_ttl is not None:
+                parameters['edge_ttl'] = {'mode': 'override_origin', 'default': 72000}
+                parameters['browser_ttl'] = {'mode': 'override_origin', 'default': self.template_rule_browser_ttl}
             return envelope({'rules': [{
                 'id': 'e' * 32, 'expression': 'http.host eq "rules.example.com"', 'action': 'set_cache_settings',
-                'action_parameters': {'cache': True}, 'description': 'cache host', 'enabled': True,
+                'action_parameters': parameters, 'description': 'cache host', 'enabled': True,
             }]})
         if rest == 'rulesets/phases/http_config_settings/entrypoint' and request.method == 'GET':
             return failure(10003, 'could not find entrypoint ruleset', 404)
@@ -121,7 +137,7 @@ class Api:
             body = json.loads(request.content)
             rule = body['rules'][0]
             assert set(body) == {'rules'} and 'id' not in rule
-            assert rule['action'] == 'set_cache_settings' and 'rules.example.com' not in rule['expression']
+            assert rule['action'] == 'set_cache_settings'
             self.last_rule = rule
             return envelope(body)
         if rest == 'purge_cache' and request.method == 'POST':
@@ -149,6 +165,37 @@ def test_attach_copies_rules_and_proxies_to_origin():
     assert api.ssl == 'strict'
     assert any(method == 'PATCH' and path.endswith('/settings/ssl') for method, path in api.calls)
     assert not any(path.endswith('/settings/development_mode') for _, path in api.calls)
+
+
+def test_template_browser_cache_over_an_hour_follows_the_origin():
+    api = Api()
+    api.browser_cache_ttl = 72000
+    api.template_browser_cache = 72000
+    api.template_rule_browser_ttl = 72000
+    client(api).attach('new.example.com')
+    assert api.browser_cache_ttl == 0
+    assert any(method == 'PATCH' and path.endswith('/settings/browser_cache_ttl') for method, path in api.calls)
+    assert api.last_rule['action_parameters']['cache'] is True
+    assert api.last_rule['action_parameters']['edge_ttl'] == {'mode': 'override_origin', 'default': 72000}
+    assert api.last_rule['action_parameters']['browser_ttl'] == {'mode': 'respect_origin'}
+    assert 'rules.example.com' not in api.last_rule['expression']
+
+
+def test_purge_rewrites_a_20_hour_browser_cache_then_clears_the_edge():
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    api.browser_cache_ttl = 72000
+    api.template_rule_browser_ttl = 72000
+    client(api).purge(ZONE, 'shop.example.com')
+    assert api.browser_cache_ttl == 0
+    assert api.last_rule['action_parameters']['cache'] is True
+    assert api.last_rule['action_parameters']['edge_ttl']['default'] == 72000
+    assert api.last_rule['action_parameters']['browser_ttl'] == {'mode': 'respect_origin'}
+    methods = [(method, path) for method, path in api.calls]
+    setting = methods.index(('PATCH', f'/client/v4/zones/{ZONE}/settings/browser_cache_ttl'))
+    cleared = methods.index(('POST', f'/client/v4/zones/{ZONE}/purge_cache'))
+    assert setting < cleared
 
 
 def test_existing_grey_record_is_turned_orange_without_a_new_zone():

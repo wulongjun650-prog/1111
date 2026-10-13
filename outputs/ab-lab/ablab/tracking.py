@@ -5,6 +5,7 @@ from pathlib import Path
 
 GA4_SRC = re.compile(r'googletagmanager\.com/gtag/js\?id=(G-[A-Z0-9]{4,24})', re.I)
 GA4_CONFIG = re.compile(r'''gtag\(\s*['"]config['"]\s*,\s*['"](G-[A-Z0-9]{4,24})['"]''', re.I)
+AW_CONFIG = re.compile(r'''gtag\(\s*['"]config['"]\s*,\s*['"](AW-\d{5,15})['"]''', re.I)
 GA4_LOADER = re.compile(
     r'<script\b[^>]*\bsrc\s*=\s*[\'"]https://www\.googletagmanager\.com/gtag/js\?id=G-[A-Z0-9]{4,24}[\'"][^>]*>\s*</script>',
     re.I,
@@ -109,6 +110,7 @@ def rewrite_pages(pairs, ga4_body=None, conversion_body=None):
             updated = _swap_ga4(updated, ga4_id)
         if conversion_body and had_conversion:
             updated = _swap_send_to(updated, send_to)
+        updated = _ensure_aw_config(updated)
         data = updated.encode('utf-8')
         if bom:
             data = b'\xef\xbb\xbf' + data
@@ -141,7 +143,15 @@ def _ordered(pairs):
 
 
 def _replace_ga4(text, snippet):
-    return _splice(text, _ga4_spans(text), snippet)
+    spans = _ga4_spans(text)
+    kept = []
+    seen = set()
+    for start, end in spans:
+        for account in _aw_accounts(text[start:end]):
+            if account not in seen:
+                seen.add(account)
+                kept.append(account)
+    return _splice(text, spans, _with_aw_configs(snippet, kept))
 
 
 def _replace_conversion(text, snippet):
@@ -322,6 +332,73 @@ def _insert_text(text, snippet):
     body = re.search(r'<body\b[^>]*>', text, re.I)
     if body:
         return text[:body.end()] + '\n' + block + text[body.end():]
+    return block + text
+
+
+def _aw_accounts(chunk):
+    found = []
+    seen = set()
+    for line in chunk.splitlines():
+        if 'send_to' in line:
+            continue
+        for account in AW_CONFIG.findall(line):
+            key = account.upper()
+            if key not in seen:
+                seen.add(key)
+                found.append(key)
+    return found
+
+
+def _with_aw_configs(snippet, accounts):
+    if not accounts:
+        return snippet
+    block = '\n'.join(f"  gtag('config', '{account}');" for account in accounts) + '\n'
+    close = snippet.lower().rfind('</script>')
+    if close == -1:
+        return snippet.rstrip() + '\n<script>\n' + block + '</script>\n'
+    return snippet[:close].rstrip() + '\n' + block + snippet[close:]
+
+
+def _ensure_aw_config(text):
+    """A conversion target needs its AW config. Replacing GA4 must not be the thing that drops it."""
+    wanted = []
+    seen = set()
+    for target in SEND_TO.findall(text) + GOOGLE_SEND_TO.findall(text):
+        account = target.split('/', 1)[0].upper()
+        if account not in seen:
+            seen.add(account)
+            wanted.append(account)
+    if not wanted:
+        return text
+    present = {item.upper() for item in AW_CONFIG.findall(text)}
+    missing = [account for account in wanted if account not in present]
+    if not missing:
+        return text
+    return _insert_aw_lines(text, missing)
+
+
+def _insert_aw_lines(text, accounts):
+    lines = ''.join(f"  gtag('config', '{account}');\n" for account in accounts)
+    match = None
+    for found in GA4_CONFIG.finditer(text):
+        match = found
+    if match:
+        end = match.end()
+        if end < len(text) and text[end] == ')':
+            end += 1
+        while end < len(text) and text[end] in ' \t':
+            end += 1
+        if end < len(text) and text[end] == ';':
+            end += 1
+        if end < len(text) and text[end] == '\r':
+            end += 1
+        if end < len(text) and text[end] == '\n':
+            end += 1
+        return text[:end] + lines + text[end:]
+    block = '<script>\n' + lines + '</script>\n'
+    head = text.lower().rfind('</head>')
+    if head != -1:
+        return text[:head] + block + text[head:]
     return block + text
 
 

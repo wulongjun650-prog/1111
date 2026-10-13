@@ -274,27 +274,16 @@ def _track_calls(text, html, name):
 def _calls_paired(text, html):
     for name in _EVENTS:
         for call_end in _track_calls(text, html, name):
-            if not _followed_by_send(text, call_end, name):
+            if not _followed_by_send(text, html, call_end, name):
                 return False
     return True
 
 
-def _followed_by_send(text, call_end, name):
-    """The beacon can sit after the page's own Google track() call."""
-    index = call_end
-    limit = min(len(text), call_end + 1600)
-    while index < limit:
-        index = _skip_space(text, index, limit)
-        if index >= limit:
-            return False
-        if text.startswith('track(', index) and _boundary(text, index):
-            nxt = _call_end(text, index + 5, limit)
-            if nxt is None:
-                return False
-            index = nxt
-            continue
-        return _starts_send(text, index, name)
-    return False
+def _followed_by_send(text, html, call_end, name):
+    """sendEvent(name) anywhere in the same function counts, even with a line between it and track()."""
+    span = _enclosing_span(text, html, call_end)
+    start, end = span if span is not None else (call_end, min(len(text), call_end + 1600))
+    return _contains_send(text, start, end, name)
 
 
 def _starts_send(text, index, name):
@@ -334,7 +323,7 @@ def _insert_track_calls(text, html):
     points = []
     for name in _EVENTS:
         for call_end in _track_calls(text, html, name):
-            if not _followed_by_send(text, call_end, name):
+            if not _followed_by_send(text, html, call_end, name):
                 points.append((call_end, name))
     for call_end, name in sorted(points, reverse=True):
         line = text.rfind('\n', 0, call_end) + 1
@@ -385,6 +374,43 @@ def _append_script(text, html, block):
         return text + '\n<script>' + block + '</script>\n'
     _start, end = regions[-1]
     return text[:end] + '\n' + block.strip('\n') + '\n' + text[end:]
+
+
+def _enclosing_span(text, html, pos):
+    closest = None
+    for index, region_end in _walk(text, html):
+        if not (text.startswith('function', index) and _boundary(text, index)):
+            continue
+        brace = text.find('{', index)
+        if brace < 0 or brace >= region_end or pos < brace:
+            continue
+        close = _brace_end(text, brace, region_end)
+        if close is None or pos > close:
+            continue
+        if closest is None or brace >= closest[0]:
+            closest = (brace, close + 1)
+    return closest
+
+
+def _contains_send(text, start, end, name):
+    index = start
+    while index < end:
+        step = _skip_noise(text, index, end)
+        if step is None:
+            return False
+        if step != index:
+            index = step
+            continue
+        if text[index] in '"\'`':
+            nxt = _skip_string(text, index, end)
+            if nxt < 0:
+                return False
+            index = nxt
+            continue
+        if text.startswith('sendEvent(', index) and _boundary(text, index) and _starts_send(text, index, name):
+            return True
+        index += 1
+    return False
 
 
 def _function_spans(text, html, name):

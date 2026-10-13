@@ -60,6 +60,24 @@ def test_old_page_gains_the_beacon_and_keeps_google_and_the_jump():
     assert again == updated and second['label'] == '植入成功'
 
 
+def test_a_line_between_track_and_send_is_already_implanted():
+    page = '''<!doctype html><script>
+const CONFIG = { whatsappNumber: "852", eventEndpoint: '', googleSendTo: 'AW-KEEP' };
+function track(name, params) {}
+function sendEvent(name, extra) {}
+function goWhatsApp() {
+  const txId = 't';
+  waAttempt = { t: Date.now(), placement: 'hero', left: false, linkType: 'universal', txId };
+  track('whatsapp_click', { event_label: 'hero' });
+  var keep = txId;
+  sendEvent("whatsapp_click", { transaction_id: txId });
+}
+</script>'''
+    updated, status = implant_text(page, True)
+    assert updated == page
+    assert status == {'state': 'ready', 'label': '已有植入代码'}
+
+
 def test_page_that_already_reports_is_left_byte_for_byte():
     updated, status = implant_text(NEW, True)
     assert updated == NEW
