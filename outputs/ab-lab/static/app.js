@@ -140,6 +140,33 @@ function toast(message, error = false) {
   if (!error) window.setTimeout(() => item.remove(), 6000);
 }
 
+function chooseKeptRecords(domain, watchers) {
+  const names = watchers.map(item => item.domain).filter(Boolean).join('、');
+  return new Promise(resolve => {
+    const dialog = element('dialog', 'confirm-dialog');
+    const title = element('h2', '', '彻底删除域名');
+    title.id = 'confirm-title';
+    dialog.setAttribute('aria-labelledby', title.id);
+    const text = element('p', '', `彻底删除 ${domain}？页面、证书和宝塔站点都会删掉，域名列表和上方的站点选择也会一起消失。`);
+    const note = element('p', '', `访问记录、请求记录、落地页事件和原始接收可以留在观察域名 ${names}。不保留的话，这些记录跟着删除。页面和号码不复制。观察域名上原来的记录不动。`);
+    const actions = element('div', 'actions');
+    const cancel = element('button', 'button secondary', '取消');
+    const drop = element('button', 'button secondary', '不保留');
+    const keep = element('button', 'button primary', '保留到观察域名');
+    const finish = value => { dialog.close(); dialog.remove(); resolve(value); };
+    cancel.type = drop.type = keep.type = 'button';
+    cancel.addEventListener('click', () => finish(null));
+    drop.addEventListener('click', () => finish(false));
+    keep.addEventListener('click', () => finish(true));
+    dialog.addEventListener('cancel', event => { event.preventDefault(); finish(null); });
+    actions.append(cancel, drop, keep);
+    dialog.append(title, text, note, actions);
+    document.body.append(dialog);
+    dialog.showModal();
+    cancel.focus();
+  });
+}
+
 function confirmAction(message) {
   return new Promise(resolve => {
     const dialog = element('dialog', 'confirm-dialog');
@@ -1567,10 +1594,19 @@ function renderDomains() {
     },'text-button small'));
     if (isAdmin(account)) actions.append(actionButton(site.mirror_source ? '调整观察' : '设为观察', () => bindMirror(site), 'text-button small'));
     if (isAdmin(account) && site.id !== 'default') actions.append(actionButton('彻底删除',async()=>{
-      if (!await confirmAction(`彻底删除 ${site.domain}？页面、证书、访问记录和宝塔站点都会删掉，域名列表和上方的站点选择也会一起消失，删了不能恢复。`)) return;
-      const result = await api(`/api/sites/${site.id}`,{method:'DELETE'});
+      const watchers = (catalog?.sites || []).filter(item => item.observer_account && item.id !== site.id);
+      let keep = false;
+      if (watchers.length && !site.observer_account) {
+        const choice = await chooseKeptRecords(site.domain || '这个域名', watchers);
+        if (choice === null) return;
+        keep = choice;
+      } else if (!await confirmAction(`彻底删除 ${site.domain}？页面、证书、访问记录和宝塔站点都会删掉，域名列表和上方的站点选择也会一起消失，删了不能恢复。`)) return;
+      const result = await api(`/api/sites/${site.id}?keep_records=${keep ? 'true' : 'false'}`,{method:'DELETE'});
       await loadDomains();
-      toast(result.cloudflare_warning ? `已彻底删除 ${result.domain}。${result.cloudflare_warning}` : `已彻底删除 ${result.domain}。列表和站点选择里都没有它了。`, Boolean(result.cloudflare_warning));
+      const kept = (result.kept || []).map(item => item.domain).filter(Boolean).join('、');
+      const keptNote = kept ? `访问记录已留在 ${kept}。` : '';
+      const warning = result.cloudflare_warning ? `${result.cloudflare_warning}` : '';
+      toast([`已彻底删除 ${result.domain}。`, keptNote, warning].filter(Boolean).join(''), Boolean(warning));
     },'text-button small danger'));
     row.append(name,health,validation,created,note,availability,actions); body.append(row);
   }

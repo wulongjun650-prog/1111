@@ -160,6 +160,18 @@ class Store:
             access_columns = {row['name'] for row in db.execute('PRAGMA table_info(access_log)')}
             if 'ip' not in access_columns:
                 db.execute("ALTER TABLE access_log ADD COLUMN ip TEXT NOT NULL DEFAULT ''")
+            # Kept rows are copies saved when a domain is deleted. The landing
+            # process never writes these tables, so its retention pass cannot drop them.
+            db.executescript('''
+                CREATE TABLE IF NOT EXISTS kept_events(id INTEGER PRIMARY KEY, created REAL NOT NULL, ip TEXT NOT NULL, country TEXT, device TEXT NOT NULL, slot TEXT NOT NULL, reason TEXT NOT NULL, path TEXT NOT NULL, mode TEXT NOT NULL, device_details TEXT);
+                CREATE INDEX IF NOT EXISTS kept_events_created ON kept_events(created);
+                CREATE TABLE IF NOT EXISTS kept_access_log(id INTEGER PRIMARY KEY, created REAL NOT NULL, ua TEXT NOT NULL, ch_ua TEXT NOT NULL, ch_platform TEXT NOT NULL, ch_platform_version TEXT NOT NULL, ch_mobile TEXT NOT NULL, referer TEXT NOT NULL, query TEXT NOT NULL, wa_number TEXT NOT NULL, cf_cache_status TEXT NOT NULL, country TEXT, city TEXT NOT NULL, status INTEGER NOT NULL, duration_ms INTEGER NOT NULL, path TEXT NOT NULL, ip TEXT NOT NULL DEFAULT '');
+                CREATE INDEX IF NOT EXISTS kept_access_created ON kept_access_log(created);
+                CREATE TABLE IF NOT EXISTS kept_client_events(id INTEGER PRIMARY KEY, created REAL NOT NULL, body TEXT NOT NULL, origin TEXT NOT NULL DEFAULT '');
+                CREATE INDEX IF NOT EXISTS kept_client_events_created ON kept_client_events(created);
+                CREATE TABLE IF NOT EXISTS kept_intake_log(id INTEGER PRIMARY KEY, created REAL NOT NULL, ip TEXT NOT NULL, ua TEXT NOT NULL, origin TEXT NOT NULL, referer TEXT NOT NULL, content_type TEXT NOT NULL, body_length INTEGER NOT NULL, body TEXT NOT NULL, status INTEGER NOT NULL, reason TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS kept_intake_created ON kept_intake_log(created);
+            ''')
             db.execute('INSERT OR IGNORE INTO settings VALUES(1,?,0,?)', (Config().model_dump_json(), secrets.token_hex(32)))
             db.executemany('INSERT OR IGNORE INTO slots(slot) VALUES(?)', [('A',), ('B',)])
             self.secret = db.execute('SELECT secret FROM settings WHERE id=1').fetchone()[0].encode()
@@ -988,28 +1000,56 @@ class Store:
             db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode,device_details) VALUES(?,?,?,?,?,?,?,?,?)', (time.time(), exact, country, decision['device'], decision['slot'], decision['reason'], path[:512], mode, json.dumps(details, ensure_ascii=False) if details else None))
             db.execute('DELETE FROM events WHERE created<? OR id <= (SELECT MAX(id)-10000 FROM events)', (time.time() - 30 * 86400,))
 
-    def recent_count(self, seconds=60):
-        with self.connect() as db:
-            return db.execute('SELECT COUNT(*) FROM events WHERE created>=?', (time.time() - seconds,)).fetchone()[0]
+    def _reading(self, db, table, only_kept):
+        """Live rows, or live rows plus copies kept from a deleted domain."""
+        kept = 'kept_' + table
+        has_kept = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (kept,)).fetchone()
+        if only_kept:
+            if not has_kept:
+                return None
+            names = [row['name'] for row in db.execute(f'PRAGMA table_info({kept})')]
+            listed = ','.join(names)
+            return f'(SELECT {listed} FROM {kept})'
+        if not has_kept:
+            return table
+        shared = [row['name'] for row in db.execute(f'PRAGMA table_info({table})')]
+        kept_names = {row['name'] for row in db.execute(f'PRAGMA table_info({kept})')}
+        shared = [name for name in shared if name in kept_names]
+        listed = ','.join(shared)
+        return f'(SELECT {listed} FROM {table} UNION ALL SELECT {listed} FROM {kept})'
 
-    def logs(self, days=7, slot='', page=1, page_size=25):
+    def recent_count(self, seconds=60, only_kept=False):
+        with self.connect() as db:
+            relation = self._reading(db, 'events', only_kept)
+            if relation is None:
+                return 0
+            return db.execute(f'SELECT COUNT(*) FROM {relation} WHERE created>=?', (time.time() - seconds,)).fetchone()[0]
+
+    def logs(self, days=7, slot='', page=1, page_size=25, only_kept=False):
         where = 'created>=?'
         args = [time.time() - days * 86400]
         if slot:
             where += ' AND slot=?'
             args.append(slot)
         with self.connect() as db:
-            total = db.execute('SELECT COUNT(*) FROM events WHERE ' + where, args).fetchone()[0]
-            rows = db.execute('SELECT * FROM events WHERE ' + where + ' ORDER BY id DESC LIMIT ? OFFSET ?', args + [page_size, (page - 1) * page_size]).fetchall()
+            relation = self._reading(db, 'events', only_kept)
+            if relation is None:
+                return {'items': [], 'total': 0, 'page': page, 'pages': 1}
+            total = db.execute(f'SELECT COUNT(*) FROM {relation} WHERE {where}', args).fetchone()[0]
+            order = 'created DESC, id DESC' if only_kept or relation != 'events' else 'id DESC'
+            rows = db.execute(f'SELECT * FROM {relation} WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?', args + [page_size, (page - 1) * page_size]).fetchall()
             items = [dict(row) for row in rows]
             for item in items:
-                item['device_details'] = json.loads(item['device_details']) if item['device_details'] else None
+                item['device_details'] = json.loads(item['device_details']) if item.get('device_details') else None
             return {'items': items, 'total': total, 'page': page, 'pages': max(1, (total + page_size - 1) // page_size)}
 
-    def stats(self):
+    def stats(self, only_kept=False):
         midnight = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
         with self.connect() as db:
-            row = db.execute("SELECT COUNT(*) total,COALESCE(SUM(slot='B'),0) allowed,COALESCE(SUM(slot='A'),0) blocked,COALESCE(SUM(created>=?),0) today FROM events WHERE created>=?", (midnight, time.time() - 30 * 86400)).fetchone()
+            relation = self._reading(db, 'events', only_kept)
+            if relation is None:
+                return {'total': 0, 'allowed': 0, 'blocked': 0, 'today': 0}
+            row = db.execute(f"SELECT COUNT(*) total,COALESCE(SUM(slot='B'),0) allowed,COALESCE(SUM(slot='A'),0) blocked,COALESCE(SUM(created>=?),0) today FROM {relation} WHERE created>=?", (midnight, time.time() - 30 * 86400)).fetchone()
             return dict(row)
 
     def audit(self):
@@ -1035,7 +1075,7 @@ class Store:
             if latest and latest % 200 == 0:
                 db.execute('DELETE FROM client_events WHERE created<?', (time.time() - 90 * 86400,))
 
-    def access_report(self, days=7, country=None, domain='', rename_from=''):
+    def access_report(self, days=7, country=None, domain='', rename_from='', only_kept=False):
         """Plain-text weekly export. Days are Hong Kong dates. Counts are requests."""
         since = time.time() - days * 86400
         where, args = 'created>=?', [since]
@@ -1043,15 +1083,20 @@ class Store:
             where += ' AND country=?'
             args.append(country)
         with self.connect() as db:
-            ua_rows = db.execute(f'SELECT ua, COUNT(*) n FROM access_log WHERE {where} GROUP BY ua ORDER BY n DESC, ua', args).fetchall()
-            cross = db.execute(f'''SELECT date(created, 'unixepoch', '+8 hours') day,
-                    CASE WHEN instr(ua, 'wv)')>0 THEN 1 ELSE 0 END wv,
-                    CASE WHEN (instr(lower(ua), 'iphone')>0 OR instr(lower(ua), 'ipad')>0 OR instr(lower(ua), 'ipod')>0) AND instr(ua, 'Safari/')=0 THEN 1 ELSE 0 END ios_no_safari,
-                    CASE WHEN instr(lower(query), 'gclid=')>0 THEN 1 ELSE 0 END gclid,
-                    CASE WHEN instr(lower(query), 'placement=')>0 THEN 1 ELSE 0 END placement,
-                    COUNT(*) n
-                FROM access_log WHERE {where} GROUP BY 1,2,3,4,5 ORDER BY 1,2,3,4,5''', args).fetchall()
-            events = [dict(row) for row in db.execute('SELECT created, body, origin FROM client_events WHERE created>=? ORDER BY id', (since,))]
+            access = self._reading(db, 'access_log', only_kept)
+            clients = self._reading(db, 'client_events', only_kept)
+            if access is None or clients is None:
+                ua_rows, cross, events = [], [], []
+            else:
+                ua_rows = db.execute(f'SELECT ua, COUNT(*) n FROM {access} WHERE {where} GROUP BY ua ORDER BY n DESC, ua', args).fetchall()
+                cross = db.execute(f'''SELECT date(created, 'unixepoch', '+8 hours') day,
+                        CASE WHEN instr(ua, 'wv)')>0 THEN 1 ELSE 0 END wv,
+                        CASE WHEN (instr(lower(ua), 'iphone')>0 OR instr(lower(ua), 'ipad')>0 OR instr(lower(ua), 'ipod')>0) AND instr(ua, 'Safari/')=0 THEN 1 ELSE 0 END ios_no_safari,
+                        CASE WHEN instr(lower(query), 'gclid=')>0 THEN 1 ELSE 0 END gclid,
+                        CASE WHEN instr(lower(query), 'placement=')>0 THEN 1 ELSE 0 END placement,
+                        COUNT(*) n
+                    FROM {access} WHERE {where} GROUP BY 1,2,3,4,5 ORDER BY 1,2,3,4,5''', args).fetchall()
+                events = [dict(row) for row in db.execute(f'SELECT created, body, origin FROM {clients} WHERE created>=? ORDER BY id', (since,))]
         if rename_from and domain and rename_from != domain:
             for row in events:
                 row['origin'] = (row.get('origin') or '').replace(rename_from, domain)
@@ -1078,16 +1123,22 @@ class Store:
         lines.extend(jump_event_lines(events, domain))
         return '\n'.join(lines) + '\n'
 
-    def recent_access(self, since, limit):
+    def recent_access(self, since, limit, only_kept=False):
         with self.connect() as db:
-            total = db.execute('SELECT COUNT(*) FROM access_log WHERE created>=?', (since,)).fetchone()[0]
-            rows = db.execute('''SELECT created,ua,ch_ua,ch_platform,ch_platform_version,ch_mobile,referer,query,wa_number,cf_cache_status,country,city,status,duration_ms,path
-                FROM access_log WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?''', (since, limit)).fetchall()
+            relation = self._reading(db, 'access_log', only_kept)
+            if relation is None:
+                return 0, []
+            total = db.execute(f'SELECT COUNT(*) FROM {relation} WHERE created>=?', (since,)).fetchone()[0]
+            rows = db.execute(f'''SELECT created,ua,ch_ua,ch_platform,ch_platform_version,ch_mobile,referer,query,wa_number,cf_cache_status,country,city,status,duration_ms,path
+                FROM {relation} WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?''', (since, limit)).fetchall()
         return total, [dict(row) for row in rows]
 
-    def campaign_access(self, since, until):
+    def campaign_access(self, since, until, only_kept=False):
         with self.connect() as db:
-            rows = db.execute('SELECT created, ua, query, path, ip, referer, wa_number FROM access_log WHERE created>=? AND created<?', (since, until)).fetchall()
+            relation = self._reading(db, 'access_log', only_kept)
+            if relation is None:
+                return []
+            rows = db.execute(f'SELECT created, ua, query, path, ip, referer, wa_number FROM {relation} WHERE created>=? AND created<?', (since, until)).fetchall()
         return [dict(row) for row in rows]
 
     def record_intake(self, ip, ua, origin, referer, content_type, body_length, body, status, reason):
@@ -1102,19 +1153,28 @@ class Store:
             if latest and latest % 200 == 0:
                 db.execute('DELETE FROM intake_log WHERE created<?', (time.time() - 90 * 86400,))
 
-    def intake_between(self, since, until):
+    def intake_between(self, since, until, only_kept=False):
         with self.connect() as db:
-            rows = db.execute('''SELECT id, created, ip, ua, origin, referer, content_type, body_length, body, status, reason
-                FROM intake_log WHERE created>=? AND created<? ORDER BY id''', (since, until)).fetchall()
+            relation = self._reading(db, 'intake_log', only_kept)
+            if relation is None:
+                return []
+            rows = db.execute(f'''SELECT id, created, ip, ua, origin, referer, content_type, body_length, body, status, reason
+                FROM {relation} WHERE created>=? AND created<? ORDER BY created, id''', (since, until)).fetchall()
         return [dict(row) for row in rows]
 
-    def campaign_events(self, since, until):
+    def campaign_events(self, since, until, only_kept=False):
         with self.connect() as db:
-            rows = db.execute('SELECT id, created, body, origin FROM client_events WHERE created>=? AND created<? ORDER BY id', (since, until)).fetchall()
+            relation = self._reading(db, 'client_events', only_kept)
+            if relation is None:
+                return []
+            rows = db.execute(f'SELECT id, created, body, origin FROM {relation} WHERE created>=? AND created<? ORDER BY created, id', (since, until)).fetchall()
         return [dict(row) for row in rows]
 
-    def recent_client_events(self, since, limit):
+    def recent_client_events(self, since, limit, only_kept=False):
         with self.connect() as db:
-            total = db.execute('SELECT COUNT(*) FROM client_events WHERE created>=?', (since,)).fetchone()[0]
-            rows = db.execute('SELECT created, body, origin FROM client_events WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?', (since, limit)).fetchall()
+            relation = self._reading(db, 'client_events', only_kept)
+            if relation is None:
+                return 0, []
+            total = db.execute(f'SELECT COUNT(*) FROM {relation} WHERE created>=?', (since,)).fetchone()[0]
+            rows = db.execute(f'SELECT created, body, origin FROM {relation} WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?', (since, limit)).fetchall()
         return total, [dict(row) for row in rows]

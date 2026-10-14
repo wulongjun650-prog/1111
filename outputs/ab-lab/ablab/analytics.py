@@ -42,54 +42,64 @@ def summarize(registry, site_id, period, scope, tz_offset, now, owner_id=None):
     summary = counts() | {'rate': 0.0, 'countries': 0, 'a': 0, 'b': 0}
     domains, countries, reasons, recent = [], {}, Counter(), []
 
+    comparison = '<' if period == 'yesterday' else '<='
+    from .preserve import kept_event_rows
+    from .web import shown_country
+
+    def own_db(site):
+        site_id = site['id']
+        if site_id != 'default' and not re.fullmatch('[a-f0-9]{32}', site_id):
+            raise ValueError('站点ID格式错误')
+        return (registry.root if site_id == 'default' else registry.root / 'sites' / site_id) / 'app.db'
+
     for site in sites:
-        if scope == 'all' and (site.get('mirror_source') or ''):
-            continue
+        mirror = bool((site.get('mirror_source') or '').strip())
         read_id = (site.get('mirror_source') or '').strip() or site['id']
         domain = {'id': site['id'], 'domain': site['domain'], **counts()}
         if read_id != 'default' and not re.fullmatch('[a-f0-9]{32}', read_id):
             raise ValueError('站点ID格式错误')
         db_path = (registry.root if read_id == 'default' else registry.root / 'sites' / read_id) / 'app.db'
-        if not db_path.exists():
-            domains.append(domain)
+        rows = []
+        # All-domains already counts a live source on its own row. A mirror only adds copies kept after a deletion.
+        if not (scope == 'all' and mirror) and db_path.exists():
+            with closing(sqlite3.connect(db_path.as_uri() + '?mode=ro', uri=True)) as db:
+                db.row_factory = sqlite3.Row
+                details_field = ('device_details' if any(row['name'] == 'device_details' for row in db.execute('PRAGMA table_info(events)'))
+                                 else 'NULL AS device_details')
+                rows.extend(dict(row) for row in db.execute(
+                    f'SELECT id,created,ip,country,device,slot,reason,path,mode,{details_field} '
+                    f'FROM events WHERE created>=? AND created{comparison}? ORDER BY created DESC,id DESC',
+                    (start, end),
+                ).fetchall())
+        rows.extend(kept_event_rows(own_db(site), start, end, comparison))
+        if scope == 'all' and mirror and not rows:
             continue
-        with closing(sqlite3.connect(db_path.as_uri() + '?mode=ro', uri=True)) as db:
-            db.row_factory = sqlite3.Row
-            comparison = '<' if period == 'yesterday' else '<='
-            details_field = ('device_details' if any(row['name'] == 'device_details' for row in db.execute('PRAGMA table_info(events)'))
-                             else 'NULL AS device_details')
-            rows = db.execute(
-                f'SELECT id,created,ip,country,device,slot,reason,path,mode,{details_field} '
-                f'FROM events WHERE created>=? AND created{comparison}? ORDER BY created DESC,id DESC',
-                (start, end),
-            )
-            from .web import shown_country
-            for row in rows:
-                item = dict(row)
-                item['country'] = shown_country(item.get('ip'), item.get('country'))
-                reason = item['reason']
-                outcome = 'allowed' if reason in ALLOWED else 'blocked' if reason in BLOCKED else 'other'
-                add(summary, outcome)
-                add(domain, outcome)
-                code = item['country']
-                if not isinstance(code, str) or not re.fullmatch('[A-Z]{2}', code) or code in ('XX', 'ZZ'):
-                    code = None
-                add(countries.setdefault(code, {'code': code, **counts()}), outcome)
-                if outcome == 'blocked':
-                    reasons[reason] += 1
-                if item['slot'] == 'A':
-                    summary['a'] += 1
-                elif item['slot'] == 'B':
-                    summary['b'] += 1
-                local = datetime.fromtimestamp(item['created'], zone)
-                label = f'{local.hour:02d}:00' if hourly else local.date().isoformat()
-                add(trend[label], outcome)
-                if len(recent) < 8 or item['created'] > recent[-1]['created']:
-                    item['device_details'] = json.loads(item['device_details']) if item['device_details'] else None
-                    item.update(site_id=site['id'], domain=site['domain'], outcome=outcome)
-                    recent.append(item)
-                    recent.sort(key=lambda entry: (entry['created'], entry['id']), reverse=True)
-                    del recent[8:]
+        for row in rows:
+            item = dict(row)
+            item['country'] = shown_country(item.get('ip'), item.get('country'))
+            reason = item['reason']
+            outcome = 'allowed' if reason in ALLOWED else 'blocked' if reason in BLOCKED else 'other'
+            add(summary, outcome)
+            add(domain, outcome)
+            code = item['country']
+            if not isinstance(code, str) or not re.fullmatch('[A-Z]{2}', code) or code in ('XX', 'ZZ'):
+                code = None
+            add(countries.setdefault(code, {'code': code, **counts()}), outcome)
+            if outcome == 'blocked':
+                reasons[reason] += 1
+            if item['slot'] == 'A':
+                summary['a'] += 1
+            elif item['slot'] == 'B':
+                summary['b'] += 1
+            local = datetime.fromtimestamp(item['created'], zone)
+            label = f'{local.hour:02d}:00' if hourly else local.date().isoformat()
+            add(trend[label], outcome)
+            if len(recent) < 8 or item['created'] > recent[-1]['created']:
+                item['device_details'] = json.loads(item['device_details']) if item['device_details'] else None
+                item.update(site_id=site['id'], domain=site['domain'], outcome=outcome)
+                recent.append(item)
+                recent.sort(key=lambda entry: (entry['created'], entry['id']), reverse=True)
+                del recent[8:]
         domains.append(domain)
 
     summary['rate'] = round(100 * summary['allowed'] / summary['total'], 1) if summary['total'] else 0.0

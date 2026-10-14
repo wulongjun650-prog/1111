@@ -453,15 +453,20 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return registry.store(site_id)
 
     def records_of(site):
-        """Visit rows for a mirror are read from its source. The mirror's own pages stay put."""
+        """Visit rows for a mirror are read from its source. Kept copies stay on the observer domain."""
+        mirror_store = registry.store(site['id'])
         source_id = (site.get('mirror_source') or '').strip()
         if not source_id:
-            return registry.store(site['id']), False
+            return mirror_store, False
         try:
             registry.get(source_id)
         except KeyError:
-            return registry.store(site['id']), False
-        return registry.store(source_id), True
+            return mirror_store, False
+        source = registry.store(source_id)
+        from .preserve import PreservedView, has_kept
+        if has_kept(mirror_store):
+            return PreservedView(source, mirror_store), True
+        return source, True
 
     def source_domain_of(site):
         source_id = (site.get('mirror_source') or '').strip()
@@ -784,10 +789,25 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return {'site': registry.set_availability(site_id, action)}
 
     @app.delete('/api/sites/{site_id}')
-    def delete_site(site_id: str, request: Request):
+    def delete_site(site_id: str, request: Request, keep_records: bool = Query(default=False)):
         require_admin(request)
         if site_id == 'default':
             raise ValueError('原有站点不能删除')
+        site = registry.get(site_id)
+        kept = []
+        if keep_records:
+            if (site.get('observer_account') or '').strip() or (site.get('mirror_source') or '').strip():
+                raise ValueError('这是观察域名。它自己的记录会跟着删除，不能再保留到观察域名。')
+            observers = [item for item in registry.list() if (item.get('observer_account') or '').strip()]
+            if not observers:
+                raise ValueError('还没有观察域名，访问记录没法保留。')
+            from .preserve import keep_visit_records
+            source_store = registry.store(site_id)
+            source_domain = site.get('domain') or ''
+            for observer in observers:
+                counts = keep_visit_records(source_store, registry.store(observer['id']), source_domain, observer.get('domain') or '')
+                kept.append({'domain': observer.get('domain') or '', **counts})
+        registry.detach_source(site_id)
         snapshot = registry.remove(site_id)
         warning = ''
         zone_id = snapshot.get('cf_zone_id') or ''
@@ -801,7 +821,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         queue_erasure(registry.root, dict(snapshot, cf_zone_id=zone_id))
         if snapshot.get('_wipe_failed'):
             warning = (warning + ' ' if warning else '') + '部分文件将由服务器继续清理。'
-        return {'ok': True, 'domain': snapshot['domain'], 'cloudflare_warning': warning}
+        return {'ok': True, 'domain': snapshot['domain'], 'cloudflare_warning': warning, 'kept': kept}
 
     @app.post('/api/sites/{site_id}/provision/{action}')
     def provision_control(site_id: str, action: Literal['pause', 'retry'], request: Request):
