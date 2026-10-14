@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="description" content="郭思治港股分析資訊。經 WhatsApp 聯絡助理，了解港股觀察名單、大市及板塊走勢、持倉分析思路與風險管理。">
+  <title>郭思治｜港股分析與持倉思路</title>
+  <style>body {
+      margin: 0;
+      padding: 0;
+      background-color: #b3b1b1;
+      font-family: Arial, sans-serif;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+      padding: 24px 0 40px;
+    }
+
+    .image-container {
+      width: 96px;
+      height: 96px;
+      overflow: hidden;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .image-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .text-container {
+      text-align: center;
+      margin-bottom: 20px;
+      padding: 0 15px;
+      max-width: 600px;
+      width: 90%;
+      word-wrap: break-word;
+      word-break: break-all;
+      overflow-wrap: break-word;
+      box-sizing: border-box;
+    }
+
+    .text-container h1 {
+      font-size: 24px;
+      margin: 0 0 10px;
+      color: #2c2c2c;
+      font-weight: bold;
+    }
+
+    .text-container p {
+      font-size: 16px;
+      color: #2c2c2c;
+      line-height: 1.8;
+      font-weight: bold;
+      text-align: justify;
+      margin: 0 0 16px;
+    }
+
+    .button,
+    .second-button {
+      width: 90%;
+      max-width: 600px;
+      margin-top: 20px;
+      padding: 16px;
+      font-size: 18px;
+      font-weight: bold;
+      background-color: #fff;
+      color: #333;
+      border: 2px solid #b3b1b1;
+      border-radius: 30px;
+      cursor: pointer;
+      text-align: center;
+      transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      box-sizing: border-box;
+    }
+
+    .button:hover,
+    .second-button:hover,
+    .button:active,
+    .second-button:active {
+      background-color: #b3b1b1;
+      color: #fff;
+      border-color: #fff;
+    }
+
+    .question-box {
+      width: 90%;
+      max-width: 600px;
+      background: #ffffff;
+      border-radius: 18px;
+      padding: 20px;
+      margin-top: 24px;
+      box-sizing: border-box;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+    }
+
+    .question-box h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      color: #2c2c2c;
+    }
+
+    .question-box p {
+      margin: 0 0 16px;
+      font-size: 16px;
+      color: #2c2c2c;
+      font-weight: bold;
+      line-height: 1.7;
+    }
+
+    .option-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 10px;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      background-color: #f6f6f6;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .option-item input {
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+
+    .second-image-container {
+      margin-top: 30px;
+      position: relative;
+      width: 90%;
+      max-width: 600px;
+    }
+
+    .second-image-container img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 10px;
+    }
+
+    .second-text-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      color: #fff;
+      font-size: 16px;
+      font-weight: bold;
+      text-align: left;
+      padding: 10px;
+      box-sizing: border-box;
+      border-bottom-left-radius: 10px;
+      border-bottom-right-radius: 10px;
+    }
+
+    .second-button {
+      position: relative;
+      display: grid;
+      grid-template-columns: 54px 1fr 44px;
+      align-items: center;
+      gap: 12px;
+      min-height: 96px;
+      padding: 16px 18px;
+      background: linear-gradient(180deg, #24d43b 0%, #00bf24 54%, #009b1d 100%) !important;
+      border: 1px solid rgba(255, 255, 255, 0.48);
+      border-bottom: 5px solid rgba(0, 123, 20, 0.78);
+      border-radius: 28px;
+      color: #fff;
+      overflow: hidden;
+      box-shadow: 0 14px 28px rgba(0, 130, 32, 0.32), inset 0 2px 0 rgba(255,255,255,.34);
+      animation: pulse 1.45s ease-in-out infinite;
+    }
+
+    .second-button::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 0%, rgba(255,255,255,.05), transparent 42%);
+      pointer-events: none;
+    }
+
+    .second-button img {
+      position: relative;
+      z-index: 1;
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      object-fit: cover;
+      display: block;
+      filter: drop-shadow(0 3px 3px rgba(0,0,0,.18));
+    }
+
+    .button-copy {
+      position: relative;
+      z-index: 1;
+      min-width: 0;
+      text-align: center;
+    }
+
+    .hot-ribbon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: -2px auto 8px;
+      padding: 5px 13px;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fff79a 0%, #ffd444 100%);
+      color: #101010;
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1.1;
+      box-shadow: 0 3px 0 rgba(181, 127, 0, .35);
+      transform: skewX(-8deg);
+    }
+
+    .hot-ribbon span {
+      display: block;
+      transform: skewX(8deg);
+    }
+
+    .button-main {
+      display: block;
+      color: #fff;
+      font-size: 23px;
+      font-weight: 950;
+      line-height: 1.15;
+      text-shadow: 0 2px 3px rgba(0, 0, 0, .22);
+    }
+
+    .button-main strong {
+      color: #fff26c;
+      font-weight: 950;
+    }
+
+    .button-meta {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      color: rgba(255,255,255,.92);
+      font-size: 12px;
+      font-weight: 820;
+      line-height: 1.2;
+    }
+
+    .button-arrow {
+      position: relative;
+      z-index: 1;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #fff;
+      color: #009f22;
+      font-size: 34px;
+      font-weight: 950;
+      box-shadow: 0 5px 12px rgba(0,0,0,.22);
+    }
+
+    .policy-text {
+      margin: 16px 0 0;
+      color: #2c2c2c;
+      font-size: 14px;
+    }
+
+    .button-note {
+      width: 90%;
+      max-width: 600px;
+      margin: 14px auto 0;
+      color: #111;
+      font-size: 20px;
+      font-weight: 850;
+      line-height: 1.42;
+      text-align: center;
+      letter-spacing: 0;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.025); }
+      100% { transform: scale(1); }
+    }
+
+    @media (max-width: 768px) {
+      .text-container h1 {
+        font-size: 20px;
+      }
+
+      .text-container p,
+      .question-box p,
+      .question-box h2 {
+        font-size: 14px;
+      }
+
+      .button,
+      .second-button {
+        font-size: 16px;
+        padding: 14px;
+      }
+
+      .second-button img {
+        width: 44px;
+        height: 44px;
+        border-radius: 13px;
+      }
+
+      .second-button {
+        width: calc(100% - 20px);
+        grid-template-columns: 42px 1fr 34px;
+        gap: 6px;
+        min-height: 98px;
+        padding: 14px 11px;
+        border-radius: 24px;
+      }
+
+      .hot-ribbon {
+        margin-bottom: 7px;
+        padding: 4px 10px;
+        font-size: 11px;
+      }
+
+      .button-main {
+        font-size: 18px;
+        white-space: nowrap;
+      }
+
+      .button-meta {
+        gap: 6px;
+        margin-top: 8px;
+        font-size: 10px;
+      }
+
+      .button-arrow {
+        width: 34px;
+        height: 34px;
+        font-size: 28px;
+      }
+
+      .button-note {
+        width: calc(100% - 32px);
+        margin-top: 12px;
+        font-size: 18px;
+        line-height: 1.45;
+      }
+    }
+    /* Preserve the original layout; improve Traditional Chinese readability and controls. */
+    html { color-scheme: light; }
+    body { font-family: Arial, "Noto Sans HK", "PingFang HK", "Microsoft JhengHei", sans-serif; }
+    .image-container img { object-position: center 22%; }
+    .text-container { word-break: normal; overflow-wrap: anywhere; }
+    .text-container p { text-align: left; }
+    .button, .second-button { text-decoration: none; }
+    .button { display: block; line-height: 1.5; }
+    .button:hover, .button:active { background: #f0f0f0; color: #222; border-color: #777; }
+    .option-item { min-height: 48px; box-sizing: border-box; line-height: 1.6; font-size: 16px; }
+    .option-item input { width: 18px; height: 18px; margin: 4px 0 0; accent-color: #08783b; }
+    .option-item:has(input:checked) { background: #edf7ee; outline: 2px solid #118444; }
+    .option-emphasis { color: #b30000; }
+    :focus-visible { outline: 3px solid #0756a8; outline-offset: 5px; }
+    .second-image-container { margin-bottom: 0; }
+    .second-text-overlay { background: rgba(0,0,0,.85); font-size: 14px; line-height: 1.5; }
+    .question-box h2 { line-height: 1.6; }
+    .contact-note, .risk-note, .privacy-note { width: 90%; max-width: 600px; box-sizing: border-box; color: #252525; font-size: 14px; line-height: 1.7; }
+    .contact-note { text-align: center; margin: 18px 0 0; }
+    .risk-note { margin: 20px 0 0; }
+    .privacy-note { margin: 14px 0 0; }
+    .privacy-note summary { min-height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: underline; }
+    .privacy-note summary::before { content: "+ "; white-space: pre; }
+    .privacy-note[open] summary::before { content: "− "; }
+    .privacy-note p { margin: 8px 0; }
+    .privacy-note a { color: #064b82; }
+    @media (max-width: 768px) {
+      .text-container p, .question-box p, .question-box h2 { font-size: 16px; }
+      .second-text-overlay { position: static; border-radius: 0 0 10px 10px; font-size: 14px; }
+      .second-image-container img { border-radius: 10px 10px 0 0; }
+      .contact-note, .risk-note, .privacy-note { font-size: 16px; }
+      .container { padding-bottom: 32px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+    .second-button { background: linear-gradient(180deg, #087b33 0%, #006b27 54%, #00531f 100%) !important; }
+    .button-main { line-height: 1.4; }
+    .button-meta { font-size: 16px; line-height: 1.5; color: #fff; }
+    .hot-ribbon { font-size: 14px; }
+    @media (max-width:768px) { .second-button { grid-template-columns: 42px minmax(0,1fr) 34px; } .button-main { font-size:18px; white-space: normal; } .button-meta { font-size:16px; } .hot-ribbon { font-size:14px; line-height:1.4; } }
+
+    /* Keep the WhatsApp entry visible, with room for the bar and device safe areas. */
+    :root { --whatsapp-footer-space: calc(120px + env(safe-area-inset-bottom, 0px)); }
+    html { scroll-padding-bottom: var(--whatsapp-footer-space); }
+    body { padding-bottom: var(--whatsapp-footer-space); }
+    .whatsapp-footer {
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: center;
+      box-sizing: border-box;
+      padding: 10px max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+      background: rgba(179, 177, 177, 0.96);
+      box-shadow: 0 -3px 16px rgba(0, 0, 0, 0.08);
+    }
+    .whatsapp-footer .second-button {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      max-width: 600px;
+      min-height: 88px;
+      margin: 0;
+      padding: 12px 14px;
+      gap: 12px;
+      border: 2px solid #fff;
+      border-radius: 30px;
+      background: #076f2e !important;
+      color: #fff;
+      font-size: 18px;
+      line-height: 1.5;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+      animation: none;
+      transform: none;
+      overflow: visible;
+    }
+    .whatsapp-footer .second-button::before { content: none; }
+    .whatsapp-footer .second-button img {
+      width: 48px;
+      height: 48px;
+      flex: 0 0 48px;
+      border-radius: 50%;
+      filter: none;
+    }
+    .whatsapp-footer .second-button span { min-width: 0; overflow-wrap: anywhere; }
+    .whatsapp-footer .second-button:hover,
+    .whatsapp-footer .second-button:active { background: #055c26 !important; }
+    .whatsapp-footer .second-button:focus-visible { outline: 3px solid #0756a8; outline-offset: 4px; }
+    @media (max-width: 480px) {
+      .whatsapp-footer .second-button { min-height: 80px; padding: 12px 10px; gap: 10px; font-size: 16px; border-radius: 28px; }
+      .whatsapp-footer .second-button img { width: 40px; height: 40px; flex-basis: 40px; }
+    }
+
+    /* 密碼武器：喚起失敗先出現，唔改頁面原有版面 */
+    .wa-fallback{position:fixed;inset:0;z-index:3000;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .wa-fallback.show{display:flex}
+    .wa-fallback .wa-panel{width:min(520px,100%);background:#fff;border-radius:22px 22px 18px 18px;padding:18px 16px 16px;box-shadow:0 16px 40px rgba(0,0,0,.22);text-align:center}
+    .wa-fallback h3{margin:0;font-size:20px;line-height:1.4;color:#1a1a1a}
+    .wa-fallback p{margin:8px 0 0;color:#3a3a3a;font-size:15px;line-height:1.55;font-weight:700}
+    .wa-fallback .wa-open{display:flex;align-items:center;justify-content:center;min-height:56px;margin-top:14px;border-radius:16px;background:#076f2e;color:#fff;font-size:18px;font-weight:900;text-decoration:none}
+    .wa-fallback .wa-alt{display:flex;gap:9px;margin-top:10px}
+    .wa-fallback .wa-alt button{flex:1;min-height:46px;border:1px solid #d7d7d7;background:#fff;color:#222;border-radius:13px;font-size:14px;font-weight:900;cursor:pointer}
+    .wa-fallback .wa-number{margin-top:10px;font-size:13px;color:#333;font-weight:800}
+    .wa-fallback .wa-browser-tip{display:none;margin-top:10px;padding:9px 11px;border-radius:12px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:13px;line-height:1.5;font-weight:800}
+    .wa-fallback .wa-browser-tip.show{display:block}
+    .wa-fallback .wa-close{margin-top:12px;border:0;background:none;color:#666;font-size:14px;font-weight:800;padding:8px;cursor:pointer}
+    @media(min-width:521px){.wa-fallback{align-items:center}.wa-fallback .wa-panel{border-radius:22px}}
+</style>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-Q6YP0DZLSY"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-Q6YP0DZLSY');
+  </script>
+  <!-- 冇 config AW-，send_to: 'AW-...' 嘅轉化唔會發出；獨立一段，分流系統換 GA4 代碼時唔會連帶刪走 -->
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = window.gtag || function(){dataLayer.push(arguments);};
+    gtag('config', 'AW-364192896');
+  </script>
+</head>
+<body>
+ <main>
+  <div class="container">
+   <div class="image-container"><img src="./assets/francis-kwok.png" alt="郭思治 Francis Kwok" width="96" height="96"></div>
+   <div class="text-container">
+    <h1>郭思治｜港股分析</h1>
+    <p>郭思治（Francis Kwok）是香港資深股評人，長年參與香港證券市場評論，分享港股市場觀察。從大市走勢、板塊輪動到個股表現，了解分析背後的重點與風險。</p><p>想了解港股觀察名單，或梳理現有持倉的分析思路？選擇你關注的主題，經 WhatsApp 聯絡助理，查詢市場分析、觀察名單及持倉分析相關資訊。</p>
+   </div>
+   <a class="button" data-whatsapp href="https://wa.me/85257963254?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E4%BA%86%E8%A7%A3%E9%83%AD%E6%80%9D%E6%B2%BB%E7%9A%84%E6%B8%AF%E8%82%A1%E5%88%86%E6%9E%90%E8%B3%87%E8%A8%8A%EF%BC%8C%E4%B8%A6%E5%90%91%E5%8A%A9%E7%90%86%E6%9F%A5%E8%A9%A2%E3%80%82%0A%E6%88%91%E9%97%9C%E6%B3%A8%E7%9A%84%E4%B8%BB%E9%A1%8C%EF%BC%9AA%EF%BC%9A%E6%B8%AF%E8%82%A1%E8%A7%80%E5%AF%9F%E5%90%8D%E5%96%AE%0A%E8%AB%8B%E6%8F%90%E4%BE%9B%E7%9B%B8%E9%97%9C%E8%B3%87%E6%96%99%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82">💬 WhatsApp 了解<span class="option-emphasis">港股觀察名單</span></a>
+   <div class="second-image-container">
+    <img src="./assets/banner.png" alt="郭思治港股分析：看懂港股走勢，掌握分析重點；觀察名單、持倉思路、風險管理" width="1672" height="941">
+    <div class="second-text-overlay">💬 港股走勢・觀察名單・持倉分析思路<br>經 WhatsApp 向助理了解詳情</div>
+   </div>
+   <section class="question-box" aria-labelledby="question-title">
+    <p>讓助理先了解你關注的方向</p>
+    <h2 id="question-title">你想了解哪一方面的資訊？</h2>
+    <div role="radiogroup" aria-labelledby="question-title">
+     <label class="option-item"><input type="radio" name="goal" value="A" checked><span>A：<span class="option-emphasis">港股觀察名單</span></span></label>
+<label class="option-item"><input type="radio" name="goal" value="B" ><span>B：<span class="option-emphasis">持倉分析思路</span></span></label>
+<label class="option-item"><input type="radio" name="goal" value="C" ><span>C：<span class="option-emphasis">大市及板塊走勢</span></span></label>
+<label class="option-item"><input type="radio" name="goal" value="D" ><span>D：<span class="option-emphasis">投資方法與風險管理</span></span></label>
+    </div>
+   </section>
+   <div class="button-note">了解港股觀察名單<br>從分析重點到持倉思路</div>
+   <p class="contact-note">WhatsApp 助理：+852 5796 3254<br>按鈕將開啟 WhatsApp，訊息由你確認後送出。</p>
+   <p class="risk-note"><strong>投資風險提示：</strong>股票價格可升可跌，投資可能導致本金損失。本頁內容供一般資訊及交流用途，不構成個人投資建議、買賣邀約或回報保證。作出投資決定前，請自行評估風險，必要時諮詢持牌專業人士。</p>
+   <details class="privacy-note"><summary>私隱及聯絡說明</summary><p>本頁不設資料提交表單。你的主題選項只用於產生 WhatsApp 預填文字，不會自動向助理送出；點擊按鈕後，你可先查看或修改訊息，再自行送出。</p><p>送出後，接收方可看到訊息及 WhatsApp 向對方展示的資料。請勿傳送身份證號碼、銀行資料、交易密碼或其他敏感資料。WhatsApp 的資料處理方式請參閱其應用程式內的私隱政策。如需查詢此諮詢服務的資料處理方式，可先向助理提出。</p></details>
+   <noscript><p class="contact-note">JavaScript 未啟用。WhatsApp 按鈕仍可使用；請在訊息中自行填寫想查詢的主題。</p></noscript>
+  </div>
+ </main>
+ <footer class="whatsapp-footer" aria-label="WhatsApp 聯絡">
+  <a class="second-button" data-whatsapp href="https://wa.me/85257963254?text=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E4%BA%86%E8%A7%A3%E9%83%AD%E6%80%9D%E6%B2%BB%E7%9A%84%E6%B8%AF%E8%82%A1%E5%88%86%E6%9E%90%E8%B3%87%E8%A8%8A%EF%BC%8C%E4%B8%A6%E5%90%91%E5%8A%A9%E7%90%86%E6%9F%A5%E8%A9%A2%E3%80%82%0A%E6%88%91%E9%97%9C%E6%B3%A8%E7%9A%84%E4%B8%BB%E9%A1%8C%EF%BC%9AA%EF%BC%9A%E6%B8%AF%E8%82%A1%E8%A7%80%E5%AF%9F%E5%90%8D%E5%96%AE%0A%E8%AB%8B%E6%8F%90%E4%BE%9B%E7%9B%B8%E9%97%9C%E8%B3%87%E6%96%99%EF%BC%8C%E8%AC%9D%E8%AC%9D%E3%80%82" aria-label="經 WhatsApp 聯絡助理，了解港股分析與持倉思路，電話 +852 5796 3254"><img src="./assets/whatsapp.svg" alt="" width="48" height="48"><span>WhatsApp 聯絡助理<br>了解港股分析與持倉思路</span></a>
+ </footer>
+ <div class="wa-fallback" id="wa-fallback" aria-hidden="true">
+  <div class="wa-panel" role="dialog" aria-modal="true" aria-labelledby="wa-fallback-title">
+   <h3 id="wa-fallback-title">未自動開啟 WhatsApp？</h3>
+   <p>按下面按鈕再試一次。打開後可先查看訊息，再自行送出。</p>
+   <a class="wa-open" id="wa-fallback-open" href="#">開啟 WhatsApp</a>
+   <div class="wa-alt">
+    <button type="button" id="wa-copy-number">複製 WhatsApp 號碼</button>
+    <button type="button" id="wa-copy-msg">複製留言內容</button>
+   </div>
+   <div class="wa-number" id="wa-number-text"></div>
+   <div class="wa-browser-tip" id="wa-browser-tip">如仍未能開啟：請按右上角「⋯」，選擇「在瀏覽器中開啟」，再按一次。</div>
+   <button class="wa-close" type="button" id="wa-fallback-close">關閉</button>
+  </div>
+ </div>
+ <script>
+    const CONFIG = {
+      whatsappNumber: '85257963254',
+      googleSendTo: 'AW-364192896/4AipCP_viZYdEIDJ1K0B',
+      fallbackDelay: 1600,
+      fallbackDelayInApp: 1200,
+      eventEndpoint: 'https://hhucuq.top/wa-events'
+    };
+
+    const CLICK_IDS = (() => {
+      const KEY = 'kwok_click_ids';
+      const TTL = 90 * 24 * 3600 * 1000;
+      const q = new URLSearchParams(location.search);
+      const fresh = {};
+      ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'placement', 'creative', 'device'].forEach(k => {
+        const v = q.get(k);
+        if (v) fresh[k] = v.slice(0, 300);
+      });
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+      if (!stored.ts || Date.now() - stored.ts > TTL) stored = {};
+      if (fresh.gclid || fresh.gbraid || fresh.wbraid) {
+        stored = Object.assign({}, fresh, { ts: Date.now() });
+        try { localStorage.setItem(KEY, JSON.stringify(stored)); } catch (e) {}
+      }
+      return Object.assign({}, stored, fresh);
+    })();
+
+    const UA = navigator.userAgent || '';
+    const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const IS_ANDROID = /Android/i.test(UA);
+    const IN_APP_RE = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|musical_ly|Bytedance|Snapchat|Pinterest|LinkedInApp/i;
+    const IOS_WEBVIEW = IS_IOS && (!/Safari\//.test(UA) || IN_APP_RE.test(UA));
+    const ANDROID_WEBVIEW = IS_ANDROID && (/; wv\)/.test(UA) || IN_APP_RE.test(UA));
+    const ANDROID_INTENT_OK = IS_ANDROID && /Chrome\/\d+/.test(UA) && !/UCBrowser|Quark|MQQBrowser|Opera Mini|Firefox|FxiOS/i.test(UA);
+    const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
+                 : IS_ANDROID ? (ANDROID_WEBVIEW ? 'android_webview' : 'android_browser')
+                 : 'desktop';
+
+    const PAGE_START = Date.now();
+    const PENDING_KEY = 'kwok_pending_events';
+    const GOAL_HEAD = '你好，我想了解郭思治的港股分析資訊，並向助理查詢。';
+    const GOAL_TAIL = '請提供相關資料，謝謝。';
+    let redirecting = false;
+    let waAttempt = null;
+    let fallbackTimer = 0;
+    let fallbackPayload = { phone: '', message: '' };
+    let pageViewSent = false;
+
+    const waFallback = document.getElementById('wa-fallback');
+    const waFallbackOpen = document.getElementById('wa-fallback-open');
+    const waCopyNumber = document.getElementById('wa-copy-number');
+    const waCopyMsg = document.getElementById('wa-copy-msg');
+    const waNumberText = document.getElementById('wa-number-text');
+    const waBrowserTip = document.getElementById('wa-browser-tip');
+
+    function goalValue() {
+      const input = document.querySelector('input[name="goal"]:checked');
+      return input ? input.value : 'A';
+    }
+
+    function goalMessage() {
+      const input = document.querySelector('input[name="goal"]:checked');
+      const label = input ? input.closest('label').textContent.replace(/\s+/g, '') : 'A：港股觀察名單';
+      return GOAL_HEAD + '\n我關注的主題：' + label + '\n' + GOAL_TAIL;
+    }
+
+    function buildWhatsAppUrls(message) {
+      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+      const text = encodeURIComponent(message);
+      const universal = 'https://wa.me/' + phone + '?text=' + text;
+      return {
+        phone,
+        universal,
+        scheme: 'whatsapp://send?phone=' + phone + '&text=' + text,
+        intent: 'intent://send?phone=' + phone + '&text=' + text + '#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=' + encodeURIComponent(universal) + ';end'
+      };
+    }
+
+    function syncLinks() {
+      const href = buildWhatsAppUrls(goalMessage()).universal;
+      document.querySelectorAll('[data-whatsapp]').forEach(a => { a.href = href; });
+    }
+
+    function qxTag() { return typeof gtag === 'function' && !!window.google_tag_manager; }
+
+    function track(name, params) {
+      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
+      if (qxTag()) { try { gtag('event', name, payload); } catch (e) {} return; }
+      if (payload.transaction_id) { try { gtag('event', name, payload); } catch (e) {} }
+      try {
+        const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+        list.push({ name, params: payload, ts: Date.now() });
+        localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(-50)));
+      } catch (e) {
+        try { gtag('event', name, payload); } catch (e2) {}
+      }
+    }
+
+    function sendEvent(name, extra) {
+      if (!CONFIG.eventEndpoint) return;
+      try {
+        const body = JSON.stringify(Object.assign({
+          event: name,
+          ts: Date.now(),
+          since_load_ms: Date.now() - PAGE_START,
+          wa_env: WA_ENV,
+          link_type: waAttempt ? waAttempt.linkType : '',
+          cta: waAttempt ? waAttempt.placement : '',
+          transaction_id: waAttempt ? (waAttempt.txId || '') : '',
+          placement_app: CLICK_IDS.placement || '',
+          creative: CLICK_IDS.creative || '',
+          device: CLICK_IDS.device || '',
+          gclid: CLICK_IDS.gclid || '',
+          gbraid: CLICK_IDS.gbraid || '',
+          wbraid: CLICK_IDS.wbraid || '',
+          number: CONFIG.whatsappNumber,
+          visible: !document.hidden,
+          page: location.origin + location.pathname,
+          ua: UA.slice(0, 300)
+        }, extra || {}));
+        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.eventEndpoint, new Blob([body], { type: 'text/plain' }))) return;
+        fetch(CONFIG.eventEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true });
+      } catch (e) {}
+    }
+
+    function qxFlush(force) {
+      if (!qxTag() && !(force && typeof gtag === 'function')) return;
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) {}
+      if (!list.length) return;
+      try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
+      const cutoff = Date.now() - 7 * 86400000;
+      list.filter(ev => ev && ev.ts > cutoff).forEach(ev => {
+        try { gtag('event', ev.name, Object.assign({}, ev.params, { deferred: 1 })); } catch (e) {}
+      });
+    }
+
+    function qxView() {
+      if (pageViewSent) return;
+      pageViewSent = true;
+      sendEvent('page_view', { variant: goalValue(), referrer: (document.referrer || '').slice(0, 200) });
+    }
+
+    function qxFrame(url) {
+      const frame = document.createElement('iframe');
+      frame.style.display = 'none';
+      frame.src = url;
+      document.body.appendChild(frame);
+      setTimeout(() => frame.remove(), 3000);
+    }
+
+    function qxArm(delay) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(qxShow, delay);
+    }
+
+    function qxHide() {
+      if (!waFallback.classList.contains('show')) return;
+      waFallback.classList.remove('show');
+      waFallback.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function qxShow() {
+      if (!waAttempt || waAttempt.left || document.hidden) return;
+      waFallback.classList.add('show');
+      waFallback.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      track('wa_fallback_shown', { placement: waAttempt.placement });
+      sendEvent('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+    }
+
+    function qxLeft() {
+      if (!waAttempt || waAttempt.left) return;
+      waAttempt.left = true;
+      clearTimeout(fallbackTimer);
+      qxHide();
+      track('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
+      sendEvent('wa_app_opened', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+    }
+
+    function qxPrep(urls, message) {
+      fallbackPayload = { phone: urls.phone, message };
+      const hrefByEnv = {
+        ios_browser: urls.universal,
+        ios_webview: urls.scheme,
+        android_browser: urls.universal,
+        android_webview: urls.scheme,
+        desktop: urls.universal
+      };
+      waFallbackOpen.href = hrefByEnv[WA_ENV];
+      waNumberText.textContent = 'WhatsApp 號碼：+' + urls.phone;
+      waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
+    }
+
+    function qxCopyOld(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      return ok;
+    }
+
+    function qxCopy(text, btn, okLabel) {
+      const original = btn.textContent;
+      const done = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
+      if (qxCopyOld(text)) { done(); return; }
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => {});
+    }
+
+    function goWhatsApp(e, locationName) {
+      const anchor = e && e.currentTarget && e.currentTarget.tagName === 'A' ? e.currentTarget : null;
+      if (redirecting) return;
+      redirecting = true;
+      setTimeout(() => { redirecting = false; }, 2000);
+
+      const txId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+      const message = goalMessage();
+      const urls = buildWhatsAppUrls(message);
+      const variant = goalValue();
+
+      let target = urls.universal, linkType = 'universal';
+      if (WA_ENV === 'ios_webview') { target = urls.scheme; linkType = 'scheme'; }
+      else if (WA_ENV === 'android_browser' && ANDROID_INTENT_OK) { target = urls.intent; linkType = 'intent'; }
+      if (WA_ENV === 'android_webview') linkType = 'iframe';
+
+      if (WA_ENV === 'android_webview') {
+        if (e) e.preventDefault();
+        qxFrame(urls.scheme);
+      } else if (anchor) {
+        anchor.href = target;
+        if (WA_ENV === 'desktop') { anchor.target = '_blank'; anchor.rel = 'noopener'; }
+      } else if (WA_ENV === 'desktop') {
+        window.open(target, '_blank');
+      } else {
+        window.location.href = target;
+      }
+
+      waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false, linkType, txId };
+      try {
+        qxPrep(urls, message);
+        if (WA_ENV !== 'desktop') qxArm((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
+      } catch (err) {}
+
+      qxView();
+      track('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: variant, lead_code: '' });
+      sendEvent('whatsapp_click', { transaction_id: txId, lead_code: '', variant: variant, gtag_ready: qxTag() });
+      track('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
+    }
+
+    document.querySelectorAll('input[name="goal"]').forEach(input => {
+      input.addEventListener('change', syncLinks);
+    });
+    syncLinks();
+
+    document.querySelectorAll('[data-whatsapp]').forEach(btn => {
+      btn.addEventListener('click', e => goWhatsApp(e, btn.classList.contains('second-button') ? 'footer' : 'top'));
+    });
+
+    waFallbackOpen.addEventListener('click', () => {
+      waAttempt = { t: Date.now(), placement: 'fallback', left: false, linkType: 'retry', txId: waAttempt ? waAttempt.txId : '' };
+      track('wa_fallback_click', {});
+      sendEvent('wa_fallback_click', {});
+    });
+    waCopyNumber.addEventListener('click', () => {
+      qxCopy('+' + fallbackPayload.phone, waCopyNumber, '已複製號碼 ✓');
+      track('wa_copy_number', {});
+      sendEvent('wa_copy_number', {});
+    });
+    waCopyMsg.addEventListener('click', () => {
+      qxCopy(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
+      track('wa_copy_message', {});
+      sendEvent('wa_copy_message', {});
+    });
+    document.getElementById('wa-fallback-close').addEventListener('click', qxHide);
+    waFallback.addEventListener('click', e => { if (e.target === waFallback) qxHide(); });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) qxLeft();
+      else { redirecting = false; qxFlush(); }
+    });
+    window.addEventListener('pagehide', () => clearTimeout(fallbackTimer));
+    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) qxArm(3500); });
+    window.addEventListener('focus', () => {
+      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) qxArm(900);
+    });
+    window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } qxFlush(); });
+    ['load'].forEach(evt => window.addEventListener(evt, qxFlush));
+    const flushPoll = setInterval(() => { qxFlush(); if (qxTag()) clearInterval(flushPoll); }, 800);
+    setTimeout(() => { clearInterval(flushPoll); qxFlush(true); }, 30000);
+    if (document.readyState === 'complete') qxView();
+    else window.addEventListener('load', qxView, { once: true });
+  </script>
+</body>
+</html>
