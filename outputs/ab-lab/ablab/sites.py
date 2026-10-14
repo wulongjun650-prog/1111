@@ -205,6 +205,12 @@ class Registry:
             return [dict(row) for row in db.execute(
                 'SELECT * FROM sites WHERE mirror_source=? ORDER BY created', (source_id,))]
 
+    def detach_source(self, site_id):
+        """Stop observer domains following this site. The observer account binding stays."""
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute("UPDATE sites SET mirror_source='' WHERE mirror_source=?", (site_id,))
+
     def bind_mirror(self, site_id, source_id, observer_id):
         """Tie one observer domain to one source domain, or clear both when they are empty."""
         source_id = source_id or ''

@@ -485,3 +485,74 @@ def test_follow_button_moves_the_observer_and_keeps_every_record(accounts):
     assert counts(old_store) == before['old']
     assert counts(new_store) == before['new']
     assert counts(watch_store) == before['watch']
+
+
+def test_deleting_a_domain_can_keep_its_visits_on_the_observer(accounts):
+    app, auth, owner, a, b, one, two = accounts
+    source = add(owner, 'old-source.test')
+    watch = add(owner, 'watch.test')
+    created = owner.post('/api/accounts', json={'username': 'keep-watcher', 'password': 'watch-password-ok', 'role': 'observer'})
+    assert created.status_code == 200, created.text
+    watcher_id = created.json()['account']['id']
+    bound = owner.put(f"/api/sites/{watch['id']}/mirror", json={'source_id': source['id'], 'observer_id': watcher_id})
+    assert bound.status_code == 200, bound.text
+    source_store = app.state.registry.store(source['id'])
+    watch_store = app.state.registry.store(watch['id'])
+    with source_store.connect() as db:
+        db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode,device_details) VALUES(?,?,?,?,?,?,?,?,?)',
+                   (time.time(), '203.0.113.9', 'HK', 'mobile', 'B', 'allowed', 'https://old-source.test/go', 'RULES', None))
+    with watch_store.connect() as db:
+        db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode,device_details) VALUES(?,?,?,?,?,?,?,?,?)',
+                   (time.time(), '203.0.113.8', 'HK', 'mobile', 'A', 'allowed', 'https://watch.test/own', 'RULES', None))
+    source_store.record_access('ua', '', '', '', '', 'https://old-source.test/', 'gclid=1', '852111', '', 'HK', '', 200, 1, '/')
+    source_store.record_client_event('{"event":"whatsapp_click","page":"https://old-source.test/go"}', 'old-source.test')
+    source_store.record_intake('203.0.113.9', 'ua', 'https://old-source.test', '', 'text/plain', 4, 'body', 200, '')
+    source_store.add_whatsapp_numbers(['85290001111'], '值班', 'Vivian')
+    assert owner.delete(f"/api/sites/{watch['id']}?keep_records=true").status_code == 400
+    assert app.state.registry.get(watch['id'])['domain'] == 'watch.test'
+
+    removed = owner.delete(f"/api/sites/{source['id']}?keep_records=true")
+    assert removed.status_code == 200, removed.text
+    body = removed.json()
+    assert body['kept'][0]['domain'] == 'watch.test'
+    assert body['kept'][0]['events'] == 1
+    assert body['kept'][0]['access_log'] == 1
+    assert body['kept'][0]['client_events'] == 1
+    assert body['kept'][0]['intake_log'] == 1
+    assert all(row['domain'] != 'old-source.test' for row in owner.get('/api/sites').json()['sites'])
+    kept_site = app.state.registry.get(watch['id'])
+    assert kept_site['mirror_source'] == ''
+    assert kept_site['observer_account'] == watcher_id
+    logs = watch_store.logs(7, '', 1, page_size=20)
+    assert logs['total'] == 2
+    paths = {item['path'] for item in logs['items']}
+    assert 'https://watch.test/go' in paths
+    assert 'https://watch.test/own' in paths
+    assert [item['phone'] for item in watch_store.whatsapp_numbers()] == []
+    with watch_store.connect() as db:
+        copied = db.execute('SELECT body, origin FROM kept_client_events').fetchone()
+        assert 'watch.test' in copied['body'] and 'old-source.test' not in copied['body']
+        assert copied['origin'] == 'watch.test'
+        assert db.execute('SELECT COUNT(*) FROM kept_access_log').fetchone()[0] == 1
+        assert db.execute('SELECT COUNT(*) FROM kept_intake_log').fetchone()[0] == 1
+
+    nxt = add(owner, 'new-source.test')
+    nxt_store = app.state.registry.store(nxt['id'])
+    with nxt_store.connect() as db:
+        db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode,device_details) VALUES(?,?,?,?,?,?,?,?,?)',
+                   (time.time(), '203.0.113.7', 'KR', 'mobile', 'B', 'allowed', 'https://new-source.test/', 'RULES', None))
+    rebound = owner.put(f"/api/sites/{watch['id']}/mirror", json={'source_id': nxt['id'], 'observer_id': watcher_id})
+    assert rebound.status_code == 200, rebound.text
+    shown = owner.get(f"/api/sites/{watch['id']}/logs?days=7")
+    assert shown.status_code == 200, shown.text
+    shown_paths = {item['path'] for item in shown.json()['items']}
+    assert 'https://watch.test/go' in shown_paths
+    assert any('new-source.test' not in path and path != 'https://watch.test/go' for path in shown_paths)
+    assert shown.json()['total'] == 2
+
+    other = add(owner, 'plain.test')
+    owner.put(f"/api/sites/{watch['id']}/mirror", json={'source_id': '', 'observer_id': ''})
+    refused = owner.delete(f"/api/sites/{other['id']}?keep_records=true")
+    assert refused.status_code == 400
+    assert '还没有观察域名' in refused.json()['detail']
+    assert app.state.registry.get(other['id'])['domain'] == 'plain.test'
