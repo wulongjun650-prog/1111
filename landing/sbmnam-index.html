@@ -132,7 +132,7 @@
       html.cta-below .hero-inner{display:flex;flex-direction:column}
       html.cta-below .hero-above{order:1}
       html.cta-below .slider-wrap,html.cta-below .slider-dots{order:2}
-      html.cta-below #hero-cta,html.cta-below #hero-cta-sub{order:3}
+      html.cta-below .join-ticker,html.cta-below #hero-cta,html.cta-below #hero-cta-sub{order:3}
       html.cta-below .hero-choice,html.cta-below .hero-qualify-note,html.cta-below .hero-proof{order:4}
       html.cta-below .lead-tap{display:none}
       html.cta-below .lead-scroll{display:inline}
@@ -161,9 +161,20 @@
     .cta.cta-top{margin-top:6px;min-height:68px;border-radius:17px;font-size:21px;background:linear-gradient(135deg,#ffa33a,#e8700f);animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite,cta-glow 1.8s ease-out infinite}
     @keyframes cta-glow{0%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 0 rgba(242,139,36,.55)}70%,100%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 11px rgba(242,139,36,0)}}
     @media (prefers-reduced-motion:reduce){.cta.cta-top{animation:none}}
-    .hero-cta-sub{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 12px;color:#1f7a45;font-size:15px;line-height:1.4;font-weight:900}
-    .hero-cta-sub i{flex:none;width:18px;height:18px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;font-size:11px;display:flex;align-items:center;justify-content:center}
-    .hero-cta-sub span{color:#9fb5a7}
+    .join-ticker{height:32px;overflow:hidden;margin:2px 0 8px}
+    .join-ticker-track{animation:join-roll 16s linear infinite}
+    .join-line{height:32px;display:flex;align-items:center;justify-content:center;gap:6px;color:#3a4558;font-size:13px;font-weight:800;white-space:nowrap}
+    .join-line i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--green)}
+    @keyframes join-roll{
+      0%,15%{transform:translateY(0)}
+      20%,35%{transform:translateY(-32px)}
+      40%,55%{transform:translateY(-64px)}
+      60%,75%{transform:translateY(-96px)}
+      80%,95%{transform:translateY(-128px)}
+      100%{transform:translateY(-160px)}
+    }
+    @media (prefers-reduced-motion:reduce){.join-ticker-track{animation:none}}
+    .hero-cta-sub{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 12px;color:var(--red);font-size:15px;line-height:1.4;font-weight:900}
     .hero-cta-sub[hidden]{display:none}
     .hero-choice{margin-top:10px;text-align:center;color:#5a6474;font-size:13px;line-height:1.5}
     .hero-qualify-note{text-align:center;margin:8px 0 0;color:#8a5a1f;font-size:14px;line-height:1.5;font-weight:800}
@@ -270,8 +281,18 @@
         </div>
         </div>
 
+        <div class="join-ticker" aria-hidden="true">
+          <div class="join-ticker-track">
+            <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
+            <div class="join-line"><i></i>黃太 · 8分鐘前入群一齊學</div>
+            <div class="join-line"><i></i>李生 · 12分鐘前領取名單並入群</div>
+            <div class="join-line"><i></i>張小姐 · 16分鐘前入群，拎咗心水名單</div>
+            <div class="join-line"><i></i>林生 · 21分鐘前加入，一齊學</div>
+            <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
+          </div>
+        </div>
         <a class="cta cta-top" href="https://wa.me/85265453614?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
-        <div class="hero-cta-sub" id="hero-cta-sub"><i>✓</i>完全免費<span>·</span>答 2 條簡單問題即收名單</div>
+        <div class="hero-cta-sub" id="hero-cta-sub">今日只剩 3 個名額</div>
 
         <div class="slider-wrap">
           <div class="slider" id="hero-slider" aria-label="今日精選分類">
@@ -566,11 +587,6 @@
     const receptionText = document.getElementById('reception-text');
 
     receptionText.textContent = `本次由助理${CONFIG.receptionist} 接待`;
-
-    // ABC、ABCABC 都冇問卷。CBA 先保留「答 2 條問題」。
-    if (PAGE_MODE === 'ABC' || PAGE_MODE === 'ABCABC') {
-      document.getElementById('hero-cta-sub').innerHTML = '<i>✓</i>完全免費<span>·</span>按一下即收名單';
-    }
 
     function makeLeadCode() {
       const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
