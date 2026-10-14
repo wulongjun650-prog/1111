@@ -198,6 +198,12 @@ class TrackingApply(StrictModel):
     expected_published: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
 
 
+class PageTitleUpdate(StrictModel):
+    slot: Literal['A', 'B']
+    title: str = Field(min_length=1, max_length=120, strict=True)
+    expected_published: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
+
+
 class DirectEntry(StrictModel):
     version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
     expected_published: str | None = Field(pattern=r'^[a-f0-9]{32}$')

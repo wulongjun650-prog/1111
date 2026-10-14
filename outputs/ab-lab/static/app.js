@@ -374,6 +374,71 @@ function paintSecretWeapon(mode) {
   }
 }
 
+let pageTitles = null;
+let pageTitleRequest = 0;
+let pageTitleSite = null;
+
+async function loadPageTitles() {
+  const request = ++pageTitleRequest;
+  const site = selectedSite;
+  if (pageTitleSite !== site) {
+    pageTitles = null;
+    pageTitleSite = null;
+    paintPageTitles();
+  }
+  const result = await api('/api/page-title');
+  if (request !== pageTitleRequest || site !== selectedSite) return;
+  pageTitleSite = site;
+  pageTitles = result.titles || null;
+  paintPageTitles();
+}
+
+function paintPageTitles() {
+  const root = $('#page-title-fields');
+  if (!root) return;
+  const locked = isObserver(account) || Boolean(state?.site?.mirror_source);
+  for (const slot of ['A', 'B']) {
+    let row = root.querySelector(`[data-title-slot="${slot}"]`);
+    const info = pageTitleSite === selectedSite ? (pageTitles?.[slot] || {version_id:'', title:''}) : {version_id:'', title:''};
+    if (!row) {
+      row = element('form', 'page-title-row');
+      row.dataset.titleSlot = slot;
+      const label = element('label', '', `${slot} 网站标题`);
+      const input = element('input');
+      input.name = 'title';
+      input.maxLength = 120;
+      input.placeholder = '例如 講經MAN｜10月14日港股名單';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      label.append(input);
+      const button = element('button', 'button secondary small', '保存标题');
+      button.type = 'submit';
+      const note = element('small', 'page-title-note', '');
+      row.append(label, button, note);
+      on(row, 'submit', async event => {
+        event.preventDefault();
+        const current = row.dataset.version;
+        if (!current) return;
+        const result = await api('/api/page-title', {method:'POST', body:{slot, title:input.value.trim(), expected_published:current}});
+        const cache = result.cloudflare;
+        const extra = cache ? (cache.ok ? 'Cloudflare 缓存已清掉。' : 'Cloudflare 缓存没清掉，请稍后再试。') : '';
+        toast(`${slot} 网站标题已改成「${result.title}」。${extra}`, Boolean(cache && !cache.ok));
+        await refreshState();
+      });
+      root.append(row);
+    }
+    const input = row.querySelector('input');
+    const published = Boolean(info.version_id);
+    if (document.activeElement !== input) input.value = info.title || '';
+    input.disabled = locked || !published;
+    row.querySelector('button').disabled = locked || !published;
+    row.dataset.version = info.version_id || '';
+    row.querySelector('small').textContent = locked && state?.site?.mirror_source
+      ? '观察域名跟着投放域名，请到投放域名上改标题。'
+      : published ? '只改这一页的标题，其他内容不动。' : '还没有发布页面。';
+  }
+}
+
 function renderState() {
   $$('.tab-panel').forEach(panel => { panel.inert = false; });
   $('#open-target').href = state.target_url;
@@ -395,7 +460,10 @@ function renderState() {
   renderSlots();
   bRedirects.update(state);
   renderLinks();
-  if (activeTab === 'content') tracking.load().catch(error => { if (!error.stale) toast(error.message || '统计代码读取失败。', true); });
+  if (activeTab === 'content') {
+    tracking.load().catch(error => { if (!error.stale) toast(error.message || '统计代码读取失败。', true); });
+    loadPageTitles().catch(error => { if (!error.stale) toast(error.message || '网站标题读取失败。', true); });
+  }
 }
 
 async function refreshState() {
@@ -1113,7 +1181,7 @@ async function selectTab(name, {load = true} = {}) {
   $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',desk:'WORK ORDERS',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',analysis:'DEEP ANALYSIS',campaign:'CAMPAIGN',speed:'SPEED',accounts:'ACCOUNTS'}[name];
   $('#page-title').textContent = labels[name][1]; $('#page-subtitle').textContent = labels[name][2];
   if (name !== 'content') closePreview();
-  else if (state) await tracking.load();
+  else if (state) await Promise.all([tracking.load(), loadPageTitles()]);
   await bRedirects.setActive(name === 'content');
   desk.setActive(name === 'desk');
   if (name === 'logs') await loadLogs();

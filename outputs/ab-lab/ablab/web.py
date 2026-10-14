@@ -27,7 +27,7 @@ from pydantic import Field
 
 from .archives import EDITABLE_EXTENSIONS, MAX_FILE, MAX_ZIP, editable_file, import_content, read_source, resolve_file, source_files
 from .analytics import summarize
-from .models import ConfigUpdate, ContactLinkApply, ContactLinkInput, DirectEntry, LinkInput, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput, WhatsAppReception, WhatsAppSplit
+from .models import ConfigUpdate, ContactLinkApply, ContactLinkInput, DirectEntry, LinkInput, PageTitleUpdate, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput, WhatsAppReception, WhatsAppSplit
 from .tracking import normalize_conversion, normalize_ga4
 from .linkcheck import LinkChecker
 from .watrust import PUBLIC_ORIGIN, TrustChecker, device_from_environ
@@ -1272,6 +1272,20 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         version = store.apply_tracking(body.slot, ga4['body'] if ga4 else None, conversion['body'] if conversion else None, body.expected_published)
         purged = after_site_change(site_id)
         return {'version': version, 'published': store.published_tracking(), 'cloudflare': purged}
+
+    @routes.get('/page-title')
+    def get_page_title(store=Depends(site_store)):
+        return {'titles': store.published_titles()}
+
+    @routes.post('/page-title')
+    def set_page_title(body: PageTitleUpdate, request: Request, store=Depends(site_store)):
+        site_id = guard_mirror(request)
+        version, title = store.apply_page_title(body.slot, body.title, body.expected_published)
+        result = {'version': version, 'title': title, 'titles': store.published_titles()}
+        purged = after_site_change(site_id)
+        if purged is not None:
+            result['cloudflare'] = purged
+        return result
 
     @routes.get('/source/{slot}/{version_id}')
     def get_source(slot: Slot, version_id: VersionId, path: str | None = None, store=Depends(site_store)):
