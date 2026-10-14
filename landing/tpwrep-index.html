@@ -466,15 +466,23 @@
       // 'ABC' = 取消選擇框，按領取按鈕直接跳 WhatsApp（同彈窗綠色按鈕一樣由 <a> 預設導航跳轉）
       // 'CBA' = 換回選擇框（填其他值或留空都當 'CBA'）
       directMode: 'ABC',
-      // 'scroll' = 手機首屏唔顯示領取按鈕，滑一滑先見到；'top' 或留空 = 首屏顯示。分流系統只改 directMode，唔會清走呢個值
+      // 只有 directMode 係 ABC 而且 heroButton 係 'scroll' 先係 ABCABC：手機要滑一滑先見到按鈕。
+      // directMode 係 ABC 但 heroButton 係 'top' 或留空，以及任何 CBA，一進手機就喺英雄區見到按鈕。
       heroButton: 'scroll',
       // 進線語入面嘅日期，每日更新數據時一併改
       listDate: '10月14日'
     };
 
-    if (String(CONFIG.heroButton || '').trim().toLowerCase() !== 'scroll') {
-      document.documentElement.classList.remove('cta-below');
-    }
+    (function () {
+      var mode = String(CONFIG.directMode || '').trim().toUpperCase();
+      var hero = String(CONFIG.heroButton || '').trim().toLowerCase();
+      var scroll = mode === 'ABC' && hero === 'scroll' && window.matchMedia('(max-width:860px)').matches;
+      document.documentElement.classList.toggle('cta-below', scroll);
+      if (!scroll) {
+        var btn = document.getElementById('hero-cta');
+        if (btn) btn.style.marginTop = '';
+      }
+    })();
 
     // ====== 廣告點擊 ID：首次帶參數進入時保存 90 日，之後冇參數再訪問都能對返 ======
     const CLICK_IDS = (() => {
