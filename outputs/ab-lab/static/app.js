@@ -140,6 +140,55 @@ function toast(message, error = false) {
   if (!error) window.setTimeout(() => item.remove(), 6000);
 }
 
+function isWatchDomain(site) {
+  const note = (site.note || '').trim();
+  return note === '观察' || note === '观察域名';
+}
+
+function confirmDeleteDomain(site, others) {
+  return new Promise(resolve => {
+    const dialog = element('dialog', 'confirm-dialog');
+    const title = element('h2', '', '确认删除');
+    title.id = 'confirm-title';
+    dialog.setAttribute('aria-labelledby', title.id);
+    const text = element('p', '', `彻底删除 ${site.domain}？页面、证书和宝塔站点会删掉，域名列表和上方的站点选择也会一起消失，删了不能恢复。`);
+    const choice = element('div', 'keep-choice');
+    const finish = value => { dialog.close(); dialog.remove(); resolve(value); };
+    if (!others.length) {
+      choice.append(element('p', 'subtle', '没有其他域名可留，访问记录会一起删除。'));
+    } else {
+      const row = element('label', 'check-row');
+      const box = element('input');
+      box.type = 'checkbox';
+      row.append(box, document.createTextNode('保留访问记录'));
+      const select = element('select');
+      select.setAttribute('aria-label', '留到观察域名');
+      for (const other of others) {
+        const option = element('option', '', `${other.domain || '原有本地站点'}${isWatchDomain(other) ? '（观察）' : ''}`);
+        option.value = other.id;
+        select.append(option);
+      }
+      const marked = others.find(isWatchDomain);
+      if (marked) select.value = marked.id;
+      select.disabled = true;
+      box.addEventListener('change', () => { select.disabled = !box.checked; });
+      choice.append(row, select, element('p', 'subtle', '勾选后，访问记录、请求日志和落地页事件留到所选域名。日志里会标明来自这个被删的域名。不勾选就一起删掉。'));
+      dialog._keep = () => (box.checked ? select.value : '');
+    }
+    const actions = element('div', 'actions');
+    const cancel = element('button', 'button secondary', '取消');
+    const accept = element('button', 'button primary', '确认删除');
+    cancel.addEventListener('click', () => finish(null));
+    accept.addEventListener('click', () => finish({ keepOn: dialog._keep ? dialog._keep() : '' }));
+    dialog.addEventListener('cancel', event => { event.preventDefault(); finish(null); });
+    actions.append(cancel, accept);
+    dialog.append(title, text, choice, actions);
+    document.body.append(dialog);
+    dialog.showModal();
+    cancel.focus();
+  });
+}
+
 function confirmAction(message) {
   return new Promise(resolve => {
     const dialog = element('dialog', 'confirm-dialog');
@@ -591,11 +640,12 @@ async function loadLogs(page = 1, {quiet = false} = {}) {
     logPage = data.page; logPages = Math.max(1, data.pages);
     const root = $('#logs-body'); root.replaceChildren();
     if (!data.items.length) {
-      const row = element('tr'); const cell = element('td', 'empty-state', `${domain} 还没有访问记录。`); cell.colSpan = 8; row.append(cell); root.append(row);
+      const row = element('tr'); const cell = element('td', 'empty-state', `${domain} 还没有访问记录。`); cell.colSpan = 9; row.append(cell); root.append(row);
     }
     for (const item of data.items) {
       const row = element('tr');
       row.append(element('td', '', formatDate(item.created)));
+      row.append(element('td', '', item.source_domain || '本站'));
       const country = element('td', 'country-name'); country.append(countryBadge(item.country)); row.append(country);
       row.append(element('td', 'ip-cell', visitAddress(item.ip)));
       const device = element('td', 'device-cell'); device.append(deviceBadge(item));
@@ -1418,10 +1468,14 @@ function renderDomains() {
       toast(result.cloudflare?.ok ? '已重新套用 Cloudflare 规则。' : (result.cloudflare?.detail || 'Cloudflare 未完成'), !result.cloudflare?.ok);
     },'text-button small'));
     if (isAdmin(account) && site.id !== 'default') actions.append(actionButton('彻底删除',async()=>{
-      if (!await confirmAction(`彻底删除 ${site.domain}？页面、证书、访问记录和宝塔站点都会删掉，域名列表和上方的站点选择也会一起消失，删了不能恢复。`)) return;
-      const result = await api(`/api/sites/${site.id}`,{method:'DELETE'});
+      const others = catalog.sites.filter(item => item.id !== site.id);
+      const choice = await confirmDeleteDomain(site, others);
+      if (!choice) return;
+      const query = choice.keepOn ? `?keep_on=${encodeURIComponent(choice.keepOn)}` : '';
+      const result = await api(`/api/sites/${site.id}${query}`,{method:'DELETE'});
       await loadDomains();
-      toast(result.cloudflare_warning ? `已彻底删除 ${result.domain}。${result.cloudflare_warning}` : `已彻底删除 ${result.domain}。列表和站点选择里都没有它了。`, Boolean(result.cloudflare_warning));
+      const kept = result.kept_on ? `访问记录已留在 ${result.kept_on}。` : '访问记录已一起删除。';
+      toast(result.cloudflare_warning ? `已彻底删除 ${result.domain}。${kept}${result.cloudflare_warning}` : `已彻底删除 ${result.domain}。${kept}列表和站点选择里都没有它了。`, Boolean(result.cloudflare_warning));
     },'text-button small danger'));
     row.append(name,health,validation,created,note,availability,actions); body.append(row);
   }

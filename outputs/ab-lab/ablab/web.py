@@ -634,10 +634,22 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return {'site': registry.set_availability(site_id, action)}
 
     @app.delete('/api/sites/{site_id}')
-    def delete_site(site_id: str, request: Request):
+    def delete_site(site_id: str, request: Request, keep_on: str = ''):
         require_admin(request)
         if site_id == 'default':
             raise ValueError('原有站点不能删除')
+        kept = None
+        kept_domain = ''
+        if keep_on:
+            if keep_on == site_id:
+                raise ValueError('不能把记录留到正在删除的域名')
+            try:
+                target = registry.get(keep_on)
+            except KeyError:
+                raise ValueError('观察域名不存在') from None
+            source = registry.get(site_id)
+            kept = registry.store(keep_on).retain_records(registry.store(site_id).directory, source['domain'])
+            kept_domain = target['domain']
         snapshot = registry.remove(site_id)
         warning = ''
         zone_id = snapshot.get('cf_zone_id') or ''
@@ -651,7 +663,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         queue_erasure(registry.root, dict(snapshot, cf_zone_id=zone_id))
         if snapshot.get('_wipe_failed'):
             warning = (warning + ' ' if warning else '') + '部分文件将由服务器继续清理。'
-        return {'ok': True, 'domain': snapshot['domain'], 'cloudflare_warning': warning}
+        return {'ok': True, 'domain': snapshot['domain'], 'cloudflare_warning': warning, 'kept_on': kept_domain, 'kept': kept or {}}
 
     @app.post('/api/sites/{site_id}/provision/{action}')
     def provision_control(site_id: str, action: Literal['pause', 'retry'], request: Request):
@@ -1167,7 +1179,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     @routes.get('/logs.csv')
     def export_logs(days: int = Query(default=7, ge=1, le=30), slot: Literal['', 'A', 'B'] = '', store=Depends(site_store)):
-        fields = ['id', 'created', 'country', 'ip', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
+        fields = ['id', 'created', 'source_domain', 'country', 'ip', 'device', 'device_name', 'device_model', 'os', 'browser', 'slot', 'reason', 'path', 'mode']
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
         writer.writerow(fields)
@@ -1219,10 +1231,11 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             event_total += event_count
             site_domain = analysis_domain(site)
             for row in access_rows:
-                row['domain'] = site_domain
+                row['domain'] = (row.get('source_domain') or '').strip() or site_domain
                 requests.append(row)
             for row in event_rows:
-                row['domain'] = displayed_event_domain(registry, row, site_domain)
+                kept_domain = (row.get('source_domain') or '').strip()
+                row['domain'] = kept_domain or displayed_event_domain(registry, row, site_domain)
                 events.append(row)
         requests.sort(key=lambda row: row['created'], reverse=True)
         events.sort(key=lambda row: row['created'], reverse=True)

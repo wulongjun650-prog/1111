@@ -53,10 +53,11 @@ def summarize(registry, site_id, period, scope, tz_offset, now, owner_id=None):
         with closing(sqlite3.connect(db_path.as_uri() + '?mode=ro', uri=True)) as db:
             db.row_factory = sqlite3.Row
             comparison = '<' if period == 'yesterday' else '<='
-            details_field = ('device_details' if any(row['name'] == 'device_details' for row in db.execute('PRAGMA table_info(events)'))
-                             else 'NULL AS device_details')
+            names = {row['name'] for row in db.execute('PRAGMA table_info(events)')}
+            details_field = 'device_details' if 'device_details' in names else 'NULL AS device_details'
+            source_field = 'source_domain' if 'source_domain' in names else "'' AS source_domain"
             rows = db.execute(
-                f'SELECT id,created,ip,country,device,slot,reason,path,mode,{details_field} '
+                f'SELECT id,created,ip,country,device,slot,reason,path,mode,{details_field},{source_field} '
                 f'FROM events WHERE created>=? AND created{comparison}? ORDER BY created DESC,id DESC',
                 (start, end),
             )
@@ -83,7 +84,8 @@ def summarize(registry, site_id, period, scope, tz_offset, now, owner_id=None):
                 add(trend[label], outcome)
                 if len(recent) < 8 or item['created'] > recent[-1]['created']:
                     item['device_details'] = json.loads(item['device_details']) if item['device_details'] else None
-                    item.update(site_id=site['id'], domain=site['domain'], outcome=outcome)
+                    kept_domain = (item.get('source_domain') or '').strip()
+                    item.update(site_id=site['id'], domain=kept_domain or site['domain'], outcome=outcome)
                     recent.append(item)
                     recent.sort(key=lambda entry: (entry['created'], entry['id']), reverse=True)
                     del recent[8:]
