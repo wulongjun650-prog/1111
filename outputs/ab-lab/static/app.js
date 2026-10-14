@@ -257,6 +257,7 @@ function updateConfigControls() {
   applyTheme(themeFor(state?.config));
   if (!state) {
     paintSecretWeapon(null);
+    paintFollowStatus();
     return;
   }
   const angel = themeFor(state.config) === 'angel';
@@ -290,6 +291,35 @@ function updateConfigControls() {
   $('#distribution').value = state.config.distribution;
   $('#distribution').disabled = state.config.content_mode !== 'LINK';
   paintSecretWeapon(state.direct_mode || null);
+  paintFollowStatus();
+}
+
+function paintFollowStatus() {
+  const status = $('#follow-status');
+  if (!status) return;
+  if (!catalog) {
+    status.textContent = '正在读取观察域名。';
+    return;
+  }
+  const sites = catalog.sites || [];
+  const current = sites.find(item => item.id === selectedSite);
+  const watchers = sites.filter(item => item.observer_account);
+  if (!watchers.length) {
+    status.textContent = '还没有观察域名。请先在域名列表把一个域名设为观察域名。';
+    return;
+  }
+  const names = watchers.map(item => item.domain || '观察域名').join('、');
+  if (current?.mirror_source) {
+    status.textContent = `当前选中的是观察域名，正在跟着 ${current.mirror_domain || '投放域名'}。请改选要跟着的投放域名，再点设置更寻。`;
+    return;
+  }
+  const currentName = current?.domain || '当前域名';
+  if (watchers.every(item => item.mirror_source === selectedSite)) {
+    status.textContent = `观察域名 ${names} 正在跟着 ${currentName}。再点一次会把页面和号码同步成问卷版，已有记录不删。`;
+    return;
+  }
+  const now = watchers.map(item => `${item.domain || '观察域名'}跟着${item.mirror_domain || '尚未指定'}`).join('，');
+  status.textContent = `${now}。点设置更寻后改成跟着 ${currentName}，两边已有的访问记录都保留。`;
 }
 
 function paintSecretWeapon(mode) {
@@ -1120,6 +1150,15 @@ $$('[data-routing]').forEach(button => on(button, 'click', () => saveConfig(patc
 $$('[data-allowed-slot]').forEach(button => on(button, 'click', () => saveConfig(patchConfig(state.config, { routing: 'RULES', allowed_slot: button.dataset.allowedSlot }))));
 on($('#protection-toggle'), 'click', () => saveConfig(patchConfig(state.config, { protection: !state.config.protection })));
 on($('#content-mode'), 'change', event => saveConfig(patchConfig(state.config, { content_mode: event.target.value })));
+if ($('#follow-observer')) on($('#follow-observer'), 'click', event => busy(event.currentTarget, async () => {
+  if (!selectedSite) {
+    toast('请先在左上角选中要跟着的投放域名。', true);
+    return;
+  }
+  const result = await api(`/api/sites/${selectedSite}/follow`, { method: 'POST', body: {} });
+  toast(result.message || '观察域名已跟着当前域名。以前的记录都还在。', Boolean(result.sync_failed));
+  await loadDomains();
+}));
 on($('#secret-weapon'), 'click', event => busy(event.currentTarget, async () => {
   if (!state?.slots?.B) {
     toast('还没有发布 B 页。', true);
@@ -1579,6 +1618,7 @@ async function loadDomains({refreshSelection = true} = {}) {
   $('#cf-choice-note').textContent = cloudflareReady ? `建议先不勾选：A 记录指向本机后会自动建站并申请证书，确认能打开后再套用${templateName}规则。勾选则马上套用规则，NS 改到 Cloudflare。` : '';
   syncDnsInstructions();
   renderDomains();
+  paintFollowStatus();
   const visible = new Set(catalog.sites.map(site=>site.id));
   if (siteEventsSite && !visible.has(siteEventsSite)) {
     ++siteEventsRequest; siteEventsSite=null;

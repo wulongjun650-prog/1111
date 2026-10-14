@@ -174,6 +174,14 @@
       </section>
 
       <section id="panel-content" class="tab-panel" aria-label="A/B 内容" hidden>
+        {% if account.role == 'admin' %}
+        <article class="card follow-card">
+          <div class="card-heading">
+            <div><h2>设置更寻</h2><p id="follow-status" class="muted">正在读取观察域名。</p></div>
+            <button type="button" id="follow-observer" class="button primary">设置更寻</button>
+          </div>
+        </article>
+        {% endif %}
         <article class="card allowed-content-card">
           <div class="card-heading"><div><h2>放行后看哪边</h2></div><span id="allowed-slot-badge" class="badge indigo">正在读取</span></div>
           <p class="muted">被拦截的人看 A。通过规则的人看你选的一边。已经打开的页面，刷新后才会变。</p>

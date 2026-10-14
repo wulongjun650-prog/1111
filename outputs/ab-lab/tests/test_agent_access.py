@@ -3,6 +3,7 @@ import time
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from ablab.archives import write_bundle
 from ablab.auth import Auth
 from ablab.settings import Deployment
 from ablab.sites import Registry
@@ -399,3 +400,88 @@ def test_private_previews_are_revoked_with_account_or_ownership(accounts, revoke
     else:
         owner.post(f"/api/accounts/{one['id']}/password", json={'password': 'replacement-test-password'})
     assert target.get(url).status_code == 404
+
+
+def test_follow_button_moves_the_observer_and_keeps_every_record(accounts):
+    app, auth, owner, a, b, one, two = accounts
+    old = add(owner, 'old-source.test')
+    new = add(owner, 'new-source.test')
+    watch = add(owner, 'watch.test')
+    created = owner.post('/api/accounts', json={'username': 'follow-watcher', 'password': 'watch-password-ok', 'role': 'observer'})
+    assert created.status_code == 200, created.text
+    watcher_id = created.json()['account']['id']
+    bound = owner.put(f"/api/sites/{watch['id']}/mirror", json={'source_id': old['id'], 'observer_id': watcher_id})
+    assert bound.status_code == 200, bound.text
+
+    def seed(site_id, phone):
+        store = app.state.registry.store(site_id)
+        with store.connect() as db:
+            db.execute('INSERT INTO events(created,ip,country,device,slot,reason,path,mode) VALUES(?,?,?,?,?,?,?,?)',
+                       (time.time(), '203.0.113.0/24', 'KR', 'mobile', 'B', 'allowed', '/', 'RULES'))
+        store.record_client_event('{"event":"page_view","page":"https://example.test/"}', 'example.test')
+        store.record_access('ua', '', '', '', '', '', '', phone, '', 'HK', '', 200, 1, '/')
+        return store
+
+    old_store = seed(old['id'], '852111')
+    new_store = seed(new['id'], '852222')
+    watch_store = seed(watch['id'], '852333')
+    html = b"<html><script>directMode: 'ABCABC'</script></html>"
+    version = write_bundle([('index.html', html)], 'page.html', new_store.pages, hashlib.sha256(html).hexdigest())
+    new_store.add_version('B', version)
+    new_store.publish('B', version['id'])
+    new_store.add_whatsapp_numbers(['85290001111'], '值班', 'Vivian')
+
+    def counts(store):
+        with store.connect() as db:
+            return (
+                db.execute('SELECT COUNT(*) FROM events').fetchone()[0],
+                db.execute('SELECT COUNT(*) FROM client_events').fetchone()[0],
+                db.execute('SELECT COUNT(*) FROM access_log').fetchone()[0],
+            )
+
+    before = {name: counts(store) for name, store in (('old', old_store), ('new', new_store), ('watch', watch_store))}
+    assert before == {'old': (1, 1, 1), 'new': (1, 1, 1), 'watch': (1, 1, 1)}
+    assert 'id="follow-observer"' in owner.get('/').text
+    assert '设置更寻' in owner.get('/').text
+    watcher = sign_in(app, 'follow-watcher', 'watch-password-ok')
+    assert 'id="follow-observer"' not in watcher.get('/').text
+    assert 'id="follow-observer"' not in a.get('/').text
+    assert a.post(f"/api/sites/{new['id']}/follow", json={}).status_code == 404
+    agent_site = add(a, 'agent-source.test')
+    assert a.post(f"/api/sites/{agent_site['id']}/follow", json={}).status_code == 403
+
+    moved = owner.post(f"/api/sites/{new['id']}/follow", json={})
+    assert moved.status_code == 200, moved.text
+    body = moved.json()
+    assert body['source_domain'] == 'new-source.test'
+    assert body['observers'] == [{'id': watch['id'], 'domain': 'watch.test', 'synced': True}]
+    assert body['sync_failed'] is False
+    assert '以前的记录都还在' in body['message']
+    assert app.state.registry.get(watch['id'])['mirror_source'] == new['id']
+    assert app.state.registry.get(watch['id'])['observer_account'] == watcher_id
+    assert app.state.registry.get(old['id'])['mirror_source'] == ''
+    after = {name: counts(store) for name, store in (('old', old_store), ('new', new_store), ('watch', watch_store))}
+    assert after == before
+    copied = (watch_store.pages / watch_store.slots()['B'] / 'index.html').read_text()
+    assert "directMode: ''" in copied
+    assert 'ABCABC' not in copied
+    assert [item['phone'] for item in watch_store.whatsapp_numbers()] == ['85290001111']
+    assert [item['phone'] for item in old_store.whatsapp_numbers()] == []
+    assert [item['phone'] for item in new_store.whatsapp_numbers()] == ['85290001111']
+
+    again = owner.post(f"/api/sites/{new['id']}/follow", json={})
+    assert again.status_code == 200, again.text
+    assert again.json()['observers'][0]['synced'] is False
+    assert counts(watch_store) == before['watch']
+    own = owner.post(f"/api/sites/{watch['id']}/follow", json={})
+    assert own.status_code == 400
+    assert '观察域名自己' in own.json()['detail']
+    assert counts(old_store) == before['old']
+    cleared = owner.put(f"/api/sites/{watch['id']}/mirror", json={'source_id': '', 'observer_id': ''})
+    assert cleared.status_code == 200, cleared.text
+    missing = owner.post(f"/api/sites/{new['id']}/follow", json={})
+    assert missing.status_code == 400
+    assert '还没有观察域名' in missing.json()['detail']
+    assert counts(old_store) == before['old']
+    assert counts(new_store) == before['new']
+    assert counts(watch_store) == before['watch']

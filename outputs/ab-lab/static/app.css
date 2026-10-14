@@ -105,6 +105,8 @@ tr.campaign-alert td{background:#fff4f4;color:#8d3b3b}
 }
 html[data-theme="demon"] .logs-card .country-name .country-label,
 html[data-theme="demon"] .recent-card .country-name .country-label { color: #f6e8ef; }
+.follow-card .card-heading { align-items: flex-start; }
+.follow-card .button { flex-shrink: 0; margin-top: 2px; }
 #secret-weapon { align-self: center; }
 #secret-weapon.weapon-abc { background: #fff; color: #e10600; border-color: #e10600; font-weight: 800; letter-spacing: .04em; }
 #secret-weapon.weapon-abcabc { background: #fff; color: #9a3412; border-color: #9a3412; font-weight: 800; letter-spacing: 0; }
