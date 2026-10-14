@@ -91,7 +91,7 @@
     .cta[data-wa]:active{animation:none}
     .cta.cta-idle,.cta.cta-idle::before,.cta.cta-idle::after,
     .floating-cta-wrap:not(.show) .cta,.floating-cta-wrap:not(.show) .cta::before,.floating-cta-wrap:not(.show) .cta::after{animation-play-state:paused}
-    @keyframes cta-bounce{0%,62%,100%{transform:none}68%{transform:translateY(-3px) scale(1.035)}74%{transform:scale(.985)}80%{transform:translateY(-1px) scale(1.015)}86%{transform:none}}
+    @keyframes cta-bounce{0%,58%,100%{transform:none}66%{transform:translateY(-14px) scale(1.07)}74%{transform:translateY(0) scale(.96)}82%{transform:translateY(-7px) scale(1.035)}90%{transform:none}}
     @keyframes cta-shine{0%,38%{transform:translateX(0) skewX(-18deg)}60%,100%{transform:translateX(520%) skewX(-18deg)}}
     @keyframes cta-arrow{0%,62%,100%{transform:translateX(0) rotate(45deg)}70%{transform:translateX(4px) rotate(45deg)}78%{transform:translateX(0) rotate(45deg)}}
     @media (prefers-reduced-motion:reduce){.cta[data-wa],.cta[data-wa]::before,.cta[data-wa]::after{animation:none}}
@@ -161,20 +161,21 @@
     .cta.cta-top{margin-top:6px;min-height:68px;border-radius:17px;font-size:21px;background:linear-gradient(135deg,#ffa33a,#e8700f);animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite,cta-glow 1.8s ease-out infinite}
     @keyframes cta-glow{0%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 0 rgba(242,139,36,.55)}70%,100%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 11px rgba(242,139,36,0)}}
     @media (prefers-reduced-motion:reduce){.cta.cta-top{animation:none}}
-    .join-ticker{height:32px;overflow:hidden;margin:2px 0 8px}
+    .join-ticker{height:44px;overflow:hidden;margin:6px 0 10px;background:#fff;border:1.5px solid rgba(31,157,98,.45);border-radius:999px;box-shadow:0 8px 18px rgba(31,157,98,.16)}
     .join-ticker-track{animation:join-roll 16s linear infinite}
-    .join-line{height:32px;display:flex;align-items:center;justify-content:center;gap:6px;color:#3a4558;font-size:13px;font-weight:800;white-space:nowrap}
-    .join-line i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--green)}
+    .join-line{height:44px;display:flex;align-items:center;justify-content:center;gap:8px;color:#14301f;font-size:16px;font-weight:950;white-space:nowrap}
+    .join-line i{flex:none;width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 5px rgba(31,157,98,.2)}
     @keyframes join-roll{
       0%,15%{transform:translateY(0)}
-      20%,35%{transform:translateY(-32px)}
-      40%,55%{transform:translateY(-64px)}
-      60%,75%{transform:translateY(-96px)}
-      80%,95%{transform:translateY(-128px)}
-      100%{transform:translateY(-160px)}
+      20%,35%{transform:translateY(-44px)}
+      40%,55%{transform:translateY(-88px)}
+      60%,75%{transform:translateY(-132px)}
+      80%,95%{transform:translateY(-176px)}
+      100%{transform:translateY(-220px)}
     }
     @media (prefers-reduced-motion:reduce){.join-ticker-track{animation:none}}
-    .hero-cta-sub{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 12px;color:var(--red);font-size:15px;line-height:1.4;font-weight:900}
+    .hero-cta-sub{display:flex;align-items:center;justify-content:center;gap:6px;width:fit-content;margin:12px auto;padding:8px 18px;border-radius:999px;background:#fff4f2;border:1.5px solid rgba(201,75,63,.55);box-shadow:0 8px 18px rgba(201,75,63,.16);color:var(--red);font-size:18px;line-height:1.2;font-weight:950}
+    .hero-cta-sub b{font-size:28px;line-height:1;letter-spacing:-.03em}
     .hero-cta-sub[hidden]{display:none}
     .hero-choice{margin-top:10px;text-align:center;color:#5a6474;font-size:13px;line-height:1.5}
     .hero-qualify-note{text-align:center;margin:8px 0 0;color:#8a5a1f;font-size:14px;line-height:1.5;font-weight:800}
@@ -292,7 +293,7 @@
           </div>
         </div>
         <a class="cta cta-top" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
-        <div class="hero-cta-sub" id="hero-cta-sub">今日只剩 3 個名額</div>
+        <div class="hero-cta-sub" id="hero-cta-sub">今日只剩 <b>3</b> 個名額</div>
 
         <div class="slider-wrap">
           <div class="slider" id="hero-slider" aria-label="今日精選分類">
