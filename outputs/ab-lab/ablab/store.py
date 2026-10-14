@@ -160,6 +160,10 @@ class Store:
             access_columns = {row['name'] for row in db.execute('PRAGMA table_info(access_log)')}
             if 'ip' not in access_columns:
                 db.execute("ALTER TABLE access_log ADD COLUMN ip TEXT NOT NULL DEFAULT ''")
+            for table in ('events', 'access_log', 'client_events', 'intake_log'):
+                names = {row['name'] for row in db.execute(f'PRAGMA table_info({table})')}
+                if 'source_domain' not in names:
+                    db.execute(f"ALTER TABLE {table} ADD COLUMN source_domain TEXT NOT NULL DEFAULT ''")
             db.execute('INSERT OR IGNORE INTO settings VALUES(1,?,0,?)', (Config().model_dump_json(), secrets.token_hex(32)))
             db.executemany('INSERT OR IGNORE INTO slots(slot) VALUES(?)', [('A',), ('B',)])
             self.secret = db.execute('SELECT secret FROM settings WHERE id=1').fetchone()[0].encode()
@@ -913,6 +917,47 @@ class Store:
             raise
         return version | {'slot': slot}
 
+    def retain_records(self, source_directory, source_domain):
+        """Copy visit rows onto this domain. A row already marked keeps its original domain."""
+        if not isinstance(source_domain, str) or not source_domain.strip() or len(source_domain) > 253 or any(char in source_domain for char in '\r\n\t'):
+            raise ValueError('来源域名不正确')
+        source_path = Path(source_directory).resolve() / 'app.db'
+        if source_path == self.path:
+            raise ValueError('不能把记录留到正在删除的域名')
+        tables = ('events', 'access_log', 'client_events', 'intake_log')
+        counts = {table: 0 for table in tables}
+        if not source_path.is_file():
+            return counts
+        source = sqlite3.connect(f'file:{source_path}?mode=ro', uri=True)
+        source.row_factory = sqlite3.Row
+        try:
+            with self.connect() as db:
+                for table in tables:
+                    dest_cols = [row['name'] for row in db.execute(f'PRAGMA table_info({table})') if row['name'] != 'id']
+                    rows = source.execute(f'SELECT * FROM {table}').fetchall()
+                    payload = []
+                    for row in rows:
+                        names = set(row.keys())
+                        values = []
+                        for col in dest_cols:
+                            if col == 'source_domain':
+                                existing = row['source_domain'] if 'source_domain' in names else ''
+                                values.append(existing or source_domain)
+                            elif col in names:
+                                values.append(row[col])
+                            else:
+                                values.append(None)
+                        payload.append(values)
+                    if payload:
+                        db.executemany(
+                            f"INSERT INTO {table}({','.join(dest_cols)}) VALUES ({','.join('?' * len(dest_cols))})",
+                            payload)
+                    counts[table] = len(payload)
+                self._audit(db, 'records_retained', {'domain': source_domain, **counts})
+        finally:
+            source.close()
+        return counts
+
     def reset_counts(self):
         with self.connect() as db:
             db.execute('DELETE FROM counters')
@@ -1077,13 +1122,13 @@ class Store:
     def recent_access(self, since, limit):
         with self.connect() as db:
             total = db.execute('SELECT COUNT(*) FROM access_log WHERE created>=?', (since,)).fetchone()[0]
-            rows = db.execute('''SELECT created,ua,ch_ua,ch_platform,ch_platform_version,ch_mobile,referer,query,wa_number,cf_cache_status,country,city,status,duration_ms,path
+            rows = db.execute('''SELECT created,ua,ch_ua,ch_platform,ch_platform_version,ch_mobile,referer,query,wa_number,cf_cache_status,country,city,status,duration_ms,path,source_domain
                 FROM access_log WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?''', (since, limit)).fetchall()
         return total, [dict(row) for row in rows]
 
     def campaign_access(self, since, until):
         with self.connect() as db:
-            rows = db.execute('SELECT created, ua, query, path, ip, referer, wa_number FROM access_log WHERE created>=? AND created<?', (since, until)).fetchall()
+            rows = db.execute("SELECT created, ua, query, path, ip, referer, wa_number FROM access_log WHERE created>=? AND created<? AND source_domain=''", (since, until)).fetchall()
         return [dict(row) for row in rows]
 
     def record_intake(self, ip, ua, origin, referer, content_type, body_length, body, status, reason):
@@ -1101,16 +1146,16 @@ class Store:
     def intake_between(self, since, until):
         with self.connect() as db:
             rows = db.execute('''SELECT id, created, ip, ua, origin, referer, content_type, body_length, body, status, reason
-                FROM intake_log WHERE created>=? AND created<? ORDER BY id''', (since, until)).fetchall()
+                FROM intake_log WHERE created>=? AND created<? AND source_domain='' ORDER BY id''', (since, until)).fetchall()
         return [dict(row) for row in rows]
 
     def campaign_events(self, since, until):
         with self.connect() as db:
-            rows = db.execute('SELECT id, created, body, origin FROM client_events WHERE created>=? AND created<? ORDER BY id', (since, until)).fetchall()
+            rows = db.execute("SELECT id, created, body, origin FROM client_events WHERE created>=? AND created<? AND source_domain='' ORDER BY id", (since, until)).fetchall()
         return [dict(row) for row in rows]
 
     def recent_client_events(self, since, limit):
         with self.connect() as db:
             total = db.execute('SELECT COUNT(*) FROM client_events WHERE created>=?', (since,)).fetchone()[0]
-            rows = db.execute('SELECT created, body, origin FROM client_events WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?', (since, limit)).fetchall()
+            rows = db.execute('SELECT created, body, origin, source_domain FROM client_events WHERE created>=? ORDER BY created DESC, id DESC LIMIT ?', (since, limit)).fetchall()
         return total, [dict(row) for row in rows]

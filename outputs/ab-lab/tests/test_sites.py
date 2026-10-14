@@ -162,3 +162,53 @@ def test_remove_drops_the_row_events_reputation_and_files(tmp_path):
         registry.remove(linked['id'])
     assert (outside / 'secret').read_text() == 'keep'
     assert registry.get(linked['id'])['domain'] == 'link.example.com'
+
+
+def test_delete_can_keep_visit_records_on_the_watch_domain(tmp_path):
+    import time
+    app = create_admin(tmp_path)
+    admin = client(app, 8765)
+    headers = {'origin': 'http://127.0.0.1:8765', 'x-csrf-token': app.state.csrf}
+
+    def add(domain):
+        response = admin.post('/api/sites', json={'domain': domain}, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()['site']['id']
+
+    watch = add('watch.example.com')
+    gone = add('gone.example.com')
+    assert admin.patch(f'/api/sites/{watch}/metadata', json={'note': '观察'}, headers=headers).status_code == 200
+    now = time.time()
+    store = Store(tmp_path / 'sites' / gone)
+    with store.connect() as db:
+        db.execute(
+            'INSERT INTO events(created,ip,country,device,slot,reason,path,mode) VALUES(?,?,?,?,?,?,?,?)',
+            (now, '203.0.113.8', 'HK', 'mobile', 'B', 'allowed', '/offer', 'PAGE'))
+        db.execute(
+            '''INSERT INTO access_log(created,ua,ch_ua,ch_platform,ch_platform_version,ch_mobile,referer,query,wa_number,cf_cache_status,country,city,status,duration_ms,path,ip)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (now, 'TestUA', '', '', '', '', '', 'gclid=1', '', '', 'HK', '', 200, 12, '/', '203.0.113.8'))
+        db.execute(
+            'INSERT INTO client_events(created,body,origin) VALUES(?,?,?)',
+            (now, '{"event":"page_view"}', 'https://gone.example.com'))
+    assert admin.delete(f'/api/sites/{gone}?keep_on={gone}', headers=headers).status_code == 400
+    assert admin.delete(f'/api/sites/{gone}?keep_on=missing', headers=headers).status_code == 400
+    deleted = admin.delete(f'/api/sites/{gone}?keep_on={watch}', headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    body = deleted.json()
+    assert body['domain'] == 'gone.example.com'
+    assert body['kept_on'] == 'watch.example.com'
+    assert body['kept'] == {'events': 1, 'access_log': 1, 'client_events': 1, 'intake_log': 0}
+    assert not (tmp_path / 'sites' / gone).exists()
+    logs = admin.get(f'/api/sites/{watch}/logs?days=7')
+    assert logs.status_code == 200
+    assert logs.json()['items'][0]['source_domain'] == 'gone.example.com'
+    assert logs.json()['items'][0]['path'] == '/offer'
+    analysis = admin.get('/api/analysis?days=7&domain=watch.example.com')
+    assert analysis.status_code == 200, analysis.text
+    assert analysis.json()['requests']['items'][0]['domain'] == 'gone.example.com'
+    assert analysis.json()['events']['items'][0]['domain'] == 'gone.example.com'
+    other = add('other.example.com')
+    moved = Store(tmp_path / 'sites' / other).retain_records(tmp_path / 'sites' / watch, 'watch.example.com')
+    assert moved['events'] == 1
+    assert Store(tmp_path / 'sites' / other).logs(7)['items'][0]['source_domain'] == 'gone.example.com'
