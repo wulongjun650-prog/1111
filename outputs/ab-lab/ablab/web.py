@@ -610,6 +610,46 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             site['mirror_domain'] = ''
         return {'site': site}
 
+    @app.post('/api/sites/{site_id}/follow')
+    def follow_with_observer(site_id: str, request: Request):
+        """Point the existing observer domain at this site. Visit rows stay where they are."""
+        require_admin(request)
+        source = registry.get(site_id)
+        if (source.get('mirror_source') or '').strip():
+            raise ValueError('这是观察域名自己。请先选中要跟着的投放域名，再点设置更寻。')
+        observers = [site for site in registry.list() if (site.get('observer_account') or '').strip()]
+        if not observers:
+            raise ValueError('还没有观察域名。请先在域名列表把一个域名设为观察域名。')
+        from .mirror import sync_mirror_content
+        followed = []
+        sync_failed = False
+        for observer in observers:
+            try:
+                account = accounts.get_account(observer['observer_account'])
+            except KeyError:
+                raise ValueError('观察号已经不在了，请重新把域名设为观察域名') from None
+            if account['role'] != 'observer' or not account['enabled']:
+                raise ValueError('观察号已停用，不能设置更寻')
+            registry.bind_mirror(observer['id'], site_id, observer['observer_account'])
+            synced = False
+            try:
+                synced = bool(sync_mirror_content(registry.store(site_id), registry.store(observer['id'])))
+            except Exception:
+                LOGGER.exception('观察域名内容没有同步')
+                sync_failed = True
+            else:
+                if synced:
+                    purge_site_cache(registry.get(observer['id']))
+            site = registry.get(observer['id'])
+            followed.append({'id': site['id'], 'domain': site.get('domain') or '', 'synced': synced})
+        names = '、'.join(item['domain'] or item['id'] for item in followed)
+        source_domain = source.get('domain') or site_id
+        if sync_failed:
+            message = f'观察域名 {names} 已改成跟着 {source_domain}，但内容没有同步上。以前的记录都还在。'
+        else:
+            message = f'观察域名 {names} 已跟着 {source_domain}。以前的记录都还在。'
+        return {'source_id': site_id, 'source_domain': source_domain, 'observers': followed, 'sync_failed': sync_failed, 'message': message}
+
     @app.post('/api/sites/{site_id}/reputation/check')
     def check_site_reputation(site_id: str, request: Request):
         authorized_site(request, site_id)
