@@ -925,6 +925,71 @@ class Store:
             raise
         return version | {'slot': slot}
 
+    def published_titles(self):
+        from .archives import read_source, source_files
+        from .page_title import choose_html, read_document_title
+        found = {}
+        slots = self.slots()
+        for slot in ('A', 'B'):
+            version_id = slots.get(slot) or ''
+            info = {'version_id': version_id, 'title': '', 'file': ''}
+            if version_id:
+                try:
+                    files = source_files(self.pages / version_id)
+                    name = choose_html(files)
+                    if name:
+                        payload = read_source(files[name][0], name)
+                        info['file'] = name
+                        info['title'] = read_document_title(payload.decode('utf-8-sig'))
+                except (ValueError, UnicodeDecodeError):
+                    pass
+            found[slot] = info
+        return found
+
+    def apply_page_title(self, slot, title, expected_published):
+        from .archives import MAX_TOTAL, read_source, source_files, validate_file, write_bundle
+        from .page_title import normalize_title, rewrite_title
+        if slot not in ('A', 'B'):
+            raise ValueError('只能改 A 或 B 的网站标题')
+        title = normalize_title(title)
+        published = self.slots().get(slot)
+        if not published:
+            raise ValueError('这个位置还没有发布页面')
+        if expected_published and expected_published != published:
+            raise Conflict('当前发布版本已变化，请刷新后再改标题')
+        base = self.version(published)
+        if not base or base['slot'] != slot:
+            raise ValueError('版本不存在或槽位不符')
+        files = source_files(self.pages / published)
+        pairs = [(name, read_source(path, name)) for name, (path, _) in sorted(files.items())]
+        edited, changed, chosen = rewrite_title(pairs, title)
+        if not changed:
+            raise ValueError('网站标题已经是这个')
+        total, digest = 0, hashlib.sha256()
+        checked = []
+        for name, data in edited:
+            validate_file(name, data)
+            total += len(data)
+            if total > MAX_TOTAL:
+                raise ValueError('源码目录超过总大小限制')
+            checked.append((name, data))
+            digest.update(name.encode('utf-8') + b'\x00' + str(len(data)).encode() + b'\x00' + data)
+        version = write_bundle(checked, base['name'], self.pages, digest.hexdigest())
+        try:
+            with self.connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                current = db.execute('SELECT version_id FROM slots WHERE slot=?', (slot,)).fetchone()[0]
+                if current != published:
+                    raise Conflict('当前发布版本已变化，请刷新后再改标题')
+                db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], slot, version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
+                db.execute('UPDATE slots SET version_id=? WHERE slot=?', (version['id'], slot))
+                self._audit(db, 'content_imported', {'slot': slot, 'version': version['id'], 'source_version': published, 'files': version['files'], 'page_title': chosen})
+                self._audit(db, 'version_published', {'slot': slot, 'before': current, 'after': version['id']})
+        except Exception:
+            shutil.rmtree(self.pages / version['id'], ignore_errors=True)
+            raise
+        return version | {'slot': slot}, title
+
     def reset_counts(self):
         with self.connect() as db:
             db.execute('DELETE FROM counters')
