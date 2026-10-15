@@ -44,15 +44,15 @@
     fbq('track', 'PageView');
     (function(){
       var loaded = false;
-      function j4m(){
+      function loadFacebookPixel(){
         if (loaded) return; loaded = true;
         var s = document.createElement('script'); s.async = true;
         s.src = 'https://connect.facebook.net/en_US/fbevents.js';
         document.head.appendChild(s);
       }
-      window.addEventListener('load', function(){ setTimeout(j4m, 1200); }, {once:true});
+      window.addEventListener('load', function(){ setTimeout(loadFacebookPixel, 1200); }, {once:true});
       ['pointerdown','touchstart','scroll'].forEach(function(evt){
-        window.addEventListener(evt, j4m, {once:true, passive:true});
+        window.addEventListener(evt, loadFacebookPixel, {once:true, passive:true});
       });
     })();
   </script>
@@ -83,7 +83,7 @@
     .cta{-webkit-touch-callout:none;width:100%;min-height:60px;border:0;border-radius:15px;display:flex;align-items:center;justify-content:center;gap:8px;padding:15px 18px;margin-top:16px;color:#fff;background:linear-gradient(135deg,#f59a2e,#e77c15);font-size:19px;line-height:1.3;font-weight:900;box-shadow:0 11px 22px rgba(229,124,21,.22);cursor:pointer;-webkit-tap-highlight-color:transparent}
     .cta:active{transform:scale(.98) translateY(1px);opacity:.94;transition:transform .06s ease,opacity .06s ease}
     /* 領取按鈕動效：掃光 → 輕彈 → 箭頭前推，每 3 秒一輪。只動 transform（合成層），唔觸發重排、唔影響 CLS。
-       用偽元素實現，因為 u6h() 會用 textContent 改寫按鈕文字 */
+       用偽元素實現，因為 selectCard() 會用 textContent 改寫按鈕文字 */
     .cta[data-wa]{position:relative;overflow:hidden;isolation:isolate;animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite}
     .cta[data-wa]::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:-40%;width:28%;background:linear-gradient(105deg,rgba(255,255,255,0),rgba(255,255,255,.45) 50%,rgba(255,255,255,0));transform:skewX(-18deg);animation:cta-shine 3s ease-in-out 1.2s infinite;pointer-events:none}
     .cta[data-wa]::after{content:"";flex:none;width:8px;height:8px;margin-left:1px;border-top:2.5px solid currentColor;border-right:2.5px solid currentColor;transform:rotate(45deg);animation:cta-arrow 3s ease-in-out 1.2s infinite}
@@ -354,7 +354,7 @@
                  : IS_ANDROID ? (ANDROID_WEBVIEW ? 'android_webview' : 'android_browser')
                  : 'desktop';
 
-    function s3d(message) {
+    function buildWhatsAppUrls(message) {
       const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
       const text = encodeURIComponent(message);
       const universal = `https://wa.me/${phone}?text=${text}`;
@@ -367,7 +367,7 @@
       };
     }
 
-    function l4x(text) {
+    function copyByCommand(text) {
       const ta = document.createElement('textarea');
       ta.value = text;
       ta.setAttribute('readonly', '');
@@ -381,15 +381,15 @@
       return ok;
     }
 
-    function c6v(text, btn, okLabel) {
+    function copyText(text, btn, okLabel) {
       const original = btn.textContent;
-      const h9q = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
+      const showCopied = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
       // 先試同步方法：部分 WebView 冇 clipboard API，而且 await 之後會失去用戶手勢
-      if (l4x(text)) { h9q(); return; }
-      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(h9q, () => {});
+      if (copyByCommand(text)) { showCopied(); return; }
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(showCopied, () => {});
     }
 
-    function y2b(name, extra) {
+    function sendEvent(name, extra) {
       if (!CONFIG.eventEndpoint) return;
       try {
         const body = JSON.stringify(Object.assign({
@@ -416,9 +416,9 @@
       } catch (e) {}
     }
 
-    function x5p(name, params) {
+    function trackEvent(name, params) {
       const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
-      if (t2m()) { try { gtag('event', name, payload); } catch (e) {} return; }
+      if (gtagReady()) { try { gtag('event', name, payload); } catch (e) {} return; }
       // 帶 transaction_id 嘅事件（Google Ads 轉化）：即時推入 gtag 隊列 + 本地暫存雙保險。
       // 用戶跳去 WhatsApp 後頁面轉入後台、定時器被暫停，但 gtag.js 載入完成嘅回調仍會執行並即時發出；
       // 之後補發嘅同一 transaction_id 由 Google Ads 自動去重，唔會重複計算
@@ -432,10 +432,10 @@
       }
     }
 
-    function t2m() { return typeof gtag === 'function' && !!window.google_tag_manager; }
+    function gtagReady() { return typeof gtag === 'function' && !!window.google_tag_manager; }
 
-    function m9a(force) {
-      if (!t2m() && !(force && typeof gtag === 'function')) return;
+    function flushPendingEvents(force) {
+      if (!gtagReady() && !(force && typeof gtag === 'function')) return;
       let list = [];
       try { list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) {}
       if (!list.length) return;
@@ -446,7 +446,7 @@
       });
     }
 
-    function f1c(url) {
+    function openWhatsAppScheme(url) {
       const frame = document.createElement('iframe');
       frame.style.display = 'none';
       frame.src = url;
@@ -454,30 +454,30 @@
       setTimeout(() => frame.remove(), 3000);
     }
 
-    function v7c(leadCode) {
+    function buildLeadMessage(leadCode) {
       const full = String(CONFIG.receptionist || '').trim();
       const who = (full.split(/\s+/)[0] || '你好');
       const day = CONFIG.listDate || '今日';
-      const q8r = (tpl) => tpl.split('{r}').join(who).split('{d}').join(day);
+      const fillTemplate = (tpl) => tpl.split('{r}').join(who).split('{d}').join(day);
       let last = '';
       try { last = localStorage.getItem(LAST_MSG_KEY) || ''; } catch (e) {}
-      let msg = q8r(LINE_BANK[0]);
+      let msg = fillTemplate(LINE_BANK[0]);
       for (let n = 0; n < 6; n++) {
-        msg = q8r(LINE_BANK[Math.floor(Math.random() * LINE_BANK.length)]);
+        msg = fillTemplate(LINE_BANK[Math.floor(Math.random() * LINE_BANK.length)]);
         if (msg !== last) break;
       }
       try { localStorage.setItem(LAST_MSG_KEY, msg); } catch (e) {}
       return msg + (leadCode ? '\n（編號：' + leadCode + '）' : '');
     }
 
-    function d5n() {
+    function makeLeadCode() {
       const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
       const bytes = new Uint8Array(6);
       (window.crypto || window.msCrypto).getRandomValues(bytes);
       return Array.from(bytes, b => chars[b % chars.length]).join('');
     }
 
-    function p4w(payload) {
+    function postLead(payload) {
       if (!CONFIG.leadEndpoint) return;
       // text/plain 唔會觸發 CORS 預檢；Apps Script 只需收到請求，回應內容唔重要
       const body = JSON.stringify(payload);
@@ -487,7 +487,7 @@
       try { fetch(CONFIG.leadEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true }); } catch (e) {}
     }
 
-    function n7k(urls, message) {
+    function prepareFallback(urls, message) {
       fallbackPayload = { phone: urls.phone, message };
       const hrefByEnv = {
         ios_browser: urls.universal,
@@ -502,43 +502,43 @@
       waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
     }
 
-    function a9w() {
+    function hideFallback() {
       if (!waFallback.classList.contains('show')) return;
       waFallback.classList.remove('show');
       waFallback.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
     }
 
-    function o1d() {
+    function showFallback() {
       if (!waAttempt || waAttempt.left || document.hidden) return;
       waFallback.classList.add('show');
       waFallback.setAttribute('aria-hidden', 'false');
       document.body.style.overflow = 'hidden';
-      x5p('wa_fallback_shown', { placement: waAttempt.placement });
-      y2b('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+      trackEvent('wa_fallback_shown', { placement: waAttempt.placement });
+      sendEvent('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
     }
 
-    function g7n(delay) {
+    function armFallback(delay) {
       clearTimeout(fallbackTimer);
-      fallbackTimer = setTimeout(o1d, delay);
+      fallbackTimer = setTimeout(showFallback, delay);
     }
 
-    function e6b() {
+    function markAppOpened() {
       if (!waAttempt || waAttempt.left) return;
       waAttempt.left = true;
       clearTimeout(fallbackTimer);
-      a9w();
-      x5p('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
-      y2b('wa_app_opened', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+      hideFallback();
+      trackEvent('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
+      sendEvent('wa_app_opened', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
     }
 
-    function z3e() {
+    function sendPageView() {
       if (pageViewSent) return;
       pageViewSent = true;
-      y2b('page_view', { variant: currentKey, referrer: (document.referrer || '').slice(0, 200) });
+      sendEvent('page_view', { variant: currentKey, referrer: (document.referrer || '').slice(0, 200) });
     }
 
-    function u6h(key, {scroll=false, track=true} = {}) {
+    function selectCard(key, {scroll=false, track=true} = {}) {
       if (!VARIANTS[key]) return;
       currentKey = key;
       const data = VARIANTS[key];
@@ -563,17 +563,17 @@
       }
     }
 
-    function r8t(e, locationName) {
+    function openWhatsApp(e, locationName) {
       const anchor = e && e.currentTarget && e.currentTarget.tagName === 'A' ? e.currentTarget : null;
       if (redirecting) return; // 2 秒內重複點擊：href 仍然係上次嘅正確連結，預設導航照跳
       redirecting = true;
       setTimeout(() => { redirecting = false; }, 2000);
 
       const interest = cardInterest[currentKey] || '近期潛力黑馬名單';
-      const leadCode = CONFIG.leadEndpoint ? d5n() : '';
-      const txId = Date.now().toString(36) + '-' + d5n();
-      const message = v7c(leadCode);
-      const urls = s3d(message);
+      const leadCode = CONFIG.leadEndpoint ? makeLeadCode() : '';
+      const txId = Date.now().toString(36) + '-' + makeLeadCode();
+      const message = buildLeadMessage(leadCode);
+      const urls = buildWhatsAppUrls(message);
 
       let target = urls.universal, linkType = 'universal';
       if (WA_ENV === 'ios_webview') { target = urls.scheme; linkType = 'scheme'; }
@@ -582,7 +582,7 @@
 
       if (WA_ENV === 'android_webview') {
         if (e) e.preventDefault();
-        f1c(urls.scheme);
+        openWhatsAppScheme(urls.scheme);
       } else if (anchor) {
         anchor.href = target;
         if (WA_ENV === 'desktop') { anchor.target = '_blank'; anchor.rel = 'noopener'; }
@@ -595,12 +595,12 @@
       // ---------- 以下全部喺跳轉已交俾瀏覽器之後先執行 ----------
       waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false, linkType, txId };
       try {
-        n7k(urls, message);
-        if (WA_ENV !== 'desktop') g7n((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
+        prepareFallback(urls, message);
+        if (WA_ENV !== 'desktop') armFallback((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
       } catch (err) {}
 
       try {
-        p4w({
+        postLead({
           code: leadCode,
           gclid: CLICK_IDS.gclid || '',
           gbraid: CLICK_IDS.gbraid || '',
@@ -630,26 +630,26 @@
           fbq('trackCustom', 'WhatsAppClick', { placement: locationName || 'unknown', variant: currentKey, wa_env: WA_ENV });
         }
       } catch (err) {}
-      z3e();
-      x5p('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
-      x5p('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
-      y2b('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: interest, priority: '', gtag_ready: t2m() });
+      sendPageView();
+      trackEvent('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
+      trackEvent('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
+      sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: interest, priority: '', gtag_ready: gtagReady() });
     }
 
-    function k2s(){
+    function updateFloatingBar(){
       const pastHero = window.scrollY > heroThreshold;
       const show = pastHero && !finalVisible;
       floatingWrap.classList.toggle('show', show);
       floatingWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
     }
 
-    function i3y(){
+    function queueFloatingBar(){
       if (floatTicking) return;
       floatTicking = true;
-      requestAnimationFrame(() => { floatTicking = false; k2s(); });
+      requestAnimationFrame(() => { floatTicking = false; updateFloatingBar(); });
     }
 
-    function b4m() { heroThreshold = Math.max(180, heroSection.offsetHeight * .72); i3y(); }
+    function refreshHeroThreshold() { heroThreshold = Math.max(180, heroSection.offsetHeight * .72); queueFloatingBar(); }
 
     // 6 位編號，去掉 0/O/1/I/L 等易混字元，方便客服肉眼核對
 
@@ -703,7 +703,7 @@
     receptionText.textContent = `本次由助理${CONFIG.receptionist} 接待`;
 
     // Initial slide follows ad parameter
-    u6h(currentKey, {scroll:false, track:true});
+    selectCard(currentKey, {scroll:false, track:true});
     requestAnimationFrame(() => {
       const card = cards.find(c => c.dataset.slide === currentKey);
       if (card) slider.scrollLeft = card.offsetLeft - slider.offsetLeft;
@@ -720,7 +720,7 @@
           const d = Math.abs((card.offsetLeft - slider.offsetLeft) - left);
           if (d < min) { min = d; nearest = card; }
         });
-        if (nearest && nearest.dataset.slide !== currentKey) u6h(nearest.dataset.slide, {scroll:false, track:true});
+        if (nearest && nearest.dataset.slide !== currentKey) selectCard(nearest.dataset.slide, {scroll:false, track:true});
       }, 90);
     }, {passive:true});
 
@@ -731,7 +731,7 @@
 
     dots.forEach(dot => dot.addEventListener('click', () => {
       userInteracted = true;
-      u6h(dot.dataset.dot, {scroll:true, track:true});
+      selectCard(dot.dataset.dot, {scroll:true, track:true});
     }));
 
     // One gentle automatic nudge to show there are multiple cards, then stop.
@@ -741,17 +741,17 @@
       autoHintDone = true;
       const i = ORDER.indexOf(currentKey);
       const next = ORDER[Math.min(i + 1, ORDER.length - 1)];
-      if (next !== currentKey) u6h(next, {scroll:true, track:true});
+      if (next !== currentKey) selectCard(next, {scroll:true, track:true});
     }, 3000);
 
     let redirecting = false;
     const cardInterest = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
 
-    ['load', 'pageshow'].forEach(evt => window.addEventListener(evt, m9a));
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) m9a(); });
-    const flushPoll = setInterval(() => { m9a(); if (t2m()) clearInterval(flushPoll); }, 800);
+    ['load', 'pageshow'].forEach(evt => window.addEventListener(evt, flushPendingEvents));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) flushPendingEvents(); });
+    const flushPoll = setInterval(() => { flushPendingEvents(); if (gtagReady()) clearInterval(flushPoll); }, 800);
     // 30 秒後仍偵測唔到 gtag.js 就緒：直接推入 gtag 隊列，等佢載入後自行發送，避免事件一直積壓
-    setTimeout(() => { clearInterval(flushPoll); m9a(true); }, 30000);
+    setTimeout(() => { clearInterval(flushPoll); flushPendingEvents(true); }, 30000);
 
     // 宿主唔處理自訂 scheme 時，只係 iframe 失敗；主頁面唔會變成 ERR_UNKNOWN_URL_SCHEME 錯誤頁，兜底面板仍然可用
 
@@ -767,46 +767,46 @@
 
     // 頁面轉入後台 = WhatsApp 已被喚起
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) e6b();
+      if (document.hidden) markAppOpened();
       else redirecting = false;
     });
     window.addEventListener('pagehide', () => clearTimeout(fallbackTimer));
     // 系統確認框（Android 揀 App、iOS「喺 WhatsApp 開啟？」）會令頁面失焦但仍然可見，期間唔好彈兜底
-    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) g7n(3500); });
+    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) armFallback(3500); });
     window.addEventListener('focus', () => {
-      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) g7n(900);
+      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) armFallback(900);
     });
     window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
 
     // 每次進站報一條，用嚟分清「冇人點」同「點咗但上報收唔到」；load 前已經點擊就喺點擊時補發
     let pageViewSent = false;
 
-    if (document.readyState === 'complete') z3e();
-    else window.addEventListener('load', z3e, { once: true });
+    if (document.readyState === 'complete') sendPageView();
+    else window.addEventListener('load', sendPageView, { once: true });
 
     // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
     // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
     waFallbackOpen.addEventListener('click', () => {
       waAttempt = { t: Date.now(), placement: 'fallback', left: false, linkType: 'retry', txId: waAttempt ? waAttempt.txId : '' };
-      x5p('wa_fallback_click', {});
-      y2b('wa_fallback_click', {});
+      trackEvent('wa_fallback_click', {});
+      sendEvent('wa_fallback_click', {});
     });
     waCopyNumber.addEventListener('click', () => {
-      c6v(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
-      x5p('wa_copy_number', {});
-      y2b('wa_copy_number', {});
+      copyText(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
+      trackEvent('wa_copy_number', {});
+      sendEvent('wa_copy_number', {});
     });
     waCopyMsg.addEventListener('click', () => {
-      c6v(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
-      x5p('wa_copy_message', {});
-      y2b('wa_copy_message', {});
+      copyText(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
+      trackEvent('wa_copy_message', {});
+      sendEvent('wa_copy_message', {});
     });
-    document.getElementById('wa-fallback-close').addEventListener('click', a9w);
-    waFallback.addEventListener('click', e => { if (e.target === waFallback) a9w(); });
+    document.getElementById('wa-fallback-close').addEventListener('click', hideFallback);
+    waFallback.addEventListener('click', e => { if (e.target === waFallback) hideFallback(); });
 
     document.querySelectorAll('[data-wa]').forEach(btn => {
       btn.addEventListener('click', e => {
-        r8t(e, btn.dataset.location);
+        openWhatsApp(e, btn.dataset.location);
       });
     });
 
@@ -818,7 +818,7 @@
 
     const finalObserver = new IntersectionObserver(entries => {
       finalVisible = entries[0] && entries[0].isIntersecting;
-      k2s();
+      updateFloatingBar();
     }, {threshold:.18});
     finalObserver.observe(finalCta);
 
@@ -826,11 +826,11 @@
     let heroThreshold = Math.max(180, heroSection.offsetHeight * .72);
     let floatTicking = false;
 
-    window.addEventListener('scroll',i3y,{passive:true});
+    window.addEventListener('scroll',queueFloatingBar,{passive:true});
 
-    window.addEventListener('resize', b4m, {passive:true});
-    window.addEventListener('load', b4m, {once:true});
-    k2s();
+    window.addEventListener('resize', refreshHeroThreshold, {passive:true});
+    window.addEventListener('load', refreshHeroThreshold, {once:true});
+    updateFloatingBar();
 
     // 按鈕離開畫面就暫停動效
     if ('IntersectionObserver' in window) {
