@@ -7,55 +7,8 @@
   <meta name="theme-color" content="#f6f4ef">
   <meta name="format-detection" content="telephone=no">
 
-  <!-- 移动端极速网络连接预热与关键渲染资产预加载 -->
-  <!-- gtag.js 是 no-cors 腳本請求，preconnect 不能帶 crossorigin，否則建立的連線用不上 -->
-  <link rel="preconnect" href="https://www.googletagmanager.com">
-  <link rel="dns-prefetch" href="https://www.google-analytics.com">
-  <link rel="dns-prefetch" href="https://www.googleadservices.com">
-  <link rel="dns-prefetch" href="https://googleads.g.doubleclick.net">
-  <link rel="dns-prefetch" href="https://connect.facebook.net">
   <title>講經MAN｜10月15日港股名單｜免費領取</title>
   <meta name="description" content="講經MAN整理10月14日港股收市數據：恒指收24,314.17點，跌0.13%；207隻升、350隻跌，恒生科技升0.91%。附10月15日最新觀察名單，免費領取。">
-
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-ES9MEXDPGX"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-
-    gtag('config', 'G-ES9MEXDPGX');
-  </script>
-  <!-- 冇 config AW-，send_to: 'AW-...' 嘅轉化唔會發出；獨立一段，分流系統換 GA4 代碼時唔會連帶刪走 -->
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    window.gtag = window.gtag || function(){dataLayer.push(arguments);};
-    gtag('config', 'AW-364192896');
-  </script>
-
-  <!-- Meta Pixel：先建隊列，腳本延後到 load 之後或首次互動才載入，所有 fbq() 呼叫照常排隊 -->
-  <script>
-    !function(f){if(f.fbq)return;var n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
-    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];}(window);
-    fbq('init', '1055025880503308');
-    fbq('track', 'PageView');
-    (function(){
-      var loaded = false;
-      function loadFacebookPixel(){
-        if (loaded) return; loaded = true;
-        var s = document.createElement('script'); s.async = true;
-        s.src = 'https://connect.facebook.net/en_US/fbevents.js';
-        document.head.appendChild(s);
-      }
-      window.addEventListener('load', function(){ setTimeout(loadFacebookPixel, 1200); }, {once:true});
-      ['pointerdown','touchstart','scroll'].forEach(function(evt){
-        window.addEventListener(evt, loadFacebookPixel, {once:true, passive:true});
-      });
-    })();
-  </script>
-  <noscript><img height="1" width="1" style="display:none" alt=""
-    src="https://www.facebook.com/tr?id=1055025880503308&ev=PageView&noscript=1"/></noscript>
 
   <style>
     :root{
@@ -301,8 +254,8 @@
       fallbackDelayInApp: 1200,
       // 離線轉化回傳：填入 apps-script/Code.gs 部署後的 Web App 網址（.../exec）；留空則唔上報，留言亦唔加編號
       leadEndpoint: '',
-      // 跳轉事件流（分流系統）：只在點了領取按鈕之後才送。進站不回傳、不上傳。點擊、已喚起、兜底以 sendBeacon 送 text/plain JSON；留空則唔送
-      eventEndpoint: 'https://hhucuq.top/wa-events',
+      // 留空：不向分流系統回傳，也不上傳
+      eventEndpoint: '',
       // 進線語入面嘅日期，每日更新數據時一併改
       listDate: '10月15日'
     };
