@@ -126,16 +126,6 @@
     .tape-side{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px;font-size:15px;font-weight:800;color:#3a4558}
     .tape-side b{font-weight:950;color:#15233d}
 
-    .lead-scroll{display:none}
-    @media (max-width:860px){
-      html.cta-below .hero-inner{display:flex;flex-direction:column}
-      html.cta-below .hero-above{order:1}
-      html.cta-below .slider-wrap,html.cta-below .slider-dots{order:2}
-      html.cta-below .join-ticker,html.cta-below #hero-cta,html.cta-below #hero-cta-sub{order:3}
-      html.cta-below .hero-choice,html.cta-below .hero-qualify-note,html.cta-below .hero-proof{order:4}
-      html.cta-below .lead-tap{display:none}
-      html.cta-below .lead-scroll{display:inline}
-    }
     .hero-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:4px 0 14px}
     .hstep{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:8px 6px;background:rgba(255,255,255,.94);border:1px solid rgba(36,57,104,.12);border-radius:13px;font-size:15px;font-weight:900;color:#17243e;white-space:nowrap}
     .hstep-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--orange);color:#fff;font-size:14px;font-weight:950;display:flex;align-items:center;justify-content:center}
@@ -209,7 +199,7 @@
         <div class="hero-above">
         <div class="eyebrow"><span class="dot"></span><span>10月15日 · 今日名單已更新</span></div>
         <h1 class="hero-heading">你隻股又跌？<br><span class="hl">入群跟成班人一齊學，<br>免費拎心水名單</span><br><span class="accent">今日已經整理好</span></h1>
-        <p class="hero-lead">10月14日收市，指數微跌，350 隻股跌、只有 207 隻升。<br><b class="lead-tap">按一下，WhatsApp 直接收名單。</b><b class="lead-scroll">滑一滑，下面就係領取連結。</b></p>
+        <p class="hero-lead">10月14日收市，指數微跌，350 隻股跌、只有 207 隻升。<br><b>按一下，WhatsApp 直接收名單。</b></p>
         <div class="hero-steps" aria-label="領取步驟">
           <div class="hstep"><span class="hstep-n">1</span><span>揀名單</span></div>
           <div class="hstep"><span class="hstep-n">2</span><span>按領取</span></div>
@@ -474,8 +464,7 @@
     }, 3000);
 
     let redirecting = false;
-    const gateAnswers = { interest:'', priority:'' };
-    const defaultInterestMap = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
+    const cardInterest = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
 
     function c9d(payload) {
       if (!CONFIG.leadEndpoint) return;
@@ -539,6 +528,7 @@
       redirecting = true;
       setTimeout(() => { redirecting = false; }, 2000);
 
+      const interest = cardInterest[currentKey] || '近期潛力黑馬名單';
       const leadCode = CONFIG.leadEndpoint ? h4p() : '';
       const txId = Date.now().toString(36) + '-' + h4p();
       const message = n8q(leadCode);
@@ -581,8 +571,8 @@
           utm_term: CLICK_IDS.utm_term || '',
           placement_app: CLICK_IDS.placement || '',
           creative: CLICK_IDS.creative || '',
-          interest: gateAnswers.interest,
-          priority: gateAnswers.priority,
+          interest: interest,
+          priority: '',
           variant: currentKey,
           placement: locationName || 'unknown',
           wa_env: WA_ENV,
@@ -602,7 +592,7 @@
       w1s();
       o3l('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
       o3l('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
-      m6t('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: gateAnswers.interest, priority: gateAnswers.priority, gtag_ready: s5h() });
+      m6t('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: interest, priority: '', gtag_ready: s5h() });
     }
 
     // 進線語三句輪流。{r} = 接待員英文名，{d} = CONFIG.listDate。同上一次唔同。
@@ -784,8 +774,6 @@
 
     document.querySelectorAll('[data-wa]').forEach(btn => {
       btn.addEventListener('click', e => {
-        gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
-        gateAnswers.priority = '';
         u0e(e, btn.dataset.location);
       });
     });
