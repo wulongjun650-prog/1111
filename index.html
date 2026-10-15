@@ -1,38 +1,39 @@
 <!doctype html>
-<!-- 10.15 收市紙版：領取、跳轉、問卷、兜底、埋點同上一版；版式重做 -->
+<!-- 10.15号版 -->
 <html lang="zh-HK">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#f6f4ef">
   <meta name="format-detection" content="telephone=no">
-  <script>document.documentElement.classList.add('js')</script>
 
+  <!-- 移动端极速网络连接预热与关键渲染资产预加载 -->
+  <!-- gtag.js 是 no-cors 腳本請求，preconnect 不能帶 crossorigin，否則建立的連線用不上 -->
   <link rel="preconnect" href="https://www.googletagmanager.com">
   <link rel="dns-prefetch" href="https://www.google-analytics.com">
   <link rel="dns-prefetch" href="https://www.googleadservices.com">
   <link rel="dns-prefetch" href="https://googleads.g.doubleclick.net">
   <link rel="dns-prefetch" href="https://connect.facebook.net">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&family=Noto+Serif+TC:wght@600&display=swap" rel="stylesheet">
-  <link rel="preload" as="image" href="assets/victoria-harbour-skyscrapers.jpg" fetchpriority="high">
-
   <title>講經MAN｜10月15日港股名單｜免費領取</title>
   <meta name="description" content="講經MAN整理10月14日港股收市數據：恒指收24,314.17點，跌0.13%；207隻升、350隻跌，恒生科技升0.91%。附10月15日最新觀察名單，免費領取。">
 
+  <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-ES9MEXDPGX"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
+
     gtag('config', 'G-ES9MEXDPGX');
   </script>
+  <!-- 冇 config AW-，send_to: 'AW-...' 嘅轉化唔會發出；獨立一段，分流系統換 GA4 代碼時唔會連帶刪走 -->
   <script>
     window.dataLayer = window.dataLayer || [];
     window.gtag = window.gtag || function(){dataLayer.push(arguments);};
     gtag('config', 'AW-364192896');
   </script>
+
+  <!-- Meta Pixel：先建隊列，腳本延後到 load 之後或首次互動才載入，所有 fbq() 呼叫照常排隊 -->
   <script>
     !function(f){if(f.fbq)return;var n=f.fbq=function(){n.callMethod?
     n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
@@ -57,631 +58,339 @@
     src="https://www.facebook.com/tr?id=1055025880503308&ev=PageView&noscript=1"/></noscript>
 
   <style>
-    :root {
-      --bg: #ffffff;
-      --surface: #f4f4f4;
-      --ink: #111111;
-      --muted: #5e5e5e;
-      --accent: #1a4be0;
-      --accent-ink: #ffffff;
-      --field: #111111;
-      --field-ink: #ffffff;
-      --soft: #c8c8c8;
-      --display: "Noto Serif TC", "Songti TC", "PMingLiU", serif;
-      --text: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
-      --step-small: clamp(0.875rem, 0.84rem + 0.12vw, 0.9375rem);
-      --step-body: clamp(1.0625rem, 1rem + 0.28vw, 1.1875rem);
-      --step-lead: clamp(1.25rem, 1.12rem + 0.55vw, 1.5rem);
-      --step-head: clamp(2rem, 1.2rem + 2.4vw, 3.25rem);
-      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-      --ease-in-out: cubic-bezier(0.76, 0, 0.24, 1);
-      --ease-soft: cubic-bezier(0.33, 1, 0.68, 1);
-      --t-press: 140ms;
-      --t-hover: 180ms;
-      --t-reveal: 800ms;
-      --margin: 16px;
-      --gap: 8px;
+    :root{
+      --paper:#f6f4ef;--white:#fff;--ink:#17233a;--navy:#243968;--navy2:#315489;
+      --orange:#f28b24;--orange2:#d96e12;--yellow:#ffd94a;--blue:#edf6fb;
+      --muted:#4a5568;--border:#e7e5df;--green:#1f9d62;--red:#c94b3f;--shadow:0 8px 26px rgba(35,57,104,.08)
     }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html { scroll-behavior: smooth; background: var(--bg); }
-    body {
-      margin: 0;
-      color: var(--ink);
-      background: var(--bg);
-      font-family: var(--text);
-      font-size: var(--step-body);
-      font-weight: 400;
-      line-height: 1.5;
-      -webkit-font-smoothing: antialiased;
-      touch-action: manipulation;
-    }
-    img, video { display: block; max-width: 100%; }
-    a { color: inherit; text-decoration: none; }
-    button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-    :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-    ::selection { background: var(--accent); color: var(--accent-ink); }
-    .sheet { position: relative; z-index: 1; background: var(--bg); }
-    .media-tone { filter: grayscale(1) contrast(1.05); }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html{scroll-behavior:smooth;background:#e9e8e4;touch-action:manipulation}
+    body{margin:0;color:var(--ink);background:#e9e8e4;font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","PingFang HK","Microsoft JhengHei","Noto Sans TC",Arial,sans-serif;-webkit-font-smoothing:antialiased;touch-action:manipulation}
+    a{color:inherit;text-decoration:none;-webkit-user-select:none;user-select:none}
+    button{font:inherit;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+    #market,#trust,footer{content-visibility:auto;contain-intrinsic-size:1px 500px}
+    .page{width:100%;max-width:520px;margin:0 auto;background:var(--paper);min-height:100vh;overflow:hidden;box-shadow:0 0 30px rgba(0,0,0,.04)}
+    .mast{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;background:var(--navy);color:#fff}
+    .mast strong{font-size:22px;font-weight:950;letter-spacing:-.03em}
+    .mast span{background:var(--orange);color:#fff;font-size:14px;font-weight:900;padding:7px 10px;border-radius:999px}
+    .hero{position:relative;padding:18px 18px 22px;background:var(--paper);border-bottom:1px solid rgba(36,57,104,.08)}
+    .hero-inner{position:relative;z-index:1}
+    .eyebrow{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.9);border:1px solid rgba(36,57,104,.12);color:var(--navy);font-size:14px;font-weight:850;box-shadow:0 5px 16px rgba(36,57,104,.05)}
+    .eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--red);animation:live-dot 1.6s ease-in-out infinite}
+    @keyframes live-dot{0%,100%{opacity:1}50%{opacity:.35}}
+    h1{margin:12px 0 8px;font-size:38px;line-height:1.08;letter-spacing:-.035em;color:#15233d;font-weight:950} h1 .accent{color:var(--orange2)}
+    .hero-kickers{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 0}.hero-kickers span{font-size:12px;font-weight:800;color:#334a6b;background:rgba(255,255,255,.72);border:1px solid rgba(36,57,104,.09);padding:6px 9px;border-radius:999px}
+    .hero-sub{margin:11px 0 0;font-size:15px;line-height:1.68;color:#42516b;font-weight:650}.hero-proof{margin-top:10px;color:#5a6474;font-size:12px;line-height:1.55;text-align:center}
+    .cta{-webkit-touch-callout:none;width:100%;min-height:60px;border:0;border-radius:15px;display:flex;align-items:center;justify-content:center;gap:8px;padding:15px 18px;margin-top:16px;color:#fff;background:linear-gradient(135deg,#f59a2e,#e77c15);font-size:19px;line-height:1.3;font-weight:900;box-shadow:0 11px 22px rgba(229,124,21,.22);cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .cta:active,.gate-confirm:active{transform:scale(.98) translateY(1px);opacity:.94;transition:transform .06s ease,opacity .06s ease}
+    /* 領取按鈕動效：掃光 → 輕彈 → 箭頭前推，每 3 秒一輪。只動 transform（合成層），唔觸發重排、唔影響 CLS。
+       用偽元素實現，因為 b7f() 會用 textContent 改寫按鈕文字 */
+    .cta[data-wa]{position:relative;overflow:hidden;isolation:isolate;animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite}
+    .cta[data-wa]::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:-40%;width:28%;background:linear-gradient(105deg,rgba(255,255,255,0),rgba(255,255,255,.45) 50%,rgba(255,255,255,0));transform:skewX(-18deg);animation:cta-shine 3s ease-in-out 1.2s infinite;pointer-events:none}
+    .cta[data-wa]::after{content:"";flex:none;width:8px;height:8px;margin-left:1px;border-top:2.5px solid currentColor;border-right:2.5px solid currentColor;transform:rotate(45deg);animation:cta-arrow 3s ease-in-out 1.2s infinite}
+    .cta[data-wa]:active{animation:none}
+    .cta.cta-idle,.cta.cta-idle::before,.cta.cta-idle::after,
+    .floating-cta-wrap:not(.show) .cta,.floating-cta-wrap:not(.show) .cta::before,.floating-cta-wrap:not(.show) .cta::after{animation-play-state:paused}
+    @keyframes cta-bounce{0%,58%,100%{transform:none}66%{transform:translateY(-14px) scale(1.07)}74%{transform:translateY(0) scale(.96)}82%{transform:translateY(-7px) scale(1.035)}90%{transform:none}}
+    @keyframes cta-shine{0%,38%{transform:translateX(0) skewX(-18deg)}60%,100%{transform:translateX(520%) skewX(-18deg)}}
+    @keyframes cta-arrow{0%,62%,100%{transform:translateX(0) rotate(45deg)}70%{transform:translateX(4px) rotate(45deg)}78%{transform:translateX(0) rotate(45deg)}}
+    @media (prefers-reduced-motion:reduce){.cta[data-wa],.cta[data-wa]::before,.cta[data-wa]::after{animation:none}}
+    .gate-option:active{transform:scale(.985);background:#f7f9fc;transition:transform .06s ease}
+    .gate-close-x:active,.gate-cancel:active{transform:scale(.97);background:#eae6de;transition:transform .06s ease}
+    .cta-note{text-align:center;margin:9px 0 0;color:#5a6474;font-size:13px;line-height:1.5}
+    section{padding:32px 20px}.section-white{background:#fff}.section-blue{background:linear-gradient(180deg,#f1f8fc,#edf5f9)}
+    .section-label{display:inline-block;font-size:13px;font-weight:900;letter-spacing:.06em;color:var(--orange2);margin-bottom:8px;padding:4px 10px;border-radius:999px;background:#fff1dc}
+    h2{margin:0;font-size:26px;line-height:1.35;letter-spacing:-.015em;color:#17243e;font-weight:950}h2 .hl{color:var(--red)}h2 .hl-o{color:var(--orange2)}.section-intro{margin:10px 0 0;font-size:16px;line-height:1.75;color:var(--muted)}
+    .section-intro b{color:#17243e}
+    .method-card{margin-top:18px;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 5px 18px rgba(41,74,119,.04)}
+    .method-row{display:grid;grid-template-columns:48px 1fr;gap:12px;align-items:center;padding:16px 15px;border-bottom:1px solid #eeeae3}.method-row:last-child{border-bottom:0}
+    .method-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fff4d6;color:#b66b09;font-size:18px;font-weight:900}.method-row strong{display:block;font-size:17px;color:#1f2d47;margin-bottom:3px}.method-row p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}.method-result{margin-top:14px;padding:13px 14px;border-radius:12px;background:#fff7da;border:1px solid #f3df9a;color:#3a4558;font-size:15px;font-weight:800;text-align:center;line-height:1.5}
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}.stat{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 13px;min-height:104px}.stat-label{font-size:14px;color:#4a5568;font-weight:800}.stat-value{font-size:26px;line-height:1.1;font-weight:950;color:#192640;margin-top:8px;letter-spacing:-.02em}.stat-change{font-size:14px;font-weight:900;margin-top:6px}.up{color:var(--green)}.down{color:var(--red)}.neutral{color:var(--navy2)}
+    .stat.stat-hot{background:#fff8ec;border-color:#f1c877}
+    .market-points{margin-top:18px;border-top:1px solid #e3e0d9}.market-point{display:grid;grid-template-columns:36px 1fr;gap:11px;padding:16px 0;border-bottom:1px solid #e3e0d9}.num{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#fff4d6;color:#b66b09;font-size:14px;font-weight:900}.market-point strong{display:block;font-size:17px;line-height:1.45;color:#1f2d47;margin-bottom:5px}.market-point p{margin:0;color:var(--muted);font-size:15px;line-height:1.75}.market-point p b{color:#17243e}.source-line{margin-top:14px;font-size:12px;color:#6b7380;line-height:1.65}.source-line a{text-decoration:underline;text-underline-offset:2px}    .category-list{display:grid;gap:10px;margin-top:17px}.category-card{background:#fff;border:1px solid rgba(36,57,104,.11);border-radius:15px;padding:15px;box-shadow:0 5px 18px rgba(41,74,119,.04)}.category-top{display:flex;align-items:center;justify-content:space-between;gap:9px}.category-num{font-size:11px;font-weight:900;color:#fff;background:var(--navy);padding:5px 7px;border-radius:7px}.category-badge{font-size:10px;font-weight:900;color:#a86107;background:#fff2c6;padding:5px 7px;border-radius:7px}.category-card h3{margin:9px 0 5px;font-size:17px;color:#182640}.category-card p{margin:0;color:#657287;font-size:12px;line-height:1.6}.category-card.active{border-color:#f1c877;box-shadow:0 8px 22px rgba(229,124,21,.08)}
+    .list-note{margin-top:12px;padding:12px 13px;border-radius:13px;background:rgba(255,255,255,.65);border:1px dashed #bfd2e1}.list-note strong{display:block;font-size:12px;color:#283957;margin-bottom:7px}.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{font-size:10px;font-weight:800;color:#4b5c73;background:#fff;border:1px solid #dce6ee;padding:5px 7px;border-radius:999px}
+    .trust{display:flex;gap:14px;align-items:center;margin-top:18px;padding:16px;background:#fff;border:1px solid var(--border);border-radius:15px}.avatar{width:72px;height:72px;border-radius:15px;object-fit:cover;border:1px solid #e8e5de;background:#fff;flex:none}.trust h3{margin:0 0 4px;font-size:19px;color:#1a2741}.trust p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}.yt-link{display:inline-flex;align-items:center;gap:4px;margin-top:8px;color:var(--navy2);font-weight:850;font-size:14px;min-height:32px}
+    .trust-points{display:grid;gap:9px;margin-top:14px}.trust-point{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;background:rgba(255,255,255,.75);border:1px solid #dce6ee;border-radius:13px;font-size:15px;line-height:1.55;color:#2c3a52;font-weight:700}.trust-point i{flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center}
+    .final-card{margin-top:20px;padding:24px 18px 20px;border-radius:18px;background:linear-gradient(155deg,#fffaf0,#fff 68%);border:2px solid #f0cf8f;box-shadow:var(--shadow);text-align:center}.mini-label{display:inline-block;font-size:13px;font-weight:900;color:#b56b0d;letter-spacing:.04em;background:#fff1dc;padding:4px 10px;border-radius:999px}.final-card h2{font-size:26px;margin-top:10px}.final-card p{font-size:15px;line-height:1.7;color:var(--muted);margin:10px 0 0}.final-card p b{color:#17243e}.reception{margin-top:11px;font-size:13px;line-height:1.5;color:#5a6474;font-weight:700}
+    footer{padding:18px 18px calc(96px + env(safe-area-inset-bottom));text-align:center;color:#7d776d;background:#f6f4ef;font-size:12px;line-height:1.7;border-top:1px solid #ebe8e0}
+    .floating-cta-wrap{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(520px,100%);z-index:30;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(246,244,239,0),rgba(246,244,239,.96) 28%,rgba(246,244,239,.99));opacity:0;pointer-events:none;transition:opacity .2s ease}.floating-cta-wrap.show{opacity:1;pointer-events:auto}.floating-cta{width:100%;min-height:58px;margin:0;border-radius:15px;box-shadow:0 10px 24px rgba(229,124,21,.24);font-size:18px}
 
-    .board {
-      min-height: 100svh;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 60px minmax(0, 1fr) minmax(0, 1fr);
-      gap: var(--gap);
-      padding: var(--margin);
-    }
-    .topbar { grid-column: 1 / -1; grid-row: 1; display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: var(--gap); min-width: 0; }
-    #hero-cta { grid-column: 2; grid-row: 1; justify-self: end; align-self: stretch; z-index: 2; height: 60px; }
-    .mark {
-      display: flex; align-items: center; justify-content: center;
-      background: var(--ink); color: var(--field-ink);
-      font-family: var(--display); font-size: 24px; font-weight: 600; line-height: 1;
-    }
-    .topnav {
-      display: flex; align-items: center; gap: 22px;
-      background: var(--surface); padding-inline: 18px; min-width: 0;
-    }
-    .topnav a { font-size: var(--step-body); font-weight: 500; }
-    @media (min-width: 1100px) {
-      .topnav { padding-left: max(18px, calc(42vw - 92px)); }
-    }
-    .name-tile {
-      background: var(--surface);
-      display: flex; align-items: flex-end;
-      padding: 24px;
-      min-width: 0;
-    }
-    h1 {
-      margin: 0;
-      font-family: var(--display);
-      font-weight: 600;
-      font-size: clamp(80px, 9vw, 150px);
-      line-height: 0.88;
-      letter-spacing: -0.04em;
-    }
-    .shot { position: relative; overflow: hidden; background: var(--field); min-width: 0; min-height: 0; }
-    .shot img, .shot video { width: 100%; height: 100%; object-fit: cover; }
-    .proof-photo video { width: 100%; height: 100%; object-fit: cover; object-position: 18% 58%; }
-    .split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); min-width: 0; min-height: 0; }
-    .tile {
-      padding: 24px;
-      display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start;
-      min-width: 0;
-    }
-    .tile p { margin: 0; font-family: var(--display); font-size: 24px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; }
-    .tile-dark { background: var(--field); color: var(--field-ink); }
-    .tile-accent { background: var(--accent); color: var(--accent-ink); }
-    #hero-cta-sub { margin-top: 12px; font-family: var(--text); font-size: var(--step-body); font-weight: 500; line-height: 1.4; }
+    .hero-heading{margin:14px 0 6px;font-size:33px;line-height:1.22;letter-spacing:-.02em;color:#15233d;font-weight:950}
+    .hero-heading .accent{color:var(--orange2)}.hero-heading .hl{color:var(--red)}
+    .hero-lead{margin:8px 0 12px;color:#3a4558;font-size:16px;line-height:1.65;font-weight:700}
+    .hero-lead b{color:#15233d;background:linear-gradient(transparent 60%,#ffe08a 60%)}
+    .tape{margin:2px 0 12px;padding:12px 14px;background:rgba(255,255,255,.94);border:1px solid rgba(36,57,104,.12);border-radius:14px}
+    .tape-main{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px}
+    .tape-main span{font-size:15px;font-weight:800;color:#4a5568}
+    .tape-main b{font-size:30px;line-height:1.1;font-weight:950;color:#15233d;letter-spacing:-.02em}
+    .tape-main em{font-style:normal;font-size:16px;font-weight:900}
+    .tape-side{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:15px;font-weight:800;color:#3a4558}
+    .tape-side span{white-space:nowrap}
+    .tape-side b{font-weight:950;color:#15233d}
 
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      min-height: 56px; padding: 12px 18px;
-      background: var(--accent); color: var(--accent-ink);
-      font-size: var(--step-body); font-weight: 500; line-height: 1.25; text-align: center;
-      transition: transform var(--t-press) var(--ease-out), background-color var(--t-hover) ease;
+    .lead-scroll{display:none}
+    @media (max-width:860px){
+      html.cta-below .hero-inner{display:flex;flex-direction:column}
+      html.cta-below .hero-above{order:1}
+      html.cta-below .slider-wrap,html.cta-below .slider-dots{order:2}
+      html.cta-below .join-ticker,html.cta-below #hero-cta,html.cta-below #hero-cta-sub{order:3}
+      html.cta-below .hero-choice,html.cta-below .hero-qualify-note,html.cta-below .hero-proof{order:4}
+      html.cta-below .lead-tap{display:none}
+      html.cta-below .lead-scroll{display:inline}
     }
-    .btn-ink { background: var(--ink); color: var(--field-ink); }
-    .btn:active { transform: scale(0.97); }
-    @media (hover: hover) and (pointer: fine) {
-      .btn:hover { background: #1238b0; }
-      .btn-ink:hover { background: #2a2a2a; }
-      .topnav a:hover, .foot a:hover { text-decoration: underline; text-underline-offset: 0.18em; }
+    .hero-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:4px 0 14px}
+    .hstep{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:8px 6px;background:rgba(255,255,255,.94);border:1px solid rgba(36,57,104,.12);border-radius:13px;font-size:15px;font-weight:900;color:#17243e;white-space:nowrap}
+    .hstep-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--orange);color:#fff;font-size:14px;font-weight:950;display:flex;align-items:center;justify-content:center}
+    .hstep:last-child .hstep-n{background:var(--green)}
+    .slider-wrap{position:relative;margin:6px -20px 0;padding-left:20px;overflow:hidden}
+    .slider{position:relative;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:3px 48px 8px 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .slider::-webkit-scrollbar{display:none}
+    .hero-card{flex:0 0 calc(100% - 44px);scroll-snap-align:start;min-height:180px;border-radius:17px;padding:16px 15px 15px;background:rgba(255,255,255,.90);border:1px solid rgba(36,57,104,.12);box-shadow:0 9px 26px rgba(36,57,104,.08);position:relative;overflow:hidden}
+    .hero-card:before{content:"";position:absolute;width:126px;height:126px;border-radius:50%;right:-54px;top:-54px;background:rgba(237,246,251,.95)}
+    .hero-card:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,var(--orange),var(--yellow))}
+    .hero-card.active{border-color:rgba(242,139,36,.45);box-shadow:0 10px 28px rgba(229,124,21,.12)}
+    .card-tag{display:inline-flex;align-items:center;gap:6px;position:relative;z-index:1;padding:5px 10px;border-radius:999px;background:#fff2c6;color:#9d5b07;font-size:13px;font-weight:950;letter-spacing:.02em}
+    .card-tag i{display:block;width:7px;height:7px;border-radius:50%;background:var(--orange)}
+    .hero-card h3{position:relative;z-index:1;margin:11px 0 7px;font-size:23px;line-height:1.25;letter-spacing:-.015em;color:#17243e;font-weight:950}
+    .hero-card p{position:relative;z-index:1;margin:0;color:#3f4b5e;font-size:15px;line-height:1.65;font-weight:650}
+    .hero-card p b{color:#c94b3f}
+    .card-meta{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+    .card-meta span{font-size:13px;font-weight:850;color:#33465f;background:#f4f7fa;border:1px solid #e3eaf0;padding:5px 9px;border-radius:999px}
+    .slider-dots{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:6px}
+    .slider-dot{min-height:44px;border:1px solid #d9dfe7;border-radius:12px;padding:0 4px;background:rgba(255,255,255,.9);color:#4a5568;font-size:15px;font-weight:900;transition:.15s;cursor:pointer}
+    .slider-dot.active{border-color:var(--orange);background:#fff3e2;color:#c0630c;box-shadow:0 4px 12px rgba(229,124,21,.14)}
+    .cta.cta-top{margin-top:6px;min-height:68px;border-radius:17px;font-size:21px;background:linear-gradient(135deg,#ffa33a,#e8700f);animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite,cta-glow 1.8s ease-out infinite}
+    @keyframes cta-glow{0%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 0 rgba(242,139,36,.55)}70%,100%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 11px rgba(242,139,36,0)}}
+    @media (prefers-reduced-motion:reduce){.cta.cta-top{animation:none}}
+    .join-ticker{height:44px;overflow:hidden;margin:6px 0 10px;background:#fff;border:1.5px solid rgba(31,157,98,.45);border-radius:999px;box-shadow:0 8px 18px rgba(31,157,98,.16)}
+    .join-ticker-track{animation:join-roll 16s linear infinite}
+    .join-line{height:44px;display:flex;align-items:center;justify-content:center;gap:8px;color:#14301f;font-size:16px;font-weight:950;white-space:nowrap}
+    .join-line i{flex:none;width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 5px rgba(31,157,98,.2)}
+    @keyframes join-roll{
+      0%,15%{transform:translateY(0)}
+      20%,35%{transform:translateY(-44px)}
+      40%,55%{transform:translateY(-88px)}
+      60%,75%{transform:translateY(-132px)}
+      80%,95%{transform:translateY(-176px)}
+      100%{transform:translateY(-220px)}
     }
-    #hero-cta { white-space: nowrap; min-height: 60px; -webkit-user-select: none; user-select: none; }
+    @media (prefers-reduced-motion:reduce){.join-ticker-track{animation:none}}
+    .hero-cta-sub{display:flex;align-items:center;justify-content:center;gap:6px;width:fit-content;margin:12px auto;padding:8px 18px;border-radius:999px;background:#fff4f2;border:1.5px solid rgba(201,75,63,.55);box-shadow:0 8px 18px rgba(201,75,63,.16);color:var(--red);font-size:18px;line-height:1.2;font-weight:950}
+    .hero-cta-sub b{font-size:28px;line-height:1;letter-spacing:-.03em}
+    .hero-cta-sub[hidden]{display:none}
+    .hero-choice{margin-top:10px;text-align:center;color:#5a6474;font-size:13px;line-height:1.5}
+    .hero-qualify-note{text-align:center;margin:8px 0 0;color:#8a5a1f;font-size:14px;line-height:1.5;font-weight:800}
 
-    .band { background: var(--surface); overflow: hidden; }
-    .join-ticker { height: 52px; overflow: hidden; }
-    .join-ticker-track { animation: join-roll 16s linear infinite; }
-    .join-line {
-      height: 52px; display: flex; align-items: center; gap: 10px;
-      padding-inline: var(--margin);
-      font-size: var(--step-body); font-weight: 500; white-space: nowrap;
-    }
-    .join-line i { width: 8px; height: 8px; background: var(--ink); flex: none; }
-    @keyframes join-roll {
-      0%, 15% { transform: translateY(0); }
-      20%, 35% { transform: translateY(-52px); }
-      40%, 55% { transform: translateY(-104px); }
-      60%, 75% { transform: translateY(-156px); }
-      80%, 95% { transform: translateY(-208px); }
-      100% { transform: translateY(-260px); }
-    }
+    /* 问卷抽屉样式：100% 完整保留 */
+    .lead-gate{position:fixed;inset:0;z-index:60;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .lead-gate.show{display:flex}
+    .gate-panel{width:100%;max-width:520px;background:linear-gradient(180deg,#fcfbf8 0%,#f6f3ed 100%);border-radius:28px 28px 0 0;box-shadow:0 -16px 42px rgba(13,23,39,.18);padding:14px 18px calc(18px + env(safe-area-inset-bottom));max-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border:1px solid rgba(255,255,255,.55)}
+    .gate-handle{width:54px;height:5px;border-radius:999px;background:#d8d2c7;margin:0 auto 13px}
+    .gate-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .gate-kicker{font-size:14px;font-weight:900;color:var(--orange2);letter-spacing:.02em}
+    .gate-close-x{width:40px;height:40px;border:0;border-radius:50%;background:#efebe4;color:#5a6474;font-size:22px;line-height:1;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center}
+    .gate-title{margin:6px 0 0;font-size:24px;line-height:1.35;color:#1b2943;font-weight:950;letter-spacing:-.015em}
+    .gate-desc{margin:8px 0 0;color:#4a5568;font-size:15px;line-height:1.6}
+    .gate-options{display:grid;gap:10px;margin-top:16px}
+    .gate-option{position:relative;width:100%;min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 15px;border:2px solid #e4dfd6;border-radius:18px;background:#fff;color:#30415f;font-size:18px;font-weight:900;text-align:left;cursor:pointer;box-shadow:0 4px 14px rgba(36,57,104,.03);transition:.16s ease}
+    a.gate-option{-webkit-touch-callout:none}
+    .gate-step{display:none}
+    .gate-step.active{display:block;animation:gate-in .18s ease}
+    @keyframes gate-in{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+    .gate-progress{display:flex;align-items:center;gap:6px;margin:0 0 8px}
+    .gate-progress-dot{width:26px;height:6px;border-radius:999px;background:#e3ddd3}
+    .gate-progress-dot.on{background:var(--orange)}
+    .gate-progress-text{margin-left:4px;font-size:13px;font-weight:800;color:#6b7380}
+    .gate-panel.on-step2>.gate-top,.gate-panel.on-step2>.gate-progress{display:none}
+    .gate-top2{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .gate-step-text{font-size:15px;font-weight:900;color:#7e8795}
+    .gate-bar{height:6px;border-radius:999px;background:#e8e3da;overflow:hidden;margin-bottom:14px}
+    .gate-bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#f0a04a,#f6c979)}
+    .gate-intro{padding:13px 14px;border:1px solid #ebe5db;border-radius:18px;background:linear-gradient(180deg,#fffdfa,#f8f5ef);box-shadow:inset 0 1px 0 rgba(255,255,255,.82)}
+    .gate-intro strong{display:block;font-size:16px;color:#202f49;margin-bottom:4px}
+    .gate-intro p{margin:0;color:#5a6474;font-size:14px;line-height:1.55}
+    .gate-selected-tip{margin-top:10px;padding:9px 12px;border-radius:13px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:14px;font-weight:800}
+    .gate-selected-tip b{color:#bc6d12}
+    .gate-option-arrow{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-size:20px;color:#aeb7c4;background:#f7f8fa;border:1px solid #edf0f4}
+    .gate-option.active .gate-option-arrow{color:#e8881f;background:#fff1dc;border-color:#f7d9aa}
+    .gate-back{min-height:60px;padding:0 18px;border:1px solid #dfdad1;border-radius:15px;background:#f3f1ec;color:#556177;font-size:17px;font-weight:950;cursor:pointer}
+    .gate-back:active{transform:scale(.97);background:#eae6de;transition:transform .06s ease}
+    .gate-step[data-step="2"] .gate-intro{padding:11px 13px}
+    .gate-step[data-step="2"] .gate-intro p{font-size:13px}
+    .gate-step[data-step="2"] .gate-selected-tip{margin-top:8px;padding:7px 11px}
+    .gate-step[data-step="2"] .gate-title{margin-top:12px;font-size:20px}
+    .gate-step[data-step="2"] .gate-desc{margin-top:4px;font-size:14px}
+    .gate-step[data-step="2"] .gate-options{gap:9px;margin-top:12px}
+    .gate-step[data-step="2"] .gate-option{min-height:0;padding:11px 12px;gap:10px;font-size:15px}
+    .gate-step[data-step="2"] .gate-option-main{gap:10px}
+    .gate-step[data-step="2"] .gate-option-icon{width:36px;height:36px;font-size:15px}
+    .gate-step[data-step="2"] .gate-option small{font-size:12px;margin-top:3px}
+    .gate-step[data-step="2"] .gate-option-arrow{width:28px;height:28px;font-size:18px}
+    .gate-step[data-step="2"] .gate-actions{margin-top:14px}
+    .gate-step[data-step="2"] .gate-back{min-height:56px}
+    a.gate-option{-webkit-touch-callout:none}
+    .gate-go:active{border-color:#ee9a3a;background:#fff7eb}
+    .gate-go-tip{flex:1;display:flex;flex-direction:column;justify-content:center;padding:6px 12px;border-radius:15px;background:#effaf3;border:1px solid #cfe9d9;color:#3f6b52;font-size:13px;line-height:1.45;font-weight:800;text-align:center}
+    .gate-go-tip b{color:#1f7a45;font-size:16px;font-weight:950}
+    @media(max-height:700px){.on-step2 .gate-handle{margin-bottom:8px}.gate-step[data-step="2"] .gate-intro p,.gate-step[data-step="2"] .gate-desc{display:none}.gate-step[data-step="2"] .gate-title{margin-top:10px}.gate-go-tip br{display:none}.gate-go-tip b{font-size:15px}.gate-step[data-step="2"] .gate-back{min-height:50px}}
+    @media(max-height:600px){.gate-step[data-step="2"] .gate-option small,.on-step2 .gate-trust{display:none}.gate-step[data-step="2"] .gate-option{padding:10px 12px}}
+    .gate-option-main{display:flex;align-items:center;gap:12px;min-width:0}
+    .gate-option-icon{width:42px;height:42px;border-radius:12px;background:linear-gradient(180deg,#fff6e7,#fff1d5);color:#b96809;display:flex;align-items:center;justify-content:center;flex:none;font-size:17px;font-weight:950;border:1px solid #f2dfb9}
+    .gate-option-title{display:block;color:#253550;line-height:1.3}
+    .gate-option small{display:block;margin-top:4px;color:#5a6474;font-size:13px;line-height:1.45;font-weight:700}
+    .gate-option-check{width:28px;height:28px;border-radius:50%;flex:none;border:2px solid #cfd5de;background:#fff;position:relative;transition:.16s ease}
+    .gate-option.active{border-color:#ee9a3a;background:linear-gradient(180deg,#fffdfa,#fff4e3);box-shadow:0 9px 22px rgba(229,124,21,.14)}
+    .gate-option.active .gate-option-check{border-color:#e8881f;background:#e8881f}
+    .gate-option.active .gate-option-check:after{content:"";position:absolute;left:8px;top:4px;width:7px;height:12px;border-right:3px solid #fff;border-bottom:3px solid #fff;transform:rotate(45deg)}
+    .gate-option.active .gate-option-title{color:#1d2c45}
+    .gate-actions{display:flex;gap:10px;margin-top:16px}
+    .gate-cancel,.gate-confirm{min-height:60px;border-radius:15px;font-size:15px;font-weight:950;cursor:pointer}
+    .gate-cancel{border:1px solid #dfdad1;background:#f3f1ec;color:#556177;padding:0 16px}
+    .gate-confirm{flex:1;border:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:18px;background:linear-gradient(135deg,#f2a552,#e98a25);color:#fff;box-shadow:0 10px 22px rgba(229,124,21,.22)}
+    .gate-confirm[aria-disabled="true"]{opacity:.72;box-shadow:none;cursor:not-allowed;filter:saturate(.75);pointer-events:none}
+    .gate-trust{margin-top:10px;text-align:center;color:#6b7380;font-size:12px;line-height:1.55}
+    .wa-fallback{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .wa-fallback.show{display:flex}
+    .wa-fallback .gate-panel{text-align:center}
+    .wa-fallback .gate-title{margin-top:4px}
+    .wa-fallback .cta{margin-top:14px}
+    .wa-alt{display:flex;gap:9px;margin-top:10px}
+    .wa-alt button,.wa-alt a{flex:1;min-height:46px;display:flex;align-items:center;justify-content:center;border:1px solid #dfdad1;background:#fff;color:#33435f;border-radius:13px;font-size:13px;font-weight:900;cursor:pointer}
+    .wa-alt button:active,.wa-alt a:active{transform:scale(.97);background:#f3f1ec}
+    .wa-number{margin-top:10px;font-size:12px;color:#5d6a7d;font-weight:800}
+    .wa-browser-tip{display:none;margin-top:10px;padding:9px 11px;border-radius:12px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:11px;line-height:1.5;font-weight:800}
+    .wa-browser-tip.show{display:block}
+    .wa-close{margin-top:12px;border:0;background:none;color:#8e95a0;font-size:12px;font-weight:800;padding:8px;cursor:pointer}
+    @media(min-width:521px){.lead-gate,.wa-fallback{align-items:center;padding:18px}.gate-panel{border-radius:26px;padding-bottom:20px}}
 
-    .block { padding: 140px var(--margin); }
-    .stats-grid, .proof-grid, .list-grid, .cta-foot, .foot-top {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      column-gap: 16px;
-    }
-    .stats-copy { grid-column: 1 / 6; align-self: center; }
-    .ledger { grid-column: 7 / 13; }
-    h2 {
-      margin: 0;
-      font-family: var(--display);
-      font-weight: 600;
-      font-size: var(--step-head);
-      line-height: 0.95;
-      letter-spacing: -0.03em;
-    }
-    .stand { margin: 22px 0 0; max-width: 36ch; }
-    .fig {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto minmax(12rem, 1.15fr);
-      column-gap: 14px;
-      align-items: baseline;
-      margin: 0 0 22px;
-    }
-    .fig:last-child { margin-bottom: 0; }
-    .whole, .dec {
-      font-family: var(--display);
-      font-weight: 600;
-      font-size: clamp(64px, 7vw, 112px);
-      line-height: 0.9;
-      letter-spacing: -0.04em;
-      font-variant-numeric: tabular-nums;
-    }
-    .whole { text-align: right; }
-    .dec { text-align: left; min-width: 3.4ch; }
-    .cap { font-size: var(--step-body); line-height: 1.45; }
-
-    .proof-side { grid-column: 1 / 5; }
-    .proof-side h2 { margin-bottom: 28px; }
-    .proof-photo { margin: 0; aspect-ratio: 4 / 5; overflow: hidden; background: var(--field); }
-    .proof-photo img { width: 100%; height: 100%; object-fit: cover; animation: drift 16s var(--ease-in-out) infinite alternate; }
-    @keyframes drift { from { transform: scale(1.08) translate3d(0, -3%, 0); } to { transform: scale(1.08) translate3d(0, 3%, 0); } }
-    .namecols { grid-column: 5 / 13; display: grid; grid-template-columns: 1fr 1.15fr 0.9fr; gap: 32px; align-items: start; }
-    .namecols p { margin: 0 0 0.35em; font-size: var(--step-lead); line-height: 1.45; }
-    .kind { color: var(--muted); }
-
-    .list-photo {
-      grid-column: 1 / 6;
-      position: sticky; top: 12vh;
-      width: min(34vw, 100%);
-      aspect-ratio: 4 / 5;
-      background: var(--field);
-      align-self: start;
-      overflow: hidden;
-    }
-    .list-photo img {
-      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-      opacity: 0; transition: opacity 300ms ease;
-    }
-    .list-photo[data-show="blackhorse"] img[data-for="blackhorse"],
-    .list-photo[data-show="picks"] img[data-for="picks"],
-    .list-photo[data-show="income"] img[data-for="income"] { opacity: 1; }
-    .list-copy { grid-column: 7 / 12; }
-    .list-copy h2 { margin-bottom: 48px; }
-    #hero-slider { display: flex; flex-direction: column; }
-    .hero-card {
-      width: 100%; text-align: left; color: var(--muted);
-      min-height: 58px; padding: 8px 0 10px;
-      transition: color var(--t-hover) ease;
-    }
-    .hero-card.active { color: var(--ink); }
-    .row-line { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; min-height: 40px; }
-    .row-name { font-size: var(--step-lead); font-weight: 500; }
-    .row-meta { font-size: var(--step-body); color: var(--muted); flex: none; }
-    .desc-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 320ms var(--ease-out); }
-    .hero-card.active .desc-wrap { grid-template-rows: 1fr; }
-    .desc { overflow: hidden; max-width: 34ch; color: var(--ink); }
-    .desc p { margin: 8px 0 12px; }
-    .choice { margin: 28px 0 0; max-width: 40ch; }
-    .aside { margin: 8px 0 0; color: var(--muted); max-width: 42ch; }
-
-    .cta {
-      min-height: 100svh;
-      background: var(--field);
-      color: var(--field-ink);
-      display: flex; flex-direction: column; justify-content: space-between;
-      padding: 8vh var(--margin) 40px;
-    }
-    .cta h2 {
-      font-size: clamp(64px, 10vw, 156px);
-      line-height: 0.9;
-      max-width: 12ch;
-    }
-    .cta-foot { align-items: end; }
-    .cta-foot p { grid-column: 1 / 6; margin: 0; font-size: var(--step-lead); max-width: 28ch; }
-    #final-button { grid-column: 9 / 13; justify-self: end; min-height: 56px; -webkit-user-select: none; user-select: none; }
-
-    .site-foot {
-      position: relative; z-index: 1;
-      min-height: 100svh;
-      background: var(--field);
-      color: var(--field-ink);
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      padding: 40px var(--margin) 24px;
-    }
-    .foot-top { align-content: start; }
-    .foot-col { display: flex; flex-direction: column; gap: 8px; font-size: var(--step-body); }
-    .foot-col:nth-child(1) { grid-column: 1 / 4; }
-    .foot-col:nth-child(2) { grid-column: 4 / 7; }
-    .foot-col:nth-child(3) { grid-column: 7 / 10; }
-    .foot-col:nth-child(4) { grid-column: 10 / 13; }
-    .foot-col strong { font-weight: 500; }
-    .foot-col a, .foot-col span { color: var(--soft); }
-    .wordmark {
-      margin: 0;
-      font-family: var(--display);
-      font-weight: 600;
-      font-size: 13.2vw;
-      line-height: 0.82;
-      letter-spacing: -0.045em;
-      white-space: nowrap;
-    }
-    .legal { margin: 14px 0 0; max-width: 68ch; color: var(--soft); font-size: var(--step-body); line-height: 1.5; }
-    .legal a { text-decoration: underline; text-underline-offset: 0.15em; }
-
-    .floating-cta-wrap {
-      position: fixed; right: 16px; bottom: 16px; z-index: 30;
-      width: min(220px, 42vw);
-      visibility: hidden; opacity: 0; pointer-events: none;
-      transition: opacity 200ms ease;
-    }
-    .floating-cta-wrap.show { visibility: visible; opacity: 1; pointer-events: auto; }
-    .floating-cta { width: 100%; min-height: 56px; -webkit-user-select: none; user-select: none; }
-
-    .lead-gate, .wa-fallback {
-      position: fixed; inset: 0; z-index: 60;
-      display: none; align-items: flex-end; justify-content: center;
-      background: rgba(17, 17, 17, 0.52);
-      padding: 18px 12px calc(12px + env(safe-area-inset-bottom));
-    }
-    .wa-fallback { z-index: 70; }
-    .lead-gate.show, .wa-fallback.show { display: flex; }
-    .gate-panel {
-      width: 100%; max-width: 560px;
-      background: var(--bg); color: var(--ink);
-      padding: 22px 22px calc(22px + env(safe-area-inset-bottom));
-      max-height: 100%; overflow: auto;
-    }
-    .gate-handle { width: 48px; height: 6px; background: var(--surface); margin: 0 auto 16px; }
-    .gate-top, .gate-top2 { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-    .gate-lead, .gate-step-text, .gate-progress-text { font-size: var(--step-body); font-weight: 500; }
-    .gate-close-x {
-      width: 44px; height: 44px; background: var(--surface);
-      font-size: 22px; line-height: 1;
-    }
-    .gate-progress { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-    .gate-progress-dot { width: 28px; height: 6px; background: var(--surface); }
-    .gate-progress-dot.on { background: var(--accent); }
-    .gate-panel.on-step2 > .gate-top, .gate-panel.on-step2 > .gate-progress { display: none; }
-    .gate-title { margin: 8px 0 0; font-family: var(--display); font-size: var(--step-head); font-weight: 600; line-height: 1.05; letter-spacing: -0.03em; }
-    .gate-desc { margin: 10px 0 0; }
-    .gate-step { display: none; }
-    .gate-step.active { display: block; }
-    .gate-options { display: grid; gap: 8px; margin-top: 16px; }
-    .gate-option {
-      width: 100%; min-height: 72px;
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding: 14px 16px; background: var(--surface); text-align: left; font-weight: 500;
-    }
-    .gate-option-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .gate-option-icon {
-      width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;
-      background: var(--bg); font-family: var(--display); font-weight: 600; flex: none;
-    }
-    .gate-option-title { display: block; line-height: 1.3; }
-    .gate-option small { display: block; margin-top: 4px; color: var(--muted); font-size: var(--step-small); font-weight: 400; line-height: 1.4; }
-    .gate-option-check { width: 22px; height: 22px; background: var(--bg); flex: none; }
-    .gate-option.active { background: var(--ink); color: var(--field-ink); }
-    .gate-option.active small { color: var(--soft); }
-    .gate-option.active .gate-option-check { background: var(--accent); }
-    .gate-option-arrow { font-size: 22px; color: var(--muted); }
-    .gate-bar { height: 6px; background: var(--surface); margin-bottom: 14px; }
-    .gate-bar i { display: block; width: 100%; height: 100%; background: var(--accent); }
-    .gate-intro { padding: 14px; background: var(--surface); }
-    .gate-intro strong { display: block; margin-bottom: 4px; }
-    .gate-intro p { margin: 0; }
-    .gate-selected-tip { margin-top: 10px; padding: 10px 12px; background: var(--bg); font-weight: 500; }
-    .gate-actions { display: flex; gap: 10px; margin-top: 16px; align-items: stretch; }
-    .gate-back, .gate-cancel { min-height: 56px; padding: 0 16px; background: var(--surface); font-weight: 500; }
-    .gate-go-tip { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 8px 12px; background: var(--surface); text-align: center; font-weight: 500; }
-    .gate-trust, .wa-number, .wa-close { margin-top: 12px; color: var(--muted); font-size: var(--step-small); }
-    .wa-fallback .gate-panel { text-align: center; }
-    .wa-fallback .cta-inline { width: 100%; margin-top: 16px; }
-    .wa-alt { display: flex; gap: 8px; margin-top: 10px; }
-    .wa-alt button, .wa-alt a {
-      flex: 1; min-height: 48px; background: var(--surface); font-weight: 500;
-    }
-    .wa-browser-tip { display: none; margin-top: 10px; padding: 10px 12px; background: var(--surface); text-align: left; font-size: var(--step-small); }
-    .wa-browser-tip.show { display: block; }
-    .wa-close { background: none; }
-    @media (min-width: 521px) {
-      .lead-gate, .wa-fallback { align-items: center; padding: 18px; }
-      .gate-panel { padding-bottom: 22px; }
-    }
-
-    @media (prefers-reduced-motion: no-preference) {
-      .js .shutter { clip-path: inset(0 0 100% 0); animation: shutter 1100ms var(--ease-in-out) both; }
-      .js .shutter img { transform: scale(1.12); animation: settle 1500ms var(--ease-soft) both; }
-      .js [data-rise] {
-        opacity: 0; transform: translateY(18px);
-        animation: rise var(--t-reveal) var(--ease-out) forwards;
-        animation-delay: calc(var(--i, 0) * 80ms + 80ms);
-      }
-      .js [data-reveal] {
-        opacity: 0; transform: translateY(22px);
-        transition: opacity 700ms var(--ease-out), transform 900ms var(--ease-out);
-        transition-delay: calc(var(--i, 0) * 70ms);
-      }
-      .js [data-reveal].is-in { opacity: 1; transform: none; }
-    }
-    @keyframes shutter { to { clip-path: inset(0); } }
-    @keyframes settle { to { transform: none; } }
-    @keyframes rise { to { opacity: 1; transform: none; } }
-    @media (prefers-reduced-motion: reduce) {
-      .join-ticker-track, .proof-photo img { animation: none; }
-      .proof-photo video { display: none; }
-      .proof-photo { background: url("assets/hk-victoria-harbour-at-night-mvi-5758-poster.jpg") center 58% / cover no-repeat; }
-    }
-
-    @media (max-width: 800px) {
-      .stats-grid, .proof-grid, .list-grid, .cta-foot, .foot-top { display: block; }
-      .stats-copy, .ledger, .proof-side, .namecols, .list-photo, .list-copy, .cta-foot p, #final-button,
-      .foot-col { grid-column: auto; }
-      .stats-copy { margin-bottom: 36px; }
-      .fig { grid-template-columns: 1fr auto; width: calc(100% - 188px); }
-      .cap { grid-column: 1 / -1; margin-top: 6px; }
-      .whole, .dec { font-size: clamp(44px, 12vw, 88px); }
-      .floating-cta-wrap { width: 132px; }
-      .namecols { display: block; margin-top: 28px; }
-      .namecols > div + div { margin-top: 32px; }
-      .proof-photo { margin-top: 28px; aspect-ratio: 4 / 3; }
-      .list-photo { position: relative; top: auto; width: 100%; aspect-ratio: 4 / 3; margin-bottom: 28px; }
-      .list-copy h2 { margin-bottom: 20px; }
-      .cta { min-height: 80svh; padding-top: 28px; }
-      .cta h2 { font-size: 15vw; }
-      .cta-foot p { margin-bottom: 18px; }
-      #final-button { width: 100%; justify-self: stretch; }
-      .foot-col { margin-bottom: 28px; }
-      .foot-gap { height: 18svh; }
-      .wordmark { font-size: 16vw; }
-      .site-foot { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
-    }
-    @media (max-width: 700px) {
-      .board {
-        min-height: 0;
-        grid-template-columns: 1fr 1fr;
-        grid-template-rows: 56px 30svh auto minmax(168px, auto) auto;
-        grid-template-areas:
-          "bar bar"
-          "name name"
-          "photoA photoA"
-          "dark accent"
-          "video video";
-        gap: 6px;
-        padding: 12px;
-      }
-      .topbar { grid-area: bar; display: flex; align-items: stretch; }
-      .split { display: contents; }
-      .mark { width: 56px; height: 56px; flex: none; }
-      .topnav { flex: 1; padding-left: 12px; gap: 16px; flex-wrap: nowrap; }
-      .name-tile { grid-area: name; }
-      h1 { font-size: 22vw; }
-      .shot-a { grid-area: photoA; aspect-ratio: 4 / 3; }
-      .shot-b { grid-area: video; aspect-ratio: 4 / 3; }
-      .tile-dark { grid-area: dark; }
-      .tile-accent { grid-area: accent; }
-      #hero-cta {
-        grid-area: accent;
-        align-self: end;
-        justify-self: stretch;
-        white-space: normal;
-        height: auto;
-        min-height: 56px;
-        margin: 10px;
-        z-index: 1;
-        width: auto;
-      }
-      .tile { padding: 14px; }
-      .tile p { font-size: 22px; }
-      #hero-cta-sub { display: none; }
-      .scarcity-phone { display: block; }
-    }
-    .scarcity-phone { display: none; margin: 0; padding: 14px var(--margin) 0; font-weight: 500; }
+    @media(max-width:360px){h1{font-size:34px}.hero-heading{font-size:28px;margin-top:10px}.hero-lead{font-size:15px;margin-bottom:10px}.hero-steps{margin-bottom:10px;gap:5px}.hstep{font-size:14px;gap:4px;padding:8px 4px}.hstep-n{width:22px;height:22px;font-size:13px}.hero-card{min-height:0;padding:13px 14px}.hero-card h3{font-size:21px;margin:8px 0 5px}.card-meta{display:none}.hero{padding:14px 16px 20px}section{padding-left:16px;padding-right:16px}.stat-value{font-size:23px}.gate-title{font-size:22px}.gate-option{font-size:17px;padding:13px}.cta{font-size:18px}}
   </style>
 </head>
 <body>
-  <div class="sheet">
-    <header class="board" id="top">
-      <div class="topbar">
-        <a class="mark" href="#top" aria-label="講經MAN">經</a>
-        <nav class="topnav" aria-label="頁面">
-          <a href="#market">收市</a>
-          <a href="#watch">觀察</a>
-          <a href="#lists">名單</a>
-          <a href="#final-cta">領取</a>
-        </nav>
-      </div>
-      <a class="btn btn-ink" id="hero-cta" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="hero">免費領取今日潛力黑馬名單</a>
-
-      <div class="name-tile">
-        <h1 data-rise style="--i:0">講經<br>MAN</h1>
-      </div>
-
-      <figure class="shot shot-a shutter">
-        <img src="assets/victoria-harbour-skyscrapers.jpg" width="1920" height="1276" alt="維多利亞港夜景，中環與尖沙咀一帶的高樓亮著燈" fetchpriority="high" class="media-tone">
-      </figure>
-
-      <figure class="shot shot-b">
-        <img src="assets/international-commerce-centre-on-victoria-harbour.jpg" width="1920" height="1122" alt="環球貿易廣場與尖沙咀海旁，維多利亞港對岸的夜色" class="media-tone">
-      </figure>
-
-      <div class="split">
-        <div class="tile tile-dark">
-          <p data-rise style="--i:1">350隻跌，<br>207隻升。</p>
-        </div>
-        <div class="tile tile-accent">
-          <p data-rise style="--i:2">10月15日名單已整理好。</p>
-          <p id="hero-cta-sub">今日只剩 3 個免費名額</p>
-        </div>
-      </div>
+  <main class="page">
+    <header class="mast">
+      <strong>講經MAN</strong>
+      <span>10月15日 · 免費</span>
     </header>
 
-    <p class="scarcity-phone">今日只剩 3 個免費名額</p>
+    <section class="hero" id="top">
+      <div class="hero-inner">
+        <div class="hero-above">
+        <div class="eyebrow"><span class="dot"></span><span>10月15日 · 今日名單已更新</span></div>
+        <h1 class="hero-heading">你隻股又跌？<br><span class="hl">免費拎心水名單</span></h1>
+        <p class="hero-lead">入群跟成班人一齊學。今日名單已經整理好。<br><b class="lead-tap">按下面橙色按鈕，WhatsApp 直接收。</b><b class="lead-scroll">滑一滑，下面就係領取連結。</b></p>
+        <div class="tape" aria-label="10月14日收市">
+          <div class="tape-main">
+            <span>10月14日收市</span>
+            <b>350</b><em class="down">隻跌</em>
+            <b>207</b><em class="up">隻升</em>
+          </div>
+          <div class="tape-side"><span>恒指 <b>24,314.17</b> <em class="down">−0.13%</em></span><span>科指 <b>4,174.47</b> <em class="up">+0.91%</em></span></div>
+        </div>
+        </div>
 
-    <div class="band" aria-hidden="true">
-      <div class="join-ticker">
-        <div class="join-ticker-track">
-          <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
-          <div class="join-line"><i></i>黃太 · 8分鐘前入群一齊學</div>
-          <div class="join-line"><i></i>李生 · 12分鐘前領取名單並入群</div>
-          <div class="join-line"><i></i>張小姐 · 16分鐘前入群，拎咗心水名單</div>
-          <div class="join-line"><i></i>林生 · 21分鐘前加入，一齊學</div>
-          <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
-        </div>
-      </div>
-    </div>
+        <a class="cta cta-top" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
+        <div class="hero-cta-sub" id="hero-cta-sub">今日只剩 <b>3</b> 個免費名額</div>
 
-    <section class="block" id="market">
-      <div class="stats-grid">
-        <div class="stats-copy">
-          <h2 data-reveal style="--i:0">指數微跌<br>個股跌得多</h2>
-          <p class="stand" data-reveal style="--i:1">10月14日恒指收 24,314.17，跌 0.13%。升股 207 隻，跌股 350 隻，指數幾乎企穩，大多數股份並沒有。</p>
+        <div class="hero-steps" aria-label="領取步驟">
+          <div class="hstep"><span class="hstep-n">1</span><span>揀名單</span></div>
+          <div class="hstep"><span class="hstep-n">2</span><span>按領取</span></div>
+          <div class="hstep"><span class="hstep-n">3</span><span>WhatsApp 收</span></div>
         </div>
-        <div class="ledger" data-reveal style="--i:2">
-          <p class="fig"><span class="whole">24314</span><span class="dec">.17</span><span class="cap">恒生指數，跌 31.05 點，−0.13%</span></p>
-          <p class="fig"><span class="whole">4174</span><span class="dec">.47</span><span class="cap">恒生科技指數，升 37.84 點，+0.91%</span></p>
-          <p class="fig"><span class="whole">8183</span><span class="dec">.17</span><span class="cap">國企指數，升 0.10%</span></p>
-          <p class="fig"><span class="whole">1374</span><span class="dec"></span><span class="cap">億港元，綜合指數成份股成交，較上日多約 7.7%</span></p>
-          <p class="fig"><span class="whole">1</span><span class="dec">.35</span><span class="cap">億港元，北水淨賣出，連續第二日</span></p>
+
+        <div class="join-ticker" aria-hidden="true">
+          <div class="join-ticker-track">
+            <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
+            <div class="join-line"><i></i>黃太 · 8分鐘前入群一齊學</div>
+            <div class="join-line"><i></i>李生 · 12分鐘前領取名單並入群</div>
+            <div class="join-line"><i></i>張小姐 · 16分鐘前入群，拎咗心水名單</div>
+            <div class="join-line"><i></i>林生 · 21分鐘前加入，一齊學</div>
+            <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
+          </div>
         </div>
+
+        <div class="slider-wrap">
+          <div class="slider" id="hero-slider" aria-label="今日精選分類">
+            <article class="hero-card" data-slide="blackhorse" tabindex="0">
+              <span class="card-tag"><i></i>潛力黑馬</span>
+              <h3>今日潛力黑馬名單</h3>
+              <p>大市分化，邊啲股<b>有大戶跟緊</b>？我哋幫你揀出嚟，一份名單睇晒。</p>
+              <div class="card-meta"><span>免費領取</span><span>每日更新</span><span>一睇就明</span></div>
+            </article>
+
+            <article class="hero-card" data-slide="picks" tabindex="0">
+              <span class="card-tag"><i></i>今日心水</span>
+              <h3>今日心水股名單</h3>
+              <p>今日最值得留意嘅幾隻股，<b>每隻都講埋原因</b>，開市前睇一睇就得。</p>
+              <div class="card-meta"><span>免費領取</span><span>開市前更新</span><span>附埋原因</span></div>
+            </article>
+
+            <article class="hero-card" data-slide="income" tabindex="0">
+              <span class="card-tag"><i></i>高息收息</span>
+              <h3>高息收息精選</h3>
+              <p>想穩穩陣陣收息？<b>派息穩定嘅收息股</b>，幫你揀好咗，啱長線慢慢收。</p>
+              <div class="card-meta"><span>免費領取</span><span>派息穩定</span><span>啱長線</span></div>
+            </article>
+          </div>
+        </div>
+
+        <div class="slider-dots" aria-label="切換分類">
+          <button class="slider-dot" type="button" data-dot="blackhorse">潛力黑馬</button>
+          <button class="slider-dot" type="button" data-dot="picks">今日心水</button>
+          <button class="slider-dot" type="button" data-dot="income">高息收息</button>
+        </div>
+
+        <div class="hero-choice" id="hero-choice">目前選擇：潛力黑馬 · 打開後按「發送」即收</div>
+        <div class="hero-qualify-note">完全免費 · 唔使填任何資料 · 打開後按發送</div>
+        <div class="hero-proof">每日開市前更新 · 內容按公開市場資訊整理</div>
       </div>
     </section>
 
-    <section class="block" id="watch">
-      <div class="proof-grid">
-        <div class="proof-side">
-          <h2 data-reveal style="--i:0">收市三件事</h2>
-          <figure class="proof-photo" data-reveal style="--i:1">
-            <video class="media-tone" autoplay muted loop playsinline preload="metadata" poster="assets/hk-victoria-harbour-at-night-mvi-5758-poster.jpg" width="640" height="480" aria-label="從酒店高層望向維多利亞港的夜色">
-              <source src="assets/hk-victoria-harbour-at-night-mvi-5758.webm" type="video/webm">
-            </video>
-          </figure>
-        </div>
-        <div class="namecols" data-reveal style="--i:2">
-          <div>
-            <p class="kind">指數</p>
-            <p>指數微跌，大部分股份都跌</p>
-            <p>207 隻升，350 隻跌，24 隻平</p>
-            <p>中位數變幅 −0.67%</p>
-            <p>恒生科技收 4,174.47，升 0.91%</p>
-            <p>指數跌得少，個股可以跌更多</p>
-          </div>
-          <div>
-            <p class="kind">北水</p>
-            <p>北水再淨賣出 1.35 億</p>
-            <p>港股通（滬）淨賣出 0.81 億</p>
-            <p>港股通（深）淨賣出 0.54 億</p>
-            <p>賣出集中喺中芯國際</p>
-            <p>長飛光纖光纜</p>
-            <p>小米集團</p>
-            <p>跟資金方向比跟大市更重要</p>
-          </div>
-          <div>
-            <p class="kind">成交</p>
-            <p>成份股成交約 1,374 億港元</p>
-            <p>較上日多約 7.7%</p>
-            <p>國企指數 8,183.17，升 0.10%</p>
-            <p>開市前先睇邊類有資金</p>
-            <p>港股360</p>
-            <p>智通財經</p>
-            <p>財聯社</p>
-            <p>METROHK</p>
-          </div>
-        </div>
+    <section class="section-blue" id="market">
+      <div class="section-label">14 OCT 收市 · 今日焦點</div>
+      <h2><span class="hl-o">恒指微跌 0.13%</span><br>跌股仍然多過升股</h2>
+      <p class="section-intro">10月14日（周三）恒指收報<b>24,314.17點</b>，跌31.05點（−0.13%）；恒生科技指數升0.91%至4,174.47點。綜合指數成份股成交約1,374億港元，較上日多約7.7%。<b>207隻股升、350隻股跌</b>，指數跌幅輕，大部分股份其實跌得更多。</p>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">恒生指數</div><div class="stat-value">24,314.17</div><div class="stat-change down">▼31.05點 · −0.13%</div></div>
+        <div class="stat"><div class="stat-label">恒生科技指數</div><div class="stat-value">4,174.47</div><div class="stat-change up">▲37.84點 · +0.91%</div></div>
+        <div class="stat"><div class="stat-label">全日成交</div><div class="stat-value">1,374億</div><div class="stat-change neutral">較上日多約7.7%</div></div>
+        <div class="stat stat-hot"><div class="stat-label">北水淨賣出</div><div class="stat-value">1.35億</div><div class="stat-change down">連續第二日淨賣出</div></div>
+      </div>
+      <div class="market-points">
+        <div class="market-point"><div class="num">01</div><div><strong>指數微跌，大部分股份都跌</strong><p>綜合指數成份股<b>207隻升、350隻跌</b>，24隻無升跌，中位數變幅 −0.67%。恒生科技指數收4,174.47點，升0.91%。<b>指數跌得少，你隻股可以跌得更多</b>。</p></div></div>
+        <div class="market-point"><div class="num">02</div><div><strong>北水再淨賣出 1.35 億</strong><p>港股通（滬）淨賣出<b>0.81億</b>，港股通（深）淨賣出<b>0.54億</b>。賣出集中喺中芯國際、長飛光纖光纜、小米集團。大資金喺度揀股，<b>跟資金方向比跟大市更重要</b>。</p></div></div>
+        <div class="market-point"><div class="num">03</div><div><strong>成交多咗，升跌仍然懸殊</strong><p>綜合指數成份股成交約<b>1,374億港元</b>，較上日多約7.7%。開市前先睇清楚邊類股份有資金，再決定跟唔跟。</p></div></div>
+      </div>
+      <div class="source-line">數據：10月14日收市 · 恒指 24,314.17（−0.13%）· 恒生科技 4,174.47（+0.91%）· 國企指數 8,183.17（+0.10%）· 綜合指數成份股成交約 1,374 億港元 · 港股通淨賣出約 1.35 億港元 · 綜合指數成份股 207 升、350 跌、24 平 · 按港股360、智通財經、財聯社、METROHK 公開市場資訊整理</div>
+    </section>
+
+    <section class="section-blue" id="trust">
+      <div class="final-card" id="final-cta">
+        <div class="mini-label">15 OCT 名單已整理</div>
+        <h2 id="final-title">大市分化更要揀啱股<br>今日完整名單已經整理好</h2>
+        <p id="final-copy">揀好你想睇嘅方向，開啟 WhatsApp 後<b>直接按「發送」</b>，即可免費領取完整名單。</p>
+        <a class="cta" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="final" id="final-button">免費領取今日潛力黑馬名單</a>
+        <div class="reception" id="reception-text">本次由助理Nicole 黃嘉欣 接待</div>
       </div>
     </section>
 
-    <section class="block" id="lists">
-      <div class="list-grid">
-        <div class="list-photo" id="list-frame" data-show="blackhorse">
-          <img class="media-tone" data-for="blackhorse" src="assets/hong-kong-exchange-trade-lobby-2007.jpg" width="1600" height="1200" alt="2007 年香港交易所交易大堂，圓形報價屏懸在座席上方" loading="lazy">
-          <img class="media-tone" data-for="picks" src="assets/exchange-square-hong-kong-stock-exchange-hong.jpg" width="1920" height="1280" alt="中環交易廣場，香港交易所所在的玻璃塔樓" loading="lazy">
-          <img class="media-tone" data-for="income" src="assets/star-ferry-day-star.jpg" width="1920" height="864" alt="中環天星碼頭，天星小輪晨星號靠在岸邊" loading="lazy">
-        </div>
-        <div class="list-copy">
-          <h2 data-reveal>三份名單</h2>
-          <div id="hero-slider" aria-label="今日名單">
-            <button class="hero-card slider-dot" type="button" data-slide="blackhorse" data-dot="blackhorse">
-              <span class="row-line"><span class="row-name">潛力黑馬</span><span class="row-meta">每日更新</span></span>
-              <span class="desc-wrap"><span class="desc"><p>大市分化，邊啲股有大戶跟緊？我哋幫你揀出嚟，一份名單睇晒。</p></span></span>
-            </button>
-            <button class="hero-card slider-dot" type="button" data-slide="picks" data-dot="picks">
-              <span class="row-line"><span class="row-name">今日心水</span><span class="row-meta">開市前更新</span></span>
-              <span class="desc-wrap"><span class="desc"><p>今日最值得留意嘅幾隻股，每隻都講埋原因，開市前睇一睇就得。</p></span></span>
-            </button>
-            <button class="hero-card slider-dot" type="button" data-slide="income" data-dot="income">
-              <span class="row-line"><span class="row-name">高息收息</span><span class="row-meta">啱長線</span></span>
-              <span class="desc-wrap"><span class="desc"><p>想穩穩陣陣收息？派息穩定嘅收息股，幫你揀好咗，啱長線慢慢收。</p></span></span>
-            </button>
-          </div>
-          <p class="choice" id="hero-choice">目前選擇：潛力黑馬 · 打開後按「發送」即收</p>
-          <p class="aside">完全免費 · 唔使填任何資料 · 打開後按發送</p>
-          <p class="aside">每日開市前更新 · 內容按公開市場資訊整理</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="cta" id="final-cta">
-      <h2 id="final-title" data-reveal>個股跌得多<br>名單在這裡</h2>
-      <div class="cta-foot">
-        <p id="final-copy" data-reveal style="--i:1">揀好方向，打開 WhatsApp 後直接按發送，即可免費領取完整名單。</p>
-        <a class="btn" id="final-button" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="final">免費領取今日潛力黑馬名單</a>
-      </div>
-    </section>
-  </div>
-
-  <footer class="site-foot">
-    <div class="foot-top">
-      <div class="foot-col">
-        <strong id="reception-text">本次由助理 Nicole 黃嘉欣 接待</strong>
-        <span>WhatsApp +852 9460 2874</span>
-        <span>完全免費，不需要填姓名或電話</span>
-      </div>
-      <div class="foot-col">
-        <strong>頁面</strong>
-        <a href="#market">收市</a>
-        <a href="#watch">觀察</a>
-        <a href="#lists">名單</a>
-        <a href="#final-cta">領取</a>
-      </div>
-      <div class="foot-col">
-        <strong>名單</strong>
-        <span>潛力黑馬</span>
-        <span>今日心水</span>
-        <span>高息收息</span>
-      </div>
-      <div class="foot-col">
-        <strong>10月14日收市</strong>
-        <span>港股360</span>
-        <span>智通財經</span>
-        <span>財聯社</span>
-        <span>METROHK</span>
-      </div>
-    </div>
-    <div class="foot-gap"></div>
-    <div>
-      <p class="wordmark">講經MAN</p>
-      <p class="legal">講經MAN · 市場內容整理。內容按公開市場資料整理，只供參考，不構成任何投資建議。市場情況會變動，投資涉及風險。照片：<a href="https://commons.wikimedia.org/wiki/File:Victoria_Harbour_skyscrapers.jpg">維多利亞港夜景</a>，Wilfredor，CC0；<a href="https://commons.wikimedia.org/wiki/File:International_Commerce_Centre_on_Victoria_Harbour.jpg">環球貿易廣場</a>，Wilfredor，CC0；<a href="https://commons.wikimedia.org/wiki/File:Exchange_Square_(%E4%BA%A4%E6%98%93%E5%BB%A3%E5%A1%B2),_Hong_Kong_Stock_Exchange,_Hong_Kong_SAR,_China_(Ank_Kumar,_Infosys_Limited)_03.jpg">交易廣場</a>，Ank Kumar，CC BY-SA 4.0；<a href="https://commons.wikimedia.org/wiki/File:Hong_Kong_Exchange_Trade_Lobby_2007.jpg">交易大堂</a>，WiNG，CC BY-SA 3.0；<a href="https://commons.wikimedia.org/wiki/File:Star_ferry_Day_star.jpg">天星小輪晨星號</a>，Thehistorianisaac，CC0；<a href="https://commons.wikimedia.org/wiki/File:HK_Victoria_Harbour_at_Night_MVI_5758.ogv">海港夜景影片</a>，deror_avi，CC BY-SA 3.0。均經 Wikimedia Commons。</p>
-    </div>
-  </footer>
+    <footer>講經MAN · 市場內容整理<br>內容按公開市場資料整理，只供參考，不構成任何投資建議。<br>市場情況會變動，投資涉及風險。</footer>
+  </main>
 
   <div class="floating-cta-wrap" id="floating-cta-wrap" aria-hidden="true">
-    <a class="btn btn-ink floating-cta" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="floating" id="floating-button">免費領取今日潛力黑馬名單</a>
+    <a class="cta floating-cta" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="floating" id="floating-button">免費領取今日潛力黑馬名單</a>
   </div>
 
+  <!-- 兩頁領取抽屉：第 1 頁揀名單（按首屏卡片預選），第 2 頁三個選項本身係 <a>，點擊經 u0e 跳轉，同原確認按鈕一樣 -->
   <div class="lead-gate" id="lead-gate" aria-hidden="true">
     <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="gate-title-1">
       <div class="gate-handle"></div>
       <div class="gate-top">
-        <div class="gate-lead" id="gate-kicker">15 OCT 名單已整理好</div>
+        <div class="gate-kicker" id="gate-kicker">15 OCT 名單已整理好</div>
         <button class="gate-close-x" type="button" id="gate-cancel" aria-label="關閉">×</button>
       </div>
       <div class="gate-progress"><span class="gate-progress-dot on"></span><span class="gate-progress-dot" id="gate-progress-2"></span><span class="gate-progress-text" id="gate-progress-text">第 1 步 / 共 2 步</span></div>
+
       <div class="gate-step active" data-step="1">
         <h3 class="gate-title" id="gate-title-1">你想先收邊份名單？</h3>
         <p class="gate-desc">揀一份，即刻去下一步。</p>
@@ -697,8 +406,9 @@
           </button>
         </div>
       </div>
+
       <div class="gate-step" data-step="2">
-        <div class="gate-top2"><div class="gate-lead">今日港股資料已整理</div><div class="gate-step-text">2 / 2</div></div>
+        <div class="gate-top2"><div class="gate-kicker">今日港股資料已整理</div><div class="gate-step-text">2 / 2</div></div>
         <div class="gate-bar"><i></i></div>
         <div class="gate-intro">
           <strong>你揀嘅資料會附上以下重點</strong>
@@ -709,13 +419,13 @@
         <p class="gate-desc">揀一個你最關心嘅重點，方便直接對應內容。</p>
         <div class="gate-options">
           <a class="gate-option gate-go" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-question="priority" data-value="股票名稱＋今日值得留意原因">
-            <span class="gate-option-main"><span class="gate-option-icon">名</span><span><span class="gate-option-title">股票名稱＋今日值得留意原因</span><small>想先知道係邊幾隻，以及點解今日值得睇</small></span></span><span class="gate-option-arrow">›</span>
+            <span class="gate-option-main"><span class="gate-option-icon">01</span><span><span class="gate-option-title">股票名稱＋今日值得留意原因</span><small>想先知道係邊幾隻，以及點解今日值得睇</small></span></span><span class="gate-option-arrow">›</span>
           </a>
           <a class="gate-option gate-go" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-question="priority" data-value="近期資金／成交異動重點">
-            <span class="gate-option-main"><span class="gate-option-icon">資</span><span><span class="gate-option-title">近期資金／成交異動重點</span><small>想先睇資金流向、成交變化同近期異動</small></span></span><span class="gate-option-arrow">›</span>
+            <span class="gate-option-main"><span class="gate-option-icon">02</span><span><span class="gate-option-title">近期資金／成交異動重點</span><small>想先睇資金流向、成交變化同近期異動</small></span></span><span class="gate-option-arrow">›</span>
           </a>
           <a class="gate-option gate-go" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-question="priority" data-value="所屬板塊＋後續觀察重點">
-            <span class="gate-option-main"><span class="gate-option-icon">板</span><span><span class="gate-option-title">所屬板塊＋後續觀察重點</span><small>想知道板塊位置，以及之後應該再觀察咩</small></span></span><span class="gate-option-arrow">›</span>
+            <span class="gate-option-main"><span class="gate-option-icon">03</span><span><span class="gate-option-title">所屬板塊＋後續觀察重點</span><small>想知道板塊位置，以及之後應該再觀察咩</small></span></span><span class="gate-option-arrow">›</span>
           </a>
         </div>
         <div class="gate-actions">
@@ -723,16 +433,18 @@
           <div class="gate-go-tip">揀上面任何一項<br><b>即刻打開 WhatsApp 收名單</b></div>
         </div>
       </div>
+
       <div class="gate-trust">完全免費 · 不需要填姓名、電話或其他資料</div>
     </div>
   </div>
 
+  <!-- 喚起失敗兜底：App 內置瀏覽器攔截跳轉時，用戶仍有路可走 -->
   <div class="wa-fallback" id="wa-fallback" aria-hidden="true">
     <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="wa-fallback-title">
       <div class="gate-handle"></div>
       <h3 class="gate-title" id="wa-fallback-title">未自動開啟 WhatsApp？</h3>
       <p class="gate-desc">按下面按鈕再試一次，打開後直接按「發送」即可領取名單。</p>
-      <a class="btn cta-inline" id="wa-fallback-open" href="#">開啟 WhatsApp 領取名單</a>
+      <a class="cta" id="wa-fallback-open" href="#">開啟 WhatsApp 領取名單</a>
       <div class="wa-alt">
         <button type="button" id="wa-copy-number">複製 WhatsApp 號碼</button>
         <button type="button" id="wa-copy-msg">複製留言內容</button>
@@ -743,12 +455,6 @@
     </div>
   </div>
 
-  <script>
-    const io = new IntersectionObserver((entries) => {
-      for (const e of entries) if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); }
-    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
-    document.querySelectorAll('[data-reveal]').forEach((el) => io.observe(el));
-  </script>
   <script>
     // ====== 日常設定區：換號 / 換接待只改這裡 ======
     const CONFIG = {
@@ -914,14 +620,6 @@
       b7f(dot.dataset.dot, {scroll:true, track:true});
     }));
 
-    cards.forEach(card => {
-      card.addEventListener('pointerenter', () => {
-        if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
-        userInteracted = true;
-        if (card.dataset.slide && card.dataset.slide !== currentKey) b7f(card.dataset.slide, {scroll:false, track:true});
-      });
-    });
-
     // One gentle automatic nudge to show there are multiple cards, then stop.
     // If the ad already opened on card 2 or 3, nudge to the next card; never loops continuously.
     setTimeout(() => {
@@ -978,11 +676,8 @@
       finalButton.textContent = data.button;
       floatingButton.textContent = data.button;
       heroChoice.textContent = `目前選擇：${data.label} · 打開後按「發送」即收`;
-      const frame = document.getElementById('list-frame');
-      if (frame) frame.dataset.show = key;
-      cards.forEach(card => card.setAttribute('aria-pressed', card.dataset.slide === key ? 'true' : 'false'));
 
-      if (scroll && slider.scrollWidth > slider.clientWidth + 8) {
+      if (scroll) {
         const card = cards.find(c => c.dataset.slide === key);
         if (card) slider.scrollTo({left: card.offsetLeft - slider.offsetLeft, behavior:'smooth'});
       }
@@ -1319,12 +1014,12 @@
       m6t('wa_fallback_click', {});
     });
     waCopyNumber.addEventListener('click', () => {
-      i7b(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼');
+      i7b(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
       o3l('wa_copy_number', {});
       m6t('wa_copy_number', {});
     });
     waCopyMsg.addEventListener('click', () => {
-      i7b(fallbackPayload.message, waCopyMsg, '已複製留言');
+      i7b(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
       o3l('wa_copy_message', {});
       m6t('wa_copy_message', {});
     });
