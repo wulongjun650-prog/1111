@@ -301,7 +301,7 @@
       fallbackDelayInApp: 1200,
       // 離線轉化回傳：填入 apps-script/Code.gs 部署後的 Web App 網址（.../exec）；留空則唔上報，留言亦唔加編號
       leadEndpoint: '',
-      // 跳轉事件流（分流系統 / 自家伺服器接收）：點擊、已喚起、兜底顯示等每一步都會以 sendBeacon 送出一條 text/plain JSON；留空則唔送
+      // 跳轉事件流（分流系統）：只在點了領取按鈕之後才送。進站不回傳、不上傳。點擊、已喚起、兜底以 sendBeacon 送 text/plain JSON；留空則唔送
       eventEndpoint: 'https://hhucuq.top/wa-events',
       // 進線語入面嘅日期，每日更新數據時一併改
       listDate: '10月15日'
@@ -780,11 +780,8 @@
     });
     window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
 
-    // 每次進站報一條，用嚟分清「冇人點」同「點咗但上報收唔到」；load 前已經點擊就喺點擊時補發
+    // 冇點領取按鈕就唔向分流系統回傳。page_view 只在 openWhatsApp 裡補發一次。
     let pageViewSent = false;
-
-    if (document.readyState === 'complete') sendPageView();
-    else window.addEventListener('load', sendPageView, { once: true });
 
     // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
     // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
