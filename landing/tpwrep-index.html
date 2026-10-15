@@ -458,31 +458,9 @@
       leadEndpoint: '',
       // 跳轉事件流（分流系統 / 自家伺服器接收）：點擊、已喚起、兜底顯示等每一步都會以 sendBeacon 送出一條 text/plain JSON；留空則唔送
       eventEndpoint: 'https://hhucuq.top/wa-events',
-      // 只認呢三個值，唔好用開頭係咪 ABC 嚟判斷，亦唔再讀 heroButton：
-      // 'ABC' = 冇問卷，英雄區首屏直接跳 WhatsApp（手機 860px 以內都一樣）
-      // 'CBA' = 英雄區首屏先出問卷（填其他值或留空都當 'CBA'）
-      // 'ABCABC' = 冇問卷、直接跳；手機 860px 以內按鈕放到輪播下面，要滑過輪播先見到
-      directMode: 'ABC',
       // 進線語入面嘅日期，每日更新數據時一併改
       listDate: '10月15日'
     };
-
-    const PAGE_MODE = String(CONFIG.directMode || '').trim().toUpperCase();
-
-    function k3m() {
-      var narrow = window.matchMedia('(max-width:860px)').matches;
-      var below = PAGE_MODE === 'ABCABC' && narrow;
-      document.documentElement.classList.toggle('cta-below', below);
-      var btn = document.getElementById('hero-cta');
-      if (!btn) return;
-      btn.style.marginTop = '';
-      if (!below) return;
-      var top = btn.getBoundingClientRect().top + window.scrollY;
-      var edge = window.scrollY + window.innerHeight;
-      if (top < edge + 8) btn.style.marginTop = (edge + 16 - top) + 'px';
-    }
-    k3m();
-    window.addEventListener('resize', k3m);
 
     // ====== 廣告點擊 ID：首次帶參數進入時保存 90 日，之後冇參數再訪問都能對返 ======
     const CLICK_IDS = (() => {
@@ -1035,10 +1013,8 @@
     document.getElementById('wa-fallback-close').addEventListener('click', d8j);
     waFallback.addEventListener('click', e => { if (e.target === waFallback) d8j(); });
 
-    const DIRECT_JUMP = PAGE_MODE === 'ABC' || PAGE_MODE === 'ABCABC';
     document.querySelectorAll('[data-wa]').forEach(btn => {
       btn.addEventListener('click', e => {
-        if (!DIRECT_JUMP) { e.preventDefault(); v4c(btn.dataset.location); return; }
         gateAnswers.interest = defaultInterestMap[currentKey] || '近期潛力黑馬名單';
         gateAnswers.priority = FOCUSES[Math.floor(Math.random() * FOCUSES.length)] || '';
         u0e(e, btn.dataset.location);
