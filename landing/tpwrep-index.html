@@ -108,6 +108,7 @@
     .trust-points{display:grid;gap:9px;margin-top:14px}.trust-point{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;background:rgba(255,255,255,.75);border:1px solid #dce6ee;border-radius:13px;font-size:15px;line-height:1.55;color:#2c3a52;font-weight:700}.trust-point i{flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center}
     .final-card{margin-top:20px;padding:24px 18px 20px;border-radius:18px;background:#fffaf3;border:1px solid #e4d8c4;border-top:4px solid #142a20;box-shadow:var(--shadow);text-align:center}.mini-label{display:inline-block;font-size:13px;font-weight:900;color:#fffaf3;letter-spacing:.04em;background:#142a20;padding:4px 10px;border-radius:999px}.final-card h2{font-size:26px;margin-top:10px}.final-card p{font-size:15px;line-height:1.7;color:var(--muted);margin:10px 0 0}.final-card p b{color:#1c1a16}.reception{margin-top:11px;font-size:13px;line-height:1.5;color:#6f685e;font-weight:700}
     footer{padding:18px 18px calc(96px + env(safe-area-inset-bottom));text-align:center;color:#6f685e;background:#f4ecdd;font-size:12px;line-height:1.7;border-top:1px solid #e4d8c4}
+    footer .fine{margin:10px 0 0}footer .fine b{display:block;color:#1c1a16;font-size:12px;letter-spacing:.04em}
     .floating-cta-wrap{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(520px,100%);z-index:30;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(244,236,221,0),rgba(244,236,221,.96) 28%,rgba(244,236,221,.99));opacity:0;pointer-events:none;transition:opacity .2s ease}.floating-cta-wrap.show{opacity:1;pointer-events:auto}.floating-cta{width:100%;min-height:58px;margin:0;border-radius:15px;box-shadow:0 10px 24px rgba(20,42,32,.24);font-size:18px}
 
     .hero-heading{margin:14px 0 6px;font-size:33px;line-height:1.22;letter-spacing:-.02em;color:#1c1a16;font-weight:950}
@@ -160,8 +161,7 @@
       100%{transform:translateY(-220px)}
     }
     @media (prefers-reduced-motion:reduce){.join-ticker-track{animation:none}}
-    .hero-cta-sub{display:flex;align-items:center;justify-content:center;gap:6px;width:fit-content;margin:8px auto 2px;padding:8px 18px;border-radius:999px;background:#e7efe8;border:1.5px solid rgba(20,42,32,.5);box-shadow:0 8px 18px rgba(20,42,32,.12);color:#142a20;font-size:18px;line-height:1.2;font-weight:950}
-    .hero-cta-sub b{font-size:28px;line-height:1;letter-spacing:-.03em}
+    .hero-cta-sub{display:flex;align-items:center;justify-content:center;width:fit-content;margin:8px auto 2px;padding:6px 14px;border-radius:999px;background:#e7efe8;border:1px solid rgba(20,42,32,.22);color:#142a20;font-size:14px;line-height:1.3;font-weight:800}
     .hero-cta-sub[hidden]{display:none}
     .hero-choice{margin-top:10px;text-align:center;color:#6f685e;font-size:13px;line-height:1.5}
     .hero-qualify-note{text-align:center;margin:8px 0 0;color:#142a20;font-size:14px;line-height:1.5;font-weight:800}
@@ -208,7 +208,7 @@
           </div>
         </div>
         <a class="cta cta-top" href="https://wa.me/85294602874?text=Nicole%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E6%83%B3%E9%A0%98%E5%8F%9610%E6%9C%8815%E6%97%A5%E6%B8%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E5%B8%8C%E6%9C%9B%E5%85%A5%E7%BE%A4%E5%90%8C%E5%BF%97%E5%90%8C%E9%81%93%E5%90%88%E5%98%85%E6%9C%8B%E5%8F%8B%E4%B8%80%E9%BD%8A%E4%BA%A4%E6%B5%81%E5%AD%B8%E7%BF%92%EF%BC%8C%E5%8F%AF%E5%94%94%E5%8F%AF%E4%BB%A5%E7%99%BC%E5%90%8D%E5%96%AE%E5%90%8C%E7%BE%A4%E7%B5%84%E9%80%A3%E7%B5%90%E4%BF%BE%E6%88%91%EF%BC%9F" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
-        <div class="hero-cta-sub" id="hero-cta-sub">今日只剩 <b>3</b> 個免費名額</div>
+        <div class="hero-cta-sub" id="hero-cta-sub">今日可以免費領取，名額有限</div>
 
         <div class="slider-wrap">
           <div class="slider" id="hero-slider" aria-label="今日精選分類">
@@ -262,7 +262,11 @@
       </div>
     </section>
 
-    <footer>講經MAN · 公開市場資訊整理<br>內容按公開市場資訊整理，只供參考，不構成任何投資建議。<br>市場情況會變動，投資涉及風險。</footer>
+    <footer>
+      講經MAN · 公開市場資訊整理
+      <p class="fine"><b>免責聲明</b>內容按公開市場資訊整理，只供參考，不構成任何投資建議或要約。名單同群組只作學習交流，不保證回報。市場情況會變動，投資涉及風險。</p>
+      <p class="fine"><b>聯絡地址</b>WhatsApp +852 9460 2874</p>
+    </footer>
   </main>
 
   <div class="floating-cta-wrap" id="floating-cta-wrap" aria-hidden="true">
