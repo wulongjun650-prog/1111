@@ -1245,6 +1245,90 @@ $$('[data-routing]').forEach(button => on(button, 'click', () => saveConfig(patc
 $$('[data-allowed-slot]').forEach(button => on(button, 'click', () => saveConfig(patchConfig(state.config, { routing: 'RULES', allowed_slot: button.dataset.allowedSlot }))));
 on($('#protection-toggle'), 'click', () => saveConfig(patchConfig(state.config, { protection: !state.config.protection })));
 on($('#content-mode'), 'change', event => saveConfig(patchConfig(state.config, { content_mode: event.target.value })));
+function openImportRecords() {
+  const sites = catalog?.sites || [];
+  const watchers = sites.filter(item => item.observer_account);
+  if (!watchers.length) {
+    toast('还没有观察域名。请先在域名列表把一个域名设为观察域名。', true);
+    return;
+  }
+  if (sites.length < 2) {
+    toast('还没有可以导入的来源域名。', true);
+    return;
+  }
+  return new Promise(resolve => {
+    const dialog = element('dialog', 'confirm-dialog account-dialog');
+    const heading = element('h2', '', '导入数据');
+    heading.id = 'import-records-title';
+    dialog.setAttribute('aria-labelledby', heading.id);
+    const form = element('form');
+    const sourceLabel = element('label', '', '来源域名');
+    const sourceSelect = element('select');
+    sourceSelect.name = 'source_id';
+    sourceLabel.append(sourceSelect);
+    const observerLabel = element('label', '', '观察域名');
+    const observerSelect = element('select');
+    observerSelect.name = 'observer_id';
+    for (const item of watchers) {
+      const option = element('option', '', item.domain || '观察域名');
+      option.value = item.id;
+      observerSelect.append(option);
+    }
+    if (watchers.some(item => item.id === selectedSite)) observerSelect.value = selectedSite;
+    observerLabel.append(observerSelect);
+    const fillSources = () => {
+      const previous = sourceSelect.value;
+      sourceSelect.replaceChildren();
+      for (const item of sites) {
+        if (item.id === observerSelect.value) continue;
+        const option = element('option', '', item.domain || '原有本地站点');
+        option.value = item.id;
+        sourceSelect.append(option);
+      }
+      if ([...sourceSelect.options].some(option => option.value === previous)) sourceSelect.value = previous;
+      else if ([...sourceSelect.options].some(option => option.value === selectedSite)) sourceSelect.value = selectedSite;
+    };
+    fillSources();
+    observerSelect.addEventListener('change', fillSources);
+    const actions = element('div', 'actions');
+    const cancel = element('button', 'button secondary', '取消');
+    const save = element('button', 'button primary', '导入数据');
+    cancel.type = 'button';
+    save.type = 'submit';
+    const finish = () => { dialog.close(); dialog.remove(); resolve(); };
+    cancel.addEventListener('click', finish);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); finish(); });
+    on(form, 'submit', async event => {
+      event.preventDefault();
+      const observerId = observerSelect.value;
+      const sourceId = sourceSelect.value;
+      if (!observerId || !sourceId || observerId === sourceId) {
+        toast('来源域名和观察域名要选两个不同的域名。', true);
+        return;
+      }
+      await busy(save, async () => {
+        const result = await api(`/api/sites/${observerId}/import-records`, { method: 'POST', body: { source_id: sourceId }, timeout: 60000 });
+        finish();
+        await loadDomains();
+        if (observerId === selectedSite) {
+          await refreshState();
+          if (activeTab === 'logs') await loadLogs(logPage);
+          if (activeTab === 'analysis') await loadAnalysis();
+          if (activeTab === 'campaign') await loadCampaign();
+        }
+        toast(result.message || '访问记录已导入观察域名。');
+      });
+    });
+    actions.append(cancel, save);
+    form.append(sourceLabel, observerLabel, element('p', 'subtle', '只拷访问记录。页面、号码和设置留在来源域名。设置更寻保持原样。'), actions);
+    dialog.append(heading, element('p', 'muted', '观察域名自己可以一条记录都没有。'), form);
+    document.body.append(dialog);
+    dialog.showModal();
+    sourceSelect.focus();
+  });
+}
+
+if ($('#import-records')) on($('#import-records'), 'click', () => openImportRecords());
 if ($('#follow-observer')) on($('#follow-observer'), 'click', event => busy(event.currentTarget, async () => {
   if (!selectedSite) {
     toast('请先在左上角选中要跟着的投放域名。', true);

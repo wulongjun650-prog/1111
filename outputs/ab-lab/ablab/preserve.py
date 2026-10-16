@@ -18,10 +18,21 @@ _PAIRS = (
 
 def keep_visit_records(source, mirror, source_domain='', mirror_domain=''):
     """Append this domain's visit rows onto the observer domain. Return the counts copied."""
+    return _copy_visits(source, mirror, source_domain, mirror_domain, include_kept=False)
+
+
+def import_visit_records(source, mirror, source_domain='', mirror_domain=''):
+    """Copy one domain's visit rows onto an observer domain. The source rows stay."""
+    return _copy_visits(source, mirror, source_domain, mirror_domain, include_kept=True)
+
+
+def _copy_visits(source, mirror, source_domain, mirror_domain, include_kept):
     counts = {}
     with source.connect() as src, mirror.connect() as dst:
         for table, kept in _PAIRS:
             counts[table] = _copy(src, dst, table, kept, source_domain, mirror_domain)
+            if include_kept:
+                counts[table] += _copy(src, dst, kept, kept, source_domain, mirror_domain)
     return counts
 
 

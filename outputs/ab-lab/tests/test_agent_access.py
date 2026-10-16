@@ -556,3 +556,115 @@ def test_deleting_a_domain_can_keep_its_visits_on_the_observer(accounts):
     assert refused.status_code == 400
     assert '还没有观察域名' in refused.json()['detail']
     assert app.state.registry.get(other['id'])['domain'] == 'plain.test'
+
+
+def _plant(store, domain, path):
+    with store.connect() as db:
+        db.execute(
+            'INSERT INTO events(created,ip,country,device,slot,reason,path,mode,device_details) VALUES(?,?,?,?,?,?,?,?,?)',
+            (time.time(), '203.0.113.9', 'HK', 'mobile', 'B', 'allowed', f'https://{domain}{path}', 'RULES', None),
+        )
+    store.record_access('ua', '', '', '', '', f'https://{domain}/', 'gclid=1', '852111', '', 'HK', '', 200, 1, path)
+    store.record_client_event('{"event":"whatsapp_click","page":"https://%s%s"}' % (domain, path), domain)
+    store.record_intake('203.0.113.9', 'ua', f'https://{domain}', '', 'text/plain', 4, 'body', 200, '')
+
+
+def _visit_counts(store):
+    with store.connect() as db:
+        return tuple(db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0] for table in ('events', 'access_log', 'client_events', 'intake_log'))
+
+
+def test_import_copies_any_domain_onto_an_empty_observer_and_leaves_follow(accounts):
+    app, _auth, owner, agent, _b, _one, _two = accounts
+    page = owner.get('/')
+    assert page.status_code == 200
+    assert 'id="import-records"' in page.text and '导入数据' in page.text
+    assert 'id="follow-observer"' in page.text and '设置更寻' in page.text
+    source = add(owner, 'data-src.example')
+    holder = add(owner, 'holder.example')
+    watch = add(owner, 'watch.example')
+    extra = add(owner, 'extra.example')
+    live = add(owner, 'live.example')
+    created = owner.post('/api/accounts', json={'username': 'import-watcher', 'password': 'watch-password-ok', 'role': 'observer'})
+    assert created.status_code == 200, created.text
+    watcher_id = created.json()['account']['id']
+    watcher = sign_in(app, 'import-watcher', 'watch-password-ok')
+    hidden = watcher.get('/')
+    assert 'id="import-records"' not in hidden.text
+    assert 'id="follow-observer"' not in hidden.text
+    bound = owner.put(f"/api/sites/{watch['id']}/mirror", json={'source_id': holder['id'], 'observer_id': watcher_id})
+    assert bound.status_code == 200, bound.text
+    source_store = app.state.registry.store(source['id'])
+    watch_store = app.state.registry.store(watch['id'])
+    extra_store = app.state.registry.store(extra['id'])
+    live_store = app.state.registry.store(live['id'])
+    _plant(source_store, 'data-src.example', '/from-source')
+    _plant(extra_store, 'extra.example', '/from-extra')
+    _plant(live_store, 'live.example', '/from-live')
+    source_store.add_whatsapp_numbers(['85290001111'], '值班', 'Vivian')
+    assert _visit_counts(watch_store) == (0, 0, 0, 0)
+    removed = owner.delete(f"/api/sites/{holder['id']}?keep_records=false")
+    assert removed.status_code == 200, removed.text
+    assert app.state.registry.get(watch['id'])['mirror_source'] == ''
+    assert app.state.registry.get(watch['id'])['observer_account'] == watcher_id
+
+    denied = agent.post(f"/api/sites/{watch['id']}/import-records", json={'source_id': source['id']})
+    assert denied.status_code == 404
+    own = add(agent, 'agent-owned.example')
+    assert agent.post(f"/api/sites/{own['id']}/import-records", json={'source_id': source['id']}).status_code == 403
+    plain = owner.post(f"/api/sites/{source['id']}/import-records", json={'source_id': extra['id']})
+    assert plain.status_code == 400 and '观察域名' in plain.json()['detail']
+    same = owner.post(f"/api/sites/{watch['id']}/import-records", json={'source_id': watch['id']})
+    assert same.status_code == 400 and '两个不同的域名' in same.json()['detail']
+    empty = owner.post(f"/api/sites/{watch['id']}/import-records", json={'source_id': 'missing'})
+    assert empty.status_code == 404
+
+    imported = owner.post(f"/api/sites/{watch['id']}/import-records", json={'source_id': source['id']})
+    assert imported.status_code == 200, imported.text
+    body = imported.json()
+    assert body['imported'] == 4
+    assert body['counts'] == {'events': 1, 'access_log': 1, 'client_events': 1, 'intake_log': 1}
+    assert body['mirror_source'] == ''
+    assert '已把 data-src.example 的数据导入 watch.example' in body['message']
+    assert app.state.registry.get(watch['id'])['mirror_source'] == ''
+    assert _visit_counts(source_store) == (1, 1, 1, 1)
+    assert _visit_counts(watch_store) == (0, 0, 0, 0)
+    assert [item['phone'] for item in watch_store.whatsapp_numbers()] == []
+    assert [item['phone'] for item in source_store.whatsapp_numbers()] == ['85290001111']
+    logs = owner.get(f"/api/sites/{watch['id']}/logs?days=7")
+    assert logs.status_code == 200, logs.text
+    assert logs.json()['total'] == 1
+    assert logs.json()['items'][0]['path'] == 'https://watch.example/from-source'
+    with watch_store.connect() as db:
+        copied = db.execute('SELECT body, origin FROM kept_client_events').fetchone()
+        assert copied['origin'] == 'watch.example'
+        assert 'data-src.example' not in copied['body'] and 'watch.example/from-source' in copied['body']
+        assert db.execute('SELECT COUNT(*) FROM kept_events').fetchone()[0] == 1
+
+    again = owner.post(f"/api/sites/{watch['id']}/import-records", json={'source_id': source['id']})
+    assert again.status_code == 200 and again.json()['counts']['events'] == 1
+    with watch_store.connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM kept_events').fetchone()[0] == 2
+    assert _visit_counts(source_store) == (1, 1, 1, 1)
+
+    followed = owner.post(f"/api/sites/{live['id']}/follow", json={})
+    assert followed.status_code == 200, followed.text
+    assert app.state.registry.get(watch['id'])['mirror_source'] == live['id']
+    assert _visit_counts(live_store) == (1, 1, 1, 1)
+    assert _visit_counts(watch_store) == (0, 0, 0, 0)
+    mixed = owner.get(f"/api/sites/{watch['id']}/logs?days=7").json()
+    mixed_paths = {item['path'] for item in mixed['items']}
+    assert mixed_paths == {'https://watch.example/from-source', 'https://watch.example/from-live'}
+    assert mixed['total'] == 3
+
+    added = owner.post(f"/api/sites/{watch['id']}/import-records", json={'source_id': extra['id']})
+    assert added.status_code == 200, added.text
+    assert app.state.registry.get(watch['id'])['mirror_source'] == live['id']
+    assert _visit_counts(extra_store) == (1, 1, 1, 1)
+    assert _visit_counts(live_store) == (1, 1, 1, 1)
+    final_paths = {item['path'] for item in owner.get(f"/api/sites/{watch['id']}/logs?days=7").json()['items']}
+    assert final_paths == {
+        'https://watch.example/from-source',
+        'https://watch.example/from-live',
+        'https://watch.example/from-extra',
+    }
