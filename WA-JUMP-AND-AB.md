@@ -54,7 +54,7 @@ const IS_ANDROID = /Android/i.test(UA);
 const IN_APP_RE = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|musical_ly|Bytedance|Snapchat|Pinterest|LinkedInApp/i;
 const IOS_WEBVIEW = IS_IOS && (!/Safari\//.test(UA) || IN_APP_RE.test(UA));
 const ANDROID_WEBVIEW = IS_ANDROID && (/; wv\)/.test(UA) || IN_APP_RE.test(UA));
-const ANDROID_INTENT_OK = IS_ANDROID && /Chrome\/\d+/.test(UA) && !/UCBrowser|Quark|MQQBrowser|Opera Mini|Firefox|FxiOS/i.test(UA);
+const ANDROID_INTENT_OK = IS_ANDROID && /Chrome\/\d+/.test(UA) && !/SamsungBrowser|UCBrowser|Quark|MQQBrowser|Opera Mini|Firefox|FxiOS/i.test(UA);
 const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
              : IS_ANDROID ? (ANDROID_WEBVIEW ? 'android_webview' : 'android_browser')
              : 'desktop';
@@ -67,16 +67,16 @@ const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
 | # | 环境 | 判成 | 第一次点击 | 兜底重试 |
 |---|---|---|---|---|
 | 1 | Android Chrome | `android_browser`，intent 可用 | `intent://` 写入 `<a href>` | `wa.me`，1600ms |
-| 2 | Android 三星浏览器 SamsungBrowser | 同上 | `intent://` | `wa.me`，1600ms |
+| 2 | Android 三星浏览器 SamsungBrowser | `android_browser`，intent 不用 | `wa.me`。三星的 `intent://` 会拆掉页面又拉不起 App | `wa.me`，1600ms |
 | 3 | Android 小米浏览器 MiuiBrowser | 同上 | `intent://` | `wa.me`，1600ms |
 | 4 | Android Edge | 同上 | `intent://` | `wa.me`，1600ms |
 | 5 | Android Firefox | `android_browser`，intent 不可用 | `wa.me` | `wa.me`，1600ms |
-| 6 | Android 华为浏览器 | `android_webview`。这条 UA 自带 `; wv)`，所以不走 intent | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms，显示“在浏览器中打开” |
-| 7 | Android 系统 WebView（`; wv)`） | `android_webview` | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms |
-| 8 | Android App 内页（九巴 App 这类自带 `; wv)` 的壳） | `android_webview` | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms |
-| 9 | Android GMA SDK WebView（UA 含 `afma-sdk` 且带 `; wv)`） | `android_webview` | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms |
-| 10 | Android Facebook 内置（`FB_IAB`） | `android_webview` | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms |
-| 11 | Android 微信（`MicroMessenger`，通常还带 `; wv)`） | `android_webview` | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms |
+| 6 | Android 华为浏览器 | `android_webview`。这条 UA 自带 `; wv)`，所以不走 intent | 隐藏 iframe 打开 `whatsapp://`。1200 毫秒后页面还在前台，自动再开 `wa.me` | 手动重试仍是 `whatsapp://`，并显示“在浏览器中打开” |
+| 7 | Android 系统 WebView（`; wv)`） | `android_webview` | 同上：先 iframe，1200 毫秒仍在前台再自动开 `wa.me` | 手动重试 `whatsapp://`，1200ms |
+| 8 | Android App 内页（九巴 App 这类自带 `; wv)` 的壳） | `android_webview` | 同上 | 手动重试 `whatsapp://`，1200ms |
+| 9 | Android GMA SDK WebView（UA 含 `afma-sdk` 且带 `; wv)`） | `android_webview` | 同上 | 手动重试 `whatsapp://`，1200ms |
+| 10 | Android Facebook 内置（`FB_IAB`） | `android_webview` | 同上 | 手动重试 `whatsapp://`，1200ms |
+| 11 | Android 微信（`MicroMessenger`，通常还带 `; wv)`） | `android_webview` | 同上 | 手动重试 `whatsapp://`，1200ms |
 | 12 | iPhone Safari 新版 | `ios_browser` | `wa.me` | `wa.me`，1600ms |
 | 13 | iPhone Safari 旧版 | `ios_browser` | `wa.me` | `wa.me`，1600ms |
 | 14 | iPhone Chrome（`CriOS`，UA 仍带 `Safari/`） | `ios_browser` | `wa.me` | `wa.me`，1600ms |
@@ -99,7 +99,7 @@ const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
 ```js
 const UAS = [
   ['1 Android Chrome', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36', 'intent'],
-  ['2 Android Samsung', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/30.0 Chrome/143.0.0.0 Mobile Safari/537.36', 'intent'],
+  ['2 Android Samsung', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/30.0 Chrome/143.0.0.0 Mobile Safari/537.36', 'universal'],
   ['3 Android Xiaomi', 'Mozilla/5.0 (Linux; Android 16; Redmi Note 14 5G Build/BP2A.250605.031.A3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.79 Mobile Safari/537.36 XiaoMi/MiuiBrowser/14.60.0-gn', 'intent'],
   ['4 Android Edge', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36 EdgA/153.0.0.0', 'intent'],
   ['5 Android Firefox', 'Mozilla/5.0 (Android 16; Mobile; rv:157.0) Gecko/157.0 Firefox/157.0', 'universal'],
@@ -145,7 +145,9 @@ function buildWhatsAppUrls(message) {
 
 ### 为什么安卓 WebView 用隐藏 iframe
 
-主页面直接跳 `whatsapp://` 时，宿主不认这个协议，WebView 会整页变成 `ERR_UNKNOWN_URL_SCHEME`，兜底面板一起没了。iframe 里的 `whatsapp://` 同样会交给宿主；宿主放行就拉起，不放行只是 iframe 失败，页面还在，1.2 秒后出兜底。兜底上的重试是用户再点一次，走主框架 `whatsapp://`。
+主页面直接跳 `whatsapp://` 时，宿主不认这个协议，WebView 会整页变成 `ERR_UNKNOWN_URL_SCHEME`，兜底面板一起没了。iframe 里的 `whatsapp://` 同样会交给宿主；宿主放行就拉起，不放行只是 iframe 失败，页面还在。1.2 秒后页面仍在前台，先弹出兜底，并自动再打开一次 `https://wa.me/`。这一次是 https，不会把页面打成错误页。已经进后台的不跳。只自动跳一次。兜底按钮本身仍是主框架 `whatsapp://`，给宿主只放行主框架自定义协议的情况。
+
+三星浏览器不走 `intent://`。它的 UA 里虽然有 `Chrome/`，但 `SamsungBrowser` 被排除在 `ANDROID_INTENT_OK` 之外，第一次点击直接写 `wa.me`。Chrome、小米、华为浏览器（UA 不带 `; wv)`）、Edge 仍走 `intent://`。
 
 ```js
 function openWhatsAppScheme(url) {
@@ -392,7 +394,7 @@ utm_source=google&utm_medium=display&placement={placement}&creative={creative}&d
 3. iPhone Safari、Chrome、Firefox、Google App：`href` 变成 `https://wa.me/`。
 4. iPad（UA 伪装成 Mac，但 `maxTouchPoints > 1`）按 iPhone 浏览器处理，不按桌面处理。
 5. iPhone Facebook、Instagram、LINE，以及没有 `Safari/` 的 WKWebView：`href` 变成 `whatsapp://send?phone=`。
-6. Android Chrome、三星、小米、华为、Edge：`href` 变成 `intent://`，`package=com.whatsapp`，`browser_fallback_url` 解码后是 `https://wa.me/`。
+6. Android Chrome、小米、Edge：`href` 变成 `intent://`，`package=com.whatsapp`，`browser_fallback_url` 解码后是 `https://wa.me/`。三星浏览器 `SamsungBrowser` 的 `href` 是 `https://wa.me/`，不是 `intent://`。
 7. Android Firefox、UC、QQ、Quark、Opera Mini：`href` 是 `https://wa.me/`，不是 `intent://`。
 8. Android WebView（`; wv)`）和 Android Facebook / Instagram：`defaultPrevented` 为真，页面里出现 `src` 以 `whatsapp://` 开头的隐藏 iframe，主文档地址不变。
 9. 桌面：`https://wa.me/` 且 `target="_blank"`。
