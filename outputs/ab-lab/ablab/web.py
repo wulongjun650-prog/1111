@@ -82,6 +82,10 @@ class MirrorBind(StrictModel):
     observer_id: str = Field(default='', max_length=64, strict=True)
 
 
+class VisitImport(StrictModel):
+    source_id: str = Field(min_length=1, max_length=64, strict=True)
+
+
 def preview_signature(store, account_store, site, expiry, version_id, issuer, local_only):
     # Account revocation and ownership transfers also revoke private drafts.
     # Target reads identity only; it must not initialize or migrate Auth tables.
@@ -654,6 +658,36 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         else:
             message = f'观察域名 {names} 已跟着 {source_domain}。以前的记录都还在。'
         return {'source_id': site_id, 'source_domain': source_domain, 'observers': followed, 'sync_failed': sync_failed, 'message': message}
+
+    @app.post('/api/sites/{site_id}/import-records')
+    def import_site_records(site_id: str, request: Request, body: VisitImport):
+        require_admin(request)
+        observer = registry.get(site_id)
+        if not (observer.get('observer_account') or '').strip():
+            raise ValueError('请选择观察域名。先在域名列表把一个域名设为观察域名。')
+        if body.source_id == site_id:
+            raise ValueError('来源域名和观察域名要选两个不同的域名。')
+        source = registry.get(body.source_id)
+        from .preserve import import_visit_records
+        counts = import_visit_records(
+            registry.store(source['id']), registry.store(observer['id']),
+            source.get('domain') or '', observer.get('domain') or '',
+        )
+        observer = registry.get(site_id)
+        source_domain = source.get('domain') or '原有站点'
+        observer_domain = observer.get('domain') or '观察域名'
+        labels = (('events', '访问记录'), ('access_log', '请求记录'), ('client_events', '落地页事件'), ('intake_log', '原始接收'))
+        parts = [f'{label} {counts[key]} 条' for key, label in labels if counts.get(key)]
+        if parts:
+            message = f'已把 {source_domain} 的数据导入 {observer_domain}。{"，".join(parts)}。再导一次会再叠一份。设置更寻保持原样。'
+        else:
+            message = f'{source_domain} 没有访问记录，没有导入。'
+        return {
+            'source_id': source['id'], 'source_domain': source_domain,
+            'observer_id': observer['id'], 'observer_domain': observer_domain,
+            'mirror_source': observer.get('mirror_source') or '',
+            'counts': counts, 'imported': sum(counts.values()), 'message': message,
+        }
 
     @app.post('/api/sites/{site_id}/reputation/check')
     def check_site_reputation(site_id: str, request: Request):
