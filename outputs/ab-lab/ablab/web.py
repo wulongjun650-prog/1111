@@ -27,10 +27,10 @@ from pydantic import Field
 
 from .archives import EDITABLE_EXTENSIONS, MAX_FILE, MAX_ZIP, editable_file, import_content, read_source, resolve_file, source_files
 from .analytics import summarize
-from .models import ConfigUpdate, ContactLinkApply, ContactLinkInput, DirectEntry, LinkInput, PageTitleUpdate, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput, WhatsAppReception, WhatsAppSplit
+from .models import ConfigUpdate, ContactLinkApply, ContactLinkInput, DirectEntry, LinkInput, PageTitleUpdate, RedirectApply, RedirectPresetInput, RedirectSplit, SourceEdit, StrictModel, TrackingApply, TrackingSnippetInput, TrustInterval, VersionChoice, Visitor, WhatsAppNumberApply, WhatsAppNumberInput, WhatsAppReception, WhatsAppSplit
 from .tracking import normalize_conversion, normalize_ga4
 from .linkcheck import LinkChecker
-from .watrust import PUBLIC_ORIGIN, TrustChecker, device_from_environ
+from .watrust import PUBLIC_ORIGIN, TrustChecker, TrustWatch, device_from_environ
 from .campaign import build_campaign, export_events, fill_youtube_channels, window_bounds
 from .flow import build_flow, intake_csv, summary_csv, visits_csv
 from .contact_config import scan_contact
@@ -979,6 +979,22 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     app.state.link_checker = LinkChecker()
     app.state.trust_checker = TrustChecker(device_from_environ())
+
+    def trust_sites():
+        found = []
+        for site in registry.list():
+            if not site.get('enabled', 1):
+                continue
+            if (site.get('mirror_source') or '').strip():
+                continue
+            try:
+                found.append({'id': site['id'], 'store': registry.store(site['id'])})
+            except Exception:
+                continue
+        return found
+
+    app.state.trust_watch = TrustWatch(trust_sites, app.state.trust_checker, after_site_change)
+    app.state.trust_watch.start()
     from .desk import DeskError, SheetWriter, buyer_quote, review_tickets
     from .desk_window import WorkOrderWindow
     app.state.desk_reader = WorkOrderWindow(Path(data_dir) / 'desk-browser', timeout=180)
@@ -1026,7 +1042,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             implant = scan_implant(store.pages / version_id)
         return {'version':base, 'published_version':published, 'occurrences':public_occurrences(occurrences),
                 'warnings':warnings, 'presets':store.redirect_presets(), 'numbers':store.whatsapp_numbers(),
-                'trust_poll':store.whatsapp_trust_poll_enabled(), 'links':store.contact_links(), 'contact':contact,
+                'trust_poll':store.whatsapp_trust_poll_enabled(), 'trust_interval':store.trust_interval(), 'links':store.contact_links(), 'contact':contact,
                 'implant':implant,
                 'active':store.redirect_active(), 'split':store.redirect_split(), 'number_split':store.whatsapp_split()}
 
@@ -1175,8 +1191,31 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
         result = app.state.trust_checker.check(number['phone'], persist)
         if result.get('busy'):
-            return {'number':store.whatsapp_number(number_id), 'busy':True, 'poll_enabled':store.whatsapp_trust_poll_enabled()}
-        return {'number':result['number'], 'busy':False, 'poll_enabled':store.whatsapp_trust_poll_enabled()}
+            return {'number':store.whatsapp_number(number_id), 'busy':True, 'poll_enabled':store.whatsapp_trust_poll_enabled(), 'switched':False, 'alarm':False}
+        switched, alarm, purged = False, False, None
+        if result.get('status') == 'trust':
+            # The browser used to apply the spare after this response came back.
+            # A 20 second page timeout dropped that response, so the trust result
+            # was saved and the published number stayed. Switch here, before the
+            # response, so a closed or timed-out page still moves off the popup.
+            try:
+                relief = store.relieve_trusted_number(number['phone'])
+            except Conflict:
+                relief = {'switched': False, 'alarm': False}
+            switched = bool(relief.get('switched'))
+            alarm = bool(relief.get('alarm'))
+            if switched:
+                purged = after_site_change(site_id)
+        payload = {'number':result['number'], 'busy':False, 'poll_enabled':store.whatsapp_trust_poll_enabled(), 'switched':switched, 'alarm':alarm}
+        if purged is not None:
+            payload['cloudflare'] = purged
+        return payload
+
+    @routes.post('/b-redirects/trust-interval')
+    def save_trust_interval(body: TrustInterval, request: Request, store=Depends(site_store)):
+        guard_mirror(request)
+        seconds = store.set_trust_interval(body.seconds)
+        return {'seconds': seconds}
 
     @routes.post('/desk/review')
     async def review_desk(request: Request):

@@ -1,11 +1,14 @@
+import io
 import json
 import sqlite3
+import time
+import zipfile
 
 import pytest
 from fastapi.testclient import TestClient
 
 from ablab.store import Store
-from ablab.watrust import CloudPhone, TrustChecker, VmosError, back_script, classify_screen, device_from_environ, open_script, v2_sign, v4_authorization
+from ablab.watrust import CloudPhone, TrustChecker, TrustWatch, VmosError, back_script, classify_screen, device_from_environ, open_script, v2_sign, v4_authorization
 from ablab.web import create_admin
 
 PHONE_A = '85200001111'
@@ -199,6 +202,148 @@ def test_unread_screen_is_unconfirmed_and_does_not_alarm_the_gate(console):
     app.state.trust_checker = TrustChecker(None)
     again = client.post(f"/api/b-redirects/numbers/{number['id']}/trust")
     assert again.json()['number']['trust']['detail'] == '云手机还没接上'
+
+
+JUMP = 'https://chat.whatsapp.com/ExampleJumpKeep0001'
+
+
+def upload_number_page(client, phone, jump=''):
+    archive = io.BytesIO()
+    page = '''<!doctype html><script>
+const CONFIG = { whatsappNumber: '%s', jumpUrl: '%s' };
+function buildWhatsAppUrl(message){
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\\D/g,'');
+  const params = new URLSearchParams();
+  params.set('phone', phone);
+  params.set('text', message);
+  return `https://api.whatsapp.com/send?${params.toString()}`;
+}
+function go(){ window.location.assign(buildWhatsAppUrl('hi')); }
+</script>''' % (phone, jump)
+    with zipfile.ZipFile(archive, 'w') as bundle:
+        bundle.writestr('index.html', page)
+    uploaded = client.post('/api/upload/B?name=wa.zip', content=archive.getvalue())
+    assert uploaded.status_code == 200, uploaded.text
+    version = uploaded.json()['version']['id']
+    assert client.post('/api/publish/B', json={'version_id': version}).status_code == 200
+    return version
+
+
+def published_text(app):
+    store = app.state.store
+    return (store.pages / store.slots()['B'] / 'index.html').read_text(encoding='utf-8')
+
+
+def test_trust_interval_is_saved_for_the_server_watch(console):
+    client, _app = console
+    assert client.post('/api/b-redirects/trust-interval', json={'seconds': 9}).status_code == 422
+    saved = client.post('/api/b-redirects/trust-interval', json={'seconds': 60})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()['seconds'] == 60
+    assert client.get('/api/b-redirects').json()['trust_interval'] == 60
+
+
+def test_a_trust_popup_on_the_published_number_switches_on_the_server_and_keeps_a_jump(console):
+    client, app = console
+    upload_number_page(client, PHONE_A, JUMP)
+    app.state.trust_checker = TrustChecker(lambda phone: CLEAR_SCREEN if phone == PHONE_B else TRUST_SCREEN)
+    current, blocked, spare = add_numbers(client, [PHONE_A, '85200003333', PHONE_B])
+    assert client.post(f"/api/b-redirects/numbers/{blocked['id']}/trust").json()['switched'] is False
+    assert client.post(f"/api/b-redirects/numbers/{spare['id']}/trust").json()['switched'] is False
+    switched = client.post(f"/api/b-redirects/numbers/{current['id']}/trust")
+    assert switched.status_code == 200, switched.text
+    body = switched.json()
+    assert body['switched'] is True
+    assert body['alarm'] is False
+    text = published_text(app)
+    assert PHONE_A not in text
+    assert PHONE_B in text
+    assert JUMP in text
+    audited = [json.loads(item['detail']) for item in client.get('/api/audit').json()['items'] if item['action'] == 'content_imported']
+    assert audited[0]['automatic'] is True
+    state = client.get('/api/b-redirects').json()
+    again = client.post('/api/b-redirects/numbers/apply', json={
+        'version_id': state['version']['id'], 'number_id': current['id'],
+        'occurrence_ids': [item['id'] for item in state['occurrences'] if item['kind'] == 'whatsapp_number'],
+        'expected_published': state['published_version']})
+    assert again.status_code == 200, again.text
+    restored = published_text(app)
+    assert PHONE_A in restored
+    assert JUMP not in restored
+
+
+def test_a_trusted_number_that_is_not_on_the_page_does_not_switch(console):
+    client, app = console
+    upload_number_page(client, PHONE_A)
+    app.state.trust_checker = TrustChecker(lambda phone: TRUST_SCREEN)
+    _current, spare = add_numbers(client, [PHONE_A, PHONE_B])
+    result = client.post(f"/api/b-redirects/numbers/{spare['id']}/trust")
+    assert result.json()['switched'] is False
+    assert result.json()['alarm'] is False
+    assert PHONE_A in published_text(app)
+    assert PHONE_B not in published_text(app)
+
+
+def test_a_lone_trusted_number_alarms_without_a_new_version(console):
+    client, app = console
+    upload_number_page(client, PHONE_A)
+    app.state.trust_checker = TrustChecker(lambda phone: TRUST_SCREEN)
+    number = add_numbers(client, [PHONE_A])[0]
+    before = app.state.store.slots()['B']
+    result = client.post(f"/api/b-redirects/numbers/{number['id']}/trust")
+    assert result.json()['switched'] is False
+    assert result.json()['alarm'] is True
+    assert app.state.store.slots()['B'] == before
+    assert PHONE_A in published_text(app)
+
+
+def test_an_unconfirmed_screen_does_not_switch(console):
+    client, app = console
+    upload_number_page(client, PHONE_A)
+    app.state.trust_checker = TrustChecker(lambda phone: WEB_SCREEN)
+    current, _spare = add_numbers(client, [PHONE_A, PHONE_B])
+    result = client.post(f"/api/b-redirects/numbers/{current['id']}/trust")
+    assert result.json()['switched'] is False
+    assert result.json()['number']['trust']['status'] == 'unconfirmed'
+    assert PHONE_A in published_text(app)
+
+
+def test_the_server_watch_switches_a_due_number_and_stays_quiet_until_both_screens_exist(console):
+    client, app = console
+    upload_number_page(client, PHONE_A, JUMP)
+    current, spare = add_numbers(client, [PHONE_A, PHONE_B])
+    store = app.state.store
+    calls = []
+
+    def device(phone):
+        calls.append(phone)
+        return TRUST_SCREEN if phone == PHONE_A else CLEAR_SCREEN
+
+    watch = TrustWatch(lambda: [{'id': 'default', 'store': store}], TrustChecker(device), lambda site_id: purges.append(site_id), clock=lambda: time.time() + 100)
+    purges = []
+    assert watch.visit('default', store, time.time() + 100) is False
+    assert calls == []
+    store.save_whatsapp_trust(current['id'], 'clear', 'clear')
+    assert watch.visit('default', store, time.time() + 100) is False
+    store.save_whatsapp_trust(spare['id'], 'clear', 'clear')
+    store.save_whatsapp_trust(current['id'], 'trust', 'trust')
+    assert store.whatsapp_trust_poll_enabled() is True
+    assert watch.visit('default', store, time.time()) is False
+    assert calls == []
+    assert watch.visit('default', store, time.time() + 100) is True
+    assert calls == [PHONE_A]
+    text = published_text(app)
+    assert PHONE_B in text and PHONE_A not in text and JUMP in text
+    assert purges == ['default']
+    calls.clear()
+    assert watch.visit('default', store, time.time() + 100) is True
+    assert calls == [PHONE_B]
+    assert PHONE_B in published_text(app)
+
+
+def test_the_watch_does_not_start_without_a_cloud_phone():
+    watch = TrustWatch(lambda: [], TrustChecker(None), lambda site_id: None)
+    assert watch.start() is False
 
 
 def test_a_busy_device_returns_the_saved_result_without_opening_another_link(console):
