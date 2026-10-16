@@ -35,7 +35,7 @@ from .campaign import build_campaign, export_events, fill_youtube_channels, wind
 from .flow import build_flow, intake_csv, summary_csv, visits_csv
 from .contact_config import scan_contact
 from .page_implant import implant_tree, scan_implant
-from .redirects import public_occurrences, rewrite_reception_bytes, rewrite_text, scan_bundle
+from .redirects import has_whatsapp_builder, public_occurrences, rewrite_reception_bytes, rewrite_text, scan_bundle
 from .rules import decide
 from .cloudflare import Cloudflare
 from .provisioning import ProvisioningError
@@ -1036,11 +1036,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if store.slots()['B'] != body.expected_published:
             raise Conflict('当前 B 发布版本已变化，请重新扫描后再换链')
         occurrences, _ = scan_bundle(store.pages / base['id'], base['id'])
-        chosen = [item for item in occurrences if item['id'] in set(body.occurrence_ids)]
-        if len(chosen) != len(body.occurrence_ids):
-            raise Conflict('源码或跳转位置已变化，请重新扫描后再换链')
-        if any(item['kind'] == 'whatsapp_number' for item in chosen):
-            raise ValueError('WhatsApp 号码请用号码预设更换')
+        if body.occurrence_ids:
+            chosen = [item for item in occurrences if item['id'] in set(body.occurrence_ids)]
+            if len(chosen) != len(body.occurrence_ids):
+                raise Conflict('源码或跳转位置已变化，请重新扫描后再换链')
+            if any(item['kind'] == 'whatsapp_number' for item in chosen):
+                raise ValueError('WhatsApp 号码请用号码预设更换')
+        elif not has_whatsapp_builder(store.pages / base['id']):
+            raise ValueError('这一版没有 WhatsApp 跳转函数，没有改点击')
         preset = store.redirect_preset(body.preset_id)
         result = app.state.link_checker.check(preset['url'])
         store.save_redirect_check(preset, result, guard)
@@ -1781,7 +1784,8 @@ _NUMBER_SPLIT_SCRIPT = (
     '})();</script>'
 )
 
-# Runs after the page's own functions. WhatsApp URLs stay until contactApp is band or kakao.
+# Runs after the page's own functions. Band and Kakao replace the click. A jumpUrl
+# does the same for a group link while WhatsApp event names stay put.
 # YouTube fields are copied from the address bar and the referrer; event names stay until the link changes.
 _DEST_APP_SCRIPT = (
     '<script id="ab-dest-app">(function(){'
@@ -1814,13 +1818,16 @@ _DEST_APP_SCRIPT = (
     'if(!fromPlace&&fromRef)out.youtube_referrer=chosen.url;}'
     'return out;'
     '}'
-    'var cfg={},app="whatsapp",url="",switching=false;'
+    'var cfg={},app="whatsapp",url="",switching=false,jumping=false;'
     'try{cfg=(typeof CONFIG==="object"&&CONFIG)||{};}catch(e){cfg={};}'
     'app=String(cfg.contactApp||"whatsapp").toLowerCase();'
     'if(app==="band"||app==="kakao"){'
     'url=String((app==="band"?(cfg.bandUrl||cfg.bandLink):(cfg.kakaoUrl||cfg.kakaoLink))||"").replace(/^\\s+|\\s+$/g,"");'
     'if(url)switching=true;}'
-    'if(switching){'
+    'if(!switching){'
+    'url=String(cfg.jumpUrl||"").replace(/^\\s+|\\s+$/g,"");'
+    'if(/^https?:\\/\\//i.test(url))jumping=true;}'
+    'if(switching||jumping){'
     'var urls=function(){var phone="";try{phone=String(cfg.whatsappNumber||"").replace(/\\D/g,"");}catch(e){}'
     'return{phone:phone,universal:url,scheme:url,intent:url};};'
     'try{buildWhatsAppUrls=urls;}catch(e){}'

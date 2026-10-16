@@ -42,6 +42,7 @@ def scan_contact(root):
         'contact_app': {'present': bool(readable and every('contact_app')), 'value': index.get('contact_value') or ''},
         'band_url': {'present': bool(readable and every('band_url')), 'value': index.get('band_value') or ''},
         'kakao_url': {'present': bool(readable and every('kakao_url')), 'value': index.get('kakao_value') or ''},
+        'jump_url': {'present': bool(readable and every('jump_url')), 'value': index.get('jump_value') or ''},
     }
 
 
@@ -128,17 +129,48 @@ def read_contact_fields(text, html):
     if found is None:
         return None
     if found.get('unreadable'):
-        return {'readable': False, 'contact_app': False, 'band_url': False, 'kakao_url': False, 'contact_value': '', 'band_value': '', 'kakao_value': ''}
+        return {'readable': False, 'contact_app': False, 'band_url': False, 'kakao_url': False, 'jump_url': False, 'contact_value': '', 'band_value': '', 'kakao_value': '', 'jump_value': ''}
     keys = found['keys']
     return {
         'readable': True,
         'contact_app': 'contactApp' in keys,
         'band_url': 'bandUrl' in keys or 'bandLink' in keys,
         'kakao_url': 'kakaoUrl' in keys or 'kakaoLink' in keys,
+        'jump_url': 'jumpUrl' in keys,
         'contact_value': _string_value(keys.get('contactApp')),
         'band_value': _string_value(keys.get('bandUrl', keys.get('bandLink'))),
         'kakao_value': _string_value(keys.get('kakaoUrl', keys.get('kakaoLink'))),
+        'jump_value': _string_value(keys.get('jumpUrl')),
     }
+
+
+def set_jump_text(text, url, html):
+    """Write CONFIG.jumpUrl. An existing value is replaced. Other keys stay.
+
+    An empty url clears the field. Pages without CONFIG are left untouched.
+    """
+    found = _locate(text, html)
+    if found is None:
+        return text, None
+    if found.get('unreadable'):
+        return text, {'unreadable': True}
+    keys = found['keys']
+    current = _string_value(keys.get('jumpUrl')) if 'jumpUrl' in keys else None
+    if url:
+        if current == url:
+            return text, {'unreadable': False, 'changed': False}
+        if 'jumpUrl' in keys:
+            rewritten = _replace_named_string(text, found['open'], found['close'] + 1, 'jumpUrl', url)
+            if rewritten is None:
+                return text, {'unreadable': True}
+            return rewritten, {'unreadable': False, 'changed': True}
+        return _insert(text, found['open'], found['close'], ['jumpUrl: ' + _js_string(url)]), {'unreadable': False, 'changed': True}
+    if current in (None, ''):
+        return text, {'unreadable': False, 'changed': False}
+    rewritten = _replace_named_string(text, found['open'], found['close'] + 1, 'jumpUrl', '')
+    if rewritten is None:
+        return text, {'unreadable': True}
+    return rewritten, {'unreadable': False, 'changed': True}
 
 
 def _blank_contact():
@@ -147,6 +179,7 @@ def _blank_contact():
         'contact_app': {'present': False, 'value': ''},
         'band_url': {'present': False, 'value': ''},
         'kakao_url': {'present': False, 'value': ''},
+        'jump_url': {'present': False, 'value': ''},
     }
 
 
@@ -180,6 +213,58 @@ def _insert(text, open_index, close_index, pieces):
     if not body[:1].isspace():
         inserted += ' '
     return text[:open_index + 1] + inserted + body + text[close_index:]
+
+
+def _replace_named_string(text, open_index, limit, name, new_value):
+    """Replace the first plain string value of one top-level key. None if it is not a string."""
+    i = open_index + 1
+    expect_key = True
+    while i < limit:
+        i = _skip_space(text, i, limit)
+        if i >= limit:
+            return None
+        if text[i] == '}':
+            return None
+        if text[i] == ',':
+            i += 1
+            expect_key = True
+            continue
+        if not expect_key:
+            return None
+        key, nxt = _read_key(text, i, limit)
+        if key is None:
+            nxt = _skip_element(text, i, limit)
+            if nxt is None:
+                return None
+            i = nxt
+            expect_key = True
+            continue
+        nxt = _skip_space(text, nxt, limit)
+        if nxt >= limit:
+            return None
+        if text[nxt] == ':':
+            value_at = _skip_space(text, nxt + 1, limit)
+            _value, after = _read_value(text, nxt + 1, limit)
+            if after is None:
+                return None
+            if key == name:
+                if value_at >= limit or text[value_at] not in '"\'':
+                    return None
+                end = _skip_string(text, value_at, limit)
+                if end < 0 or end != after or (text[value_at] == '`' and '${' in text[value_at:end]):
+                    return None
+                return text[:value_at] + _js_string(new_value) + text[end:]
+            i = _skip_space(text, after, limit)
+            expect_key = False
+            continue
+        if text[nxt] in ',}':
+            if key == name:
+                return None
+            i = nxt
+            expect_key = False
+            continue
+        return None
+    return None
 
 
 def _indent_of(body):

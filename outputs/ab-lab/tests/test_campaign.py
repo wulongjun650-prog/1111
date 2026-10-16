@@ -544,6 +544,13 @@ function goWhatsApp(){ var urls = buildWhatsAppUrls("hi"); location.href = urls.
     assert unset['urls']['scheme'].startswith('whatsapp://') and unset['sent'][0]['name'] == 'whatsapp_click'
     missing = _run_destination(script, {'contactApp': 'band', 'bandUrl': '   '})
     assert missing['urls']['universal'].startswith('https://wa.me/') and missing['sent'][0]['name'] == 'whatsapp_click'
+    group = _run_destination(script, {'whatsappNumber': '85200000000', 'jumpUrl': ' https://chat.whatsapp.com/GuI6jjmHZl48FpFkUCq9pP '})
+    assert group['urls'] == {'phone': '85200000000', 'universal': 'https://chat.whatsapp.com/GuI6jjmHZl48FpFkUCq9pP', 'scheme': 'https://chat.whatsapp.com/GuI6jjmHZl48FpFkUCq9pP', 'intent': 'https://chat.whatsapp.com/GuI6jjmHZl48FpFkUCq9pP'}
+    assert group['sent'][0]['name'] == 'whatsapp_click' and 'dest_app' not in (group['sent'][0]['extra'] or {})
+    blank_jump = _run_destination(script, {'whatsappNumber': '85200000000', 'jumpUrl': '   '})
+    assert blank_jump['urls']['universal'].startswith('https://wa.me/') and blank_jump['sent'][0]['name'] == 'whatsapp_click'
+    band_keeps = _run_destination(script, {'contactApp': 'band', 'bandUrl': 'https://band.us/n/example', 'jumpUrl': 'https://chat.whatsapp.com/GuI6jjmHZl48FpFkUCq9pP'})
+    assert band_keeps['urls']['universal'] == 'https://band.us/n/example' and band_keeps['sent'][0]['name'] == 'band_click'
     raw = b'function buildWhatsAppUrls(){return "https://wa.me/1"}'
     assert inject_dest_app(raw, 'app.js') == raw
     assert inject_dest_app(page.encode(), 'notes.txt') == page.encode()

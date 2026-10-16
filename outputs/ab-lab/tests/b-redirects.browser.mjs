@@ -53,10 +53,11 @@ async function withConsole(run, options = {}) {
     }
     else if(pathname.endsWith('/analytics')) response={period:'today',end:new Date().toISOString(),summary:{total:0,allowed:0,blocked:0,rate:0},trend:[],domains:[],countries:[],reasons:[],recent:[]};
     else if(pathname===`/api/sites/${siteId}/tracking`) response={snippets:[], published:{A:{version_id:fixture.published.A, ga4:'', conversion:'', ga4_body:'', conversion_body:''}, B:{version_id:fixture.published.B, ga4:'', conversion:'', ga4_body:'', conversion_body:''}}};
+    else if(pathname===`/api/sites/${siteId}/page-title`) response={titles:{A:{version_id:fixture.published.A, title:''}, B:{version_id:fixture.published.B, title:''}}};
     else if(pathname===`/api/sites/${siteId}/b-redirects`) {
       fixture.scans.push(url.searchParams.get('version_id'));
       const selected=url.searchParams.get('version_id')||fixture.published.B;
-      response=structuredClone({version:fixture.versions.find(item=>item.id===selected),published_version:fixture.published.B,occurrences:fixture.byVersion[selected]||[],warnings:[],presets:fixture.presets,numbers:fixture.numbers,trust_poll:Boolean(fixture.trust_poll),active:fixture.active,number_split:fixture.numberSplitState||null});
+      response=structuredClone({version:fixture.versions.find(item=>item.id===selected),published_version:fixture.published.B,occurrences:fixture.byVersion[selected]||[],warnings:[],presets:fixture.presets,numbers:fixture.numbers,trust_poll:Boolean(fixture.trust_poll),active:fixture.active,number_split:fixture.numberSplitState||null,contact:fixture.contact||null});
       status=fixture.scanStatus;
       if(status!==200) response={detail:'无法读取此版本'};
       if(selected===fixture.delayVersion) await new Promise(resolve=>{fixture.releaseScan=resolve;});
@@ -114,7 +115,8 @@ async function withConsole(run, options = {}) {
         const saved=version('B',`saved-${fixture.applies.length}`);fixture.versions.push(saved);fixture.published.B=saved.id;
         fixture.byVersion[saved.id]=fixture.byVersion[body.version_id].map((item,index)=>({...item,id:`${index?'script':'href'}-${saved.id}`,url:body.occurrence_ids.includes(item.id)?preset.url:item.url}));
         fixture.active={url:preset.url,preset_id:preset.id,version_id:saved.id,updated:4};
-        response={version:saved,check:preset.check,changed:body.occurrence_ids.length};
+        if(fixture.recordJump) fixture.contact={has_config:true,readable:true,contact_app:{present:false,value:''},band_url:{present:false,value:''},kakao_url:{present:false,value:''},jump_url:{present:true,value:preset.url}};
+        response={version:saved,check:preset.check,changed:body.occurrence_ids.length||1};
       }
     } else if(pathname===`/api/sites/${siteId}/desk/review` && request.method()==='POST') {
       const body=request.postDataJSON();
@@ -787,5 +789,34 @@ test('reception name is posted once and number split does not use the jump-link 
     assert.deepEqual(fixture.numberSplits.at(-1).members, [{number_id: 20, weight: 1}]);
     assert.equal(await page.locator('#b-redirects.split-on').count(), 0);
     assert.equal(await page.locator('#b-redirects.wa-split-on').count(), 1);
+  });
+});
+
+test('a group link switches the click when the page only has a WhatsApp number', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.recordJump = true;
+    fixture.byVersion['live-b'] = [
+      {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85264150954'}
+    ];
+    fixture.numbers = [{id:8, phone:'85264150954', note:'当前', created:1}];
+    fixture.presets = [{id:7, url:'https://chat.whatsapp.com/GuI6jjmHZl48FpFkUCq9pP', note:'群链接', created:1, check:check('unknown')}];
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-occurrences input[type=checkbox]').waitFor();
+    assert.match(await page.locator('#b-redirects').innerText(), /不再打开当前 WS 号码/);
+    await page.locator('#b-redirect-numbers [data-number-id="8"] .b-redirect-active-badge').waitFor();
+    const linkApply = page.waitForResponse(response => response.url().includes('/b-redirects/apply') && !response.url().includes('/numbers'));
+    await page.locator('#b-redirect-presets [data-preset-id="7"]').getByRole('button', {name:'换成这条', exact:true}).click();
+    await linkApply;
+    assert.deepEqual(fixture.applies.at(-1).body.occurrence_ids, []);
+    assert.equal(fixture.applies.at(-1).body.preset_id, 7);
+    await page.locator('#b-redirect-message').getByText('访客点击已改到这条链接').waitFor();
+    await page.locator('#b-redirect-presets .b-redirect-active-badge').getByText('当前使用中').waitFor();
+    await page.locator('.b-wa-status').getByText('访客点击现在走链接，不走号码。').waitFor();
+    assert.equal(await page.locator('#b-redirect-numbers .b-redirect-active-badge').count(), 0);
+    const numberApply = page.waitForResponse(response => response.url().includes('/b-redirects/numbers/apply'));
+    await page.locator('#b-redirect-numbers [data-number-id="8"]').getByRole('button', {name:'换成这个号码', exact:true}).click();
+    await numberApply;
+    assert.equal(fixture.numberApplies.at(-1).body.number_id, 8);
+    assert.equal(fixture.numberApplies.at(-1).body.occurrence_ids.length, 1);
   });
 });

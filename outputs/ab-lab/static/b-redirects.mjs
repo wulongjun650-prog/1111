@@ -21,7 +21,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const count = element('span', 'badge neutral', '尚未扫描'); count.id = 'b-redirect-count';
   header.append(title, count);
   const current = element('div', 'b-now'); current.id = 'b-redirect-current';
-  const description = element('p', 'muted', '勾选要换的位置。普通链接点「换成这条」。WhatsApp 号码在下面的号码池里换，进线语不动。BAND 和 Kakao 链接也在下面预存，换成这条时写入 CONFIG。');
+  const description = element('p', 'muted', '点「换成这条」，访客点击就打开这条链接，不再打开当前 WS 号码。号码数字留着，点「换成这个号码」会回到号码。勾上的普通链接一并换掉。');
   const implantStatus = element('p', 'b-contact-scan', '上报代码：上传 B 页后显示。'); implantStatus.id = 'b-implant-status';
   const message = element('p', 'b-redirect-message'); message.id = 'b-redirect-message'; message.hidden = true;
   message.setAttribute('role', 'status');
@@ -136,7 +136,8 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   const numberSelected = value => selected(value).filter(item => item.kind === 'whatsapp_number');
   const activePreset = value => (value.active && value.active.version_id === value.published) ? value.active.preset_id : null;
   const isDirty = () => Boolean(urls.value.trim() || note.value.trim() || waNumbers.value.trim() || waName.value.trim() || waNote.value.trim() || contactUrls.value.trim() || contactNote.value.trim() || session?.selectionDirty || session?.splitDirty || session?.numberSplitDirty);
-  const blankContact = () => ({has_config:false, readable:true, contact_app:{present:false, value:''}, band_url:{present:false, value:''}, kakao_url:{present:false, value:''}});
+  const blankContact = () => ({has_config:false, readable:true, contact_app:{present:false, value:''}, band_url:{present:false, value:''}, kakao_url:{present:false, value:''}, jump_url:{present:false, value:''}});
+  const jumpLink = value => (value?.versionId && value.versionId === value.published && value.contact?.jump_url?.value) || '';
   const APP_LABEL = {band:'BAND', kakao:'Kakao'};
   const blankSplit = () => ({enabled:false, mode:'random', members:[]});
   const date = timestamp => timestamp ? new Date(Number(timestamp) * 1000).toLocaleString('zh-CN', {hour12:false}) : '尚未检测';
@@ -280,7 +281,8 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     for (const row of presets.querySelectorAll('[data-preset-id]')) {
       const checking = value?.checking.has(Number(row.dataset.presetId));
       row.querySelectorAll('button').forEach(button => {
-        button.disabled = busy || checking || (button.dataset.action === 'apply' && (!value.versionId || !linkSelected(value).length));
+        const canApply = Boolean(value?.versionId) && (linkSelected(value).length > 0 || value.occurrences.some(item => item.kind === 'whatsapp_number'));
+        button.disabled = busy || checking || (button.dataset.action === 'apply' && !canApply);
       });
     }
     for (const row of waList.querySelectorAll('[data-number-id]')) {
@@ -634,8 +636,16 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     const saved = value?.numbers || [];
     if (!saved.length) waList.append(element('p', 'empty-state', '还没有号码。每行一个，只填数字。'));
     const current = liveNumbers(value);
+    const onJump = Boolean(jumpLink(value));
+    const jumpText = '访客点击现在走链接，不走号码。';
+    const idleText = '只换号码。进线语、按钮和链接结构保持不动。';
+    const headline = waBox.querySelector('.b-wa-status');
+    if (headline) {
+      if (onJump) headline.textContent = jumpText;
+      else if (headline.textContent === jumpText) headline.textContent = idleText;
+    }
     for (const item of saved) {
-      const inUse = current.has(item.phone);
+      const inUse = current.has(item.phone) && !onJump;
       const row = element('div', `b-wa-row${inUse ? ' active' : ''}`); row.dataset.numberId = item.id;
       const participate = element('div', 'wa-split-join');
       const joinLabel = element('label', 'b-split-check');
@@ -685,9 +695,10 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   }
 
   async function apply(value, preset) {
-    if (readOnly || !isCurrent(value) || value.busy || value.loading || value.checking.has(preset.id) || !value.versionId || !linkSelected(value).length) return;
+    if (readOnly || !isCurrent(value) || value.busy || value.loading || value.checking.has(preset.id) || !value.versionId) return;
     const links = linkSelected(value);
-    if (links.every(row => row.url === preset.url)) { showMessage('这些位置已经是这条链接，没有新版本。'); return; }
+    if (links.length && links.every(row => row.url === preset.url)) { showMessage('这些位置已经是这条链接，没有新版本。'); return; }
+    if (!links.length && value.contact?.jump_url?.value === preset.url) { showMessage('访客点击已经是这条链接。'); return; }
     value.busy = true; updateControls(); showMessage('正在检测，并换进 B 页…');
     try {
       const result = await api('/api/b-redirects/apply', {method:'POST', body:{version_id:value.versionId, preset_id:preset.id, occurrence_ids:linkSelected(value).map(item => item.id), expected_published:value.expectedPublished}});
@@ -702,11 +713,12 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
       catch (error) {if (!isCurrent(value) || error.stale) return; refreshFailed = true;}
       if (!isCurrent(value)) return;
       await scan(value);
+      const moved = '访客点击已改到这条链接。号码还在，点换成这个号码会回到号码。';
       if (isCurrent(value)) showMessage(refreshFailed
-        ? `B 页已换链并发布，但状态刷新失败。请刷新状态确认当前版本。${result.check.status === 'unknown' ? '此链接状态未知，请确认目标页面。' : ''}`
+        ? `B 页已换链并发布，但状态刷新失败。请刷新状态确认当前版本。${result.check.status === 'unknown' ? '此链接状态未知，请确认目标页面。' : ''}${moved}`
         : result.check.status === 'unknown'
-        ? `已替换 ${result.changed} 处并发布 B；此链接状态未知。${result.check.detail || '请确认目标页面。'}`
-        : `已替换 ${result.changed} 处并发布 B，旧版本已保留。`, refreshFailed);
+        ? `已替换 ${result.changed} 处并发布 B；此链接状态未知。${result.check.detail || '请确认目标页面。'}${moved}`
+        : `已替换 ${result.changed} 处并发布 B。${moved}`, refreshFailed);
     } catch (error) {
       if (!isCurrent(value) || error.stale) return;
       if (error.status === 400) await scan(value, {presetsOnly:true});
@@ -725,7 +737,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     // looking at an older draft, so they base off the published version.
     const baseVersionId = options.baseVersionId || value.versionId;
     if (!isCurrent(value) || value.busy || value.loading || !baseVersionId || !targets.length) return false;
-    if (targets.every(row => row.url === item.phone) && !item.display_name) {
+    if (targets.every(row => row.url === item.phone) && !item.display_name && !jumpLink(value)) {
       renderNumbers(value);
       const text = '这个号码已经是当前号码。';
       showMessage(text); showNumberStatus(text);
