@@ -1300,6 +1300,149 @@ def rewrite_reception_bytes(data, name):
     return (b'\xef\xbb\xbf' + payload) if bom else payload
 
 
+_JUMP_CODE = ('.html', '.htm', '.js', '.mjs')
+_JUMP_HTML = ('.html', '.htm')
+# The wrapper sits after the original function. The scanner keeps reading that
+# function, so the phone span stays and a later number swap can find it.
+_JUMP_WRAP = {
+    'buildWhatsAppUrls': (
+        '__abJumpUrls',
+        "var __abJumpUrls = buildWhatsAppUrls;\n"
+        "buildWhatsAppUrls = function (message) {\n"
+        "  if (CONFIG && CONFIG.jumpUrl) return {phone:String(CONFIG.whatsappNumber||'').replace(/\\D/g,''),universal:CONFIG.jumpUrl,scheme:CONFIG.jumpUrl,intent:CONFIG.jumpUrl};\n"
+        "  return __abJumpUrls.apply(this, arguments);\n"
+        "};",
+    ),
+    'buildWhatsAppUrl': (
+        '__abJumpOne',
+        "var __abJumpOne = buildWhatsAppUrl;\n"
+        "buildWhatsAppUrl = function (message) {\n"
+        "  if (CONFIG && CONFIG.jumpUrl) return CONFIG.jumpUrl;\n"
+        "  return __abJumpOne.apply(this, arguments);\n"
+        "};",
+    ),
+}
+
+
+def has_whatsapp_builder(root):
+    """True when the page builds the click from a WhatsApp number."""
+    try:
+        files = source_files(root)
+    except (OSError, ValueError):
+        return False
+    for path, (file, _) in files.items():
+        if Path(path).suffix.lower() not in _JUMP_CODE:
+            continue
+        data = read_source(file, path)
+        if data.startswith(b'\xef\xbb\xbf'):
+            data = data[3:]
+        try:
+            text = data.decode('utf-8')
+        except UnicodeError:
+            continue
+        if 'function buildWhatsAppUrls(' in text or 'function buildWhatsAppUrl(' in text:
+            return True
+    return False
+
+
+def install_jump_guard(text):
+    """Call the original builder unless CONFIG.jumpUrl is set.
+
+    The original function stays byte for byte, so the phone span remains and
+    clearing jumpUrl sends the click back to that number.
+    """
+    inserts = []
+    found = False
+    for name, (marker, wrapper) in _JUMP_WRAP.items():
+        span = _js_function_span(text, name)
+        if span is None:
+            continue
+        found = True
+        if marker in text:
+            continue
+        inserts.append((span[1], wrapper))
+    for at, wrapper in sorted(inserts, reverse=True):
+        text = text[:at] + '\n' + wrapper + text[at:]
+    return text, found
+
+
+def rewrite_jump_bundle(root, filename, pages, url):
+    """Publish CONFIG.jumpUrl and the one-line guard. Empty url only clears the field.
+
+    Phone digits, contactApp, and the rest of the jump stay. A page with no
+    WhatsApp builder is left as-is so ordinary link replacement still publishes.
+    Returns (version or None, changed, reason).
+    """
+    from .contact_config import set_jump_text
+    files = source_files(root)
+    prepared = []
+    saw_config = saw_function = False
+    for path, (file, _) in sorted(files.items()):
+        data = read_source(file, path)
+        suffix = Path(path).suffix.lower()
+        status = None
+        if suffix in _JUMP_CODE:
+            data, status = _prepare_jump_bytes(data, url, suffix in _JUMP_HTML, set_jump_text)
+            if status and status.get('unreadable'):
+                raise ValueError('CONFIG 无法识别，没有改代码')
+            if status:
+                saw_config = saw_config or status.get('config')
+                saw_function = saw_function or status.get('function')
+        prepared.append((path, data, status))
+    if url and not saw_function:
+        return None, 0, 'no-function'
+    if url and not saw_config:
+        return None, 0, 'no-config'
+    edited, total, digest, changed_any = [], 0, hashlib.sha256(), False
+    for path, data, status in prepared:
+        if url and status and status.get('pending') is not None and saw_config:
+            data, status = _finish_jump_bytes(data, status)
+        if status and status.get('changed'):
+            changed_any = True
+        validate_file(path, data)
+        total += len(data)
+        if total > MAX_TOTAL:
+            raise ValueError('源码目录超过总大小限制')
+        edited.append((path, data))
+        digest.update(path.encode() + b'\0' + str(len(data)).encode() + b'\0' + data)
+    if not changed_any:
+        return None, 0, 'unchanged'
+    return write_bundle(edited, filename, pages, digest.hexdigest()), 1, 'updated'
+
+
+def _prepare_jump_bytes(data, url, html, set_jump_text):
+    bom = data.startswith(b'\xef\xbb\xbf')
+    raw = data[3:] if bom else data
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeError:
+        return data, None
+    rewritten, status = set_jump_text(text, url, html)
+    if status and status.get('unreadable'):
+        return data, {'unreadable': True}
+    found = 'function buildWhatsAppUrls(' in text or 'function buildWhatsAppUrl(' in text
+    pending = rewritten if url else None
+    changed = rewritten != text
+    if not url:
+        if not changed:
+            return data, {'unreadable': False, 'changed': False, 'config': status is not None, 'function': found, 'pending': None}
+        payload = rewritten.encode('utf-8')
+        stored = (b'\xef\xbb\xbf' + payload) if bom else payload
+        return stored, {'unreadable': False, 'changed': True, 'config': status is not None, 'function': found, 'pending': None}
+    return data, {'unreadable': False, 'changed': changed, 'config': status is not None, 'function': found, 'pending': pending, 'bom': bom, 'original': text}
+
+
+def _finish_jump_bytes(data, status):
+    """Add the guard only after some file actually has CONFIG."""
+    pending, bom = status['pending'], status['bom']
+    guarded, _found = install_jump_guard(pending)
+    if guarded == status['original']:
+        return data, status | {'changed': False, 'pending': None}
+    payload = guarded.encode('utf-8')
+    stored = (b'\xef\xbb\xbf' + payload) if bom else payload
+    return stored, status | {'changed': True, 'pending': None}
+
+
 def rewrite_text(data, positions, url):
     """Replace already-scanned spans in one file. The bytes stay on disk."""
     if not positions:

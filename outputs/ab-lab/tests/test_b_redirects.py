@@ -140,7 +140,8 @@ def test_stale_and_invalid_occurrences_rejected_before_network(console):
     scan = client.get('/api/b-redirects').json()
     link = preset(client)
     assert apply(client, scan, link, ids=['0'*64]).status_code == 409
-    assert apply(client, scan, link, ids=[]).status_code == 422
+    empty = apply(client, scan, link, ids=[])
+    assert empty.status_code == 400 and '跳转函数' in empty.json()['detail']
     upload(client)
     assert apply(client, scan, link).status_code == 409
     assert checker.calls == []
@@ -333,6 +334,101 @@ def test_whatsapp_number_pool_rewrites_only_the_phone(console):
     assert client.delete('/api/b-redirects/numbers/'+str(pool[1]['id'])).status_code == 200
     remaining = client.get('/api/b-redirects').json()['numbers']
     assert [item['phone'] for item in remaining] == ['85211112222', '85255556666']
+
+
+GROUP_LINK = 'https://chat.whatsapp.com/GuI6jjmHZl48FpFkUCq9pP'
+JUMP_PAGE = r'''<!doctype html><script>
+const CONFIG = { whatsappNumber: '85264150954' };
+function buildWhatsAppUrls(message) {
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+  const universal = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  return { phone: phone, universal: universal, scheme: 'whatsapp://send?phone=' + phone, intent: 'intent://send?phone=' + phone };
+}
+function goWhatsApp() {
+  const urls = buildWhatsAppUrls('hi');
+  location.href = urls.universal;
+}
+</script>
+<a href="https://www.youtube.com/@EconManBlog/shorts">YouTube</a>
+'''
+
+
+def _click_target(html):
+    import subprocess
+    start = html.index('<script>') + len('<script>')
+    script = html[start:html.index('</script>', start)]
+    program = script + "\nprocess.stdout.write(buildWhatsAppUrls('hi').universal);\n"
+    result = subprocess.run(['node', '-e', program], check=True, capture_output=True, text=True)
+    return result.stdout
+
+
+def test_group_link_takes_the_click_off_the_whatsapp_number(console):
+    client, app = console
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, 'w') as bundle:
+        bundle.writestr('index.html', JUMP_PAGE)
+        bundle.writestr('style.css', 'body{color:red}\n')
+    uploaded = client.post('/api/upload/B?name=jump.zip', content=archive.getvalue())
+    assert uploaded.status_code == 200, uploaded.text
+    base = uploaded.json()['version']['id']
+    assert client.post('/api/publish/B', json={'version_id': base}).status_code == 200
+    app.state.link_checker = Checker()
+    scan = client.get('/api/b-redirects').json()
+    numbers = [item for item in scan['occurrences'] if item['kind'] == 'whatsapp_number']
+    links = [item for item in scan['occurrences'] if item['kind'] != 'whatsapp_number']
+    assert [item['url'] for item in numbers] == ['85264150954']
+    assert links and links[0]['url'].startswith('https://www.youtube.com/')
+    denied = apply(client, scan, preset(client, url=GROUP_LINK), ids=[numbers[0]['id']])
+    assert denied.status_code == 400 and '号码预设' in denied.json()['detail']
+    assert app.state.store.slots()['B'] == base
+    added = client.post('/api/b-redirects/numbers', json={'phones': ['85264150954', '85211112222'], 'note': '一线'})
+    assert added.status_code == 200, added.text
+    pool = {item['phone']: item for item in added.json()['numbers']}
+    link = preset(client, url=GROUP_LINK)
+    switched = apply(client, scan, link, ids=[])
+    assert switched.status_code == 200, switched.text
+    assert switched.json()['changed'] >= 1
+    published = app.state.store.slots()['B']
+    text = (app.state.store.pages / published / 'index.html').read_text(encoding='utf-8')
+    css = (app.state.store.pages / published / 'style.css').read_text(encoding='utf-8')
+    assert css == 'body{color:red}\n'
+    assert '85264150954' in text and 'youtube.com' in text and 'https://wa.me/${phone}' in text
+    assert '__abJumpUrls' in text and GROUP_LINK in text
+    _same_function(JUMP_PAGE, text, 'goWhatsApp')
+    _same_function(JUMP_PAGE, text, 'buildWhatsAppUrls')
+    assert _click_target(text) == GROUP_LINK
+    state = client.get('/api/b-redirects').json()
+    assert state['contact']['jump_url']['value'] == GROUP_LINK
+    assert state['active']['url'] == GROUP_LINK and state['active']['preset_id'] == link['id']
+    assert [item['url'] for item in state['occurrences'] if item['kind'] == 'whatsapp_number'] == ['85264150954']
+    again = apply(client, state, link, ids=[])
+    assert again.status_code == 200, again.text
+    assert again.json()['changed'] == 0
+    assert app.state.store.slots()['B'] == published
+    same = pool['85264150954']
+    back = client.post('/api/b-redirects/numbers/apply', json={
+        'version_id': state['version']['id'], 'number_id': same['id'],
+        'occurrence_ids': [item['id'] for item in state['occurrences'] if item['kind'] == 'whatsapp_number'],
+        'expected_published': state['published_version']})
+    assert back.status_code == 200, back.text
+    assert back.json()['changed'] >= 1
+    restored = (app.state.store.pages / app.state.store.slots()['B'] / 'index.html').read_text(encoding='utf-8')
+    assert '85264150954' in restored and GROUP_LINK not in restored
+    assert '__abJumpUrls' in restored and 'youtube.com' in restored
+    assert _click_target(restored) == 'https://wa.me/85264150954?text=hi'
+    quiet = client.get('/api/b-redirects').json()
+    assert quiet['contact']['jump_url']['value'] == ''
+    assert quiet['active'] is None
+    other = pool['85211112222']
+    moved = client.post('/api/b-redirects/numbers/apply', json={
+        'version_id': quiet['version']['id'], 'number_id': other['id'],
+        'occurrence_ids': [item['id'] for item in quiet['occurrences'] if item['kind'] == 'whatsapp_number'],
+        'expected_published': quiet['published_version']})
+    assert moved.status_code == 200, moved.text
+    numbered = (app.state.store.pages / app.state.store.slots()['B'] / 'index.html').read_text(encoding='utf-8')
+    assert '85211112222' in numbered and '85264150954' not in numbered
+    assert _click_target(numbered) == 'https://wa.me/85211112222?text=hi'
+    assert 'youtube.com' in numbered
 
 
 RECEPTION_PAGE = '''<!doctype html>

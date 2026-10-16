@@ -412,10 +412,26 @@ class Store:
             return db.execute('SELECT url FROM redirect_split_assign WHERE visitor_hash=?', (visitor_hash,)).fetchone()['url']
 
     def apply_redirects(self, base, preset, occurrence_ids, expected_published, commit_guard=None):
-        from .redirects import replace_bundle
+        from .redirects import replace_bundle, rewrite_jump_bundle
         if base['slot'] != 'B':
             raise KeyError('B 版本不存在')
-        version, changed = replace_bundle(self.pages / base['id'], base['id'], occurrence_ids, preset['url'], self.pages, base['name'])
+        span_version, span_changed = None, 0
+        if occurrence_ids:
+            span_version, span_changed = replace_bundle(self.pages / base['id'], base['id'], occurrence_ids, preset['url'], self.pages, base['name'])
+        root_id = span_version['id'] if span_version else base['id']
+        try:
+            jump_version, jump_changed, reason = rewrite_jump_bundle(self.pages / root_id, base['name'], self.pages, preset['url'])
+        except Exception:
+            if span_version is not None:
+                shutil.rmtree(self.pages / span_version['id'], ignore_errors=True)
+            raise
+        if not occurrence_ids and reason == 'no-function':
+            raise ValueError('这一版没有 WhatsApp 跳转函数，没有改点击')
+        if not occurrence_ids and reason == 'no-config':
+            raise ValueError('当前 B 页没有 CONFIG，没有改点击')
+        version = jump_version or span_version
+        changed = (span_changed or 0) + (jump_changed or 0)
+        interim_id = span_version['id'] if span_version and jump_version else None
         try:
             with self.connect() as db:
                 if commit_guard:
@@ -434,12 +450,16 @@ class Store:
                 db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], 'B', version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
                 db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
                 db.execute('INSERT INTO redirect_active VALUES(1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET url=excluded.url,preset_id=excluded.preset_id,version_id=excluded.version_id,updated=excluded.updated', (preset['url'], preset['id'], version['id'], time.time()))
-                self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed})
+                self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed, 'jump_url':preset['url']})
                 self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
         except Exception:
             if version is not None:
-                shutil.rmtree(self.pages / version['id'])
+                shutil.rmtree(self.pages / version['id'], ignore_errors=True)
+            if interim_id:
+                shutil.rmtree(self.pages / interim_id, ignore_errors=True)
             raise
+        if interim_id:
+            shutil.rmtree(self.pages / interim_id, ignore_errors=True)
         return version | {'slot':'B'}, changed
 
     @staticmethod
@@ -710,23 +730,29 @@ class Store:
         return index_mode or fallback
 
     def apply_whatsapp_number(self, base, number, occurrence_ids, expected_published, commit_guard=None):
-        from .redirects import replace_bundle
+        from .redirects import replace_bundle, rewrite_jump_bundle
         if base['slot'] != 'B':
             raise KeyError('B 版本不存在')
         version, changed = replace_bundle(self.pages / base['id'], base['id'], occurrence_ids, number['phone'], self.pages, base['name'])
-        interim_id = None
-        if number.get('display_name'):
-            try:
+        scratch = [version['id']] if version else []
+        try:
+            if number.get('display_name'):
                 root_id = version['id'] if version else base['id']
                 reception, reception_changed = self._reception_bundle(root_id, number['display_name'], base['name'])
-            except Exception:
-                if version is not None:
-                    shutil.rmtree(self.pages / version['id'], ignore_errors=True)
-                raise
-            if reception:
-                interim_id = version['id'] if version else None
-                version = reception
-                changed = (changed or 0) + reception_changed
+                if reception:
+                    scratch.append(reception['id'])
+                    version = reception
+                    changed = (changed or 0) + reception_changed
+            root_id = version['id'] if version else base['id']
+            cleared, clear_changed, _reason = rewrite_jump_bundle(self.pages / root_id, base['name'], self.pages, '')
+            if cleared:
+                scratch.append(cleared['id'])
+                version = cleared
+                changed = (changed or 0) + clear_changed
+        except Exception:
+            for item in scratch:
+                shutil.rmtree(self.pages / item, ignore_errors=True)
+            raise
         try:
             with self.connect() as db:
                 if commit_guard:
@@ -743,16 +769,16 @@ class Store:
                     return base | {'slot':'B'}, 0
                 db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], 'B', version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
                 db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
+                db.execute('DELETE FROM redirect_active WHERE id=1')
                 self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed, 'whatsapp_number':number['phone'], 'reception': number.get('display_name') or ''})
                 self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
         except Exception:
-            if version is not None:
-                shutil.rmtree(self.pages / version['id'], ignore_errors=True)
-            if interim_id:
-                shutil.rmtree(self.pages / interim_id, ignore_errors=True)
+            for item in scratch:
+                shutil.rmtree(self.pages / item, ignore_errors=True)
             raise
-        if interim_id:
-            shutil.rmtree(self.pages / interim_id, ignore_errors=True)
+        for item in scratch:
+            if version is None or item != version['id']:
+                shutil.rmtree(self.pages / item, ignore_errors=True)
         return version | {'slot':'B'}, changed
 
     def apply_contact_link(self, base, link, expected_published, commit_guard=None):

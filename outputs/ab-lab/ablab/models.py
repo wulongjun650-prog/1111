@@ -134,7 +134,7 @@ class RedirectSplit(StrictModel):
 class RedirectApply(StrictModel):
     version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
     preset_id: int = Field(gt=0, strict=True)
-    occurrence_ids: list[str] = Field(min_length=1, max_length=5000)
+    occurrence_ids: list[str] = Field(min_length=0, max_length=5000)
     expected_published: str | None = Field(pattern=r'^[a-f0-9]{32}$')
 
     @field_validator('occurrence_ids')
