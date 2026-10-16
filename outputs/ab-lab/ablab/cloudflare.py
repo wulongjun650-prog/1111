@@ -26,14 +26,20 @@ OPTIMIZATION_PHASES = ('http_request_cache_settings', 'http_config_settings')
 RULE_KEYS = ('expression', 'action', 'action_parameters', 'description', 'enabled', 'logging')
 # Cloudflare uses 0 for "Respect Existing Headers". Longer than an hour overrides the origin no-store.
 BROWSER_CACHE_MAX = 3600
+CHALLENGE_PHASE = 'http_request_firewall_custom'
+CHALLENGE_DESCRIPTION = '双子星人机验证'
+CHALLENGE_EXPRESSION = '(http.request.method eq "GET" and any(http.request.headers["accept"][*] contains "text/html"))'
+BUTTON_QUERY = 'ab_human=1'
+SECURITY_LEVELS = ('off', 'essentially_off', 'low', 'medium', 'high', 'under_attack')
 
 
 class CloudflareError(ProvisioningError):
-    def __init__(self, message, zone_id='', nameservers=(), code=0):
+    def __init__(self, message, zone_id='', nameservers=(), code=0, status=0):
         super().__init__(message)
         self.zone_id = zone_id
         self.nameservers = tuple(nameservers)
         self.code = code
+        self.status = status
 
 
 class Cloudflare:
@@ -138,6 +144,29 @@ class Cloudflare:
             })
         return {'proxied': False, 'address': address}
 
+    def set_human_challenge(self, zone_id, domain, entry, button, previous=''):
+        """Turn the two human checks on or off for one domain.
+
+        Entry checks the whole visit. Button checks only the address used after
+        a click, and leaves the landing page itself alone. Cache rules are not
+        part of either change.
+        """
+        if type(entry) is not bool or type(button) is not bool:
+            raise CloudflareError('人机验证选项无效')
+        if previous not in ('', 'off', 'essentially_off', 'low', 'medium', 'high'):
+            raise CloudflareError('人机验证记录无效')
+        domain = normalize_domain(domain)
+        zone_id = _zone_id(zone_id)
+        if not self.token:
+            raise CloudflareError('服务器未配置 Cloudflare')
+        with self._client() as client:
+            zone = _zone_view(self._call(client, 'GET', '/zones/' + zone_id))
+            if zone['name'] != domain:
+                raise CloudflareError('Cloudflare 站点与登记域名不一致')
+            self._set_button_rule(client, zone_id, domain, button)
+            remembered = self._set_entry_check(client, zone_id, entry, previous)
+        return {'entry': entry, 'button': button, 'previous': remembered}
+
     def delete_zone(self, zone_id, domain):
         """Delete the Cloudflare zone after its name matches this domain."""
         domain = normalize_domain(domain)
@@ -185,7 +214,8 @@ class Cloudflare:
         if missing_ok and (status == 404 or _code(body) in MISSING_CODES):
             return None
         if body.get('success') is not True:
-            error = CloudflareError(*_safe_error(body, self.token))
+            message, failed_zone, nameservers, code = _safe_error(body, self.token)
+            error = CloudflareError(message, failed_zone, nameservers, code, status)
             if soft and error.code not in AUTH_CODES:
                 return None
             raise error
@@ -328,6 +358,171 @@ class Cloudflare:
                 self._call(client, 'PUT', f'/zones/{zone_id}/rulesets/phases/{phase}/entrypoint', payload={'rules': body}, soft=True)
         except CloudflareError:
             return
+
+    def _set_entry_check(self, client, zone_id, enabled, previous):
+        ruled = self._try_challenge_rule(client, zone_id, enabled)
+        if enabled and ruled is not None:
+            if previous in SECURITY_LEVELS and previous != 'under_attack' and self._read_level(client, zone_id) == 'under_attack':
+                self._write_level(client, zone_id, previous)
+            return ''
+        if enabled:
+            return self._set_attack_mode(client, zone_id, True, previous)['previous']
+        if previous:
+            self._set_attack_mode(client, zone_id, False, previous)
+        return ''
+
+    def _try_challenge_rule(self, client, zone_id, enabled):
+        try:
+            return self._set_challenge_rule(client, zone_id, enabled)
+        except CloudflareError as error:
+            if not _denied(error):
+                raise
+            return None
+
+    def _set_button_rule(self, client, zone_id, domain, enabled):
+        pattern = f'*{domain}/*{BUTTON_QUERY}*'
+        rules = self._page_rules(client, zone_id)
+        ours = [rule for rule in rules if _button_rule(rule, pattern)]
+        others = [rule for rule in rules if rule not in ours]
+        if not enabled:
+            for rule in ours:
+                self._call(client, 'DELETE', f'/zones/{zone_id}/pagerules/{rule["id"]}')
+            return
+        if len(ours) == 1 and ours[0].get('status') == 'active' and ours[0].get('priority') == 1:
+            return
+        payload = {
+            'targets': [{'target': 'url', 'constraint': {'operator': 'matches', 'value': pattern}}],
+            'actions': [{'id': 'security_level', 'value': 'under_attack'}],
+            'priority': 1,
+            'status': 'active',
+        }
+        if len(ours) == 1:
+            self._call(client, 'PATCH', f'/zones/{zone_id}/pagerules/{ours[0]["id"]}', payload=payload)
+            return
+        for rule in ours:
+            self._call(client, 'DELETE', f'/zones/{zone_id}/pagerules/{rule["id"]}')
+        if len(others) >= 50:
+            raise CloudflareError('这条域名的页面规则已满，点击按钮的人机验证没有加上')
+        self._call(client, 'POST', f'/zones/{zone_id}/pagerules', payload=payload)
+
+    def _page_rules(self, client, zone_id):
+        result = self._call(client, 'GET', f'/zones/{zone_id}/pagerules')
+        if not isinstance(result, list) or len(result) > 50:
+            raise CloudflareError('Cloudflare 页面规则无法读取，没有改动')
+        kept = []
+        for rule in result:
+            if not isinstance(rule, dict):
+                raise CloudflareError('Cloudflare 页面规则无法读取，没有改动')
+            rule_id = rule.get('id')
+            if not isinstance(rule_id, str) or not re.fullmatch(r'[a-f0-9]{32}', rule_id):
+                raise CloudflareError('Cloudflare 页面规则无法读取，没有改动')
+            kept.append(rule)
+        return kept
+
+    def _set_challenge_rule(self, client, zone_id, enabled):
+        rules = self._firewall_rules(client, zone_id)
+        others = [rule for rule in rules if rule.get('description') != CHALLENGE_DESCRIPTION]
+        if enabled:
+            matched = [rule for rule in rules if _same_challenge(rule)]
+            if len(matched) == 1 and len(others) + 1 == len(rules):
+                return {'enabled': True, 'mode': 'managed_challenge', 'previous': ''}
+            body = others + [_challenge_rule()]
+        else:
+            if len(others) == len(rules):
+                return {'enabled': False, 'mode': 'managed_challenge', 'previous': ''}
+            body = others
+        self._call(client, 'PUT', f'/zones/{zone_id}/rulesets/phases/{CHALLENGE_PHASE}/entrypoint', payload={'rules': body})
+        return {'enabled': enabled, 'mode': 'managed_challenge', 'previous': ''}
+
+    def _firewall_rules(self, client, zone_id):
+        current = self._call(client, 'GET', f'/zones/{zone_id}/rulesets/phases/{CHALLENGE_PHASE}/entrypoint', missing_ok=True)
+        if current is None:
+            return []
+        rules = current.get('rules') if isinstance(current, dict) else None
+        if not isinstance(rules, list) or len(rules) > 50:
+            raise CloudflareError('这条域名上的防火墙规则无法读取，没有改动')
+        kept = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                raise CloudflareError('这条域名上的防火墙规则无法读取，没有改动')
+            kept.append(_kept_firewall_rule(rule))
+        return kept
+
+    def _set_attack_mode(self, client, zone_id, enabled, previous):
+        current = self._read_level(client, zone_id)
+        if enabled:
+            remembered = current if current != 'under_attack' else previous or 'medium'
+            if remembered not in SECURITY_LEVELS or remembered == 'under_attack':
+                remembered = 'medium'
+            if current != 'under_attack':
+                self._write_level(client, zone_id, 'under_attack')
+            return {'enabled': True, 'mode': 'under_attack', 'previous': remembered}
+        if current != 'under_attack':
+            return {'enabled': False, 'mode': 'under_attack', 'previous': ''}
+        restore = previous if previous in SECURITY_LEVELS and previous != 'under_attack' else 'medium'
+        self._write_level(client, zone_id, restore)
+        return {'enabled': False, 'mode': 'under_attack', 'previous': ''}
+
+    def _read_level(self, client, zone_id):
+        current = self._call(client, 'GET', f'/zones/{zone_id}/settings/security_level')
+        value = current.get('value') if isinstance(current, dict) else None
+        if value not in SECURITY_LEVELS:
+            raise CloudflareError('Cloudflare 安全级别无法读取')
+        return value
+
+    def _write_level(self, client, zone_id, value):
+        updated = self._call(client, 'PATCH', f'/zones/{zone_id}/settings/security_level', payload={'value': value})
+        if not isinstance(updated, dict) or updated.get('value') != value:
+            raise CloudflareError('Cloudflare 没有改好人机验证')
+
+
+def _denied(error):
+    return error.code in AUTH_CODES or error.status in (401, 403)
+
+
+def _challenge_rule():
+    return {
+        'action': 'managed_challenge',
+        'expression': CHALLENGE_EXPRESSION,
+        'description': CHALLENGE_DESCRIPTION,
+        'enabled': True,
+    }
+
+
+def _button_rule(rule, pattern):
+    targets = rule.get('targets') if isinstance(rule.get('targets'), list) else []
+    actions = rule.get('actions') if isinstance(rule.get('actions'), list) else []
+    matched = False
+    for target in targets:
+        constraint = target.get('constraint') if isinstance(target, dict) else None
+        if isinstance(constraint, dict) and constraint.get('value') == pattern:
+            matched = True
+    levels = [item.get('value') for item in actions if isinstance(item, dict) and item.get('id') == 'security_level']
+    return matched and levels == ['under_attack']
+
+
+def _same_challenge(rule):
+    return (
+        rule.get('action') == 'managed_challenge'
+        and rule.get('expression') == CHALLENGE_EXPRESSION
+        and rule.get('description') == CHALLENGE_DESCRIPTION
+        and rule.get('enabled') is True
+    )
+
+
+def _kept_firewall_rule(rule):
+    if not isinstance(rule.get('expression'), str) or not isinstance(rule.get('action'), str):
+        raise CloudflareError('这条域名上已有的防火墙规则无法保留，没有改动')
+    if len(rule['expression']) > 4000 or len(rule['action']) > 64:
+        raise CloudflareError('这条域名上已有的防火墙规则无法保留，没有改动')
+    kept = {}
+    rule_id = rule.get('id')
+    if isinstance(rule_id, str) and re.fullmatch(r'[a-f0-9]{32}', rule_id):
+        kept['id'] = rule_id
+    for key in RULE_KEYS:
+        if key in rule:
+            kept[key] = rule[key]
+    return kept
 
 
 def _zone_id(value):

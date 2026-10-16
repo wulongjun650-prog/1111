@@ -603,11 +603,11 @@ tbody tr:hover td { background: var(--surface-soft); }
 .domain-table th { padding: 13px 10px; background: #edf6fc; color: #4d697d; text-align: left; font-size: 12px; font-weight: 750; letter-spacing: .025em; white-space: nowrap; }
 .domain-table th:first-child { width: 15%; }
 .domain-table th:nth-child(2) { width: 16%; }
-.domain-table th:nth-child(3) { width: 17%; }
-.domain-table th:nth-child(4) { width: 12%; }
-.domain-table th:nth-child(5) { width: 15%; }
-.domain-table th:nth-child(6) { width: 9%; }
-.domain-table th:last-child { width: 16%; }
+.domain-table th:nth-child(3) { width: 13%; }
+.domain-table th:nth-child(4) { width: 11%; }
+.domain-table th:nth-child(5) { width: 11%; }
+.domain-table th:nth-child(6) { width: 8%; }
+.domain-table th:last-child { width: 26%; }
 .domain-table td { padding: 11px 10px; line-height: 1.5; vertical-align: middle; white-space: normal; overflow-wrap: anywhere; border-bottom: 1px solid var(--line); }
 .domain-table tbody tr:last-child td { border-bottom: 0; }
 .domain-table tbody tr:hover td { background: var(--surface-soft); }
@@ -635,7 +635,11 @@ body[data-tab="accounts"] .theme-hero { display: none; }
 .domain-health.badge.neutral::before { background: var(--muted); }
 .domain-health.badge.green::before { background: #3da47f; }
 .domain-health.badge.red::before { background: #d95868; }
-.domain-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 5px; }
+.domain-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 5px; }
+.domain-challenge { display: inline-flex; flex-direction: column; gap: 4px; min-width: 118px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); color: var(--ink-soft); }
+.domain-challenge-title { font-size: 11px; font-weight: 750; }
+.domain-challenge-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 650; white-space: nowrap; }
+.domain-actions .domain-challenge .switch { width: 37px; height: 21px; min-height: 21px; padding: 3px; }
 #google-reputation-notice { margin: 8px 0 14px; }
 .domain-actions .button, .domain-actions button { padding: 5px 8px; min-height: 28px; font-size: 11px; line-height: 1.25; }
 html[data-theme="demon"] .domain-table th { background: #221a2e; color: #d4bbd2; border-bottom-color: #52334e; }

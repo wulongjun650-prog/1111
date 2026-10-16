@@ -38,6 +38,7 @@ from .page_implant import implant_tree, scan_implant
 from .redirects import has_whatsapp_builder, public_occurrences, rewrite_reception_bytes, rewrite_text, scan_bundle
 from .rules import decide
 from .cloudflare import Cloudflare
+from .human_check import stamp_published
 from .provisioning import ProvisioningError
 from .reputation import GoogleReputation
 from .speedcheck import SpeedBusy, SpeedCheckInput, SpeedChecker
@@ -57,6 +58,11 @@ VersionId = Annotated[str, PathParameter(pattern=r'^[a-f0-9]{32}$')]
 
 class SiteMetadata(StrictModel):
     note: str = Field(max_length=200, strict=True)
+
+
+class ChallengeSwitch(StrictModel):
+    entry: bool = Field(strict=True)
+    button: bool = Field(strict=True)
 
 
 class AccountCreate(StrictModel):
@@ -518,6 +524,10 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     def after_site_change(site_id):
         site = registry.get(site_id)
+        try:
+            stamp_published(registry.store(site_id), bool((site.get('cf_challenge') or 0) & 2))
+        except Exception as error:
+            LOGGER.error('human check script was not written (%s)', type(error).__name__)
         purged = purge_site_cache(site)
         if not (site.get('mirror_source') or ''):
             sync_followers(site_id)
@@ -787,6 +797,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if site['cf_zone_id']:
             if not cloudflare.configured:
                 raise ValueError('服务器未配置 Cloudflare')
+            if site.get('cf_challenge'):
+                try:
+                    cloudflare.set_human_challenge(site['cf_zone_id'], site['domain'], False, False, site.get('cf_challenge_level') or '')
+                    if stamp_published(registry.store(site['id']), False):
+                        cloudflare.purge(site['cf_zone_id'], site['domain'])
+                except ProvisioningError as error:
+                    raise ValueError(str(error)[:400]) from None
             turned = cloudflare.disable(site['cf_zone_id'], site['domain'])
             record_address = turned['address']
         if site['stage'] in ('active', 'legacy', 'paused'):
@@ -798,6 +815,44 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         return {
             'site': updated, 'server_ip': server_ip, 'record_address': record_address,
             'cloudflare': {'ok': True, 'proxied': False, 'detail': detail},
+        }
+
+    @app.post('/api/sites/{site_id}/cloudflare/challenge')
+    def cloudflare_challenge(site_id: str, body: ChallengeSwitch, request: Request):
+        site = authorized_site(request, site_id)
+        if principal(request)['role'] == 'observer':
+            raise ValueError('观察账号不能改人机验证')
+        if site['id'] == 'default':
+            raise ValueError('原有站点不在这里打开人机验证')
+        if not site.get('cf_zone_id'):
+            raise ValueError('这个域名没有接入 Cloudflare')
+        if not cloudflare.token:
+            raise ValueError('服务器未配置 Cloudflare')
+        mode = (1 if body.entry else 0) | (2 if body.button else 0)
+        try:
+            changed = cloudflare.set_human_challenge(
+                site['cf_zone_id'], site['domain'], body.entry, body.button, site.get('cf_challenge_level') or '',
+            )
+        except ProvisioningError as error:
+            raise ValueError(str(error)[:400]) from None
+        updated = registry.set_challenge(site['id'], mode, changed.get('previous') or '')
+        try:
+            if stamp_published(registry.store(site['id']), body.button):
+                cloudflare.purge(site['cf_zone_id'], site['domain'])
+        except ProvisioningError as error:
+            raise ValueError(str(error)[:400]) from None
+        parts = []
+        if body.entry:
+            parts.append('访客一进入落地页，会先看到 Cloudflare 的人机验证')
+        if body.button:
+            parts.append('访客一点按钮，会先看到 Cloudflare 的人机验证，通过后才继续打开')
+        detail = '已保存。' + '。'.join(parts) + '。' if parts else '已关闭。访客直接进入页面，点按钮也不会再验证。'
+        mode_now = updated.get('cf_challenge') or 0
+        return {
+            'entry': bool(mode_now & 1),
+            'button': bool(mode_now & 2),
+            'detail': detail,
+            'site': updated,
         }
 
     @app.post('/api/sites/{site_id}/cloudflare/purge')
