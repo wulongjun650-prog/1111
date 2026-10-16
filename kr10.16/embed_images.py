@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+MAX_IMAGE_BYTES = 200 * 1024
+MAX_HTML_BYTES = 400 * 1024
 MIME = {
     ".webp": "image/webp",
     ".jpg": "image/jpeg",
@@ -39,8 +41,16 @@ def main() -> None:
         return f'src="{data_uri(path)}"'
 
     out = re.sub(r'src="(static/picture/[^"]+)"', repl, template)
+    for rel in ("static/picture/lch.webp", "static/picture/2.jpg"):
+        n = (ROOT / rel).stat().st_size
+        if n > MAX_IMAGE_BYTES:
+            raise SystemExit(f"{rel} is {n} bytes; run compress_images.py first (max {MAX_IMAGE_BYTES})")
+    if len(out.encode("utf-8")) > MAX_HTML_BYTES:
+        raise SystemExit(
+            f"index.html would be {len(out)} bytes; max {MAX_HTML_BYTES}. Re-compress images."
+        )
     (ROOT / "index.html").write_text(out, encoding="utf-8")
-    print("Wrote", ROOT / "index.html", f"({len(out)} bytes)")
+    print("Wrote", ROOT / "index.html", f"({len(out.encode('utf-8'))} bytes)")
 
 
 if __name__ == "__main__":
