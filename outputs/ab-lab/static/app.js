@@ -508,6 +508,20 @@ async function saveConfig(config, ruleSave = false) {
   } finally { configBusy = false; updateConfigControls(); updateSiteLock(); }
 }
 
+function humanSwitch(site, label, checked, action) {
+  const row = element('label', 'domain-challenge-row');
+  row.append(document.createTextNode(label));
+  const toggle = element('button', 'switch');
+  toggle.type = 'button';
+  toggle.setAttribute('role', 'switch');
+  toggle.setAttribute('aria-checked', checked ? 'true' : 'false');
+  toggle.setAttribute('aria-label', `${site.domain || '这个域名'} ${label}`);
+  toggle.append(element('span'));
+  on(toggle, 'click', action);
+  row.append(toggle);
+  return row;
+}
+
 function actionButton(text, action, className = 'button secondary small') {
   const button = element('button', className, text);
   button.type = 'button';
@@ -1703,6 +1717,24 @@ function renderDomains() {
     availability.append(element('span',`domain-status ${!site.enabled?'offline':live?'online':'pending'}`,!site.enabled?'已下线':live?'已上线':'待接入'));
     actions.className='domain-actions';
     actions.append(actionButton(site.id===selectedSite?'当前站点':'管理',()=>switchSite(site.id),'button secondary small'));
+    if (!isObserver(account) && site.cf_zone_id && site.id !== 'default') {
+      const mode = Number(site.cf_challenge) || 0;
+      const challenge = element('span', 'domain-challenge');
+      challenge.append(element('span', 'domain-challenge-title', '人机验证'));
+      const entryOn = Boolean(mode & 1);
+      const buttonOn = Boolean(mode & 2);
+      challenge.append(humanSwitch(site, '进入落地', entryOn, async () => {
+        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:{entry:!entryOn, button:buttonOn}, timeout:60000});
+        await loadDomains();
+        toast(result.detail);
+      }));
+      challenge.append(humanSwitch(site, '点击按钮', buttonOn, async () => {
+        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:{entry:entryOn, button:!buttonOn}, timeout:60000});
+        await loadDomains();
+        toast(result.detail);
+      }));
+      actions.append(challenge);
+    }
     if (!isObserver(account)) actions.append(actionButton(site.enabled?'下线':'上线',async()=>{
       const action = site.enabled ? 'offline' : 'online';
       if (site.enabled && !await confirmAction(`下线 ${site.domain || '原有站点'}？访客将无法继续访问；页面、规则和历史数据都会保留。`)) return;

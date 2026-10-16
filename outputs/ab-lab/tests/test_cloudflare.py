@@ -46,6 +46,11 @@ class Api:
         self.browser_cache_ttl = 0
         self.template_browser_cache = None
         self.template_rule_browser_ttl = None
+        self.firewall_rules = []
+        self.page_rules = []
+        self.security_level = 'medium'
+        self.firewall_forbidden = False
+        self.firewall_missing = False
 
     def transport(self):
         return httpx.MockTransport(self.respond)
@@ -116,6 +121,13 @@ class Api:
             assert json.loads(request.content) == {'value': 0}
             self.browser_cache_ttl = 0
             return envelope({'id': 'browser_cache_ttl', 'value': 0})
+        if rest == 'settings/security_level' and request.method == 'GET':
+            return envelope({'id': 'security_level', 'value': self.security_level})
+        if rest == 'settings/security_level' and request.method == 'PATCH':
+            value = json.loads(request.content)['value']
+            assert value in ('off', 'essentially_off', 'low', 'medium', 'high', 'under_attack')
+            self.security_level = value
+            return envelope({'id': 'security_level', 'value': value})
         if rest.startswith('settings/') and request.method == 'PATCH':
             setting = rest.removeprefix('settings/')
             assert setting in ('brotli', 'minify', 'polish')
@@ -140,6 +152,43 @@ class Api:
             assert rule['action'] == 'set_cache_settings'
             self.last_rule = rule
             return envelope(body)
+        if rest == 'pagerules' and request.method == 'GET':
+            return envelope(self.page_rules)
+        if rest == 'pagerules' and request.method == 'POST':
+            body = json.loads(request.content)
+            assert body['priority'] == 1 and body['status'] == 'active'
+            assert body['actions'] == [{'id': 'security_level', 'value': 'under_attack'}]
+            assert 'ab_human=1' in body['targets'][0]['constraint']['value']
+            saved = {'id': 'f' * 32, 'targets': body['targets'], 'actions': body['actions'], 'priority': 1, 'status': 'active'}
+            self.page_rules = [rule for rule in self.page_rules if 'ab_human=1' not in json.dumps(rule.get('targets'))]
+            self.page_rules.insert(0, saved)
+            return envelope(saved)
+        if rest.startswith('pagerules/') and request.method == 'PATCH':
+            body = json.loads(request.content)
+            rule_id = rest.removeprefix('pagerules/')
+            saved = {'id': rule_id, 'targets': body['targets'], 'actions': body['actions'], 'priority': body['priority'], 'status': body['status']}
+            self.page_rules = [saved if rule.get('id') == rule_id else rule for rule in self.page_rules]
+            return envelope(saved)
+        if rest.startswith('pagerules/') and request.method == 'DELETE':
+            rule_id = rest.removeprefix('pagerules/')
+            self.page_rules = [rule for rule in self.page_rules if rule.get('id') != rule_id]
+            return envelope({'id': rule_id})
+        if rest == 'rulesets/phases/http_request_firewall_custom/entrypoint' and request.method == 'GET':
+            if self.firewall_forbidden:
+                return httpx.Response(403, json={'success': False, 'errors': [{'message': 'request is not authorized'}], 'result': None})
+            if self.firewall_missing:
+                return failure(10003, 'could not find entrypoint ruleset', 404)
+            return envelope({'rules': self.firewall_rules})
+        if rest == 'rulesets/phases/http_request_firewall_custom/entrypoint' and request.method == 'PUT':
+            if self.firewall_forbidden:
+                return failure(9109, 'token ' + TOKEN, 403)
+            body = json.loads(request.content)
+            assert set(body) == {'rules'}
+            for rule in body['rules']:
+                assert rule['action'] != 'set_cache_settings'
+                assert 'browser_ttl' not in rule.get('action_parameters', {})
+            self.firewall_rules = body['rules']
+            return envelope({'rules': body['rules']})
         if rest == 'purge_cache' and request.method == 'POST':
             if getattr(self, 'purge_error', False):
                 return failure(9000, 'cache is busy')
@@ -670,6 +719,232 @@ def test_delete_zone_stops_when_the_name_or_the_zone_does_not_match():
 
     Cloudflare(TOKEN, 'rules.example.com', ORIGIN, httpx.MockTransport(missing)).delete_zone(ZONE, 'shop.example.com')
     assert calls == ['GET', 'GET']
+
+
+def _ready(tmp_path, api, domain='shop.example.com'):
+    http = session(tmp_path, client(api))
+    added = http.post('/api/sites', json={'domain': domain})
+    assert added.status_code == 200, added.text
+    assert added.json()['site']['cf_challenge'] == 0
+    site_id = added.json()['site']['id']
+    site = Registry(tmp_path).get(site_id)
+    assert Registry(tmp_path).transition(site_id, site['generation'], 'active', '本机 HTTPS 已接入')
+    attached = http.post(f'/api/sites/{site_id}/cloudflare', json={})
+    assert attached.status_code == 200, attached.text
+    api.calls.clear()
+    return http, site_id
+
+
+def test_human_check_keeps_other_firewall_rules_and_leaves_cache_alone():
+    other = {
+        'id': 'e' * 32, 'expression': 'ip.src eq 192.0.2.1', 'action': 'block',
+        'description': 'keep me', 'enabled': True,
+    }
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    api.firewall_rules = [other]
+    opened = client(api).set_human_challenge(ZONE, 'shop.example.com', True, False)
+    assert opened == {'entry': True, 'button': False, 'previous': ''}
+    assert api.firewall_rules[0]['id'] == 'e' * 32
+    assert api.firewall_rules[0]['action'] == 'block'
+    challenge = api.firewall_rules[1]
+    assert challenge['action'] == 'managed_challenge'
+    assert challenge['description'] == '双子星人机验证'
+    assert 'text/html' in challenge['expression']
+    assert 'id' not in challenge
+    assert api.page_rules == []
+    again = client(api).set_human_challenge(ZONE, 'shop.example.com', True, False)
+    assert again['entry'] is True
+    puts = [path for method, path in api.calls if method == 'PUT']
+    assert puts == [f'/client/v4/zones/{ZONE}/rulesets/phases/http_request_firewall_custom/entrypoint']
+    assert not any('cache' in path or path.endswith('/settings/security_level') for _, path in api.calls)
+    closed = client(api).set_human_challenge(ZONE, 'shop.example.com', False, False)
+    assert closed['entry'] is False
+    assert api.firewall_rules == [other]
+    assert api.security_level == 'medium'
+
+
+def test_missing_firewall_entrypoint_can_be_created_without_touching_cache():
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]})
+    api.firewall_missing = True
+    opened = client(api).set_human_challenge(ZONE, 'shop.example.com', True, False)
+    assert opened['entry'] is True and opened['previous'] == ''
+    assert api.firewall_rules[0]['action'] == 'managed_challenge'
+    assert not any('http_request_cache_settings' in path or 'browser_cache_ttl' in path for _, path in api.calls)
+
+
+def test_firewall_permission_falls_back_to_under_attack_and_restores_the_old_level():
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]})
+    api.firewall_forbidden = True
+    api.security_level = 'high'
+    opened = client(api).set_human_challenge(ZONE, 'shop.example.com', True, False)
+    assert opened == {'entry': True, 'button': False, 'previous': 'high'}
+    assert api.security_level == 'under_attack'
+    assert api.firewall_rules == []
+    assert api.page_rules == []
+    repeated = client(api).set_human_challenge(ZONE, 'shop.example.com', True, False, 'high')
+    assert repeated['previous'] == 'high'
+    patches = [path for method, path in api.calls if method == 'PATCH' and path.endswith('/settings/security_level')]
+    assert patches == [f'/client/v4/zones/{ZONE}/settings/security_level']
+    closed = client(api).set_human_challenge(ZONE, 'shop.example.com', False, False, 'high')
+    assert closed['entry'] is False
+    assert api.security_level == 'high'
+    assert not any('cache' in path for _, path in api.calls)
+
+
+def test_button_check_uses_a_page_rule_and_keeps_the_landing_level():
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]})
+    api.firewall_forbidden = True
+    api.security_level = 'medium'
+    kept = {
+        'id': 'a' * 32, 'priority': 2, 'status': 'active',
+        'targets': [{'target': 'url', 'constraint': {'operator': 'matches', 'value': '*shop.example.com/keep*'}}],
+        'actions': [{'id': 'browser_cache_ttl', 'value': 1200}],
+    }
+    api.page_rules = [kept]
+    opened = client(api).set_human_challenge(ZONE, 'shop.example.com', False, True)
+    assert opened == {'entry': False, 'button': True, 'previous': ''}
+    assert api.security_level == 'medium'
+    assert api.page_rules[0]['targets'][0]['constraint']['value'] == '*shop.example.com/*ab_human=1*'
+    assert api.page_rules[0]['actions'] == [{'id': 'security_level', 'value': 'under_attack'}]
+    assert api.page_rules[1] == kept
+    again = client(api).set_human_challenge(ZONE, 'shop.example.com', False, True)
+    assert again['button'] is True
+    posts = [path for method, path in api.calls if method == 'POST' and path.endswith('/pagerules')]
+    assert posts == [f'/client/v4/zones/{ZONE}/pagerules']
+    assert not any('cache' in path or path.endswith('/settings/security_level') for _, path in api.calls)
+    closed = client(api).set_human_challenge(ZONE, 'shop.example.com', False, False)
+    assert closed['button'] is False
+    assert api.page_rules == [kept]
+    assert api.security_level == 'medium'
+
+
+def test_a_rejected_challenge_rule_does_not_change_security_level():
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]})
+    original = api.respond
+
+    def respond(request):
+        if request.method == 'PUT' and request.url.path.endswith('/http_request_firewall_custom/entrypoint'):
+            return failure(1001, 'invalid filter expression ' + TOKEN)
+        return original(request)
+
+    api.respond = respond
+    with pytest.raises(CloudflareError) as error:
+        client(api).set_human_challenge(ZONE, 'shop.example.com', True, False)
+    assert TOKEN not in str(error.value)
+    assert api.security_level == 'medium'
+    assert not any(method == 'PATCH' and path.endswith('/settings/security_level') for method, path in api.calls)
+
+
+def test_domain_switch_starts_off_and_only_changes_that_domain(tmp_path):
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    http, site_id = _ready(tmp_path, api)
+    assert http.post('/api/sites/default/cloudflare/challenge', json={'entry': True, 'button': False}).status_code == 400
+    plain = http.post('/api/sites', json={'domain': 'plain.example.com'})
+    assert http.post(f"/api/sites/{plain.json()['site']['id']}/cloudflare/challenge", json={'entry': True, 'button': False}).status_code == 400
+    assert http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'enabled': 'yes'}).status_code == 422
+    opened = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': True, 'button': False})
+    assert opened.status_code == 200, opened.text
+    body = opened.json()
+    assert body['entry'] is True and body['button'] is False
+    assert body['site']['cf_challenge'] == 1
+    assert body['site']['cf_challenge_level'] == ''
+    assert '进入落地页' in body['detail']
+    assert TOKEN not in opened.text
+    assert api.firewall_rules[0]['action'] == 'managed_challenge'
+    assert api.security_level == 'medium'
+    assert api.page_rules == []
+    assert not any('cache' in path or path.endswith('/settings/browser_cache_ttl') for _, path in api.calls)
+    again = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': True, 'button': False})
+    assert again.status_code == 200
+    assert [method for method, path in api.calls if method == 'PUT' and 'firewall_custom' in path] == ['PUT']
+    closed = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False})
+    assert closed.status_code == 200, closed.text
+    assert closed.json()['entry'] is False and closed.json()['button'] is False
+    assert closed.json()['site']['cf_challenge'] == 0
+    assert api.firewall_rules == []
+    assert '直接进入' in closed.json()['detail']
+    events = http.get(f'/api/sites/{site_id}/provision/events').json()['items']
+    assert any(item['detail'] == '已打开进入落地人机验证' for item in events)
+    assert any(item['detail'] == '已关闭人机验证' for item in events)
+
+
+def _publish_button_page(http, site_id):
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, 'w') as bundle:
+        bundle.writestr('index.html', '<!doctype html><html><body><a id="go" href="https://example.com/go">打开</a><button id="plain">按钮</button></body></html>')
+    uploaded = http.post(f'/api/sites/{site_id}/upload/B?name=page.zip', content=archive.getvalue())
+    assert uploaded.status_code == 200, uploaded.text
+    version_id = uploaded.json()['version']['id']
+    published = http.post(f'/api/sites/{site_id}/publish/B', json={'version_id': version_id})
+    assert published.status_code == 200, published.text
+    return version_id
+
+
+def test_button_switch_writes_the_published_page_and_not_the_zone_level(tmp_path):
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    api.firewall_forbidden = True
+    http, site_id = _ready(tmp_path, api)
+    _publish_button_page(http, site_id)
+    api.calls.clear()
+    opened = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': True})
+    assert opened.status_code == 200, opened.text
+    assert opened.json()['button'] is True and opened.json()['entry'] is False
+    assert opened.json()['site']['cf_challenge'] == 2
+    assert '一点按钮' in opened.json()['detail']
+    assert api.security_level == 'medium'
+    assert api.page_rules[0]['actions'] == [{'id': 'security_level', 'value': 'under_attack'}]
+    assert not any(method == 'PUT' and 'cache' in path for method, path in api.calls)
+    page = Registry(tmp_path).store(site_id).pages / Registry(tmp_path).store(site_id).slots()['B'] / 'index.html'
+    text = page.read_text(encoding='utf-8')
+    assert 'id="ab-human-click"' in text
+    assert 'https://example.com/go' in text
+    again = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': True})
+    assert again.status_code == 200
+    assert [method for method, path in api.calls if method == 'POST' and path.endswith('/pagerules')] == ['POST']
+    both = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': True, 'button': True})
+    assert both.status_code == 200, both.text
+    assert both.json()['site']['cf_challenge'] == 3
+    assert api.security_level == 'under_attack'
+    assert '进入落地页' in both.json()['detail'] and '一点按钮' in both.json()['detail']
+    closed = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False})
+    assert closed.status_code == 200, closed.text
+    assert closed.json()['site']['cf_challenge'] == 0
+    assert api.page_rules == []
+    assert api.security_level == 'medium'
+    assert 'ab-human-click' not in page.read_text(encoding='utf-8')
+
+
+def test_closing_cloudflare_turns_the_human_check_off_before_greying(tmp_path):
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    api.firewall_forbidden = True
+    api.security_level = 'medium'
+    http, site_id = _ready(tmp_path, api)
+    opened = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': True, 'button': False})
+    assert opened.status_code == 200, opened.text
+    assert opened.json()['site']['cf_challenge'] == 1
+    assert opened.json()['site']['cf_challenge_level'] == 'medium'
+    assert api.security_level == 'under_attack'
+    api.calls.clear()
+    closed = http.post(f'/api/sites/{site_id}/cloudflare/disable', json={})
+    assert closed.status_code == 200, closed.text
+    assert closed.json()['site']['cf_zone_id'] == ''
+    assert closed.json()['site']['cf_challenge'] == 0
+    assert closed.json()['site']['cf_challenge_level'] == ''
+    assert api.security_level == 'medium'
+    assert api.records[ZONE][0]['proxied'] is False
+    methods = [(method, path) for method, path in api.calls]
+    restored = methods.index(('PATCH', f'/client/v4/zones/{ZONE}/settings/security_level'))
+    greyed = methods.index(('PUT', f'/client/v4/zones/{ZONE}/dns_records/{RECORD}'))
+    assert restored < greyed
+    assert not any('cache' in path for _, path in api.calls)
 
 
 def test_missing_cloudflare_config_rejects_the_option_without_saving(tmp_path, monkeypatch):

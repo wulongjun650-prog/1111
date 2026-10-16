@@ -67,6 +67,8 @@ class Registry:
                 ('cf_nameservers', "TEXT NOT NULL DEFAULT ''"),
                 ('cf_status', "TEXT NOT NULL DEFAULT ''"),
                 ('cf_detail', "TEXT NOT NULL DEFAULT ''"),
+                ('cf_challenge', 'INTEGER NOT NULL DEFAULT 0'),
+                ('cf_challenge_level', "TEXT NOT NULL DEFAULT ''"),
                 ('mirror_source', "TEXT NOT NULL DEFAULT ''"),
                 ('observer_account', "TEXT NOT NULL DEFAULT ''"),
             ):
@@ -302,14 +304,38 @@ class Registry:
             if site['stage'] in ('active', 'legacy', 'paused'):
                 stage = site['stage']
                 db.execute(
-                    "UPDATE sites SET cf_zone_id='',cf_nameservers='',cf_status='',cf_detail='',generation=generation+1 WHERE id=?",
+                    "UPDATE sites SET cf_zone_id='',cf_nameservers='',cf_status='',cf_detail='',cf_challenge=0,cf_challenge_level='',generation=generation+1 WHERE id=?",
                     (site_id,))
             else:
                 stage = 'waiting_dns'
                 db.execute(
-                    "UPDATE sites SET cf_zone_id='',cf_nameservers='',cf_status='',cf_detail='',stage='waiting_dns',next_attempt=0,error=?,generation=generation+1 WHERE id=?",
+                    "UPDATE sites SET cf_zone_id='',cf_nameservers='',cf_status='',cf_detail='',cf_challenge=0,cf_challenge_level='',stage='waiting_dns',next_attempt=0,error=?,generation=generation+1 WHERE id=?",
                     (detail, site_id))
             self._event(db, site_id, stage, detail[:180])
+        return self.get(site_id)
+
+    def set_challenge(self, site_id, mode, level=''):
+        if type(mode) is not int or mode not in (0, 1, 2, 3):
+            raise ValueError('人机验证选项无效')
+        if level not in ('', 'off', 'essentially_off', 'low', 'medium', 'high'):
+            raise ValueError('人机验证记录无效')
+        stored = level if mode & 1 else ''
+        if mode & 1 and mode & 2:
+            detail = '已打开进入落地和点击按钮人机验证'
+        elif mode & 1:
+            detail = '已打开进入落地人机验证'
+        elif mode & 2:
+            detail = '已打开点击按钮人机验证'
+        else:
+            detail = '已关闭人机验证'
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            site = db.execute('SELECT stage,cf_challenge,cf_challenge_level FROM sites WHERE id=?', (site_id,)).fetchone()
+            if site is None:
+                raise KeyError(site_id)
+            if (site['cf_challenge'], site['cf_challenge_level']) != (mode, stored):
+                db.execute('UPDATE sites SET cf_challenge=?,cf_challenge_level=? WHERE id=?', (mode, stored, site_id))
+                self._event(db, site_id, site['stage'], detail)
         return self.get(site_id)
 
     def tracking_snippets(self):
