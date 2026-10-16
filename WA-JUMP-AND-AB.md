@@ -17,7 +17,7 @@
 2. 页面打开、滚动、停几秒，都不得自动跳 WhatsApp。
 3. 用户一点，先把本次该用的链接交给浏览器，再做兜底和统计。
 4. 点击和跳转之间不得 `await`、不得等接口、不得先上报再跳。
-5. 五种环境各用各的链接，见第 3 节。不得收成一种。
+5. 第 3 节的 20 种打开环境各用各的链接。不得收成一种。
 6. 没拉起时出兜底面板。时间：浏览器 1600 毫秒，App 内 1200 毫秒。失焦改等 3500 毫秒。页面进后台视为已经拉起，取消面板。
 7. 现在这两页**不向分流系统上传任何数据**。`eventEndpoint` 和 `leadEndpoint` 都是空字符串。新落地页默认也保持空。业主没有明确说“打开上报”时，不要填网址，不要在加载时发 `page_view`。
 8. AB 只决定“这一位访客用哪个号”。号必须在用户点击之前就已经写在页面里。分流失败就用页面里原来的号，立刻跳。
@@ -60,14 +60,68 @@ const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
              : 'desktop';
 ```
 
-| 环境 | 谁会落到这里 | 第一次点击 | 兜底重试 |
-|---|---|---|---|
-| `ios_browser` | iPhone/iPad 的 Safari、SFSafariViewController、Chrome、Firefox、Google App。Google 投在 App 里的 iOS 广告（AASTOCKS、etnet）也在这里 | `https://wa.me/号码?text=` | 同一条 `wa.me` |
-| `ios_webview` | 没有 `Safari/` 的 WKWebView，以及 Facebook / Instagram / LINE / 微信 / TikTok 等（它们即使带 `Safari/` 也算 WebView） | `whatsapp://send?phone=&text=`，写进 `<a href>`，交给浏览器默认跳 | 同一条 `whatsapp://` |
-| `android_browser` 且 `ANDROID_INTENT_OK` | Chrome、Custom Tabs、三星、小米、华为、Edge。Google 投在 Android App 里的广告在这里 | `intent://...package=com.whatsapp`，失败由 Chrome 转去 `browser_fallback_url` 里的 `wa.me` | **改走 `wa.me`，不要再走一次 intent** |
-| `android_browser` 但 intent 不可用 | Firefox、UC、QQ、Quark、Opera Mini | `https://wa.me/` | `wa.me` |
-| `android_webview` | UA 含 `; wv)`，或 Facebook / Instagram 等内置浏览器 | `preventDefault()`，隐藏 iframe 打开 `whatsapp://`。主页面留着 | 主框架打开 `whatsapp://` |
-| `desktop` | 以上都不是 | `https://wa.me/`，`target="_blank"`，`rel="noopener"` | 不弹兜底 |
+上面的判断收成 5 类。下面 20 条是现行页逐条对过的打开环境，做新落地页时要按名字保留，不要并成“安卓一种、苹果一种”。
+
+兜底时间：浏览器类 1600 毫秒，WebView 类 1200 毫秒，桌面不弹。安卓浏览器第一次走 `intent://` 的，兜底重试改 `wa.me`。
+
+| # | 环境 | 判成 | 第一次点击 | 兜底重试 |
+|---|---|---|---|---|
+| 1 | Android Chrome | `android_browser`，intent 可用 | `intent://` 写入 `<a href>` | `wa.me`，1600ms |
+| 2 | Android 三星浏览器 SamsungBrowser | 同上 | `intent://` | `wa.me`，1600ms |
+| 3 | Android 小米浏览器 MiuiBrowser | 同上 | `intent://` | `wa.me`，1600ms |
+| 4 | Android Edge | 同上 | `intent://` | `wa.me`，1600ms |
+| 5 | Android Firefox | `android_browser`，intent 不可用 | `wa.me` | `wa.me`，1600ms |
+| 6 | Android 华为浏览器 | `android_webview`。这条 UA 自带 `; wv)`，所以不走 intent | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms，显示“在浏览器中打开” |
+| 7 | Android 系统 WebView（`; wv)`） | `android_webview` | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms |
+| 8 | Android App 内页（九巴 App 这类自带 `; wv)` 的壳） | `android_webview` | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms |
+| 9 | Android GMA SDK WebView（UA 含 `afma-sdk` 且带 `; wv)`） | `android_webview` | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms |
+| 10 | Android Facebook 内置（`FB_IAB`） | `android_webview` | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms |
+| 11 | Android 微信（`MicroMessenger`，通常还带 `; wv)`） | `android_webview` | 隐藏 iframe 打开 `whatsapp://` | `whatsapp://`，1200ms |
+| 12 | iPhone Safari 新版 | `ios_browser` | `wa.me` | `wa.me`，1600ms |
+| 13 | iPhone Safari 旧版 | `ios_browser` | `wa.me` | `wa.me`，1600ms |
+| 14 | iPhone Chrome（`CriOS`，UA 仍带 `Safari/`） | `ios_browser` | `wa.me` | `wa.me`，1600ms |
+| 15 | iPhone Google App（`GSA`，UA 仍带 `Safari/`） | `ios_browser` | `wa.me` | `wa.me`，1600ms |
+| 16 | iPhone WKWebView（没有 `Safari/`） | `ios_webview` | `whatsapp://` 写入 `<a href>` | `whatsapp://`，1200ms |
+| 17 | iPhone App 内页（九巴 App 这类没有 `Safari/` 的壳） | `ios_webview` | `whatsapp://` 写入 `<a href>` | `whatsapp://`，1200ms |
+| 18 | iPhone 微信（`MicroMessenger`，没有 `Safari/`） | `ios_webview` | `whatsapp://` 写入 `<a href>` | `whatsapp://`，1200ms |
+| 19 | iPhone Instagram（UA 带 `Safari/`，但含 `Instagram`，仍算 WebView） | `ios_webview` | `whatsapp://` 写入 `<a href>` | `whatsapp://`，1200ms |
+| 20 | 桌面 Chrome | `desktop` | `wa.me`，`target="_blank"` | 不弹兜底 |
+
+同一类里没单独列名、但规则相同的，也要跟着走，不要另写分支：
+
+- iPad Safari：UA 会伪装成 Mac，靠 `MacIntel` 且 `maxTouchPoints > 1` 算进 `ios_browser`，走第 12 条，不走第 20 条。
+- iPhone Firefox、LINE、Facebook：带 `Safari/` 且命中内置浏览器名单的走第 19 条；没有 `Safari/` 的走第 16 条。
+- Android UC、QQ、Quark、Opera Mini：跟第 5 条，走 `wa.me`。
+- Android 普通 Chrome Custom Tabs：跟第 1 条，走 `intent://`。只有 UA 里真有 `; wv)` 或内置浏览器标记时才走第 7 到第 11 条。
+
+给其他 AI 验收时用的 20 条 UA，原样照抄：
+
+```js
+const UAS = [
+  ['1 Android Chrome', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36', 'intent'],
+  ['2 Android Samsung', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/30.0 Chrome/143.0.0.0 Mobile Safari/537.36', 'intent'],
+  ['3 Android Xiaomi', 'Mozilla/5.0 (Linux; Android 16; Redmi Note 14 5G Build/BP2A.250605.031.A3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.79 Mobile Safari/537.36 XiaoMi/MiuiBrowser/14.60.0-gn', 'intent'],
+  ['4 Android Edge', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36 EdgA/153.0.0.0', 'intent'],
+  ['5 Android Firefox', 'Mozilla/5.0 (Android 16; Mobile; rv:157.0) Gecko/157.0 Firefox/157.0', 'universal'],
+  ['6 Android Huawei', 'Mozilla/5.0 (Linux; Android 12; ADY-LX9 Build/HUAWEIADY-L29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.196 Mobile Safari/537.36 HuaweiBrowser/17.0.7.302 HMSCore/6.16.4.352', 'scheme@iframe'],
+  ['7 Android WebView', 'Mozilla/5.0 (Linux; Android 16; SM-S9360 Build/BP4A.251205.006; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/153.0.8010.36 Mobile Safari/537.36', 'scheme@iframe'],
+  ['8 Android in-app wv', 'Mozilla/5.0 (Linux; Android 16; SM-S9360 Build/BP4A.251205.006; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/153.0.8010.36 Mobile Safari/537.36 aisv1/com.kmb.app1933/android/2.3.38/340', 'scheme@iframe'],
+  ['9 Android GMA WebView', 'Mozilla/5.0 (Linux; Android 16; SM-A5460 Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/153.0.8010.36 Mobile Safari/537.36 (Mobile; afma-sdk-a-v261710999.252530000.1)', 'scheme@iframe'],
+  ['10 Android Facebook', 'Mozilla/5.0 (Linux; Android 16; SM-A3660 Build/BP4A.251205.006) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.64 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/581.0.0.45.58;IABMV/1;]', 'scheme@iframe'],
+  ['11 Android WeChat', 'Mozilla/5.0 (Linux; Android 16; 25069PTEBG Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.0.0 Mobile Safari/537.36 XWEB/1160289 MMWEBSDK/20260604 MicroMessenger/8.0.77.3141(0x28004D41) WeChat/arm64 Weixin NetType/WIFI Language/zh_HK ABI/arm64', 'scheme@iframe'],
+  ['12 iOS Safari new', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1', 'universal'],
+  ['13 iOS Safari old', 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_8_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6.8 Mobile/15E148 Safari/604.1', 'universal'],
+  ['14 iOS Chrome', 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/154.0.8037.55 Mobile/15E148 Safari/604.1', 'universal'],
+  ['15 iOS Google App', 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/441.5.989047059 Mobile/15E148 Safari/604.1', 'universal'],
+  ['16 iOS WKWebView', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148', 'scheme'],
+  ['17 iOS in-app', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 aisv1/com.kmb.app1933/ios/2.3.38/8', 'scheme'],
+  ['18 iOS WeChat', 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.78(0x18004e33) NetType/WIFI Language/zh_HK', 'scheme'],
+  ['19 iOS Instagram', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/22H352 Instagram 450.1.0.35.61 (iPhone13,4; iOS 18_7_8; zh_TW; zh-Hant; scale=3.00; 1284x2778; IABMV/1; 1084815185) Safari/604.1', 'scheme'],
+  ['20 Desktop Chrome', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36', 'universal'],
+];
+```
+
+第三列预期：`intent` 是锚点 `href` 以 `intent://` 开头；`universal` 是 `https://wa.me/`；`scheme` 是锚点 `href` 以 `whatsapp://` 开头；`scheme@iframe` 是点击被 `preventDefault`，并且页面里出现 `src` 为 `whatsapp://` 的隐藏 iframe。桌面那条还要带 `target="_blank"`。
 
 链接拼法：
 
@@ -331,7 +385,7 @@ utm_source=google&utm_medium=display&placement={placement}&creative={creative}&d
 
 ## 7. 交给新落地页之前对一下
 
-下面每条都要过。任何一条被改掉，拉起率就会在某一类手机上掉。
+第 3 节那 20 条 UA 都要跑过，链接类型和表里一致。下面每条也都要过。任何一条被改掉，拉起率就会在某一类手机上掉。
 
 1. 关掉 JS，点按钮，仍然打开 HTML 里那条 `https://wa.me/号码?text=`。
 2. 页面静置不出现导航，也不出现 `whatsapp://` 的 iframe。
