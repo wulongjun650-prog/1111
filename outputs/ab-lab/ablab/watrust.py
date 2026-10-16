@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import logging
 import os
 import re
 import socket
@@ -16,6 +17,8 @@ import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+
+LOGGER = logging.getLogger('ablab.watrust')
 
 HOST = 'https://api.vmoscloud.com'
 API_HOST = 'api.vmoscloud.com'
@@ -290,6 +293,102 @@ def global_ip():
     except ValueError:
         return ''
     return text if address.is_global else ''
+
+
+class TrustWatch:
+    """Recheck published numbers on the server. Closing the admin page does not stop it.
+
+    The cloud phone is one device, so a pass checks one due number at a time.
+    A trust popup on the published phone publishes the next spare. A number that
+    is not on the published page is left alone.
+    """
+
+    def __init__(self, sites, checker, purge, clock=None, idle=2):
+        self.sites = sites
+        self.checker = checker
+        self.purge = purge
+        self.clock = clock or time.time
+        self.idle = idle
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self):
+        if getattr(self.checker, 'device', None) is None:
+            return False
+        if self._thread and self._thread.is_alive():
+            return True
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._loop, name='wa-trust-watch', daemon=True)
+        self._thread.start()
+        return True
+
+    def stop(self):
+        self._stop.set()
+
+    def _loop(self):
+        while not self._stop.is_set():
+            try:
+                self.pass_once()
+            except Exception as error:
+                LOGGER.error('trust watch pass failed (%s)', type(error).__name__)
+            # The phone check itself is the slow part. Waking often only re-reads
+            # the saved time, so a 10 second interval is not stretched to a long nap.
+            self._stop.wait(self.idle)
+
+    def pass_once(self):
+        opened = False
+        now = self.clock()
+        for site in list(self.sites() or []):
+            if self._stop.is_set():
+                break
+            try:
+                if self.visit(site['id'], site['store'], now):
+                    opened = True
+            except Exception as error:
+                LOGGER.error('trust watch skipped one domain (%s)', type(error).__name__)
+        return opened
+
+    def visit(self, site_id, store, now):
+        if not store.whatsapp_trust_poll_enabled():
+            return False
+        interval = store.trust_interval()
+        opened = False
+        for phone in list(store.published_whatsapp_phones()):
+            if self._stop.is_set():
+                return opened
+            row = next((item for item in store.whatsapp_numbers() if item['phone'] == phone), None)
+            if row is None:
+                continue
+            checked = row['trust'].get('checked_at') or 0
+            try:
+                age = now - float(checked)
+            except (TypeError, ValueError):
+                age = interval
+            if age < interval:
+                continue
+            number_id = row['id']
+
+            def persist(outcome, number_id=number_id):
+                return store.save_whatsapp_trust(number_id, outcome['status'], outcome.get('reason') or '')
+
+            outcome = self.checker.check(phone, persist)
+            opened = True
+            if outcome.get('busy'):
+                return opened
+            if outcome.get('status') != 'trust':
+                continue
+            try:
+                relief = store.relieve_trusted_number(phone)
+            except Exception as error:
+                LOGGER.error('trust watch could not switch (%s)', type(error).__name__)
+                continue
+            if relief.get('switched') and self.purge:
+                try:
+                    self.purge(site_id)
+                except Exception as error:
+                    LOGGER.error('trust watch cache purge failed (%s)', type(error).__name__)
+            return opened
+        return opened
 
 
 def device_from_environ(environ=None):

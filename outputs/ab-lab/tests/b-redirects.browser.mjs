@@ -96,7 +96,7 @@ async function withConsole(run, options = {}) {
       fixture.trustChecks.push(id);
       if(number) number.trust={status:fixture.trustResults[id]||'unconfirmed', detail:'这次没看清', checked_at:4};
       const statuses=new Set(fixture.numbers.map(item=>item.trust?.status));
-      response={number, busy:false, poll_enabled:Boolean(fixture.trust_poll) || (statuses.has('trust') && statuses.has('clear'))};
+      response={number, busy:false, poll_enabled:Boolean(fixture.trust_poll) || (statuses.has('trust') && statuses.has('clear')), switched:Boolean(fixture.trustSwitched && fixture.trustSwitched[id]), alarm:false};
     } else if(pathname===`/api/sites/${siteId}/b-redirects/numbers/apply`) {
       const body=request.postDataJSON(),number=fixture.numbers.find(item=>item.id===body.number_id);
       fixture.numberApplies.push({body,csrf:request.headers()['x-csrf-token']});
@@ -131,6 +131,10 @@ async function withConsole(run, options = {}) {
       response={ok:true};
     } else if(pathname===`/api/sites/${siteId}/desk/quote` && request.method()==='POST') {
       response={text:'10/06\nHK项目\nAJ\n消耗：33.29\n进线：0.8\n成本：41.61', adjusted:'33.29', cost:'41.61', row:[]};
+    } else if(pathname===`/api/sites/${siteId}/b-redirects/trust-interval` && request.method()==='POST') {
+      fixture.trustIntervals = fixture.trustIntervals || [];
+      fixture.trustIntervals.push(request.postDataJSON());
+      response={seconds:request.postDataJSON().seconds};
     } else if(pathname===`/api/sites/${siteId}/upload/B`) {
       const uploaded=version('B','upload-b');fixture.versions.push(uploaded);fixture.byVersion[uploaded.id]=occurrences(uploaded.id);
       fixture.uploads.push({name:url.searchParams.get('name'),body:request.postData(),csrf:request.headers()['x-csrf-token']});response={version:uploaded};
@@ -598,6 +602,25 @@ test('a trusted current number switches to the next spare, and a lone number ala
     await recheck;
     await page.locator('#wa-trust-alarm').getByText('当前号码出现信任弹窗。').waitFor();
     assert.equal(fixture.numberApplies.length, 0);
+  });
+});
+
+test('a server-side switch refreshes the pool without applying the spare a second time', async () => {
+  await withConsole(async (page, fixture) => {
+    fixture.byVersion['live-b'] = [...occurrences('live-b'), {id:'wa-live-b', key:'index.html:wa', path:'index.html', line:12, kind:'whatsapp_number', url:'85299990000'}];
+    fixture.numbers = [
+      {id:9, phone:'85299990000', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}},
+      {id:10, phone:'85264150954', note:'', created:1, trust:{status:'clear', detail:'正常', checked_at:2}}
+    ];
+    fixture.trustResults[9] = 'trust';
+    fixture.trustSwitched = {9:true};
+    await page.locator('[data-tab="content"]').click();
+    await page.locator('#b-redirect-numbers [data-number-id="9"] .b-redirect-active-badge').waitFor();
+    await page.locator('#b-redirect-numbers [data-number-id="9"]').getByRole('button', {name:'再测一次', exact:true}).click();
+    await page.locator('.b-wa-status').getByText('已自动换成下一个').waitFor();
+    assert.equal(fixture.numberApplies.length, 0);
+    assert.deepEqual(fixture.trustChecks, [9]);
+    assert.equal(fixture.trustIntervals.at(-1).seconds, 10);
   });
 });
 

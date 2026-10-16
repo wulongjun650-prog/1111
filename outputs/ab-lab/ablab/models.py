@@ -271,6 +271,10 @@ class ContactLinkApply(StrictModel):
     expected_published: str | None = Field(pattern=r'^[a-f0-9]{32}$')
 
 
+class TrustInterval(StrictModel):
+    seconds: int = Field(ge=10, le=86400, strict=True)
+
+
 class WhatsAppNumberApply(StrictModel):
     version_id: str = Field(pattern=r'^[a-f0-9]{32}$', strict=True)
     number_id: int = Field(gt=0, strict=True)

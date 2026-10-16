@@ -134,7 +134,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS redirect_split_assign(visitor_hash TEXT PRIMARY KEY, preset_id INTEGER, url TEXT NOT NULL, created REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS whatsapp_split(id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL, mode TEXT NOT NULL, members TEXT NOT NULL, updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS whatsapp_split_assign(visitor_hash TEXT PRIMARY KEY, number_id INTEGER, phone TEXT NOT NULL, display_name TEXT NOT NULL, created REAL NOT NULL);
-                CREATE TABLE IF NOT EXISTS whatsapp_trust_state(id INTEGER PRIMARY KEY CHECK(id=1), seen_trust INTEGER NOT NULL DEFAULT 0, seen_clear INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS whatsapp_trust_state(id INTEGER PRIMARY KEY CHECK(id=1), seen_trust INTEGER NOT NULL DEFAULT 0, seen_clear INTEGER NOT NULL DEFAULT 0, interval_seconds INTEGER NOT NULL DEFAULT 10);
                 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, created REAL NOT NULL, ip TEXT NOT NULL, country TEXT, device TEXT NOT NULL, slot TEXT NOT NULL, reason TEXT NOT NULL, path TEXT NOT NULL, mode TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS events_created ON events(created);
                 CREATE TABLE IF NOT EXISTS access_log(id INTEGER PRIMARY KEY, created REAL NOT NULL, ua TEXT NOT NULL, ch_ua TEXT NOT NULL, ch_platform TEXT NOT NULL, ch_platform_version TEXT NOT NULL, ch_mobile TEXT NOT NULL, referer TEXT NOT NULL, query TEXT NOT NULL, wa_number TEXT NOT NULL, cf_cache_status TEXT NOT NULL, country TEXT, city TEXT NOT NULL, status INTEGER NOT NULL, duration_ms INTEGER NOT NULL, path TEXT NOT NULL);
@@ -154,6 +154,9 @@ class Store:
                 db.execute('ALTER TABLE whatsapp_numbers ADD COLUMN trust_result TEXT')
             if 'display_name' not in number_columns:
                 db.execute("ALTER TABLE whatsapp_numbers ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
+            trust_columns = {row['name'] for row in db.execute('PRAGMA table_info(whatsapp_trust_state)')}
+            if 'interval_seconds' not in trust_columns:
+                db.execute('ALTER TABLE whatsapp_trust_state ADD COLUMN interval_seconds INTEGER NOT NULL DEFAULT 10')
             event_columns = {row['name'] for row in db.execute('PRAGMA table_info(client_events)')}
             if 'origin' not in event_columns:
                 db.execute("ALTER TABLE client_events ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
@@ -590,6 +593,69 @@ class Store:
                     continue
             return 'trust' in found and 'clear' in found
 
+    def trust_interval(self):
+        with self.connect() as db:
+            row = db.execute('SELECT interval_seconds FROM whatsapp_trust_state WHERE id=1').fetchone()
+        if not row or not row['interval_seconds']:
+            return 10
+        return max(10, min(86400, int(row['interval_seconds'])))
+
+    def set_trust_interval(self, seconds):
+        seconds = int(seconds)
+        if seconds < 10 or seconds > 86400:
+            raise ValueError('复查间隔要在 10 到 86400 秒之间')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute('INSERT INTO whatsapp_trust_state(id,seen_trust,seen_clear,interval_seconds) VALUES(1,0,0,?) '
+                       'ON CONFLICT(id) DO UPDATE SET interval_seconds=excluded.interval_seconds', (seconds,))
+        return seconds
+
+    def published_whatsapp_phones(self):
+        from .redirects import scan_bundle
+        version_id = self.slots().get('B') or ''
+        if not version_id or not (self.pages / version_id).is_dir():
+            return []
+        try:
+            occurrences, _warnings = scan_bundle(self.pages / version_id, version_id)
+        except (OSError, ValueError):
+            return []
+        phones = []
+        for item in occurrences:
+            phone = item.get('url') if item.get('kind') == 'whatsapp_number' else ''
+            if phone and phone not in phones:
+                phones.append(phone)
+        return phones
+
+    def relieve_trusted_number(self, phone):
+        """Publish the next spare when this phone is the live number and shows a trust popup.
+
+        A group-link jump stays. Manual number replacement still clears that jump.
+        """
+        numbers = self.whatsapp_numbers()
+        current = next((item for item in numbers if item['phone'] == phone), None)
+        if not current or current['trust']['status'] != 'trust':
+            return {'switched': False, 'alarm': False}
+        version_id = self.slots().get('B') or ''
+        base = self.version(version_id) if version_id else None
+        if not base:
+            return {'switched': False, 'alarm': False}
+        from .redirects import scan_bundle
+        occurrences, _warnings = scan_bundle(self.pages / version_id, version_id)
+        targets = [item['id'] for item in occurrences if item.get('kind') == 'whatsapp_number' and item.get('url') == phone]
+        if not targets:
+            return {'switched': False, 'alarm': False}
+        start = next(index for index, item in enumerate(numbers) if item['phone'] == phone)
+        nxt = None
+        for step in range(1, len(numbers)):
+            candidate = numbers[(start + step) % len(numbers)]
+            if candidate['phone'] != phone and candidate['trust']['status'] != 'trust':
+                nxt = candidate
+                break
+        if nxt is None:
+            return {'switched': False, 'alarm': True}
+        _version, changed = self.apply_whatsapp_number(base, nxt, targets, version_id, keep_jump=True, automatic=True)
+        return {'switched': bool(changed), 'alarm': not changed, 'changed': changed or 0}
+
     def _reception_bundle(self, root_id, name, filename, required=False):
         from .archives import MAX_TOTAL, read_source, source_files, validate_file, write_bundle
         from .redirects import rewrite_reception_bytes
@@ -729,7 +795,7 @@ class Store:
                 fallback = mode
         return index_mode or fallback
 
-    def apply_whatsapp_number(self, base, number, occurrence_ids, expected_published, commit_guard=None):
+    def apply_whatsapp_number(self, base, number, occurrence_ids, expected_published, commit_guard=None, *, keep_jump=False, automatic=False):
         from .redirects import replace_bundle, rewrite_jump_bundle
         if base['slot'] != 'B':
             raise KeyError('B 版本不存在')
@@ -743,12 +809,15 @@ class Store:
                     scratch.append(reception['id'])
                     version = reception
                     changed = (changed or 0) + reception_changed
-            root_id = version['id'] if version else base['id']
-            cleared, clear_changed, _reason = rewrite_jump_bundle(self.pages / root_id, base['name'], self.pages, '')
-            if cleared:
-                scratch.append(cleared['id'])
-                version = cleared
-                changed = (changed or 0) + clear_changed
+            # Manual replacement clears a group-link jump so the click returns to the number.
+            # Automatic relief only replaces the burned phone, so a link the operator chose stays.
+            if not keep_jump:
+                root_id = version['id'] if version else base['id']
+                cleared, clear_changed, _reason = rewrite_jump_bundle(self.pages / root_id, base['name'], self.pages, '')
+                if cleared:
+                    scratch.append(cleared['id'])
+                    version = cleared
+                    changed = (changed or 0) + clear_changed
         except Exception:
             for item in scratch:
                 shutil.rmtree(self.pages / item, ignore_errors=True)
@@ -769,8 +838,12 @@ class Store:
                     return base | {'slot':'B'}, 0
                 db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (version['id'], 'B', version['name'], version['created'], version['files'], version['bytes'], version['sha256']))
                 db.execute("UPDATE slots SET version_id=? WHERE slot='B'", (version['id'],))
-                db.execute('DELETE FROM redirect_active WHERE id=1')
-                self._audit(db, 'content_imported', {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed, 'whatsapp_number':number['phone'], 'reception': number.get('display_name') or ''})
+                if not keep_jump:
+                    db.execute('DELETE FROM redirect_active WHERE id=1')
+                detail = {'slot':'B', 'version':version['id'], 'source_version':base['id'], 'files':version['files'], 'redirects_changed':changed, 'whatsapp_number':number['phone'], 'reception': number.get('display_name') or ''}
+                if automatic:
+                    detail['automatic'] = True
+                self._audit(db, 'content_imported', detail)
                 self._audit(db, 'version_published', {'slot':'B', 'before':current, 'after':version['id']})
         except Exception:
             for item in scratch:

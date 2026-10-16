@@ -52,7 +52,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
   waHead.append(element('strong', '', 'WS 号码'), element('p', 'b-wa-status', '只换号码。进线语、按钮和链接结构保持不动。'));
   const waNoteLine = element('p', 'b-wa-trust-note', ''); waNoteLine.id = 'b-wa-trust-note';
   waNoteLine.textContent = trustNote(false);
-  const waSwitchNote = element('p', 'b-wa-trust-note', '当前号码一旦变成信任弹窗，就自动换成下一个还没出现信任弹窗的预存号码。没有可换的就报警并发出声音。');
+  const waSwitchNote = element('p', 'b-wa-trust-note', '当前号码一旦变成信任弹窗，就自动换成下一个还没出现信任弹窗的预存号码。没有可换的就报警并发出声音。这个页面关了也会继续换。');
   const waIntervalRow = element('div', 'b-wa-interval');
   const waIntervalLabel = element('label', '', '复查间隔');
   const waInterval = element('input'); waInterval.id = 'b-wa-interval'; waInterval.type = 'number';
@@ -188,8 +188,13 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
 
   function trustNote(polling) {
     return polling
-      ? `当前号码每 ${trustSeconds} 秒复查。出现信任弹窗会报警，直接进聊天会解除。`
+      ? `当前号码每 ${trustSeconds} 秒复查。这个页面关了也会继续。出现信任弹窗会报警，直接进聊天会解除。`
       : `自动复查未开。要先分别看到一次信任弹窗和一次正常，才会每 ${trustSeconds} 秒看当前号码。`;
+  }
+
+  function publishTrustInterval() {
+    if (readOnly) return;
+    api('/api/b-redirects/trust-interval', {method:'POST', body:{seconds: trustSeconds}}).catch(() => {});
   }
 
   function applyTrustSeconds() {
@@ -210,6 +215,8 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     trustSeconds = seconds;
     waInterval.value = String(seconds);
     try { localStorage.setItem(TRUST_INTERVAL_KEY, String(seconds)); } catch { /* 记不住也按这次填写的间隔走 */ }
+    if (session) session.intervalPosted = true;
+    publishTrustInterval();
     syncTrustTimer(session);
     showMessage(`已改为每 ${seconds} 秒复查。`);
   }
@@ -227,13 +234,22 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     if (readOnly || !isCurrent(value) || value.trustChecking.has(id)) return;
     value.trustChecking.add(id); renderNumbers(value);
     try {
-      const result = await api(`/api/b-redirects/numbers/${id}/trust`, {method:'POST', body:{}});
+      const result = await api(`/api/b-redirects/numbers/${id}/trust`, {method:'POST', body:{}, timeout:90000});
       if (!isCurrent(value)) return;
       value.trustPoll = Boolean(result.poll_enabled);
       value.numbersRevision += 1;
       value.numbers = value.numbers.map(item => item.id === id ? result.number : item);
-      const switched = !result.busy && await switchFromTrust(value, result.number);
-      if (!switched) {renderNumbers(value); paintTrustAlarm(value); syncTrustTimer(value);}
+      if (result.switched) {
+        trustAudio.stop();
+        waAlarm.hidden = true;
+        waAlarmText.textContent = '';
+        showMessage('当前号码出现信任弹窗，已自动换成下一个预存号码。进线语未改。');
+        showNumberStatus('当前号码出现信任弹窗，已自动换成下一个。');
+        await scan(value);
+      } else {
+        const switched = !result.busy && await switchFromTrust(value, result.number);
+        if (!switched) {renderNumbers(value); paintTrustAlarm(value); syncTrustTimer(value);}
+      }
     } catch (error) {
       if (isCurrent(value) && !error.stale) showMessage(`信任检测未完成。${error.message}`, true);
     } finally {
@@ -575,6 +591,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
         renderVersions(value); renderOccurrences(value);
       }
       renderPresets(value); renderNumbers(value); renderContact(value); renderNumberSplit(value); syncTrustTimer(value);
+      if (!value.intervalPosted) { value.intervalPosted = true; publishTrustInterval(); }
     } catch (error) {
       if (isCurrent(value) && request === value.request && !error.stale) showMessage(`扫描失败，当前选择仍保留。${error.message}`, true);
     } finally {
@@ -1090,7 +1107,7 @@ export function createBRedirects({api, on, element, confirmAction, getSite, onAp
     let value = session;
     if (value?.siteId !== state.site.id) {
       clear();
-      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], liveOccurrences:[], warnings:[], presets:[], numbers:[], links:[], contact:blankContact(), presetsRevision:0, numbersRevision:0, linksRevision:0, trustPoll:false, trustChecking:new Set(), active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, numberSplit:blankSplit(), savedNumberSplit:blankSplit(), numberSplitDirty:false, numberSplitSaving:false, numberSplitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
+      value = {siteId:state.site.id, versionId:state.slots.B, published:state.slots.B, expectedPublished:null, versions:[], occurrences:[], liveOccurrences:[], warnings:[], presets:[], numbers:[], links:[], contact:blankContact(), presetsRevision:0, numbersRevision:0, linksRevision:0, trustPoll:false, intervalPosted:false, trustChecking:new Set(), active:null, split:blankSplit(), savedSplit:blankSplit(), splitDirty:false, splitSaving:false, splitAgain:false, numberSplit:blankSplit(), savedNumberSplit:blankSplit(), numberSplitDirty:false, numberSplitSaving:false, numberSplitAgain:false, excluded:new Set(), selectionDirty:false, checking:new Set(), request:0, busy:false, loading:false, scanned:false};
       session = value;
     }
     if (value.busy) {
