@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>WhatsApp 打開方式測試</title>
+<style>
+  body{margin:0;padding:20px;font:16px/1.5 -apple-system,"PingFang HK","Microsoft JhengHei",sans-serif;background:#f4f6f8;color:#111}
+  h1{font-size:20px;margin:0 0 6px}
+  p{margin:0 0 16px;color:#555;font-size:14px}
+  a{display:block;margin:0 0 12px;padding:16px;border-radius:12px;background:#25d366;color:#fff;text-decoration:none;font-weight:700}
+  a small{display:block;font-weight:400;opacity:.9;font-size:13px}
+  code{font-size:12px;word-break:break-all;color:#333}
+</style>
+</head>
+<body>
+<h1>WhatsApp 打開方式測試</h1>
+<p>同一部手機逐個按，每次返回後先喺 WhatsApp 刪咗草稿再試下一個。記低邊個會自動彈出鍵盤。</p>
+<div id="list"></div>
+<p>UA：<code id="ua"></code></p>
+<script>
+  var phone = '85265453614';
+  var text = encodeURIComponent('Nicole 黃嘉欣 助理，你好呀，麻煩發一份10月13日心水股名單俾我，想睇埋板塊位置同後續觀察重點，唔該。');
+  var routes = [
+    ['A. intent://（現時 Android 瀏覽器用緊）', 'intent://send?phone=' + phone + '&text=' + text + '#Intent;scheme=whatsapp;package=com.whatsapp;end'],
+    ['B. whatsapp://（App 內／iPhone App 內用緊）', 'whatsapp://send?phone=' + phone + '&text=' + text],
+    ['C. wa.me', 'https://wa.me/' + phone + '?text=' + text],
+    ['D. api.whatsapp.com', 'https://api.whatsapp.com/send?phone=' + phone + '&text=' + text]
+  ];
+  var list = document.getElementById('list');
+  routes.forEach(function (r) {
+    var a = document.createElement('a');
+    a.href = r[1];
+    a.innerHTML = r[0] + '<small>' + r[1].split('?')[0] + '</small>';
+    list.appendChild(a);
+  });
+  document.getElementById('ua').textContent = navigator.userAgent;
+</script>
+</body>
+</html>
