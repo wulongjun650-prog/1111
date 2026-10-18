@@ -1723,13 +1723,19 @@ function renderDomains() {
       challenge.append(element('span', 'domain-challenge-title', '人机验证'));
       const entryOn = Boolean(mode & 1);
       const buttonOn = Boolean(mode & 2);
+      const browseOn = Boolean(mode & 4);
       challenge.append(humanSwitch(site, '进入落地', entryOn, async () => {
-        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:{entry:!entryOn, button:buttonOn}, timeout:60000});
+        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:{entry:!entryOn, button:buttonOn, browse:browseOn}, timeout:60000});
         await loadDomains();
         toast(result.detail);
       }));
       challenge.append(humanSwitch(site, '点击按钮', buttonOn, async () => {
-        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:{entry:entryOn, button:!buttonOn}, timeout:60000});
+        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:{entry:entryOn, button:!buttonOn, browse:browseOn}, timeout:60000});
+        await loadDomains();
+        toast(result.detail);
+      }));
+      challenge.append(humanSwitch(site, '浏览时加载', browseOn, async () => {
+        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:{entry:entryOn, button:buttonOn, browse:!browseOn}, timeout:60000});
         await loadDomains();
         toast(result.detail);
       }));

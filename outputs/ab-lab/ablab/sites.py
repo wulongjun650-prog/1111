@@ -69,6 +69,7 @@ class Registry:
                 ('cf_detail', "TEXT NOT NULL DEFAULT ''"),
                 ('cf_challenge', 'INTEGER NOT NULL DEFAULT 0'),
                 ('cf_challenge_level', "TEXT NOT NULL DEFAULT ''"),
+                ('cf_turnstile_sitekey', "TEXT NOT NULL DEFAULT ''"),
                 ('mirror_source', "TEXT NOT NULL DEFAULT ''"),
                 ('observer_account', "TEXT NOT NULL DEFAULT ''"),
             ):
@@ -304,37 +305,54 @@ class Registry:
             if site['stage'] in ('active', 'legacy', 'paused'):
                 stage = site['stage']
                 db.execute(
-                    "UPDATE sites SET cf_zone_id='',cf_nameservers='',cf_status='',cf_detail='',cf_challenge=0,cf_challenge_level='',generation=generation+1 WHERE id=?",
+                    "UPDATE sites SET cf_zone_id='',cf_nameservers='',cf_status='',cf_detail='',cf_challenge=0,cf_challenge_level='',cf_turnstile_sitekey='',generation=generation+1 WHERE id=?",
                     (site_id,))
             else:
                 stage = 'waiting_dns'
                 db.execute(
-                    "UPDATE sites SET cf_zone_id='',cf_nameservers='',cf_status='',cf_detail='',cf_challenge=0,cf_challenge_level='',stage='waiting_dns',next_attempt=0,error=?,generation=generation+1 WHERE id=?",
+                    "UPDATE sites SET cf_zone_id='',cf_nameservers='',cf_status='',cf_detail='',cf_challenge=0,cf_challenge_level='',cf_turnstile_sitekey='',stage='waiting_dns',next_attempt=0,error=?,generation=generation+1 WHERE id=?",
                     (detail, site_id))
             self._event(db, site_id, stage, detail[:180])
         return self.get(site_id)
 
-    def set_challenge(self, site_id, mode, level=''):
-        if type(mode) is not int or mode not in (0, 1, 2, 3):
+    def set_challenge(self, site_id, mode, level='', sitekey=''):
+        if type(mode) is not int or mode not in range(8):
             raise ValueError('人机验证选项无效')
         if level not in ('', 'off', 'essentially_off', 'low', 'medium', 'high'):
             raise ValueError('人机验证记录无效')
+        if sitekey and not re.fullmatch(r'0x[A-Za-z0-9_-]{20,80}', sitekey):
+            raise ValueError('人机验证选项无效')
+        if mode & 4 and not sitekey:
+            raise ValueError('人机验证选项无效')
         stored = level if mode & 1 else ''
-        if mode & 1 and mode & 2:
-            detail = '已打开进入落地和点击按钮人机验证'
-        elif mode & 1:
-            detail = '已打开进入落地人机验证'
-        elif mode & 2:
-            detail = '已打开点击按钮人机验证'
+        stored_key = sitekey if mode & 4 else ''
+        legacy = {
+            0: '已关闭人机验证',
+            1: '已打开进入落地人机验证',
+            2: '已打开点击按钮人机验证',
+            3: '已打开进入落地和点击按钮人机验证',
+        }
+        if mode in legacy:
+            detail = legacy[mode]
         else:
-            detail = '已关闭人机验证'
+            names = []
+            if mode & 1:
+                names.append('进入落地')
+            if mode & 2:
+                names.append('点击按钮')
+            if mode & 4:
+                names.append('浏览时加载')
+            detail = '已打开' + '和'.join(names) + '人机验证'
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            site = db.execute('SELECT stage,cf_challenge,cf_challenge_level FROM sites WHERE id=?', (site_id,)).fetchone()
+            site = db.execute('SELECT stage,cf_challenge,cf_challenge_level,cf_turnstile_sitekey FROM sites WHERE id=?', (site_id,)).fetchone()
             if site is None:
                 raise KeyError(site_id)
-            if (site['cf_challenge'], site['cf_challenge_level']) != (mode, stored):
-                db.execute('UPDATE sites SET cf_challenge=?,cf_challenge_level=? WHERE id=?', (mode, stored, site_id))
+            if (site['cf_challenge'], site['cf_challenge_level'], site['cf_turnstile_sitekey']) != (mode, stored, stored_key):
+                db.execute(
+                    'UPDATE sites SET cf_challenge=?,cf_challenge_level=?,cf_turnstile_sitekey=? WHERE id=?',
+                    (mode, stored, stored_key, site_id),
+                )
                 self._event(db, site_id, site['stage'], detail)
         return self.get(site_id)
 

@@ -51,6 +51,8 @@ class Api:
         self.security_level = 'medium'
         self.firewall_forbidden = False
         self.firewall_missing = False
+        self.widgets = []
+        self.widget_forbidden = False
 
     def transport(self):
         return httpx.MockTransport(self.respond)
@@ -60,6 +62,8 @@ class Api:
         assert TOKEN not in str(request.url)
         path = request.url.path
         self.calls.append((request.method, path))
+        if path.startswith('/client/v4/accounts/'):
+            return self._widgets_api(request, path.removeprefix('/client/v4/accounts/'))
         if request.method == 'GET' and path == '/client/v4/zones':
             return envelope(self.zones.get(request.url.params['name'], []))
         if request.method == 'POST' and path == '/client/v4/zones':
@@ -195,6 +199,39 @@ class Api:
             assert json.loads(request.content) == {'purge_everything': True}
             return envelope({'id': zone_id})
         raise AssertionError(f'unexpected {request.method} {path}')
+
+    def _widgets_api(self, request, rest):
+        account, _, tail = rest.partition('/')
+        assert account == ACCOUNT
+        if self.widget_forbidden:
+            return failure(10000, 'unauthorized', 403)
+        if tail == 'challenges/widgets' and request.method == 'GET':
+            return envelope(self.widgets)
+        body = json.loads(request.content or b'{}')
+        if tail == 'challenges/widgets' and request.method == 'POST':
+            assert body['mode'] == 'managed' and body['clearance_level'] == 'managed'
+            assert body['name'] == '双子星浏览时加载'
+            assert 1 <= len(body['domains']) <= 10
+            saved = {
+                'sitekey': '0x4AAAAAAAB8lYQJSCAI6WbG' + str(len(self.widgets)),
+                'secret': '0xSECRETSHOULDNOTLEAK',
+                'name': body['name'],
+                'domains': body['domains'],
+                'mode': 'managed',
+            }
+            self.widgets.append({key: value for key, value in saved.items() if key != 'secret'})
+            return envelope(saved)
+        if tail.startswith('challenges/widgets/') and request.method == 'PUT':
+            sitekey = tail.removeprefix('challenges/widgets/')
+            found = next(item for item in self.widgets if item['sitekey'] == sitekey)
+            found['domains'] = body['domains']
+            found['name'] = body['name']
+            return envelope(dict(found, secret='0xSECRETSHOULDNOTLEAK'))
+        if tail.startswith('challenges/widgets/') and request.method == 'DELETE':
+            sitekey = tail.removeprefix('challenges/widgets/')
+            self.widgets = [item for item in self.widgets if item['sitekey'] != sitekey]
+            return envelope({'sitekey': sitekey})
+        raise AssertionError(f'unexpected widget {request.method} {tail}')
 
 
 def client(cloudflare):
@@ -745,7 +782,7 @@ def test_human_check_keeps_other_firewall_rules_and_leaves_cache_alone():
     })
     api.firewall_rules = [other]
     opened = client(api).set_human_challenge(ZONE, 'shop.example.com', True, False)
-    assert opened == {'entry': True, 'button': False, 'previous': ''}
+    assert opened == {'entry': True, 'button': False, 'browse': False, 'previous': '', 'sitekey': ''}
     assert api.firewall_rules[0]['id'] == 'e' * 32
     assert api.firewall_rules[0]['action'] == 'block'
     challenge = api.firewall_rules[1]
@@ -779,7 +816,7 @@ def test_firewall_permission_falls_back_to_under_attack_and_restores_the_old_lev
     api.firewall_forbidden = True
     api.security_level = 'high'
     opened = client(api).set_human_challenge(ZONE, 'shop.example.com', True, False)
-    assert opened == {'entry': True, 'button': False, 'previous': 'high'}
+    assert opened == {'entry': True, 'button': False, 'browse': False, 'previous': 'high', 'sitekey': ''}
     assert api.security_level == 'under_attack'
     assert api.firewall_rules == []
     assert api.page_rules == []
@@ -804,7 +841,7 @@ def test_button_check_uses_a_page_rule_and_keeps_the_landing_level():
     }
     api.page_rules = [kept]
     opened = client(api).set_human_challenge(ZONE, 'shop.example.com', False, True)
-    assert opened == {'entry': False, 'button': True, 'previous': ''}
+    assert opened == {'entry': False, 'button': True, 'browse': False, 'previous': '', 'sitekey': ''}
     assert api.security_level == 'medium'
     assert api.page_rules[0]['targets'][0]['constraint']['value'] == '*shop.example.com/*ab_human=1*'
     assert api.page_rules[0]['actions'] == [{'id': 'security_level', 'value': 'under_attack'}]
@@ -918,6 +955,78 @@ def test_button_switch_writes_the_published_page_and_not_the_zone_level(tmp_path
     assert api.page_rules == []
     assert api.security_level == 'medium'
     assert 'ab-human-click' not in page.read_text(encoding='utf-8')
+
+
+def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    api.firewall_forbidden = True
+    api.security_level = 'medium'
+    http, site_id = _ready(tmp_path, api)
+    version_id = _publish_button_page(http, site_id)
+    page = Registry(tmp_path).store(site_id).pages / version_id / 'index.html'
+    api.calls.clear()
+    opened = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True})
+    assert opened.status_code == 200, opened.text
+    body = opened.json()
+    assert body['browse'] is True and body['entry'] is False and body['button'] is False
+    assert body['site']['cf_challenge'] == 4
+    assert body['site']['cf_turnstile_sitekey'].startswith('0x')
+    assert '右下角' in body['detail']
+    assert 'SECRETSHOULDNOTLEAK' not in opened.text
+    assert api.security_level == 'medium'
+    assert api.page_rules == []
+    assert api.widgets[0]['domains'] == ['shop.example.com']
+    assert api.widgets[0]['mode'] == 'managed'
+    assert not any(method == 'PUT' and 'cache' in path for method, path in api.calls)
+    text = page.read_text(encoding='utf-8')
+    assert 'id="ab-human-browse"' in text
+    assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' in text
+    assert body['site']['cf_turnstile_sitekey'] in text
+    assert 'ab-human-click' not in text
+    assert 'preventDefault' not in text
+    assert 'https://example.com/go' in text
+    again = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True})
+    assert again.status_code == 200, again.text
+    assert [method for method, path in api.calls if method == 'POST' and path.endswith('/challenges/widgets')] == ['POST']
+    fresh = io.BytesIO()
+    with zipfile.ZipFile(fresh, 'w') as bundle:
+        bundle.writestr('index.html', '<!doctype html><html><body><p>新的一版</p></body></html>')
+    uploaded = http.post(f'/api/sites/{site_id}/upload/B?name=next.zip', content=fresh.getvalue())
+    assert uploaded.status_code == 200, uploaded.text
+    published = http.post(f'/api/sites/{site_id}/publish/B', json={'version_id': uploaded.json()['version']['id']})
+    assert published.status_code == 200, published.text
+    live = Registry(tmp_path).store(site_id).pages / uploaded.json()['version']['id'] / 'index.html'
+    assert 'id="ab-human-browse"' in live.read_text(encoding='utf-8')
+    assert '新的一版' in live.read_text(encoding='utf-8')
+    closed = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': False})
+    assert closed.status_code == 200, closed.text
+    assert closed.json()['browse'] is False
+    assert closed.json()['site']['cf_challenge'] == 0
+    assert closed.json()['site']['cf_turnstile_sitekey'] == ''
+    assert api.widgets == []
+    assert 'ab-human-browse' not in live.read_text(encoding='utf-8')
+    assert api.security_level == 'medium'
+
+
+def test_browse_switch_stays_off_when_the_widget_is_forbidden(tmp_path):
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    api.firewall_forbidden = True
+    api.widget_forbidden = True
+    http, site_id = _ready(tmp_path, api)
+    version_id = _publish_button_page(http, site_id)
+    page = Registry(tmp_path).store(site_id).pages / version_id / 'index.html'
+    refused = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True})
+    assert refused.status_code == 400
+    assert '密钥' in refused.json()['detail']
+    assert 'SECRET' not in refused.text
+    saved = http.get('/api/sites').json()['sites']
+    site = next(item for item in saved if item['id'] == site_id)
+    assert site['cf_challenge'] == 0
+    assert 'ab-human-browse' not in page.read_text(encoding='utf-8')
 
 
 def test_closing_cloudflare_turns_the_human_check_off_before_greying(tmp_path):

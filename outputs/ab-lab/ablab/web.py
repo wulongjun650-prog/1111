@@ -63,6 +63,7 @@ class SiteMetadata(StrictModel):
 class ChallengeSwitch(StrictModel):
     entry: bool = Field(strict=True)
     button: bool = Field(strict=True)
+    browse: bool = Field(default=False, strict=True)
 
 
 class AccountCreate(StrictModel):
@@ -525,7 +526,13 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
     def after_site_change(site_id):
         site = registry.get(site_id)
         try:
-            stamp_published(registry.store(site_id), bool((site.get('cf_challenge') or 0) & 2))
+            mode = site.get('cf_challenge') or 0
+            stamp_published(
+                registry.store(site_id),
+                button=bool(mode & 2),
+                browse=bool(mode & 4),
+                sitekey=site.get('cf_turnstile_sitekey') or '',
+            )
         except Exception as error:
             LOGGER.error('human check script was not written (%s)', type(error).__name__)
         purged = purge_site_cache(site)
@@ -799,8 +806,11 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 raise ValueError('服务器未配置 Cloudflare')
             if site.get('cf_challenge'):
                 try:
-                    cloudflare.set_human_challenge(site['cf_zone_id'], site['domain'], False, False, site.get('cf_challenge_level') or '')
-                    if stamp_published(registry.store(site['id']), False):
+                    cloudflare.set_human_challenge(
+                        site['cf_zone_id'], site['domain'], False, False, site.get('cf_challenge_level') or '',
+                        browse=False, had_browse=bool((site.get('cf_challenge') or 0) & 4),
+                    )
+                    if stamp_published(registry.store(site['id']), button=False, browse=False):
                         cloudflare.purge(site['cf_zone_id'], site['domain'])
                 except ProvisioningError as error:
                     raise ValueError(str(error)[:400]) from None
@@ -828,16 +838,19 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             raise ValueError('这个域名没有接入 Cloudflare')
         if not cloudflare.token:
             raise ValueError('服务器未配置 Cloudflare')
-        mode = (1 if body.entry else 0) | (2 if body.button else 0)
+        mode = (1 if body.entry else 0) | (2 if body.button else 0) | (4 if body.browse else 0)
         try:
             changed = cloudflare.set_human_challenge(
                 site['cf_zone_id'], site['domain'], body.entry, body.button, site.get('cf_challenge_level') or '',
+                browse=body.browse, had_browse=bool((site.get('cf_challenge') or 0) & 4),
             )
         except ProvisioningError as error:
             raise ValueError(str(error)[:400]) from None
-        updated = registry.set_challenge(site['id'], mode, changed.get('previous') or '')
+        updated = registry.set_challenge(site['id'], mode, changed.get('previous') or '', changed.get('sitekey') or '')
         try:
-            if stamp_published(registry.store(site['id']), body.button):
+            if stamp_published(
+                registry.store(site['id']), button=body.button, browse=body.browse, sitekey=changed.get('sitekey') or '',
+            ):
                 cloudflare.purge(site['cf_zone_id'], site['domain'])
         except ProvisioningError as error:
             raise ValueError(str(error)[:400]) from None
@@ -846,11 +859,14 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             parts.append('访客一进入落地页，会先看到 Cloudflare 的人机验证')
         if body.button:
             parts.append('访客一点按钮，会先看到 Cloudflare 的人机验证，通过后才继续打开')
+        if body.browse:
+            parts.append('落地页先显示内容，人机验证会自己出现在页面右下角，浏览不被挡住')
         detail = '已保存。' + '。'.join(parts) + '。' if parts else '已关闭。访客直接进入页面，点按钮也不会再验证。'
         mode_now = updated.get('cf_challenge') or 0
         return {
             'entry': bool(mode_now & 1),
             'button': bool(mode_now & 2),
+            'browse': bool(mode_now & 4),
             'detail': detail,
             'site': updated,
         }
