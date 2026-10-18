@@ -47,12 +47,12 @@ _SITEKEY_RE = re.compile(r'^0x[A-Za-z0-9_-]{20,80}$')
 
 
 def browse_script(sitekey):
-    """Corner widget. The page stays usable while the check finishes by itself."""
+    """Widget at the end of the page. It stays in the document, so it does not cover the content."""
     if not isinstance(sitekey, str) or not _SITEKEY_RE.fullmatch(sitekey):
         raise ValueError('人机验证选项无效')
     return (
-        '<style id="ab-human-browse-style">#ab-human-browse{position:fixed;right:12px;bottom:12px;'
-        'z-index:2147483000;width:max-content;max-width:calc(100vw - 24px)}</style>'
+        '<style id="ab-human-browse-style">#ab-human-browse{display:flex;justify-content:center;'
+        'width:100%;clear:both;margin:28px 0 20px;padding:0 12px}</style>'
         '<div id="ab-human-browse"></div>'
         '<script id="ab-human-browse">(function(){'
         f'var KEY="{sitekey}";'

@@ -977,7 +977,7 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert body['browse'] is True and body['entry'] is False and body['button'] is False
     assert body['site']['cf_challenge'] == 4
     assert body['site']['cf_turnstile_sitekey'].startswith('0x')
-    assert '右下角' in body['detail']
+    assert '最下方' in body['detail']
     assert 'SECRETSHOULDNOTLEAK' not in opened.text
     assert api.security_level == 'medium'
     assert api.page_rules == []
@@ -988,6 +988,8 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert not any(method == 'PUT' and 'cache' in path for method, path in api.calls)
     text = page.read_text(encoding='utf-8')
     assert 'id="ab-human-browse"' in text
+    assert 'position:fixed' not in text
+    assert 'margin:28px 0 20px' in text
     assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' in text
     assert body['site']['cf_turnstile_sitekey'] in text
     assert 'ab-human-click' not in text

@@ -151,8 +151,8 @@ class Cloudflare:
         """Turn the human checks on or off for one domain.
 
         Entry checks the whole visit. Button checks only the address used after
-        a click. Browse leaves the landing page open and finishes the corner
-        check by itself, with no tap. Cache rules are not part of any of these changes.
+        a click. Browse leaves the landing page open and finishes the check at
+        the bottom of the page, with no tap. Cache rules are not part of any of these changes.
         """
         if type(entry) is not bool or type(button) is not bool or type(browse) is not bool or type(had_browse) is not bool:
             raise CloudflareError('人机验证选项无效')
