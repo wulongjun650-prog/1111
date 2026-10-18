@@ -860,7 +860,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if body.button:
             parts.append('访客一点按钮，会先看到 Cloudflare 的人机验证，通过后才继续打开')
         if body.browse:
-            parts.append('落地页先显示内容，人机验证会自己出现在页面右下角，浏览不被挡住')
+            parts.append('落地页先显示内容，右下角的人机验证会自己完成，不用点按钮，浏览不被挡住')
         detail = '已保存。' + '。'.join(parts) + '。' if parts else '已关闭。访客直接进入页面，点按钮也不会再验证。'
         mode_now = updated.get('cf_challenge') or 0
         return {

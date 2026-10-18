@@ -209,7 +209,7 @@ class Api:
             return envelope(self.widgets)
         body = json.loads(request.content or b'{}')
         if tail == 'challenges/widgets' and request.method == 'POST':
-            assert body['mode'] == 'managed' and body['clearance_level'] == 'managed'
+            assert body['mode'] == 'non-interactive' and body['clearance_level'] == 'jschallenge'
             assert body['name'] == '双子星浏览时加载'
             assert 1 <= len(body['domains']) <= 10
             saved = {
@@ -217,15 +217,19 @@ class Api:
                 'secret': '0xSECRETSHOULDNOTLEAK',
                 'name': body['name'],
                 'domains': body['domains'],
-                'mode': 'managed',
+                'mode': body['mode'],
+                'clearance_level': body['clearance_level'],
             }
             self.widgets.append({key: value for key, value in saved.items() if key != 'secret'})
             return envelope(saved)
         if tail.startswith('challenges/widgets/') and request.method == 'PUT':
             sitekey = tail.removeprefix('challenges/widgets/')
             found = next(item for item in self.widgets if item['sitekey'] == sitekey)
+            assert body['mode'] == 'non-interactive' and body['clearance_level'] == 'jschallenge'
             found['domains'] = body['domains']
             found['name'] = body['name']
+            found['mode'] = body['mode']
+            found['clearance_level'] = body['clearance_level']
             return envelope(dict(found, secret='0xSECRETSHOULDNOTLEAK'))
         if tail.startswith('challenges/widgets/') and request.method == 'DELETE':
             sitekey = tail.removeprefix('challenges/widgets/')
@@ -978,7 +982,9 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert api.security_level == 'medium'
     assert api.page_rules == []
     assert api.widgets[0]['domains'] == ['shop.example.com']
-    assert api.widgets[0]['mode'] == 'managed'
+    assert api.widgets[0]['mode'] == 'non-interactive'
+    assert api.widgets[0]['clearance_level'] == 'jschallenge'
+    assert '不用点按钮' in body['detail']
     assert not any(method == 'PUT' and 'cache' in path for method, path in api.calls)
     text = page.read_text(encoding='utf-8')
     assert 'id="ab-human-browse"' in text
@@ -1008,6 +1014,32 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert api.widgets == []
     assert 'ab-human-browse' not in live.read_text(encoding='utf-8')
     assert api.security_level == 'medium'
+
+
+def test_browse_switch_rewrites_a_click_widget_so_the_check_finishes_itself(tmp_path):
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    api.firewall_forbidden = True
+    api.security_level = 'medium'
+    sitekey = '0x4AAAAAAAB8lYQJSCAI6WbGexisting1'
+    api.widgets = [{
+        'sitekey': sitekey,
+        'name': '双子星浏览时加载',
+        'domains': ['shop.example.com'],
+        'mode': 'managed',
+        'clearance_level': 'managed',
+    }]
+    http, site_id = _ready(tmp_path, api)
+    opened = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True})
+    assert opened.status_code == 200, opened.text
+    assert api.widgets[0]['sitekey'] == sitekey
+    assert api.widgets[0]['mode'] == 'non-interactive'
+    assert api.widgets[0]['clearance_level'] == 'jschallenge'
+    assert [method for method, path in api.calls if method == 'PUT' and path.endswith('/challenges/widgets/' + sitekey)] == ['PUT']
+    again = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True})
+    assert again.status_code == 200, again.text
+    assert [method for method, path in api.calls if method == 'PUT' and path.endswith('/challenges/widgets/' + sitekey)] == ['PUT']
 
 
 def test_browse_switch_stays_off_when_the_widget_is_forbidden(tmp_path):

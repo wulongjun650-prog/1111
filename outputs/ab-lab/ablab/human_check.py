@@ -47,7 +47,7 @@ _SITEKEY_RE = re.compile(r'^0x[A-Za-z0-9_-]{20,80}$')
 
 
 def browse_script(sitekey):
-    """Corner widget. The page stays usable while Cloudflare draws the checkbox."""
+    """Corner widget. The page stays usable while the check finishes by itself."""
     if not isinstance(sitekey, str) or not _SITEKEY_RE.fullmatch(sitekey):
         raise ValueError('人机验证选项无效')
     return (
