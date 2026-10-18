@@ -1,0 +1,9 @@
+User-Agent: *
+Allow: /
+Disallow: /create
+Disallow: /affiliate
+Disallow: /auth/
+Disallow: /user/
+Disallow: /charge-redirect
+
+Sitemap: https://genspicy.ai/sitemap.xml

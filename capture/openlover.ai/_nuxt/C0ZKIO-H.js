@@ -1,0 +1,1 @@
+import{s as t}from"./CIZSxn6F.js";const a=async a=>{const{apiRequest:o}=t();return o("/api/v1/actor.like",{method:"POST",body:{actor_id:a}})},o=async a=>{const{apiRequest:o}=t();return o("/api/v1/actor.unlike",{method:"POST",body:{actor_id:a}})};export{a,o as t};

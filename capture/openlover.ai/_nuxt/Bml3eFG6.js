@@ -1,0 +1,1 @@
+import{a as e}from"./nckl89ac.js";async function a(a,t){const o=await e("/api/v1/resource/generation.upload",{file_type:t}),{gcs_upload_url:r,open_lover_uri:n}=o.data?.data||{};if(!r||!n)throw new Error("Failed to get upload URL");return await fetch(r,{method:"PUT",body:a,headers:{"Content-Type":a.type}}),n}export{a as u};
