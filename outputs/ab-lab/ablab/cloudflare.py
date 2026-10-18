@@ -30,6 +30,9 @@ CHALLENGE_PHASE = 'http_request_firewall_custom'
 CHALLENGE_DESCRIPTION = '双子星人机验证'
 CHALLENGE_EXPRESSION = '(http.request.method eq "GET" and any(http.request.headers["accept"][*] contains "text/html"))'
 BUTTON_QUERY = 'ab_human=1'
+BROWSE_WIDGET = '双子星浏览时加载'
+SITEKEY_RE = re.compile(r'^0x[A-Za-z0-9_-]{20,80}$')
+WIDGET_ROOM = 10
 SECURITY_LEVELS = ('off', 'essentially_off', 'low', 'medium', 'high', 'under_attack')
 
 
@@ -144,14 +147,14 @@ class Cloudflare:
             })
         return {'proxied': False, 'address': address}
 
-    def set_human_challenge(self, zone_id, domain, entry, button, previous=''):
-        """Turn the two human checks on or off for one domain.
+    def set_human_challenge(self, zone_id, domain, entry, button, previous='', browse=False, had_browse=False):
+        """Turn the human checks on or off for one domain.
 
         Entry checks the whole visit. Button checks only the address used after
-        a click, and leaves the landing page itself alone. Cache rules are not
-        part of either change.
+        a click. Browse leaves the landing page open and adds the checkbox in
+        the corner. Cache rules are not part of any of these changes.
         """
-        if type(entry) is not bool or type(button) is not bool:
+        if type(entry) is not bool or type(button) is not bool or type(browse) is not bool or type(had_browse) is not bool:
             raise CloudflareError('人机验证选项无效')
         if previous not in ('', 'off', 'essentially_off', 'low', 'medium', 'high'):
             raise CloudflareError('人机验证记录无效')
@@ -160,12 +163,22 @@ class Cloudflare:
         if not self.token:
             raise CloudflareError('服务器未配置 Cloudflare')
         with self._client() as client:
-            zone = _zone_view(self._call(client, 'GET', '/zones/' + zone_id))
+            raw = self._call(client, 'GET', '/zones/' + zone_id)
+            zone = _zone_view(raw)
             if zone['name'] != domain:
                 raise CloudflareError('Cloudflare 站点与登记域名不一致')
+            sitekey = ''
+            if browse or had_browse:
+                account_id = _zone_view(raw, account=True)['account_id']
+                try:
+                    sitekey = self._set_browse_widget(client, account_id, domain, browse)
+                except CloudflareError:
+                    if browse:
+                        raise
+                    sitekey = ''
             self._set_button_rule(client, zone_id, domain, button)
             remembered = self._set_entry_check(client, zone_id, entry, previous)
-        return {'entry': entry, 'button': button, 'previous': remembered}
+        return {'entry': entry, 'button': button, 'browse': browse, 'previous': remembered, 'sitekey': sitekey if browse else ''}
 
     def delete_zone(self, zone_id, domain):
         """Delete the Cloudflare zone after its name matches this domain."""
@@ -359,6 +372,49 @@ class Cloudflare:
         except CloudflareError:
             return
 
+    def _set_browse_widget(self, client, account_id, domain, enabled):
+        try:
+            widgets = [item for item in self._widgets(client, account_id) if item['name'] == BROWSE_WIDGET]
+            if not enabled:
+                for widget in widgets:
+                    if domain not in widget['domains']:
+                        continue
+                    rest = [item for item in widget['domains'] if item != domain]
+                    if rest:
+                        self._write_widget(client, account_id, widget['sitekey'], rest)
+                    else:
+                        self._call(client, 'DELETE', f'/accounts/{account_id}/challenges/widgets/{widget["sitekey"]}')
+                return ''
+            for widget in widgets:
+                if domain in widget['domains']:
+                    return widget['sitekey']
+            for widget in widgets:
+                if len(widget['domains']) >= WIDGET_ROOM:
+                    continue
+                return self._write_widget(client, account_id, widget['sitekey'], widget['domains'] + [domain])
+            return self._write_widget(client, account_id, '', [domain])
+        except CloudflareError as error:
+            if _denied(error):
+                raise CloudflareError('这把 Cloudflare 密钥还不能添加页面里的人机验证') from None
+            raise
+
+    def _widgets(self, client, account_id):
+        result = self._call(client, 'GET', f'/accounts/{account_id}/challenges/widgets', params={'per_page': '50'})
+        if not isinstance(result, list) or len(result) > 50:
+            raise CloudflareError('Cloudflare 人机验证组件无法读取')
+        return [_widget_view(item) for item in result]
+
+    def _write_widget(self, client, account_id, sitekey, domains):
+        payload = {'name': BROWSE_WIDGET, 'domains': domains, 'mode': 'managed', 'clearance_level': 'managed'}
+        if sitekey:
+            result = self._call(client, 'PUT', f'/accounts/{account_id}/challenges/widgets/{sitekey}', payload=payload)
+        else:
+            result = self._call(client, 'POST', f'/accounts/{account_id}/challenges/widgets', payload=payload)
+        view = _widget_view(result)
+        if sorted(view['domains']) != sorted(domains):
+            raise CloudflareError('Cloudflare 没有记下这个域名的人机验证')
+        return view['sitekey']
+
     def _set_entry_check(self, client, zone_id, enabled, previous):
         ruled = self._try_challenge_rule(client, zone_id, enabled)
         if enabled and ruled is not None:
@@ -523,6 +579,27 @@ def _kept_firewall_rule(rule):
         if key in rule:
             kept[key] = rule[key]
     return kept
+
+
+def _widget_view(result):
+    if not isinstance(result, dict):
+        raise CloudflareError('Cloudflare 人机验证组件无法读取')
+    sitekey = result.get('sitekey')
+    name = result.get('name')
+    domains = result.get('domains')
+    if not isinstance(sitekey, str) or not SITEKEY_RE.fullmatch(sitekey):
+        raise CloudflareError('Cloudflare 人机验证组件无法读取')
+    if not isinstance(name, str) or not name or len(name) > 80:
+        raise CloudflareError('Cloudflare 人机验证组件无法读取')
+    if not isinstance(domains, list) or not domains or len(domains) > WIDGET_ROOM:
+        raise CloudflareError('Cloudflare 人机验证组件无法读取')
+    clean = []
+    for item in domains:
+        try:
+            clean.append(normalize_domain(item))
+        except ValueError:
+            raise CloudflareError('Cloudflare 人机验证组件无法读取') from None
+    return {'sitekey': sitekey, 'name': name, 'domains': clean}
 
 
 def _zone_id(value):
