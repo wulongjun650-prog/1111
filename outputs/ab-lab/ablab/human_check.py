@@ -39,9 +39,11 @@ SCRIPT = (
 )
 _SCRIPT_RE = re.compile(r'<script id="ab-human-click">[\s\S]*?</script>', re.IGNORECASE)
 _BROWSE_RE = re.compile(
-    r'<style id="ab-human-browse-style">[\s\S]*?</style>|<div id="ab-human-browse"></div>|<script id="ab-human-browse">[\s\S]*?</script>',
+    r'<style id="ab-human-browse-style">[\s\S]*?</style>|<div id="ab-human-browse"></div>|<script id="ab-human-browse"(?:\s[^>]*)?>[\s\S]*?</script>',
     re.IGNORECASE,
 )
+_JS_NAME = 'ab-human-browse.js'
+_JS_MARK = b'/* ab-human-browse */'
 _BODY_RE = re.compile(r'</body\s*>', re.IGNORECASE)
 _SITEKEY_RE = re.compile(r'^0x[A-Za-z0-9_-]{20,80}$')
 
@@ -52,9 +54,20 @@ def browse_script(sitekey):
         raise ValueError('人机验证选项无效')
     return (
         '<style id="ab-human-browse-style">#ab-human-browse{display:flex;justify-content:center;'
-        'width:100%;clear:both;margin:28px 0 20px;padding:0 12px}</style>'
+        'width:100%;clear:both;margin:28px 0 20px;padding:0 12px}'
+        'script#ab-human-browse,style#ab-human-browse-style{display:none!important}</style>'
         '<div id="ab-human-browse"></div>'
-        '<script id="ab-human-browse">(function(){'
+        '<script id="ab-human-browse" src="ab-human-browse.js"></script>'
+    )
+
+
+def browse_javascript(sitekey):
+    """The check itself lives beside the page, so its source is not drawn as text."""
+    if not isinstance(sitekey, str) or not _SITEKEY_RE.fullmatch(sitekey):
+        raise ValueError('人机验证选项无效')
+    return (
+        '/* ab-human-browse */\n'
+        '(function(){'
         f'var KEY="{sitekey}";'
         'var box=document.getElementById("ab-human-browse");'
         'if(!box){box=document.createElement("div");box.id="ab-human-browse";'
@@ -66,7 +79,7 @@ def browse_script(sitekey):
         'var node=document.createElement("script");'
         'node.src="https://challenges.cloudflare.com/turnstile/v0/api.js";'
         'node.async=true;node.onload=show;document.head.appendChild(node);'
-        '})();</script>'
+        '})();\n'
     )
 
 
@@ -77,6 +90,7 @@ def stamp_published(store, button=False, browse=False, sitekey=''):
     if browse and (not isinstance(sitekey, str) or not _SITEKEY_RE.fullmatch(sitekey)):
         raise ValueError('人机验证选项无效')
     piece = browse_script(sitekey) if browse else ''
+    script = browse_javascript(sitekey) if browse else ''
     changed = False
     pages = store.pages.resolve()
     seen = set()
@@ -92,27 +106,28 @@ def stamp_published(store, button=False, browse=False, sitekey=''):
                 continue
             if path.stat().st_size > 3_000_000:
                 continue
-            if _stamp_file(path, button, piece):
+            if _stamp_file(path, button, piece, script):
                 changed = True
     return changed
 
 
-def _stamp_file(path, button, browse_html):
+def _stamp_file(path, button, browse_html, browse_js):
     data = path.read_bytes()
     bom = data.startswith(b'\xef\xbb\xbf')
     raw = data[3:] if bom else data
     try:
         text = raw.decode('utf-8')
     except UnicodeError:
-        return False
+        return _sync_script(path, browse_js)
     stripped = _BROWSE_RE.sub('', _SCRIPT_RE.sub('', text))
     updated = stripped
     if browse_html:
         updated = _insert(updated, browse_html)
     if button:
         updated = _insert(updated, SCRIPT)
+    changed = _sync_script(path, browse_js)
     if updated == text:
-        return False
+        return changed
     payload = updated.encode('utf-8')
     if bom:
         payload = b'\xef\xbb\xbf' + payload
@@ -120,6 +135,28 @@ def _stamp_file(path, button, browse_html):
     temporary.write_bytes(payload)
     temporary.replace(path)
     return True
+
+
+def _sync_script(path, browse_js):
+    script = path.with_name(_JS_NAME)
+    if script.parent != path.parent:
+        return False
+    if browse_js:
+        payload = browse_js.encode('utf-8')
+        if script.is_file():
+            current = script.read_bytes()
+            if current == payload:
+                return False
+            if not current.startswith(_JS_MARK):
+                return False
+        temporary = script.with_name(script.name + '.human.tmp')
+        temporary.write_bytes(payload)
+        temporary.replace(script)
+        return True
+    if script.is_file() and script.read_bytes().startswith(_JS_MARK):
+        script.unlink()
+        return True
+    return False
 
 
 def _insert(text, piece):

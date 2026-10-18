@@ -987,11 +987,15 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert '不用点按钮' in body['detail']
     assert not any(method == 'PUT' and 'cache' in path for method, path in api.calls)
     text = page.read_text(encoding='utf-8')
+    script = page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
     assert 'id="ab-human-browse"' in text
+    assert 'src="ab-human-browse.js"' in text
     assert 'position:fixed' not in text
     assert 'margin:28px 0 20px' in text
-    assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' in text
-    assert body['site']['cf_turnstile_sitekey'] in text
+    assert 'function show' not in text
+    assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' not in text
+    assert body['site']['cf_turnstile_sitekey'] in script
+    assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' in script
     assert 'ab-human-click' not in text
     assert 'preventDefault' not in text
     assert 'https://example.com/go' in text
@@ -1007,6 +1011,8 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert published.status_code == 200, published.text
     live = Registry(tmp_path).store(site_id).pages / uploaded.json()['version']['id'] / 'index.html'
     assert 'id="ab-human-browse"' in live.read_text(encoding='utf-8')
+    assert 'function show' not in live.read_text(encoding='utf-8')
+    assert live.with_name('ab-human-browse.js').is_file()
     assert '新的一版' in live.read_text(encoding='utf-8')
     closed = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': False})
     assert closed.status_code == 200, closed.text
@@ -1015,6 +1021,7 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert closed.json()['site']['cf_turnstile_sitekey'] == ''
     assert api.widgets == []
     assert 'ab-human-browse' not in live.read_text(encoding='utf-8')
+    assert not live.with_name('ab-human-browse.js').exists()
     assert api.security_level == 'medium'
 
 
