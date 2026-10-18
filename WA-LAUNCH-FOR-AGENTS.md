@@ -103,9 +103,14 @@ const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
 同一类没单独列名的，跟着走，不要另写分支：
 
 - iPad Safari：UA 伪装成 Mac。`MacIntel` 且 `maxTouchPoints > 1` 算第 12 条，不算第 20 条。
+- iPhone LINE、Facebook、TikTok、Firefox：UA 带 `Safari/` 且命中上面的内置浏览器正则，算第 19 条；没有 `Safari/` 的算第 16 条。
 - Android UC、QQ、Quark、Opera Mini：跟第 5 条，走 `wa.me`。
 - Android 华为浏览器如果 UA **没有** `; wv)`、也没有内置浏览器标记：跟第 1 条，走 `intent://`。不要因为它的名字叫华为就改成 WebView。
 - Android Chrome Custom Tabs：跟第 1 条。只有 UA 里真有 `; wv)` 或内置浏览器标记才走第 7 到第 11 条。
+
+`intent://` 的 `package` 只写 `com.whatsapp`。手机没装普通版、只装了 Business 版时，Chrome 会走 `S.browser_fallback_url` 里的 `wa.me`，由 `wa.me` 再交给已安装的 App。不要改成 `com.whatsapp.w4b`，不要两条 intent 连发。
+
+页面如果被放进带 `sandbox` 的 iframe，响应头必须有 `allow-scripts`、`allow-same-origin`、`allow-forms`、`allow-popups`、`allow-top-navigation-to-custom-protocols`。少了最后一项，`whatsapp://` 和 `intent://` 会被静默拦住。
 
 链接拼法：
 
@@ -191,6 +196,8 @@ document.querySelectorAll('[data-wa]').forEach(btn => {
 ```
 
 2 秒解锁定时器必须紧跟在 `redirecting = true` 后面。放在函数末尾时，中途抛错会把后面的点击全锁死。
+
+19 号页点击时，号码来自 `CONFIG.whatsappNumber`，进线语来自页面里的那一句（和按钮 `href` 上的 `text=` 是同一句）。移植到别的落地时，从被点的按钮现有 `href` 读号和进线语，不要新编一句。页面原来已有的 `gtag` 转化、`sendEvent`，只放在 `href` 已经写好之后，包在 `try/catch` 里。`eventEndpoint` 和 `leadEndpoint` 保持空字符串，不要新填网址，不要加 Facebook Pixel。地址为空时这些函数第一行就返回，加载页面不会上报。
 
 页面上如果已经有 `const CONFIG = { whatsappNumber }`，点击时用 `CONFIG.whatsappNumber` 覆盖链接里的号。另一个脚本看不见 `const CONFIG`。要让页外脚本换号，先加 `window.CONFIG = CONFIG`。换号脚本只能改号码数字和 `a[href]` 里 `wa.me/` 后面的数字，不能加点击监听，不能 `preventDefault`，不能改 `text=`，不能自己再跳一次。
 
@@ -281,7 +288,38 @@ window.addEventListener('pageshow', e => {
 
 复制用同步的 `document.execCommand('copy')`。部分 WebView 没有 `navigator.clipboard`，`await` 之后用户手势也没了。
 
-兜底按钮 `#wa-fallback-open` 是普通 `<a>`。它的 `href` 由 `prepareFallback` 写成上表的重试链接。不要再套一层 `openWhatsApp`。它自己的点击只把 `linkType` 记成 `retry`。
+```js
+function copyByCommand(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  ta.remove();
+  return ok;
+}
+
+document.getElementById('wa-fallback-close').addEventListener('click', () => {
+  waFallback.classList.remove('show');
+  waFallback.setAttribute('aria-hidden', 'true');
+});
+waFallback.addEventListener('click', e => {
+  if (e.target !== waFallback) return;
+  waFallback.classList.remove('show');
+  waFallback.setAttribute('aria-hidden', 'true');
+});
+waCopyNumber.addEventListener('click', () => copyByCommand('+' + fallbackPayload.phone));
+waCopyMsg.addEventListener('click', () => copyByCommand(fallbackPayload.message));
+waFallbackOpen.addEventListener('click', () => {
+  waAttempt = { t: Date.now(), placement: 'fallback', left: false, linkType: 'retry', webHop: false };
+});
+```
+
+兜底按钮 `#wa-fallback-open` 是普通 `<a>`。它的 `href` 由 `prepareFallback` 写成上表的重试链接。不要再套一层 `openWhatsApp`。它自己的点击只把 `linkType` 记成 `retry`。点「关闭」或点遮罩，只关掉面板，不再跳一次。
 
 ---
 
