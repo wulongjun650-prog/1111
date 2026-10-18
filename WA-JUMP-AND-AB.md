@@ -1,5 +1,7 @@
 # 现行落地页跳转与 AB 接入说明
 
+已经有一份落地页、只想让另一个 AI 把跳转换成这套拉起逻辑时，把 `WA-LAUNCH-FOR-AGENTS.md` 和那份 HTML 一起交给它。本文是同一套规则的说明。
+
 给其他 AI 做**另一种落地页**时用。文案、颜色、板块可以换。下面这一套拉起 WhatsApp 的做法，按现在线上页原样搬，不要自行改成“更统一”的跳法。
 
 事实来源是 10.16 号版这两份页，两页只有号码不同：
@@ -248,7 +250,7 @@ fallbackDelayInApp: 1200   // iOS WebView 或 Android WebView
 
 ```js
 function prepareFallback(urls, message) {
-  fallbackPayload = { phone: urls.phone, message };
+  fallbackPayload = { phone: urls.phone, message, universal: urls.universal };
   const hrefByEnv = {
     ios_browser: urls.universal,
     ios_webview: urls.scheme,
@@ -268,6 +270,11 @@ function showFallback() {
   document.body.style.overflow = 'hidden';
   trackEvent('wa_fallback_shown', { placement: waAttempt.placement });
   sendEvent('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+  // 安卓 WebView：隐藏 iframe 的 whatsapp:// 没把 App 拉到前台。页面仍在前台才自动再开一次 https://wa.me/。只跳一次。
+  if (WA_ENV === 'android_webview' && !waAttempt.webHop && fallbackPayload.universal) {
+    waAttempt.webHop = true;
+    try { window.location.href = fallbackPayload.universal; } catch (e) {}
+  }
 }
 
 function armFallback(delay) {
