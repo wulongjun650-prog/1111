@@ -1,0 +1,1 @@
+function t(e){const n=Array.isArray(e)?e[0]:e,r=Number(n);return Number.isFinite(r)&&r>1?Math.floor(r):1}function a(e,n){const r=e.replace(/\/+$/,"")||"/";return n<=1?r:`${r}?page=${n}`}export{a as b,t as p};

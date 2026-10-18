@@ -1,0 +1,1 @@
+import{o,c as n,a as t}from"./CrLsihd-.js";const r={width:"24",height:"24",fill:"none",xmlns:"http://www.w3.org/2000/svg"};function s(a,e){return o(),n("svg",r,[...e[0]||(e[0]=[t("path",{d:"m14 6-6 6 6 6",stroke:"#fff","stroke-linecap":"round","stroke-linejoin":"round"},null,-1)])])}const l={render:s};export{l as B};

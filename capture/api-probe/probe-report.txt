@@ -1,0 +1,63 @@
+======== https://api-node.openlover.ai ========
+/ -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /"}
+/admin -> HTTP 200 | {"code":200,"data":"Hello World!","message":"success"}
+/admin/docs -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /admin/docs"}
+/admin/swagger -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /admin/swagger"}
+/admin/swagger.json -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /admin/swagger.json"}
+/admin/openapi.json -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /admin/openapi.json"}
+/admin/api-docs -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /admin/api-docs"}
+/docs -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /docs"}
+/swagger -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /swagger"}
+/swagger.json -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /swagger.json"}
+/openapi.json -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /openapi.json"}
+/api-docs -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /api-docs"}
+/v3/api-docs -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /v3/api-docs"}
+/health -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /health"}
+/admin/health -> HTTP 200 | {"code":0,"data":null,"message":"Cannot GET /admin/health"}
+======== https://api.genspicy.ai ========
+/ -> HTTP 404 | 404 page not found
+/admin -> HTTP 404 | 404 page not found
+/admin/docs -> HTTP 404 | 404 page not found
+/admin/swagger -> HTTP 404 | 404 page not found
+/admin/swagger.json -> HTTP 404 | 404 page not found
+/admin/openapi.json -> HTTP 404 | 404 page not found
+/admin/api-docs -> HTTP 404 | 404 page not found
+/docs -> HTTP 404 | 404 page not found
+/swagger -> HTTP 404 | 404 page not found
+/swagger.json -> HTTP 404 | 404 page not found
+/openapi.json -> HTTP 404 | 404 page not found
+/api-docs -> HTTP 404 | 404 page not found
+/v3/api-docs -> HTTP 404 | 404 page not found
+/health -> HTTP 404 | 404 page not found
+/admin/health -> HTTP 404 | 404 page not found
+======== admin route probe ========
+/advertisers -> {"code":0,"data":null,"message":"Cannot GET /admin/advertisers"}
+/advertising -> {"code":0,"data":null,"message":"Cannot GET /admin/advertising"}
+/auth/genspicy/sso-ticket -> {"code":0,"data":null,"message":"Cannot GET /admin/auth/genspicy/sso-ticket"}
+/auth/login -> {"code":0,"data":null,"message":"Cannot GET /admin/auth/login"}
+/content -> {"code":0,"data":null,"message":"Cannot GET /admin/content"}
+/content/template-video-tags -> {"code":0,"data":null,"message":"Cannot GET /admin/content/template-video-tags"}
+/content/templates -> {"code":0,"data":null,"message":"Cannot GET /admin/content/templates"}
+/dashboard -> {"code":0,"data":null,"message":"Cannot GET /admin/dashboard"}
+/diamond-management -> {"code":0,"data":null,"message":"Cannot GET /admin/diamond-management"}
+/diamond-records -> {"code":0,"data":null,"message":"Cannot GET /admin/diamond-records"}
+/distribution-partners -> {"code":0,"data":null,"message":"Cannot GET /admin/distribution-partners"}
+/distributors -> {"code":0,"data":null,"message":"Cannot GET /admin/distributors"}
+/emails -> {"code":0,"data":null,"message":"Cannot GET /admin/emails"}
+/generate-cache -> {"code":0,"data":null,"message":"Cannot GET /admin/generate-cache"}
+/genspicy/account-monitoring -> {"code":0,"data":null,"message":"Cannot GET /admin/genspicy/account-monitoring"}
+/genspicy/annotations -> {"code":0,"data":null,"message":"Cannot GET /admin/genspicy/annotations"}
+/genspicy/chargebacks -> {"code":0,"data":null,"message":"Cannot GET /admin/genspicy/chargebacks"}
+/genspicy/cloudwatch -> {"code":0,"data":null,"message":"Cannot GET /admin/genspicy/cloudwatch"}
+/genspicy/health -> {"code":0,"data":null,"message":"Missing auth token in cookie \"access_token\" or Authorization header"}
+/genspicy/payment-management -> {"code":0,"data":null,"message":"Cannot GET /admin/genspicy/payment-management"}
+/genspicy/payment-orders -> {"code":0,"data":null,"message":"Cannot GET /admin/genspicy/payment-orders"}
+/login -> {"code":0,"data":null,"message":"Cannot GET /admin/login"}
+/members -> {"code":0,"data":null,"message":"Cannot GET /admin/members"}
+/meta-pixels -> {"code":0,"data":null,"message":"Cannot GET /admin/meta-pixels"}
+/page -> {"code":0,"data":null,"message":"Cannot GET /admin/page"}
+/published -> {"code":0,"data":null,"message":"Cannot GET /admin/published"}
+/rankings -> {"code":0,"data":null,"message":"Cannot GET /admin/rankings"}
+/review -> {"code":0,"data":null,"message":"Cannot GET /admin/review"}
+/settings -> {"code":0,"data":null,"message":"Cannot GET /admin/settings"}
+/templates -> {"code":0,"data":null,"message":"Cannot GET /admin/templates"}

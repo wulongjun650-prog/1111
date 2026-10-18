@@ -1,0 +1,1 @@
+import{aG as r}from"./CrLsihd-.js";function u(e){e&&(e.pause(),e.removeAttribute("src"),e.load())}function s(e){e&&(e.removeAttribute("src"),e.removeAttribute("srcset"))}function a(){return r().media}export{s as a,u as r,a as u};

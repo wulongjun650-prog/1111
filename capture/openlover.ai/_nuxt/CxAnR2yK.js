@@ -1,0 +1,1 @@
+import{b5 as t}from"./CIZSxn6F.js";function a(a){const r=a?.trim()??"",s=r.startsWith("/")?t(r):r;return s.startsWith("/ai-game")?"game":s.startsWith("/mychat")?"chat":s.startsWith("/generate")?"generate":s.startsWith("/ai-girlfriend")?"album":"default"}function r(t){return"default"!==a(t)}export{r as i,a as r};

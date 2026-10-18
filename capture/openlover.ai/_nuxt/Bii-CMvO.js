@@ -1,0 +1,1 @@
+import{d as a,ai as s,b as t,c as d,ab as o,q as c}from"./CIZSxn6F.js";const l={class:"actor-landing-layout"},n=c(a({__name:"actor-landing",setup:a=>(s({bodyAttrs:{class:"actor-landing-body"}}),(a,s)=>(t(),d("div",l,[o(a.$slots,"default",{},void 0,!0)])))}),[["__scopeId","data-v-028ad8c7"]]);export{n as default};

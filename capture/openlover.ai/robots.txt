@@ -1,0 +1,67 @@
+# Robots.txt for OpenLover
+# Generated automatically based on brand configuration
+
+User-agent: *
+Allow: /
+
+# Allow access to important pages
+Allow: /explore
+Allow: /about
+Allow: /privacy
+Allow: /terms
+Allow: /refund
+Allow: /complaints
+Allow: /content-removal
+Allow: /record-keeping
+
+# Allow ai-game pages (SEO optimized)
+Allow: /ai-game/*
+
+# Allow ai-girlfriend pages
+Allow: /ai-girlfriend/*
+
+# Allow user pages (but some may require authentication)
+Allow: /user/login
+
+# Allow access to static assets
+Allow: /assets/*
+Allow: /_nuxt/*
+Allow: /favicon.ico
+Allow: /*.svg
+Allow: /*.png
+Allow: /*.jpg
+Allow: /*.jpeg
+Allow: /*.webp
+
+# Allow access to sitemaps
+Allow: /sitemap.xml
+
+# Disallow admin or sensitive areas
+Disallow: /api/
+Disallow: /admin/
+
+# Disallow old chat pages and user-specific pages
+Disallow: /chat/
+Disallow: /chat3/
+Disallow: /chat4/
+
+# Disallow user-specific pages that require authentication
+Disallow: /user/social-callback
+Disallow: /user/profile
+Disallow: /user/settings
+Disallow: /user/coins
+Disallow: /myself
+Disallow: /mygirl
+Disallow: /member/
+Disallow: /collection/
+Disallow: /daily-tasks
+Disallow: /recharge-success
+
+# Disallow story pages (no longer used as entry point)
+Disallow: /story/*
+
+# Crawl delay (optional - be respectful to servers)
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: https://openlover.ai/sitemap.xml
