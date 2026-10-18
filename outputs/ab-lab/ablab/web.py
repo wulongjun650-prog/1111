@@ -64,6 +64,7 @@ class ChallengeSwitch(StrictModel):
     entry: bool = Field(strict=True)
     button: bool = Field(strict=True)
     browse: bool = Field(default=False, strict=True)
+    wait: bool = Field(default=False, strict=True)
 
 
 class AccountCreate(StrictModel):
@@ -531,6 +532,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 registry.store(site_id),
                 button=bool(mode & 2),
                 browse=bool(mode & 4),
+                wait=bool(mode & 8),
                 sitekey=site.get('cf_turnstile_sitekey') or '',
             )
         except Exception as error:
@@ -808,7 +810,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
                 try:
                     cloudflare.set_human_challenge(
                         site['cf_zone_id'], site['domain'], False, False, site.get('cf_challenge_level') or '',
-                        browse=False, had_browse=bool((site.get('cf_challenge') or 0) & 4),
+                        browse=False, had_browse=bool((site.get('cf_challenge') or 0) & 12),
                     )
                     if stamp_published(registry.store(site['id']), button=False, browse=False):
                         cloudflare.purge(site['cf_zone_id'], site['domain'])
@@ -838,18 +840,20 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             raise ValueError('这个域名没有接入 Cloudflare')
         if not cloudflare.token:
             raise ValueError('服务器未配置 Cloudflare')
-        mode = (1 if body.entry else 0) | (2 if body.button else 0) | (4 if body.browse else 0)
+        mode = (1 if body.entry else 0) | (2 if body.button else 0) | (4 if body.browse else 0) | (8 if body.wait else 0)
+        widget = body.browse or body.wait
         try:
             changed = cloudflare.set_human_challenge(
                 site['cf_zone_id'], site['domain'], body.entry, body.button, site.get('cf_challenge_level') or '',
-                browse=body.browse, had_browse=bool((site.get('cf_challenge') or 0) & 4),
+                browse=widget, had_browse=bool((site.get('cf_challenge') or 0) & 12),
             )
         except ProvisioningError as error:
             raise ValueError(str(error)[:400]) from None
         updated = registry.set_challenge(site['id'], mode, changed.get('previous') or '', changed.get('sitekey') or '')
         try:
             if stamp_published(
-                registry.store(site['id']), button=body.button, browse=body.browse, sitekey=changed.get('sitekey') or '',
+                registry.store(site['id']), button=body.button, browse=body.browse, wait=body.wait,
+                sitekey=changed.get('sitekey') or '',
             ):
                 cloudflare.purge(site['cf_zone_id'], site['domain'])
         except ProvisioningError as error:
@@ -861,12 +865,15 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             parts.append('访客一点按钮，会先看到 Cloudflare 的人机验证，通过后才继续打开')
         if body.browse:
             parts.append('落地页先显示内容，人机验证排在页面最下方，自己完成，不用点按钮，也不挡住内容')
+        if body.wait:
+            parts.append('验证还没通过时，点按钮不会打开，页面提示请稍等，正在验证是否是真人')
         detail = '已保存。' + '。'.join(parts) + '。' if parts else '已关闭。访客直接进入页面，点按钮也不会再验证。'
         mode_now = updated.get('cf_challenge') or 0
         return {
             'entry': bool(mode_now & 1),
             'button': bool(mode_now & 2),
             'browse': bool(mode_now & 4),
+            'wait': bool(mode_now & 8),
             'detail': detail,
             'site': updated,
         }

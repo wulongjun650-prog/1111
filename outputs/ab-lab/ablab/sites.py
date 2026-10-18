@@ -316,16 +316,16 @@ class Registry:
         return self.get(site_id)
 
     def set_challenge(self, site_id, mode, level='', sitekey=''):
-        if type(mode) is not int or mode not in range(8):
+        if type(mode) is not int or mode not in range(16):
             raise ValueError('人机验证选项无效')
         if level not in ('', 'off', 'essentially_off', 'low', 'medium', 'high'):
             raise ValueError('人机验证记录无效')
         if sitekey and not re.fullmatch(r'0x[A-Za-z0-9_-]{20,80}', sitekey):
             raise ValueError('人机验证选项无效')
-        if mode & 4 and not sitekey:
+        if mode & 12 and not sitekey:
             raise ValueError('人机验证选项无效')
         stored = level if mode & 1 else ''
-        stored_key = sitekey if mode & 4 else ''
+        stored_key = sitekey if mode & 12 else ''
         legacy = {
             0: '已关闭人机验证',
             1: '已打开进入落地人机验证',
@@ -342,6 +342,8 @@ class Registry:
                 names.append('点击按钮')
             if mode & 4:
                 names.append('浏览时加载')
+            if mode & 8:
+                names.append('等待人机点击')
             detail = '已打开' + '和'.join(names) + '人机验证'
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')

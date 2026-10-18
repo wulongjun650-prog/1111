@@ -996,6 +996,8 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' not in text
     assert body['site']['cf_turnstile_sitekey'] in script
     assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' in script
+    assert '请稍等' not in script
+    assert 'defer' in text
     assert 'ab-human-click' not in text
     assert 'preventDefault' not in text
     assert 'https://example.com/go' in text
@@ -1023,6 +1025,38 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert 'ab-human-browse' not in live.read_text(encoding='utf-8')
     assert not live.with_name('ab-human-browse.js').exists()
     assert api.security_level == 'medium'
+
+
+def test_wait_switch_blocks_the_click_until_the_check_finishes(tmp_path):
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    api.firewall_forbidden = True
+    api.security_level = 'medium'
+    http, site_id = _ready(tmp_path, api)
+    version_id = _publish_button_page(http, site_id)
+    page = Registry(tmp_path).store(site_id).pages / version_id / 'index.html'
+    opened = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': False, 'wait': True})
+    assert opened.status_code == 200, opened.text
+    body = opened.json()
+    assert body['wait'] is True and body['browse'] is False
+    assert body['site']['cf_challenge'] == 8
+    assert '请稍等，正在验证是否是真人' in body['detail']
+    text = page.read_text(encoding='utf-8')
+    script = page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
+    assert '请稍等，正在验证是否是真人' not in text
+    assert '请稍等，正在验证是否是真人' in script
+    assert 'abHumanPending' in script
+    assert 'src="ab-human-browse.js"' in text
+    assert api.widgets[0]['mode'] == 'non-interactive'
+    kept = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True, 'wait': True})
+    assert kept.status_code == 200, kept.text
+    assert kept.json()['site']['cf_challenge'] == 12
+    assert '请稍等，正在验证是否是真人' in page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
+    closed = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True, 'wait': False})
+    assert closed.status_code == 200, closed.text
+    assert closed.json()['wait'] is False and closed.json()['site']['cf_challenge'] == 4
+    assert '请稍等' not in page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
 
 
 def test_browse_switch_rewrites_a_click_widget_so_the_check_finishes_itself(tmp_path):

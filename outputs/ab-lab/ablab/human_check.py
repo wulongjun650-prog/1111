@@ -22,6 +22,7 @@ SCRIPT = (
     'else again.click();}return;}'
     'if(new RegExp("[?&]"+FLAG+"=1(?:&|$)").test(location.search||"")){write(GO,"1");location.replace(clean());return;}'
     'document.addEventListener("click",function(event){'
+    'if(window.abHumanPending)return;'
     'var node=event.target&&event.target.closest?event.target.closest("a,button"):null;'
     'if(!node)return;'
     'var href=node.href||node.getAttribute("href")||"";'
@@ -48,33 +49,65 @@ _BODY_RE = re.compile(r'</body\s*>', re.IGNORECASE)
 _SITEKEY_RE = re.compile(r'^0x[A-Za-z0-9_-]{20,80}$')
 
 
-def browse_script(sitekey):
-    """Widget at the end of the page. It stays in the document, so it does not cover the content."""
-    if not isinstance(sitekey, str) or not _SITEKEY_RE.fullmatch(sitekey):
+def browse_script(sitekey, wait=False):
+    """Widget at the end of the page. The script file is deferred, so it does not hold up the page."""
+    if not isinstance(sitekey, str) or not _SITEKEY_RE.fullmatch(sitekey) or type(wait) is not bool:
         raise ValueError('人机验证选项无效')
+    notice = (
+        '#ab-human-wait{position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:2147483000;'
+        'max-width:calc(100% - 32px);padding:10px 14px;border-radius:10px;background:#17233a;color:#fff;'
+        'font:14px/1.4 -apple-system,BlinkMacSystemFont,"PingFang TC","Microsoft JhengHei",sans-serif;'
+        'text-align:center;pointer-events:none}'
+    ) if wait else ''
     return (
         '<style id="ab-human-browse-style">#ab-human-browse{display:flex;justify-content:center;'
         'width:100%;clear:both;margin:28px 0 20px;padding:0 12px}'
-        'script#ab-human-browse,style#ab-human-browse-style{display:none!important}</style>'
+        'script#ab-human-browse,style#ab-human-browse-style{display:none!important}'
+        f'{notice}</style>'
         '<div id="ab-human-browse"></div>'
-        '<script id="ab-human-browse" src="ab-human-browse.js"></script>'
+        '<script id="ab-human-browse" src="ab-human-browse.js" defer></script>'
     )
 
 
-def browse_javascript(sitekey):
+def browse_javascript(sitekey, wait=False):
     """The check itself lives beside the page, so its source is not drawn as text."""
-    if not isinstance(sitekey, str) or not _SITEKEY_RE.fullmatch(sitekey):
+    if not isinstance(sitekey, str) or not _SITEKEY_RE.fullmatch(sitekey) or type(wait) is not bool:
         raise ValueError('人机验证选项无效')
+    gate = ''
+    callback = 'function(){}'
+    if wait:
+        gate = (
+            'var ready=false;window.abHumanPending=true;'
+            'document.addEventListener("click",function(event){'
+            'if(ready)return;'
+            'var node=event.target&&event.target.closest?event.target.closest("a,button"):null;'
+            'if(!node)return;'
+            'var href=node.href||node.getAttribute("href")||"";'
+            'if(node.tagName==="A"&&(!href||href.charAt(0)==="#"||href.indexOf("javascript:")===0))return;'
+            'event.preventDefault();event.stopPropagation();'
+            'if(event.stopImmediatePropagation)event.stopImmediatePropagation();'
+            'var note=document.getElementById("ab-human-wait");'
+            'if(!note){note=document.createElement("div");note.id="ab-human-wait";'
+            'note.textContent="请稍等，正在验证是否是真人";document.body.appendChild(note);}'
+            '},true);'
+        )
+        callback = (
+            'function(){ready=true;window.abHumanPending=false;'
+            'var note=document.getElementById("ab-human-wait");if(note)note.remove();}'
+        )
     return (
         '/* ab-human-browse */\n'
         '(function(){'
         f'var KEY="{sitekey}";'
+        f'{gate}'
         'var box=document.getElementById("ab-human-browse");'
         'if(!box){box=document.createElement("div");box.id="ab-human-browse";'
         '(document.body||document.documentElement).appendChild(box);}'
         'function show(){if(!window.turnstile||box.getAttribute("data-ready"))return;'
         'box.setAttribute("data-ready","1");'
-        'window.turnstile.render(box,{sitekey:KEY,theme:"light",size:"normal",appearance:"always",callback:function(){}});}'
+        'window.turnstile.render(box,{sitekey:KEY,theme:"light",size:"normal",appearance:"always",callback:'
+        f'{callback}'
+        '});}'
         'if(window.turnstile){show();return;}'
         'var node=document.createElement("script");'
         'node.src="https://challenges.cloudflare.com/turnstile/v0/api.js";'
@@ -83,14 +116,15 @@ def browse_javascript(sitekey):
     )
 
 
-def stamp_published(store, button=False, browse=False, sitekey=''):
+def stamp_published(store, button=False, browse=False, sitekey='', wait=False):
     """Add or remove the human-check snippets on the pages visitors are being shown."""
-    if type(button) is not bool or type(browse) is not bool:
+    if type(button) is not bool or type(browse) is not bool or type(wait) is not bool:
         raise ValueError('人机验证选项无效')
-    if browse and (not isinstance(sitekey, str) or not _SITEKEY_RE.fullmatch(sitekey)):
+    widget = browse or wait
+    if widget and (not isinstance(sitekey, str) or not _SITEKEY_RE.fullmatch(sitekey)):
         raise ValueError('人机验证选项无效')
-    piece = browse_script(sitekey) if browse else ''
-    script = browse_javascript(sitekey) if browse else ''
+    piece = browse_script(sitekey, wait) if widget else ''
+    script = browse_javascript(sitekey, wait) if widget else ''
     changed = False
     pages = store.pages.resolve()
     seen = set()

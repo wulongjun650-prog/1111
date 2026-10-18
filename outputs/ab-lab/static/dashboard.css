@@ -636,7 +636,7 @@ body[data-tab="accounts"] .theme-hero { display: none; }
 .domain-health.badge.green::before { background: #3da47f; }
 .domain-health.badge.red::before { background: #d95868; }
 .domain-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 5px; }
-.domain-challenge { display: inline-flex; flex-direction: column; gap: 4px; min-width: 148px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); color: var(--ink-soft); }
+.domain-challenge { display: inline-flex; flex-direction: column; gap: 4px; min-width: 176px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); color: var(--ink-soft); }
 .domain-challenge-title { font-size: 11px; font-weight: 750; }
 .domain-challenge-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 650; white-space: nowrap; }
 .domain-actions .domain-challenge .switch { width: 37px; height: 21px; min-height: 21px; padding: 3px; }
