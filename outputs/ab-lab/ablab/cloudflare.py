@@ -151,8 +151,8 @@ class Cloudflare:
         """Turn the human checks on or off for one domain.
 
         Entry checks the whole visit. Button checks only the address used after
-        a click. Browse leaves the landing page open and adds the checkbox in
-        the corner. Cache rules are not part of any of these changes.
+        a click. Browse leaves the landing page open and finishes the check at
+        the bottom of the page, with no tap. Cache rules are not part of any of these changes.
         """
         if type(entry) is not bool or type(button) is not bool or type(browse) is not bool or type(had_browse) is not bool:
             raise CloudflareError('人机验证选项无效')
@@ -386,8 +386,11 @@ class Cloudflare:
                         self._call(client, 'DELETE', f'/accounts/{account_id}/challenges/widgets/{widget["sitekey"]}')
                 return ''
             for widget in widgets:
-                if domain in widget['domains']:
+                if domain not in widget['domains']:
+                    continue
+                if widget.get('mode') == 'non-interactive':
                     return widget['sitekey']
+                return self._write_widget(client, account_id, widget['sitekey'], widget['domains'])
             for widget in widgets:
                 if len(widget['domains']) >= WIDGET_ROOM:
                     continue
@@ -405,7 +408,7 @@ class Cloudflare:
         return [_widget_view(item) for item in result]
 
     def _write_widget(self, client, account_id, sitekey, domains):
-        payload = {'name': BROWSE_WIDGET, 'domains': domains, 'mode': 'managed', 'clearance_level': 'managed'}
+        payload = {'name': BROWSE_WIDGET, 'domains': domains, 'mode': 'non-interactive', 'clearance_level': 'jschallenge'}
         if sitekey:
             result = self._call(client, 'PUT', f'/accounts/{account_id}/challenges/widgets/{sitekey}', payload=payload)
         else:
@@ -599,7 +602,8 @@ def _widget_view(result):
             clean.append(normalize_domain(item))
         except ValueError:
             raise CloudflareError('Cloudflare 人机验证组件无法读取') from None
-    return {'sitekey': sitekey, 'name': name, 'domains': clean}
+    mode = result.get('mode') if isinstance(result.get('mode'), str) else ''
+    return {'sitekey': sitekey, 'name': name, 'domains': clean, 'mode': mode}
 
 
 def _zone_id(value):

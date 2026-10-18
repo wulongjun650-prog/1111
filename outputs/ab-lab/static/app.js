@@ -1724,18 +1724,25 @@ function renderDomains() {
       const entryOn = Boolean(mode & 1);
       const buttonOn = Boolean(mode & 2);
       const browseOn = Boolean(mode & 4);
+      const waitOn = Boolean(mode & 8);
+      const challengeBody = (entry, button, browse, wait) => ({entry, button, browse, wait});
       challenge.append(humanSwitch(site, '进入落地', entryOn, async () => {
-        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:{entry:!entryOn, button:buttonOn, browse:browseOn}, timeout:60000});
+        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:challengeBody(!entryOn, buttonOn, browseOn, waitOn), timeout:60000});
         await loadDomains();
         toast(result.detail);
       }));
       challenge.append(humanSwitch(site, '点击按钮', buttonOn, async () => {
-        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:{entry:entryOn, button:!buttonOn, browse:browseOn}, timeout:60000});
+        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:challengeBody(entryOn, !buttonOn, browseOn, waitOn), timeout:60000});
         await loadDomains();
         toast(result.detail);
       }));
       challenge.append(humanSwitch(site, '浏览时加载', browseOn, async () => {
-        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:{entry:entryOn, button:buttonOn, browse:!browseOn}, timeout:60000});
+        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:challengeBody(entryOn, buttonOn, !browseOn, waitOn), timeout:60000});
+        await loadDomains();
+        toast(result.detail);
+      }));
+      challenge.append(humanSwitch(site, '等待人机点击', waitOn, async () => {
+        const result = await api(`/api/sites/${site.id}/cloudflare/challenge`, {method:'POST', body:challengeBody(entryOn, buttonOn, browseOn, !waitOn), timeout:60000});
         await loadDomains();
         toast(result.detail);
       }));

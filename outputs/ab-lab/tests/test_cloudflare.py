@@ -209,7 +209,7 @@ class Api:
             return envelope(self.widgets)
         body = json.loads(request.content or b'{}')
         if tail == 'challenges/widgets' and request.method == 'POST':
-            assert body['mode'] == 'managed' and body['clearance_level'] == 'managed'
+            assert body['mode'] == 'non-interactive' and body['clearance_level'] == 'jschallenge'
             assert body['name'] == '双子星浏览时加载'
             assert 1 <= len(body['domains']) <= 10
             saved = {
@@ -217,15 +217,19 @@ class Api:
                 'secret': '0xSECRETSHOULDNOTLEAK',
                 'name': body['name'],
                 'domains': body['domains'],
-                'mode': 'managed',
+                'mode': body['mode'],
+                'clearance_level': body['clearance_level'],
             }
             self.widgets.append({key: value for key, value in saved.items() if key != 'secret'})
             return envelope(saved)
         if tail.startswith('challenges/widgets/') and request.method == 'PUT':
             sitekey = tail.removeprefix('challenges/widgets/')
             found = next(item for item in self.widgets if item['sitekey'] == sitekey)
+            assert body['mode'] == 'non-interactive' and body['clearance_level'] == 'jschallenge'
             found['domains'] = body['domains']
             found['name'] = body['name']
+            found['mode'] = body['mode']
+            found['clearance_level'] = body['clearance_level']
             return envelope(dict(found, secret='0xSECRETSHOULDNOTLEAK'))
         if tail.startswith('challenges/widgets/') and request.method == 'DELETE':
             sitekey = tail.removeprefix('challenges/widgets/')
@@ -973,17 +977,27 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert body['browse'] is True and body['entry'] is False and body['button'] is False
     assert body['site']['cf_challenge'] == 4
     assert body['site']['cf_turnstile_sitekey'].startswith('0x')
-    assert '右下角' in body['detail']
+    assert '最下方' in body['detail']
     assert 'SECRETSHOULDNOTLEAK' not in opened.text
     assert api.security_level == 'medium'
     assert api.page_rules == []
     assert api.widgets[0]['domains'] == ['shop.example.com']
-    assert api.widgets[0]['mode'] == 'managed'
+    assert api.widgets[0]['mode'] == 'non-interactive'
+    assert api.widgets[0]['clearance_level'] == 'jschallenge'
+    assert '不用点按钮' in body['detail']
     assert not any(method == 'PUT' and 'cache' in path for method, path in api.calls)
     text = page.read_text(encoding='utf-8')
+    script = page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
     assert 'id="ab-human-browse"' in text
-    assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' in text
-    assert body['site']['cf_turnstile_sitekey'] in text
+    assert 'src="ab-human-browse.js"' in text
+    assert 'position:fixed' not in text
+    assert 'margin:28px 0 20px' in text
+    assert 'function show' not in text
+    assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' not in text
+    assert body['site']['cf_turnstile_sitekey'] in script
+    assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' in script
+    assert '请稍等' not in script
+    assert 'defer' in text
     assert 'ab-human-click' not in text
     assert 'preventDefault' not in text
     assert 'https://example.com/go' in text
@@ -999,6 +1013,8 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert published.status_code == 200, published.text
     live = Registry(tmp_path).store(site_id).pages / uploaded.json()['version']['id'] / 'index.html'
     assert 'id="ab-human-browse"' in live.read_text(encoding='utf-8')
+    assert 'function show' not in live.read_text(encoding='utf-8')
+    assert live.with_name('ab-human-browse.js').is_file()
     assert '新的一版' in live.read_text(encoding='utf-8')
     closed = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': False})
     assert closed.status_code == 200, closed.text
@@ -1007,7 +1023,66 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert closed.json()['site']['cf_turnstile_sitekey'] == ''
     assert api.widgets == []
     assert 'ab-human-browse' not in live.read_text(encoding='utf-8')
+    assert not live.with_name('ab-human-browse.js').exists()
     assert api.security_level == 'medium'
+
+
+def test_wait_switch_blocks_the_click_until_the_check_finishes(tmp_path):
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    api.firewall_forbidden = True
+    api.security_level = 'medium'
+    http, site_id = _ready(tmp_path, api)
+    version_id = _publish_button_page(http, site_id)
+    page = Registry(tmp_path).store(site_id).pages / version_id / 'index.html'
+    opened = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': False, 'wait': True})
+    assert opened.status_code == 200, opened.text
+    body = opened.json()
+    assert body['wait'] is True and body['browse'] is False
+    assert body['site']['cf_challenge'] == 8
+    assert '请稍等，正在验证是否是真人' in body['detail']
+    text = page.read_text(encoding='utf-8')
+    script = page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
+    assert '请稍等，正在验证是否是真人' not in text
+    assert '请稍等，正在验证是否是真人' in script
+    assert 'abHumanPending' in script
+    assert 'src="ab-human-browse.js"' in text
+    assert api.widgets[0]['mode'] == 'non-interactive'
+    kept = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True, 'wait': True})
+    assert kept.status_code == 200, kept.text
+    assert kept.json()['site']['cf_challenge'] == 12
+    assert '请稍等，正在验证是否是真人' in page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
+    closed = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True, 'wait': False})
+    assert closed.status_code == 200, closed.text
+    assert closed.json()['wait'] is False and closed.json()['site']['cf_challenge'] == 4
+    assert '请稍等' not in page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
+
+
+def test_browse_switch_rewrites_a_click_widget_so_the_check_finishes_itself(tmp_path):
+    api = Api(zones={'shop.example.com': [zone('shop.example.com', status='active')]}, records={
+        ZONE: [{'id': RECORD, 'type': 'A', 'name': 'shop.example.com', 'content': ORIGIN, 'proxied': True}],
+    })
+    api.firewall_forbidden = True
+    api.security_level = 'medium'
+    sitekey = '0x4AAAAAAAB8lYQJSCAI6WbGexisting1'
+    api.widgets = [{
+        'sitekey': sitekey,
+        'name': '双子星浏览时加载',
+        'domains': ['shop.example.com'],
+        'mode': 'managed',
+        'clearance_level': 'managed',
+    }]
+    http, site_id = _ready(tmp_path, api)
+    opened = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True})
+    assert opened.status_code == 200, opened.text
+    assert api.widgets[0]['sitekey'] == sitekey
+    assert api.widgets[0]['mode'] == 'non-interactive'
+    assert api.widgets[0]['clearance_level'] == 'jschallenge'
+    assert [method for method, path in api.calls if method == 'PUT' and path.endswith('/challenges/widgets/' + sitekey)] == ['PUT']
+    again = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True})
+    assert again.status_code == 200, again.text
+    assert [method for method, path in api.calls if method == 'PUT' and path.endswith('/challenges/widgets/' + sitekey)] == ['PUT']
 
 
 def test_browse_switch_stays_off_when_the_widget_is_forbidden(tmp_path):
