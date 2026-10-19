@@ -72,15 +72,10 @@ gtag('config','AW-403088996');
 
 <script defer>
 const SETTINGS = {
-  TARGET_URLS: [
-    'https://api.whatsapp.com/send?phone=85297650431&type=phone_number&app_absent=0',
-    'https://api.whatsapp.com/send?phone=85295468639&type=phone_number&app_absent=0',
-    'https://api.whatsapp.com/send?phone=85257125763&type=phone_number&app_absent=0'
-  ],
+  TARGET_URL: 'https://api.whatsapp.com/send?phone=85297650431&type=phone_number&app_absent=0',
   MESSAGE_TEMPLATE: '想攞份心水股名單，亦想入群同大家一齊研究，麻煩send個入群Link畀我，唔該！',
   GA4_MEASUREMENT_ID: 'G-01MKY46S0M',
-  GOOGLE_ADS_CONVERSION_ID: 'AW-403088996/t0dXCO7a8JkdEOTMmsAB',
-  TRACKING_WAIT_MS: 180
+  GOOGLE_ADS_CONVERSION_ID: 'AW-403088996/t0dXCO7a8JkdEOTMmsAB'
 };
 const gaId=String(SETTINGS.GA4_MEASUREMENT_ID||'').trim();
 const adsSendTo=String(SETTINGS.GOOGLE_ADS_CONVERSION_ID||'').trim();
@@ -100,7 +95,6 @@ let attempt=null;
 function resetContact(){
   if(attempt){
     attempt.cancelled=true;
-    clearTimeout(attempt.wait);
     clearTimeout(attempt.release);
     attempt=null;
   }
@@ -110,33 +104,18 @@ function resetContact(){
   });
 }
 
-/* 三路随机分流：
-   - 每次点击按钮都会重新随机分到 1 / 2 / 3
-   - 不再使用 localStorage 固定同一浏览器
-   - 测试可用 ?route=1 / ?route=2 / ?route=3
-*/
 function getTargetUrl(){
-  const urls=(SETTINGS.TARGET_URLS||[]).map(v=>String(v||'').trim()).filter(Boolean);
-  if(urls.length<3) throw new Error('Need three URLs');
-
-  const params=new URLSearchParams(location.search);
-  const forced=Number(params.get('route'));
-
-  // 测试参数 ?route=1 / ?route=2 / ?route=3 仍然保留
-  const index=(forced>=1 && forced<=3)
-    ? forced-1
-    : Math.floor(Math.random()*urls.length);
-
-  return {url:urls[index],route:index+1};
+  const url=String(SETTINGS.TARGET_URL||'').trim();
+  if(!url)throw new Error('Missing WhatsApp URL');
+  return url;
 }
 
 function startContact(button,recordCta=true){
   if(attempt)return;
 
-  let picked,target;
+  let target;
   try{
-    picked=getTargetUrl();
-    target=new URL(picked.url);
+    target=new URL(getTargetUrl());
     if(!/^https?:$/.test(target.protocol))throw new Error('Invalid link');
   }catch(error){
     alert('連結暫時未能使用，請稍後再試。');
@@ -149,10 +128,8 @@ function startContact(button,recordCta=true){
 
   const current={
     url:target.href,
-    route:picked.route,
     cancelled:false,
     navigated:false,
-    wait:null,
     release:null
   };
   attempt=current;
@@ -162,66 +139,34 @@ function startContact(button,recordCta=true){
     el.setAttribute('aria-busy','true');
   });
 
-  const navigate=()=>{
-    if(attempt!==current||current.cancelled||current.navigated)return;
-    current.navigated=true;
-    clearTimeout(current.wait);
-    current.release=setTimeout(resetContact,2000);
-    try{
-      location.assign(current.url);
-    }catch(error){
-      resetContact();
-      alert('未能開啟連結，請稍後再試。');
-    }
-  };
+  const isWa=/^(api\.whatsapp\.com|web\.whatsapp\.com|wa\.me)$/.test(target.hostname);
+  const beacon={transport_type:'beacon'};
 
-  const jobs=[];
-  if(hasGa){
-    if(recordCta){
-      try{
-        gtag('event','cta_click',{
-          send_to:gaId,
-          whatsapp_route:current.route,
-          contact_flow:contactFlowMode
-        });
-      }catch(error){}
-    }
-    const isWa=/^(api\.whatsapp\.com|web\.whatsapp\.com|wa\.me)$/.test(target.hostname);
-    jobs.push([
-      ''+(isWa?'whatsapp_click':'outbound_click'),
-      {send_to:gaId,whatsapp_route:current.route,contact_flow:contactFlowMode}
-    ]);
-  }
-
-  if(hasAds){
-    jobs.push(['conversion',{send_to:adsSendTo}]);
-  }
-
-  if(!jobs.length){
-    navigate();
+  current.navigated=true;
+  current.release=setTimeout(resetContact,2000);
+  try{
+    location.assign(current.url);
+  }catch(error){
+    resetContact();
+    alert('未能開啟連結，請稍後再試。');
     return;
   }
 
-  let remaining=jobs.length;
-  current.wait=setTimeout(navigate,SETTINGS.TRACKING_WAIT_MS);
-
-  jobs.forEach(([name,params])=>{
-    let completed=false;
-    const done=()=>{
-      if(completed||attempt!==current||current.cancelled)return;
-      completed=true;
-      if(--remaining===0)navigate();
-    };
+  if(hasGa&&recordCta){
     try{
-      gtag('event',name,{
-        ...params,
-        event_timeout:SETTINGS.TRACKING_WAIT_MS,
-        event_callback:done
-      });
-    }catch(error){
-      done();
-    }
-  });
+      gtag('event','cta_click',{send_to:gaId,contact_flow:contactFlowMode,...beacon});
+    }catch(error){}
+  }
+  if(hasGa){
+    try{
+      gtag('event',isWa?'whatsapp_click':'outbound_click',{send_to:gaId,contact_flow:contactFlowMode,...beacon});
+    }catch(error){}
+  }
+  if(hasAds){
+    try{
+      gtag('event','conversion',{send_to:adsSendTo,...beacon});
+    }catch(error){}
+  }
 }
 
 let pendingGateButton=null;
