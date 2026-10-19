@@ -1745,7 +1745,10 @@ _CONTACT_FALLBACK = re.compile(
     re.IGNORECASE,
 )
 _CONTACT_CBA = re.compile(
-    r"code\s*===\s*(['\"])CBA\1\s*\)?\s*return\s*(['\"])CBA\2",
+    r"(?:"
+    r"code\s*===\s*(['\"])CBA\1\s*\)?\s*return\s*(['\"])CBA\2"
+    r"|return\s+code\s*===\s*(['\"])CBA\3\s*\?\s*(['\"])CBA\4\s*:\s*(['\"])ABC\5"
+    r")",
     re.IGNORECASE,
 )
 _CONTACT_GATE = re.compile(

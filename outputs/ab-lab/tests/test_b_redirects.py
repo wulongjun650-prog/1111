@@ -929,6 +929,46 @@ const SETTINGS = {
     assert client.get('/api/state').json()['direct_switch'] == 'contact'
 
 
+TERNARY_PAGE = r'''<!doctype html>
+<button type="button" data-contact>领取</button>
+<dialog id="contact-gate"></dialog>
+<script>
+function getContactFlowMode() {
+  const params = new URLSearchParams(location.search);
+  const code = String(params.get('code') || params.get('mode') || 'ABC').trim().toUpperCase();
+  return code === 'CBA' ? 'CBA' : 'ABC';
+}
+const contactFlowMode = getContactFlowMode();
+const useContactGate = contactFlowMode === 'ABC';
+function startContact(){ return useContactGate ? 'gate' : 'direct'; }
+</script>
+'''
+
+
+def test_secret_weapon_accepts_the_spaced_ternary_abc_switch(console):
+    client, app = console
+    base = _upload_html(client, TERNARY_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    base_text = (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+    assert text == base_text.replace("|| 'ABC'", "|| 'CBA'", 1)
+    assert "return code === 'CBA' ? 'CBA' : 'ABC'" in text
+    assert "contactFlowMode === 'ABC'" in text
+    _same_function(TERNARY_PAGE, text, 'startContact')
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    assert published_html(app) == base_text
+
+
 def test_secret_weapon_refuses_an_unrecognized_query_code_switch(console):
     client, app = console
     page = CONTACT_PAGE.replace("params.get('code')||params.get('mode')||'ABC'", 'window.flowCode')
