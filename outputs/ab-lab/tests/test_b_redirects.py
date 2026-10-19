@@ -888,6 +888,47 @@ def test_secret_weapon_toggles_the_query_code_abc_cba_page(console):
     assert app.state.store.slots()['B'] != base
 
 
+def test_contact_flow_page_replaces_only_the_whatsapp_numbers(console):
+    client, app = console
+    page = CONTACT_PAGE.replace(
+        '<p>保留这段 85290001111</p>',
+        '''<p>保留这段</p>
+<script>
+const SETTINGS = {
+  TARGET_URLS: [
+    'https://api.whatsapp.com/send?phone=85297650431&type=phone_number&app_absent=0',
+    'https://api.whatsapp.com/send?phone=85295468639&type=phone_number&app_absent=0',
+    'https://api.whatsapp.com/send?phone=85257125763&type=phone_number&app_absent=0'
+  ],
+  MESSAGE_TEMPLATE: '你好，我想領取3隻心水收息股，唔該。'
+};
+</script>''',
+    )
+    _upload_html(client, page)
+    scan = client.get('/api/b-redirects').json()
+    numbers = [item for item in scan['occurrences'] if item['kind'] == 'whatsapp_number']
+    assert [item['url'] for item in numbers] == ['85297650431', '85295468639', '85257125763']
+    added = client.post('/api/b-redirects/numbers', json={'phones': ['85211112222'], 'note': '一线'})
+    assert added.status_code == 200, added.text
+    response = client.post('/api/b-redirects/numbers/apply', json={
+        'version_id': scan['version']['id'],
+        'number_id': added.json()['numbers'][0]['id'],
+        'occurrence_ids': [item['id'] for item in numbers],
+        'expected_published': scan['published_version'],
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()['changed'] == 3
+    text = published_html(app)
+    assert text.count('85211112222') == 3
+    for old in ('85297650431', '85295468639', '85257125763'):
+        assert old not in text
+    assert text.count('type=phone_number&app_absent=0') == 3
+    assert "MESSAGE_TEMPLATE: '你好，我想領取3隻心水收息股，唔該。'" in text
+    assert "params.get('code')||params.get('mode')||'ABC'" in text
+    assert client.get('/api/state').json()['direct_mode'] == 'CBA'
+    assert client.get('/api/state').json()['direct_switch'] == 'contact'
+
+
 def test_secret_weapon_refuses_an_unrecognized_query_code_switch(console):
     client, app = console
     page = CONTACT_PAGE.replace("params.get('code')||params.get('mode')||'ABC'", 'window.flowCode')

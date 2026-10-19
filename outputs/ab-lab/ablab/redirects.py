@@ -1149,6 +1149,34 @@ class Scanner:
                 finish = _expression_end(tokens, beginning, text)
                 argument = tokens[beginning:finish]
                 collect(argument, 'js_location', scope_of(argument, scopes[index]))
+        self._note_loose_whatsapp_numbers(tokens, offset, mapping)
+
+    def _overlaps(self, start, end):
+        return any(start < span['_end'] and end > span['_start'] for span in self.spans)
+
+    def _note_loose_whatsapp_numbers(self, tokens, offset, mapping):
+        """A WhatsApp URL kept in a list is still a number. The click may build it later."""
+        for token in tokens:
+            if token.kind != 'string':
+                continue
+            url = _string(token.value)
+            found = _whatsapp_phone_at(url) if url else None
+            if not found:
+                continue
+            digits = found[2]
+            at = token.value.find(digits)
+            if at < 0:
+                continue
+            start, end = token.start + at, token.start + at + len(digits)
+            if mapping:
+                if end <= start or start >= len(mapping[0]) or end - 1 >= len(mapping[1]):
+                    continue
+                start, end = mapping[0][start], mapping[1][end - 1]
+            start += offset
+            end += offset
+            if self._overlaps(start, end):
+                continue
+            self.add(start, end, digits, 'whatsapp_number', mode='js_digits')
 
 
 class PageParser(HTMLParser):
@@ -1454,6 +1482,10 @@ def rewrite_text(data, positions, url):
             replacement = html.escape(item['_prefix'] + assigned + item['_suffix'], quote=True)
             if not item['_quote']:
                 replacement = '"' + replacement + '"'
+        elif item['_mode'] == 'js_digits':
+            if not re.fullmatch(r'\d{8,15}', assigned):
+                raise ValueError('号码预设只能更换 WhatsApp 号码')
+            replacement = assigned
         else:
             replacement = json.dumps(assigned, ensure_ascii=True).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
             if item['_mode'] == 'js_html':
