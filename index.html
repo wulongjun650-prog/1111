@@ -2,6 +2,25 @@
 <html lang="zh-HK">
 <head>
 <meta charset="utf-8">
+<!-- gtag.js 是 no-cors 腳本請求，preconnect 不能帶 crossorigin，否則建立的連線用不上 -->
+<link rel="preconnect" href="https://www.googletagmanager.com">
+<link rel="dns-prefetch" href="https://www.google-analytics.com">
+<link rel="dns-prefetch" href="https://www.googleadservices.com">
+<link rel="dns-prefetch" href="https://googleads.g.doubleclick.net">
+<!-- Google tag (gtag.js) — GA4（我們） -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-01MKY46S0M"></script>
+<script>
+window.dataLayer=window.dataLayer||[];
+function gtag(){dataLayer.push(arguments);}
+gtag('js',new Date());
+gtag('config','G-01MKY46S0M');
+</script>
+<!-- 沒有 config AW-，send_to: 'AW-...' 的轉化事件可能根本不會發出；獨立一段，分流替換 GA4 時不會連帶刪走 -->
+<script>
+window.dataLayer=window.dataLayer||[];
+window.gtag=window.gtag||function(){dataLayer.push(arguments);};
+gtag('config','AW-403088996');
+</script>
 <script>
 const SETTINGS = {
   TARGET_URLS: [
@@ -14,19 +33,10 @@ const SETTINGS = {
   GOOGLE_ADS_CONVERSION_ID: 'AW-403088996/t0dXCO7a8JkdEOTMmsAB',
   TRACKING_WAIT_MS: 180
 };
-window.dataLayer=window.dataLayer||[];
-function gtag(){dataLayer.push(arguments);}
 const gaId=String(SETTINGS.GA4_MEASUREMENT_ID||'').trim();
 const adsSendTo=String(SETTINGS.GOOGLE_ADS_CONVERSION_ID||'').trim();
 const hasGa=/^G-[A-Z0-9]+$/i.test(gaId);
 const hasAds=/^AW-\d+\/[^/\s]+$/.test(adsSendTo);
-if(hasGa||hasAds){
-  gtag('js',new Date());
-  if(hasGa)gtag('config',gaId);
-  if(hasAds)gtag('config',adsSendTo.split('/')[0]);
-  const sdk=document.createElement('script');sdk.async=true;
-  sdk.src='https://www.googletagmanager.com/gtag/js?id='+encodeURIComponent(hasGa?gaId:adsSendTo.split('/')[0]);document.head.appendChild(sdk);
-}
 let attempt=null;
 
 function resetContact(){
