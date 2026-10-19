@@ -161,9 +161,15 @@ function buildWhatsAppUrls(phone, message) {
   };
 }
 
+function onlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
 function readLink(anchor) {
   const href = (anchor && anchor.getAttribute('href')) || '';
-  const phoneMatch = href.match(/wa\.me\/(\d+)/) || href.match(/[?&]phone=(\d+)/);
+  let decoded = href;
+  try { decoded = decodeURIComponent(href); } catch (e) {}
+  const phoneMatch = decoded.match(/wa\.me\/(\d+)/) || decoded.match(/[?&]phone=(\d+)/);
   let message = '';
   try { message = new URL(href, location.href).searchParams.get('text') || ''; } catch (e) {}
   return { phone: phoneMatch ? phoneMatch[1] : '', message: message };
@@ -248,7 +254,8 @@ function openWhatsApp(e, locationName) {
   setTimeout(function () { redirecting = false; }, 2000);
 
   const from = readLink(anchor);
-  const phone = PHONE;
+  const configNumber = window.CONFIG && window.CONFIG.whatsappNumber;
+  const phone = onlyDigits(configNumber) || onlyDigits(from.phone) || onlyDigits(PHONE);
   const message = from.message || MESSAGE;
   const urls = buildWhatsAppUrls(phone, message);
 
