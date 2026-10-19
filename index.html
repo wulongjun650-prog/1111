@@ -86,6 +86,15 @@ const gaId=String(SETTINGS.GA4_MEASUREMENT_ID||'').trim();
 const adsSendTo=String(SETTINGS.GOOGLE_ADS_CONVERSION_ID||'').trim();
 const hasGa=/^G-[A-Z0-9]+$/i.test(gaId);
 const hasAds=/^AW-\d+\/[^/\s]+$/.test(adsSendTo);
+/* ABC / CBA 分流：?code=ABC 先出问卷；?code=CBA 跳过问卷直达 WhatsApp（亦支持 ?mode=） */
+function getContactFlowMode(){
+  const params=new URLSearchParams(location.search);
+  const code=String(params.get('code')||params.get('mode')||'ABC').trim().toUpperCase();
+  if(code==='CBA')return'CBA';
+  return'ABC';
+}
+const contactFlowMode=getContactFlowMode();
+const useContactGate=contactFlowMode==='ABC';
 let attempt=null;
 
 function resetContact(){
@@ -172,14 +181,15 @@ function startContact(button,recordCta=true){
       try{
         gtag('event','cta_click',{
           send_to:gaId,
-          whatsapp_route:current.route
+          whatsapp_route:current.route,
+          contact_flow:contactFlowMode
         });
       }catch(error){}
     }
     const isWa=/^(api\.whatsapp\.com|web\.whatsapp\.com|wa\.me)$/.test(target.hostname);
     jobs.push([
       ''+(isWa?'whatsapp_click':'outbound_click'),
-      {send_to:gaId,whatsapp_route:current.route}
+      {send_to:gaId,whatsapp_route:current.route,contact_flow:contactFlowMode}
     ]);
   }
 
@@ -217,6 +227,10 @@ function startContact(button,recordCta=true){
 let pendingGateButton=null;
 function handleContactButton(button){
   if(attempt)return;
+  if(!useContactGate){
+    startContact(button,true);
+    return;
+  }
   if(!document.getElementById('contact-gate')){pendingGateButton=button;return;}
   openGate(button);
 }
@@ -255,7 +269,7 @@ const gate=document.getElementById('contact-gate');
 let gateOpener=null;
 let savedBodyOverflow=null;
 function closeGate(restore=true){if(gate.open)gate.close();if(savedBodyOverflow!==null){document.body.style.overflow=savedBodyOverflow;savedBodyOverflow=null;}if(restore&&gateOpener?.isConnected)gateOpener.focus({preventScroll:true});}
-function openGate(button){if(gate.open||attempt)return;gateOpener=button;document.getElementById('gate-form').reset();resetContact();savedBodyOverflow=document.body.style.overflow;document.body.style.overflow='hidden';gate.showModal();document.getElementById('gate-title').focus({preventScroll:true});if(hasGa){try{gtag('event','cta_click',{send_to:gaId});}catch(error){}}}
+function openGate(button){if(!useContactGate||gate.open||attempt)return;gateOpener=button;document.getElementById('gate-form').reset();resetContact();savedBodyOverflow=document.body.style.overflow;document.body.style.overflow='hidden';gate.showModal();document.getElementById('gate-title').focus({preventScroll:true});if(hasGa){try{gtag('event','cta_click',{send_to:gaId,contact_flow:contactFlowMode});}catch(error){}}}
 document.getElementById('gate-close').addEventListener('click',()=>closeGate());
 gate.addEventListener('cancel',event=>{event.preventDefault();closeGate();});
 gate.addEventListener('close',()=>{if(savedBodyOverflow!==null){document.body.style.overflow=savedBodyOverflow;savedBodyOverflow=null;}const dock=document.querySelector('.mobile-cta-dock');if(dock)dock.hidden=false;});
