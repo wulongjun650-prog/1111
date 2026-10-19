@@ -111,7 +111,7 @@ a.cta{text-decoration:none;color:#172332}
   </div>
 </div>
 <script>
-const PHONES = ['85297650431', '85295468639', '85257125763'];
+const PHONE = '85297650431';
 const MESSAGE = '想攞份心水股名單，亦想入群同大家一齊研究，麻煩send個入群Link畀我，唔該！';
 const gaId = 'G-01MKY46S0M';
 const adsSendTo = 'AW-403088996/t0dXCO7a8JkdEOTMmsAB';
@@ -157,13 +157,6 @@ function readLink(anchor) {
   let message = '';
   try { message = new URL(href, location.href).searchParams.get('text') || ''; } catch (e) {}
   return { phone: phoneMatch ? phoneMatch[1] : '', message: message };
-}
-
-function pickPhone() {
-  const params = new URLSearchParams(location.search);
-  const forced = Number(params.get('route'));
-  const index = (forced >= 1 && forced <= PHONES.length) ? forced - 1 : Math.floor(Math.random() * PHONES.length);
-  return { phone: PHONES[index], route: index + 1 };
 }
 
 function openWhatsAppScheme(url) {
@@ -220,18 +213,16 @@ function markAppOpened() {
   waFallback.setAttribute('aria-hidden', 'true');
 }
 
-function reportAfterJump(route) {
+function reportAfterJump() {
   try {
     if (hasGa) {
       gtag('event', 'cta_click', {
         send_to: gaId,
-        whatsapp_route: route,
         contact_flow: contactFlowMode,
         transport_type: 'beacon'
       });
       gtag('event', 'whatsapp_click', {
         send_to: gaId,
-        whatsapp_route: route,
         contact_flow: contactFlowMode,
         transport_type: 'beacon'
       });
@@ -251,12 +242,8 @@ function openWhatsApp(e, locationName) {
   redirecting = true;
   setTimeout(function () { redirecting = false; }, 2000);
 
-  const picked = pickPhone();
-  if (anchor) anchor.href = 'https://wa.me/' + picked.phone + '?text=' + encodeURIComponent(MESSAGE);
-
   const from = readLink(anchor);
-  const configNumber = window.CONFIG && window.CONFIG.whatsappNumber;
-  const phone = String(configNumber || from.phone || picked.phone || '').replace(/\D/g, '');
+  const phone = PHONE;
   const message = from.message || MESSAGE;
   const urls = buildWhatsAppUrls(phone, message);
 
@@ -277,12 +264,12 @@ function openWhatsApp(e, locationName) {
     window.location.href = target;
   }
 
-  waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false, linkType: linkType, webHop: false, route: picked.route };
+  waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false, linkType: linkType, webHop: false };
   try {
     prepareFallback(urls, message);
     if (WA_ENV !== 'desktop') armFallback((IOS_WEBVIEW || ANDROID_WEBVIEW) ? FALLBACK_INAPP : FALLBACK_BROWSER);
   } catch (err) {}
-  reportAfterJump(picked.route);
+  reportAfterJump();
 }
 
 document.addEventListener('visibilitychange', function () {
