@@ -2,7 +2,7 @@
 
 这份说明只给人机验证的四个开关。旧宝塔上的其它功能不要动。不要用新仓库整份覆盖 `web.py`、`cloudflare.py`、`sites.py`、`app.js`。旧文件里已经有的函数，只按下面的锚点补差异。
 
-同目录的 `human_check.py` 是新文件，整份复制到旧程序的 `ablab/human_check.py`。它的 sha256 是 `e3b786426c38270e1ba907eca15501c9c707290b28bdf4cded1680bfd34feb67`。复制后核对这个值，对不上就停。
+同目录的 `human_check.py` 是新文件，整份复制到旧程序的 `ablab/human_check.py`。它的 sha256 是 `a10b8a9ffba30132c3f28b7ead3331fec83d2e65f2ccec30e04bc51f2f20de98`。复制后核对这个值，对不上就停。
 
 ## 四个开关
 
@@ -216,5 +216,7 @@ function humanSwitch(site, label, checked, action) {
 打开「浏览时加载」后，落地页先出内容，验证框在正文最下方，页面上看不到 JavaScript 源码。手机上不用再点勾选框。地址栏使用 `https://`。
 
 再打开「等待人机点击」后，验证完成前点按钮，页面上方出现「请稍等，正在验证是否是真人」，链接不跳走。验证完成后同一下可以点出去，提示消失。
+
+若 Turnstile 失败、过期或超时，底部组件会自动 `reset` 并重试，提示会变成「验证未通过，正在重新验证，请稍候」，访客不必整页刷新。部署后要对已开人机开关的域名重新保存一次开关，或触发一次 `stamp_published`，让 `ab-human-browse.js` 带上这段逻辑。
 
 只开「进入落地」或「点击按钮」时，行为与改之前一致，并且不要求 Turnstile 权限。
