@@ -132,6 +132,19 @@
     @media (prefers-reduced-motion:reduce){.join-ticker-track{animation:none}}
     .hero-cta-sub{display:flex;align-items:center;justify-content:center;width:fit-content;margin:8px auto 2px;padding:6px 14px;border-radius:999px;background:#fff6ea;border:1px solid rgba(242,139,36,.35);color:#c0630c;font-size:14px;line-height:1.3;font-weight:800}
     .hero-cta-sub[hidden]{display:none}
+    .quiz{margin:8px 0 10px;padding:12px 12px 10px;background:#fff;border:1px solid #e7e5df;border-radius:16px}
+    .quiz-top{display:flex;align-items:center;gap:8px}
+    .quiz-kicker{font-size:13px;font-weight:900;color:#b45309}
+    .quiz-progress{margin-left:auto;font-size:12px;font-weight:800;color:#5a6474}
+    .quiz-back{border:0;background:none;padding:0;color:#5a6474;font-size:13px;font-weight:800;cursor:pointer}
+    .quiz-back[hidden]{display:none}
+    .quiz-q{margin:8px 0 2px;font-size:18px;line-height:1.35;font-weight:950;color:#17243e}
+    .quiz-opt{display:block;width:100%;margin-top:8px;padding:11px 12px;border-radius:12px;border:1px solid #e7e5df;background:#f6f4ef;color:#17243e;font-size:16px;line-height:1.3;font-weight:850;text-align:left;cursor:pointer}
+    .quiz-opt small{display:block;margin-top:3px;font-size:12px;font-weight:700;color:#5a6474}
+    .quiz-opt.on{border-color:#d96e12;background:#fff6ea;color:#9a4d12}
+    .quiz-opt.on small{color:#a16207}
+    .quiz-note{margin:10px 0 2px;font-size:14px;line-height:1.5;font-weight:800;color:#9a4d12}
+    .quiz-note[hidden]{display:none}
     .hero-choice{margin-top:10px;text-align:center;color:#5a6474;font-size:13px;line-height:1.5}
     .hero-qualify-note{text-align:center;margin:8px 0 0;color:#8a5a1f;font-size:14px;line-height:1.5;font-weight:800}
 
@@ -176,6 +189,16 @@
             <div class="join-line"><i></i>林生 · 21分鐘前加入，一齊學</div>
             <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
           </div>
+        </div>
+        <div class="quiz" id="quiz">
+          <div class="quiz-top">
+            <button type="button" class="quiz-back" id="quiz-back" hidden>上一題</button>
+            <span class="quiz-kicker">答兩題，幫你對份名單</span>
+            <span class="quiz-progress" id="quiz-progress">1 / 2</span>
+          </div>
+          <p class="quiz-q" id="quiz-q"></p>
+          <div class="quiz-options" id="quiz-options"></div>
+          <p class="quiz-note" id="quiz-note" hidden>揀好了。撳下面橙色按鈕，WhatsApp 直接收名單同入群 Link。</p>
         </div>
         <a class="cta cta-top" href="https://wa.me/85294602874?text=%E6%83%B3%E6%94%9E%E4%BB%BD%E5%BF%83%E6%B0%B4%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E4%BA%A6%E6%83%B3%E5%85%A5%E7%BE%A4%E5%90%8C%E5%A4%A7%E5%AE%B6%E4%B8%80%E9%BD%8A%E7%A0%94%E7%A9%B6%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
         <div class="hero-cta-sub" id="hero-cta-sub">今日可以免費領取，名額有限</div>
@@ -722,9 +745,77 @@
       selectCard(dot.dataset.dot, {scroll:true, track:true});
     }));
 
+    // 問卷只負責選定名單。選項唔係連結，唔會打開 WhatsApp。
+    (function initQuiz() {
+      const root = document.getElementById('quiz');
+      if (!root) return;
+      const QUIZ = [
+        {
+          q: '你想拎邊份名單？',
+          options: [
+            { t: '潛力黑馬', d: '有大戶跟緊嘅', key: 'blackhorse' },
+            { t: '今日心水', d: '開市前睇埋原因', key: 'picks' },
+            { t: '高息收息', d: '派息穩陣，啱長線', key: 'income' }
+          ]
+        },
+        {
+          q: '你想點樣收？',
+          options: [
+            { t: 'WhatsApp 直接收名單', d: '打開後按發送就得' },
+            { t: '入群一齊研究', d: '順便要入群 Link' }
+          ]
+        }
+      ];
+      const qEl = document.getElementById('quiz-q');
+      const optEl = document.getElementById('quiz-options');
+      const prog = document.getElementById('quiz-progress');
+      const note = document.getElementById('quiz-note');
+      const back = document.getElementById('quiz-back');
+      let step = 0;
+      const picked = [];
+      function paint() {
+        const item = QUIZ[step];
+        prog.textContent = (step + 1) + ' / ' + QUIZ.length;
+        qEl.textContent = item.q;
+        optEl.replaceChildren();
+        item.options.forEach((op, i) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'quiz-opt' + (picked[step] === i ? ' on' : '');
+          b.append(op.t);
+          if (op.d) {
+            const s = document.createElement('small');
+            s.textContent = op.d;
+            b.append(s);
+          }
+          b.addEventListener('click', () => choose(i));
+          optEl.appendChild(b);
+        });
+        note.hidden = !(step === QUIZ.length - 1 && picked[step] != null);
+        back.hidden = step === 0;
+      }
+      function choose(i) {
+        userInteracted = true;
+        picked[step] = i;
+        const op = QUIZ[step].options[i];
+        if (op.key) selectCard(op.key, { scroll: true, track: true });
+        if (step < QUIZ.length - 1) { step += 1; paint(); return; }
+        paint();
+      }
+      back.addEventListener('click', () => {
+        if (step === 0) return;
+        step -= 1;
+        paint();
+      });
+      const preset = QUIZ[0].options.findIndex(op => op.key === currentKey);
+      if (preset >= 0) picked[0] = preset;
+      paint();
+    })();
+
     // One gentle automatic nudge to show there are multiple cards, then stop.
     // If the ad already opened on card 2 or 3, nudge to the next card; never loops continuously.
     setTimeout(() => {
+      if (document.getElementById('quiz')) return;
       if (hadExplicitFocus || userInteracted || autoHintDone || document.visibilityState !== 'visible') return;
       autoHintDone = true;
       const i = ORDER.indexOf(currentKey);
