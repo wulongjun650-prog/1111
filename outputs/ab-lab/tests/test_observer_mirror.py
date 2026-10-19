@@ -47,6 +47,31 @@ def test_mirror_keeps_the_questionnaire_and_does_not_copy_visits(tmp_path):
     assert mirror.slots()['B'] == versions
 
 
+def test_mirror_keeps_the_contact_flow_questionnaire(tmp_path):
+    registry = Registry(tmp_path)
+    source_site = registry.add('source.test')
+    mirror_site = registry.add('watch.test')
+    source = registry.store(source_site['id'])
+    mirror = registry.store(mirror_site['id'])
+    html = """<html><script>
+function getContactFlowMode(){
+  const params=new URLSearchParams(location.search);
+  const code=String(params.get('code')||params.get('mode')||'CBA').trim().toUpperCase();
+  if(code==='CBA')return'CBA';
+  return'ABC';
+}
+const contactFlowMode=getContactFlowMode();
+const useContactGate=contactFlowMode==='ABC';
+</script></html>""".encode()
+    publish(source, 'B', html)
+    assert sync_mirror_content(source, mirror) is True
+    copied = (mirror.pages / mirror.slots()['B'] / 'index.html').read_text()
+    assert "||'ABC'" in copied
+    assert "||'CBA'" not in copied
+    assert read_direct_mode(copied) == 'CBA'
+    assert read_direct_mode((source.pages / source.slots()['B'] / 'index.html').read_text()) == 'ABC'
+
+
 def test_binding_rejects_a_mirror_used_as_the_source(tmp_path):
     registry = Registry(tmp_path)
     source = registry.add('source.test')

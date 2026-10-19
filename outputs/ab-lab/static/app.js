@@ -317,7 +317,7 @@ function updateConfigControls() {
   $('#content-mode').value = state.config.content_mode;
   $('#distribution').value = state.config.distribution;
   $('#distribution').disabled = state.config.content_mode !== 'LINK';
-  paintSecretWeapon(state.direct_mode || null);
+  paintSecretWeapon(state.direct_mode || null, state.direct_switch || '');
   paintFollowStatus();
 }
 
@@ -349,14 +349,17 @@ function paintFollowStatus() {
   status.textContent = `${now}。点设置更寻后改成跟着 ${currentName}，两边已有的访问记录都保留。`;
 }
 
-function paintSecretWeapon(mode) {
+function paintSecretWeapon(mode, flow) {
   const button = $('#secret-weapon');
+  const contact = flow === 'contact';
   button.classList.remove('weapon-abc', 'weapon-abcabc', 'weapon-cba');
   if (mode === 'ABC') {
     button.textContent = 'ABC';
     button.classList.add('weapon-abc');
-    button.title = 'ABC：弹窗已取消，领取直接跳 WhatsApp。再点一次填上 ABCABC。';
-    button.setAttribute('aria-label', 'ABC，弹窗已取消');
+    button.title = contact
+      ? '问卷已跳过，领取直接跳 WhatsApp。再点一次把默认改回 ABC，先出问卷。'
+      : 'ABC：弹窗已取消，领取直接跳 WhatsApp。再点一次填上 ABCABC。';
+    button.setAttribute('aria-label', contact ? '问卷已跳过，直接跳 WhatsApp' : 'ABC，弹窗已取消');
   } else if (mode === 'ABCABC') {
     button.textContent = 'ABCABC';
     button.classList.add('weapon-abcabc');
@@ -365,8 +368,10 @@ function paintSecretWeapon(mode) {
   } else if (mode === 'CBA') {
     button.textContent = '*';
     button.classList.add('weapon-cba');
-    button.title = 'CBA：选择框已换回。再点一次取消弹窗。';
-    button.setAttribute('aria-label', 'CBA，选择框已换回');
+    button.title = contact
+      ? '当前默认是 ABC，先出问卷。再点一次改成 CBA，跳过问卷直接去 WhatsApp。'
+      : 'CBA：选择框已换回。再点一次取消弹窗。';
+    button.setAttribute('aria-label', contact ? 'ABC，先出问卷' : 'CBA，选择框已换回');
   } else {
     button.textContent = '秘密武器';
     button.title = '去掉领取前的弹窗';
@@ -1358,18 +1363,25 @@ on($('#secret-weapon'), 'click', event => busy(event.currentTarget, async () => 
     return;
   }
   const mode = state.direct_mode;
-  const ask = mode === 'ABC'
-    ? '填上 ABCABC？只把开关改成 ABCABC，其余代码不动，并清除 Cloudflare 缓存。'
-    : mode === 'ABCABC'
-      ? '换回选择框？只把开关填成 CBA，其余代码不动，并清除 Cloudflare 缓存。'
-      : mode === 'CBA'
-        ? '取消弹窗，直接跳 WhatsApp？只把开关填成 ABC，其余代码不动，并清除 Cloudflare 缓存。'
-        : '拿掉两步问卷？领取按钮会直接打开 WhatsApp，进线语改成随机两句。跳转方式不变，并清除 Cloudflare 缓存。';
+  const contact = state.direct_switch === 'contact';
+  const ask = contact
+    ? (mode === 'ABC'
+      ? '换回问卷？只把默认改成 ABC，其余代码不动，并清除 Cloudflare 缓存。'
+      : '跳过问卷，直接跳 WhatsApp？只把默认改成 CBA，其余代码不动，并清除 Cloudflare 缓存。')
+    : mode === 'ABC'
+      ? '填上 ABCABC？只把开关改成 ABCABC，其余代码不动，并清除 Cloudflare 缓存。'
+      : mode === 'ABCABC'
+        ? '换回选择框？只把开关填成 CBA，其余代码不动，并清除 Cloudflare 缓存。'
+        : mode === 'CBA'
+          ? '取消弹窗，直接跳 WhatsApp？只把开关填成 ABC，其余代码不动，并清除 Cloudflare 缓存。'
+          : '拿掉两步问卷？领取按钮会直接打开 WhatsApp，进线语改成随机两句。跳转方式不变，并清除 Cloudflare 缓存。';
   if (!await confirmAction(ask)) return;
   const result = await api('/api/b-redirects/direct-entry', { method: 'POST', body: { version_id: state.slots.B, expected_published: state.slots.B } });
   const cache = result.cloudflare?.ok ? ' Cloudflare 缓存已清除。' : result.cloudflare ? ' 页面已发布，但 Cloudflare 缓存没清掉。' : '';
-  const done = result.kind === 'abcabc' ? '已填上 ABCABC。' : result.kind === 'abc' ? '已填上 ABC，弹窗已去掉。' : result.kind === 'cba' ? '已填上 CBA，选择框已换回。' : '两步问卷已拿掉，进线语改为随机。';
-  paintSecretWeapon(result.kind === 'abcabc' ? 'ABCABC' : result.kind === 'abc' ? 'ABC' : result.kind === 'cba' ? 'CBA' : null);
+  const done = contact
+    ? (result.kind === 'abc' ? '已改成 CBA，问卷已跳过，领取直接跳 WhatsApp。' : '已改成 ABC，先出问卷。')
+    : result.kind === 'abcabc' ? '已填上 ABCABC。' : result.kind === 'abc' ? '已填上 ABC，弹窗已去掉。' : result.kind === 'cba' ? '已填上 CBA，选择框已换回。' : '两步问卷已拿掉，进线语改为随机。';
+  paintSecretWeapon(result.kind === 'abcabc' ? 'ABCABC' : result.kind === 'abc' ? 'ABC' : result.kind === 'cba' ? 'CBA' : null, contact ? 'contact' : '');
   toast(`${done}${cache}`, Boolean(result.cloudflare && !result.cloudflare.ok));
   await refreshState();
 }));

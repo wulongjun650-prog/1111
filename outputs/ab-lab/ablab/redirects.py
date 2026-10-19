@@ -1149,6 +1149,34 @@ class Scanner:
                 finish = _expression_end(tokens, beginning, text)
                 argument = tokens[beginning:finish]
                 collect(argument, 'js_location', scope_of(argument, scopes[index]))
+        self._note_loose_whatsapp_numbers(tokens, offset, mapping)
+
+    def _overlaps(self, start, end):
+        return any(start < span['_end'] and end > span['_start'] for span in self.spans)
+
+    def _note_loose_whatsapp_numbers(self, tokens, offset, mapping):
+        """A WhatsApp URL kept in a list is still a number. The click may build it later."""
+        for token in tokens:
+            if token.kind != 'string':
+                continue
+            url = _string(token.value)
+            found = _whatsapp_phone_at(url) if url else None
+            if not found:
+                continue
+            digits = found[2]
+            at = token.value.find(digits)
+            if at < 0:
+                continue
+            start, end = token.start + at, token.start + at + len(digits)
+            if mapping:
+                if end <= start or start >= len(mapping[0]) or end - 1 >= len(mapping[1]):
+                    continue
+                start, end = mapping[0][start], mapping[1][end - 1]
+            start += offset
+            end += offset
+            if self._overlaps(start, end):
+                continue
+            self.add(start, end, digits, 'whatsapp_number', mode='js_digits')
 
 
 class PageParser(HTMLParser):
@@ -1454,6 +1482,10 @@ def rewrite_text(data, positions, url):
             replacement = html.escape(item['_prefix'] + assigned + item['_suffix'], quote=True)
             if not item['_quote']:
                 replacement = '"' + replacement + '"'
+        elif item['_mode'] == 'js_digits':
+            if not re.fullmatch(r'\d{8,15}', assigned):
+                raise ValueError('号码预设只能更换 WhatsApp 号码')
+            replacement = assigned
         else:
             replacement = json.dumps(assigned, ensure_ascii=True).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
             if item['_mode'] == 'js_html':
@@ -1707,34 +1739,138 @@ def strip_lead_gate(text):
 _DIRECT_MODE = re.compile(r"(directMode\s*:\s*)(['\"])(.*?)\2")
 DIRECT_MODES = ('ABC', 'CBA', 'ABCABC')
 _NEXT_DIRECT_MODE = {'ABC': 'ABCABC', 'ABCABC': 'CBA', 'CBA': 'ABC'}
+# Query-code pages default to ABC (show the questionnaire). CBA skips it.
+_CONTACT_FALLBACK = re.compile(
+    r"params\.get\(\s*(['\"])code\1\s*\)\s*\|\|\s*params\.get\(\s*(['\"])mode\2\s*\)\s*\|\|\s*(['\"])(ABC|CBA|ABCABC)\3",
+    re.IGNORECASE,
+)
+_CONTACT_CBA = re.compile(
+    r"(?:"
+    r"code\s*===\s*(['\"])CBA\1\s*\)?\s*return\s*(['\"])CBA\2"
+    r"|return\s+code\s*===\s*(['\"])CBA\3\s*\?\s*(['\"])CBA\4\s*:\s*(['\"])ABC\5"
+    r")",
+    re.IGNORECASE,
+)
+_CONTACT_GATE = re.compile(
+    r"useContactGate\s*=\s*contactFlowMode\s*===\s*(['\"])ABC\1",
+    re.IGNORECASE,
+)
+
+
+def flow_kind(text):
+    """'config' for directMode, 'contact' for the query-code ABC/CBA page."""
+    if not isinstance(text, str):
+        return None
+    if re.search(r'directMode\s*:', text):
+        return 'config'
+    if 'getContactFlowMode' in text:
+        return 'contact'
+    return None
+
+
+def _contact_shape(text):
+    return (
+        isinstance(text, str)
+        and 'getContactFlowMode' in text
+        and _CONTACT_CBA.search(text)
+        and _CONTACT_GATE.search(text)
+        and _CONTACT_FALLBACK.search(text)
+    )
+
+
+def _contact_tokens(text):
+    tokens = [match.group(4).upper() for match in _CONTACT_FALLBACK.finditer(text)]
+    if len(set(tokens)) != 1:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+    return tokens[0]
+
+
+def _replace_contact_token(text, token):
+    def repl(match):
+        if match.group(4).upper() == token:
+            return match.group(0)
+        start = match.start(4) - match.start()
+        end = match.end(4) - match.start()
+        return match.group(0)[:start] + token + match.group(0)[end:]
+
+    updated, count = _CONTACT_FALLBACK.subn(repl, text)
+    if count == 0:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+    folded = _CONTACT_FALLBACK.sub(
+        lambda match: match.group(0)[:match.start(4) - match.start()] + 'ABC' + match.group(0)[match.end(4) - match.start():],
+        text,
+    )
+    folded_updated = _CONTACT_FALLBACK.sub(
+        lambda match: match.group(0)[:match.start(4) - match.start()] + 'ABC' + match.group(0)[match.end(4) - match.start():],
+        updated,
+    )
+    if folded != folded_updated:
+        raise ValueError('跳转代码发生了变化，已取消')
+    return updated
+
+
+def _weapon_mode(token):
+    """ABC on the weapon means the questionnaire is already skipped."""
+    return 'ABC' if token == 'CBA' else 'CBA'
+
+
+def _file_token(mode):
+    if mode == 'ABC':
+        return 'CBA'
+    if mode == 'CBA':
+        return 'ABC'
+    raise ValueError('这页的开关只有 ABC 和 CBA，没有改动')
 
 
 def read_direct_mode(text):
-    """ABC skips the popup. ABCABC is the third switch. CBA, blank, and every other value bring the choices back."""
-    if not isinstance(text, str) or not re.search(r'directMode\s*:', text):
+    """ABC skips the popup. ABCABC is the third switch. CBA, blank, and every other value bring the choices back.
+
+    A query-code page is reversed: its own ABC shows the questionnaire and its CBA skips it.
+    The value returned here still uses ABC for "popup already skipped".
+    """
+    if not isinstance(text, str):
         return None
-    matches = list(_DIRECT_MODE.finditer(text))
-    if not matches:
+    if re.search(r'directMode\s*:', text):
+        matches = list(_DIRECT_MODE.finditer(text))
+        if not matches:
+            raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+        tokens = [match.group(3).strip().upper() for match in matches]
+        for mode in ('ABCABC', 'ABC', 'CBA'):
+            if mode in tokens:
+                return mode
+        return 'CBA'
+    if 'getContactFlowMode' not in text:
+        return None
+    if not _contact_shape(text):
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
-    tokens = [match.group(3).strip().upper() for match in matches]
-    for mode in ('ABCABC', 'ABC', 'CBA'):
-        if mode in tokens:
-            return mode
-    return 'CBA'
+    return _weapon_mode(_contact_tokens(text))
 
 
-def next_direct_mode(mode):
-    """ABC, then ABCABC, then CBA, then ABC again. A blank switch counts as CBA."""
+def next_direct_mode(mode, contact=False):
+    """ABC, then ABCABC, then CBA, then ABC again. A blank switch counts as CBA.
+
+    Query-code pages only have the questionnaire and the direct jump, so they toggle.
+    """
+    if contact:
+        if mode == 'ABC':
+            return 'CBA'
+        if mode == 'CBA':
+            return 'ABC'
+        raise ValueError('这页的开关只有 ABC 和 CBA，没有改动')
     if mode not in _NEXT_DIRECT_MODE:
         raise ValueError('开关只能是 ABC、CBA 或 ABCABC')
     return _NEXT_DIRECT_MODE[mode]
 
 
 def set_direct_mode(text, mode):
-    """Write ABC, CBA, or ABCABC into the page's own switch. Nothing else moves."""
+    """Write the weapon mode into the page's own switch. Nothing else moves."""
     if mode not in DIRECT_MODES:
         raise ValueError('开关只能是 ABC、CBA 或 ABCABC')
-    if not re.search(r'directMode\s*:', text):
+    if isinstance(text, str) and 'getContactFlowMode' in text and not re.search(r'directMode\s*:', text):
+        if not _contact_shape(text):
+            raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+        return _replace_contact_token(text, _file_token(mode))
+    if not isinstance(text, str) or not re.search(r'directMode\s*:', text):
         return None
     if not _DIRECT_MODE.search(text):
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
@@ -1760,7 +1896,11 @@ def set_direct_mode(text, mode):
 
 
 def blank_direct_mode(text):
-    """Clear the switch value so this copy stays on the questionnaire. Jump code stays."""
-    if not isinstance(text, str) or not _DIRECT_MODE.search(text):
+    """Clear the switch so this copy stays on the questionnaire. Jump code stays."""
+    if not isinstance(text, str):
         return text
-    return _DIRECT_MODE.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(2)}", text)
+    if _DIRECT_MODE.search(text):
+        text = _DIRECT_MODE.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(2)}", text)
+    if _contact_shape(text):
+        text = _replace_contact_token(text, 'ABC')
+    return text
