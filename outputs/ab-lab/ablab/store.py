@@ -692,7 +692,7 @@ class Store:
     def publish_direct_entry(self, base, expected_published, commit_guard=None):
         """Publish the current B page with the popup skipped."""
         from .archives import MAX_TOTAL, read_source, source_files, validate_file, write_bundle
-        from .redirects import next_direct_mode, read_direct_mode, set_direct_mode, strip_lead_gate
+        from .redirects import flow_kind, next_direct_mode, read_direct_mode, set_direct_mode, strip_lead_gate
         if base['slot'] != 'B':
             raise KeyError('B 版本不存在')
         files = source_files(self.pages / base['id'])
@@ -700,6 +700,8 @@ class Store:
         saw_direct = False
         index_mode = None
         fallback_mode = None
+        index_kind = None
+        fallback_kind = None
         for path, (file, _) in sorted(files.items()):
             data = read_source(file, path)
             bom, text = False, None
@@ -713,13 +715,17 @@ class Store:
                 mode = read_direct_mode(text) if text is not None else None
                 if mode:
                     saw_direct = True
+                    kind = flow_kind(text)
                     if Path(path).name.lower() in ('index.html', 'index.htm') and index_mode is None:
                         index_mode = mode
+                        index_kind = kind
                     elif fallback_mode is None:
                         fallback_mode = mode
+                        fallback_kind = kind
             decoded.append((path, data, bom, text))
         if saw_direct:
-            target = next_direct_mode(index_mode or fallback_mode)
+            chosen = index_kind if index_mode else fallback_kind
+            target = next_direct_mode(index_mode or fallback_mode, contact=chosen == 'contact')
             total, edited, digest = 0, [], hashlib.sha256()
             changed_any = False
             for path, data, bom, text in decoded:
@@ -794,6 +800,35 @@ class Store:
             elif fallback is None:
                 fallback = mode
         return index_mode or fallback
+
+    def published_direct_switch(self):
+        """'contact' when the live B page uses the query-code ABC/CBA switch."""
+        from .redirects import flow_kind
+        version_id = self.slots()['B']
+        if not version_id:
+            return ''
+        root = self.pages / version_id
+        if not root.is_dir():
+            return ''
+        index_kind = None
+        fallback = None
+        for path in sorted(root.rglob('*')):
+            if not path.is_file() or path.suffix.lower() not in ('.html', '.htm'):
+                continue
+            try:
+                data = path.read_bytes()
+                if data.startswith(b'\xef\xbb\xbf'):
+                    data = data[3:]
+                kind = flow_kind(data.decode('utf-8'))
+            except (OSError, UnicodeError, ValueError):
+                continue
+            if kind not in ('contact', 'config'):
+                continue
+            if path.name.lower() in ('index.html', 'index.htm') and index_kind is None:
+                index_kind = kind
+            elif fallback is None:
+                fallback = kind
+        return 'contact' if (index_kind or fallback) == 'contact' else ''
 
     def apply_whatsapp_number(self, base, number, occurrence_ids, expected_published, commit_guard=None, *, keep_jump=False, automatic=False):
         from .redirects import replace_bundle, rewrite_jump_bundle

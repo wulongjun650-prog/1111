@@ -774,6 +774,7 @@ def test_secret_weapon_fills_abc_and_leaves_the_rest_of_the_page(console):
     base_text = (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
     assert text == base_text.replace("directMode: '',", "directMode: 'ABC',", 1)
     assert client.get('/api/state').json()['direct_mode'] == 'ABC'
+    assert client.get('/api/state').json()['direct_switch'] == ''
     assert 'id="lead-gate"' in text
     assert 'openLeadGate(btn.dataset.location)' in text
     assert "填 'ABC'" in text
@@ -826,6 +827,70 @@ def test_secret_weapon_keeps_abcabc_distinct_from_abc(console):
 def test_secret_weapon_does_not_rewrite_an_unrecognized_abc_switch(console):
     client, app = console
     page = ABC_PAGE.replace("directMode: '',", 'directMode: true,')
+    base = _upload_html(client, page)
+    scan = client.get('/api/b-redirects').json()
+    refused = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert refused.status_code == 400, refused.text
+    assert '没有改动' in refused.json()['detail']
+    assert app.state.store.slots()['B'] == base
+    assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+
+
+CONTACT_PAGE = r'''<!doctype html>
+<button type="button" data-contact>WhatsApp 领取</button>
+<dialog id="contact-gate"><form id="gate-form"></form></dialog>
+<p>保留这段 85290001111</p>
+<script>
+/* ABC / CBA 分流：?code=ABC 先出问卷；?code=CBA 跳过问卷直达 WhatsApp（亦支持 ?mode=） */
+function getContactFlowMode(){
+  const params=new URLSearchParams(location.search);
+  const code=String(params.get('code')||params.get('mode')||'ABC').trim().toUpperCase();
+  if(code==='CBA')return'CBA';
+  return'ABC';
+}
+const contactFlowMode=getContactFlowMode();
+const useContactGate=contactFlowMode==='ABC';
+function startContact(button){
+  if(!useContactGate){ return 'direct'; }
+  return 'gate';
+}
+</script>
+'''
+
+
+def test_secret_weapon_toggles_the_query_code_abc_cba_page(console):
+    client, app = console
+    base = _upload_html(client, CONTACT_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    base_text = (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+    assert text == base_text.replace("||'ABC'", "||'CBA'", 1)
+    assert "return'ABC'" in text and "contactFlowMode==='ABC'" in text
+    assert '85290001111' in text
+    assert client.get('/api/state').json()['direct_mode'] == 'ABC'
+    assert client.get('/api/state').json()['direct_switch'] == 'contact'
+    _same_function(CONTACT_PAGE, text, 'startContact')
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    restored = published_html(app)
+    assert restored == base_text
+    assert client.get('/api/state').json()['direct_mode'] == 'CBA'
+    assert app.state.store.slots()['B'] != base
+
+
+def test_secret_weapon_refuses_an_unrecognized_query_code_switch(console):
+    client, app = console
+    page = CONTACT_PAGE.replace("params.get('code')||params.get('mode')||'ABC'", 'window.flowCode')
     base = _upload_html(client, page)
     scan = client.get('/api/b-redirects').json()
     refused = client.post('/api/b-redirects/direct-entry', json={
