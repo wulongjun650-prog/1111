@@ -141,7 +141,6 @@ function getContactFlowMode() {
   return code === 'CBA' ? 'CBA' : 'ABC';
 }
 const contactFlowMode = getContactFlowMode();
-const useContactGate = contactFlowMode === 'ABC';
 
 const UA = navigator.userAgent || '';
 const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
