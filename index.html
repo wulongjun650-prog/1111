@@ -141,6 +141,7 @@ function getContactFlowMode() {
   return code === 'CBA' ? 'CBA' : 'ABC';
 }
 const contactFlowMode = getContactFlowMode();
+const useContactGate = contactFlowMode === 'ABC';
 
 const UA = navigator.userAgent || '';
 const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -435,7 +436,7 @@ document.querySelectorAll('[data-wa]').forEach(function (btn) {
       }
       closeGate(false);
     }
-    if (btn.hasAttribute('data-contact')) {
+    if (btn.hasAttribute('data-contact') && useContactGate) {
       e.preventDefault();
       openGate(btn);
       return;
