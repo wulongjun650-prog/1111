@@ -111,7 +111,7 @@ a.cta{text-decoration:none;color:#172332}
 <label class="math-label" for="math-answer">1 + 1 =</label>
 <input id="math-answer" name="math-answer" class="math-input" type="text" maxlength="40" autocomplete="off" enterkeyhint="done" placeholder="請輸入" aria-label="請輸入1加1的答案，驗證是真人">
 </fieldset>
-<p class="math-error" id="math-error" hidden>請先輸入答案</p>
+<p class="math-error" id="math-error" hidden>答案唔啱，請再試一次</p>
 <div class="gate-footer"><a id="gate-confirm" class="cta is-locked" href="https://wa.me/85297650431?text=%E6%83%B3%E6%94%9E%E4%BB%BD%E5%BF%83%E6%B0%B4%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E4%BA%A6%E6%83%B3%E5%85%A5%E7%BE%A4%E5%90%8C%E5%A4%A7%E5%AE%B6%E4%B8%80%E9%BD%8A%E7%A0%94%E7%A9%B6%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" data-wa data-location="gate" role="button" aria-disabled="true"><span>前往 WhatsApp 領取</span><span class="arrow" aria-hidden="true">→</span></a><p>開啟 WhatsApp 後，請按「發送」。</p></div>
 </form>
 </dialog>
@@ -357,8 +357,19 @@ function closeGate(restore) {
 const mathAnswer = document.getElementById('math-answer');
 const mathError = document.getElementById('math-error');
 const gateConfirm = document.getElementById('gate-confirm');
+function normalizeMathAnswer(value) {
+  return String(value || '').trim().replace(/[０-９]/g, function (ch) {
+    return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+  });
+}
 function hasHumanAnswer() {
-  return !!(mathAnswer && mathAnswer.value.trim().length > 0);
+  return normalizeMathAnswer(mathAnswer && mathAnswer.value) === '2';
+}
+function showMathError() {
+  if (!mathError) return;
+  const raw = mathAnswer ? mathAnswer.value.trim() : '';
+  mathError.textContent = raw ? '答案唔啱，請再試一次' : '請先輸入答案';
+  mathError.hidden = false;
 }
 function syncHumanConfirm() {
   const ok = hasHumanAnswer();
@@ -416,7 +427,7 @@ document.querySelectorAll('[data-wa]').forEach(function (btn) {
     if (btn.id === 'gate-confirm') {
       if (!hasHumanAnswer()) {
         e.preventDefault();
-        if (mathError) mathError.hidden = false;
+        showMathError();
         if (mathAnswer) {
           try { mathAnswer.focus({ preventScroll: true }); } catch (err) { mathAnswer.focus(); }
         }
