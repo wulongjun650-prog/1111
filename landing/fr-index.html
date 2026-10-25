@@ -1,0 +1,1021 @@
+<!doctype html>
+<!-- 26 octobre · France -->
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f6f4ef">
+  <meta name="format-detection" content="telephone=no">
+
+  <!-- 預熱 wa.me：只建立 DNS 和連線，不會打開 WhatsApp。intent:// 同 whatsapp:// 唔經呢條連線。 -->
+  <link rel="dns-prefetch" href="https://wa.me">
+  <link rel="preconnect" href="https://wa.me">
+
+  <title>Liste actions France · 26 octobre · WhatsApp</title>
+  <meta name="description" content="Clôture du 23 octobre 2026 : le CAC 40 termine à 7 782,82 points, en baisse de 0,36 %. La liste du 26 octobre se récupère sur WhatsApp.">
+
+  <!-- GA / Ads：法國廣告戶準備好後再填 measurement id，避免打進港股帳戶。 -->
+
+  <style>
+    :root{
+      --paper:#f6f4ef;--white:#fff;--ink:#17233a;--navy:#243968;--navy2:#315489;
+      --orange:#f28b24;--orange2:#d96e12;--yellow:#ffd94a;--blue:#edf6fb;
+      --muted:#4a5568;--border:#e7e5df;--green:#1f9d62;--red:#c94b3f;--shadow:0 8px 26px rgba(35,57,104,.08)
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html{scroll-behavior:smooth;background:#e9e8e4;touch-action:manipulation}
+    body{margin:0;color:var(--ink);background:#e9e8e4;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;touch-action:manipulation}
+    a{color:inherit;text-decoration:none;-webkit-user-select:none;user-select:none}
+    button{font:inherit;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+    #trust,footer{content-visibility:auto;contain-intrinsic-size:1px 500px}
+    .page{width:100%;max-width:520px;margin:0 auto;background:var(--paper);min-height:100vh;overflow:hidden;box-shadow:0 0 30px rgba(0,0,0,.04)}
+    .hero{position:relative;padding:16px 20px 16px;background:#f6f4ef;border-bottom:1px solid #e7e5df}
+    .hero:after{content:"";position:absolute;inset:0;background:transparent;pointer-events:none}.hero-inner{position:relative;z-index:1}
+    .joint-rec{display:block;width:100%;height:auto;margin:0 0 10px;border-radius:14px;background:#fff}
+    .eyebrow{display:inline-flex;align-items:center;gap:7px;max-width:100%;padding:7px 12px;border-radius:999px;background:#fff;border:1px solid rgba(36,57,104,.12);color:#243968;font-size:14px;font-weight:850;box-shadow:0 5px 16px rgba(36,57,104,.05)}
+    .eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--red);animation:live-dot 1.6s ease-in-out infinite}
+    @keyframes live-dot{0%,100%{opacity:1}50%{opacity:.35}}
+    h1{margin:12px 0 8px;font-size:38px;line-height:1.08;letter-spacing:-.035em;color:#15233d;font-weight:950} h1 .accent{color:var(--orange2)}
+    .hero-kickers{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 0}.hero-kickers span{font-size:12px;font-weight:800;color:#334a6b;background:rgba(255,255,255,.72);border:1px solid rgba(36,57,104,.09);padding:6px 9px;border-radius:999px}
+    .hero-sub{margin:11px 0 0;font-size:15px;line-height:1.68;color:#42516b;font-weight:650}.hero-proof{margin-top:10px;color:#5a6474;font-size:12px;line-height:1.55;text-align:center}
+    .cta{-webkit-touch-callout:none;width:100%;min-height:60px;border:0;border-radius:15px;display:flex;align-items:center;justify-content:center;gap:8px;padding:15px 18px;margin-top:16px;color:#fff;background:linear-gradient(135deg,#f59a2e,#e77c15);font-size:19px;line-height:1.3;font-weight:900;box-shadow:0 11px 22px rgba(229,124,21,.22);cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .cta:active{transform:scale(.98) translateY(1px);opacity:.94;transition:transform .06s ease,opacity .06s ease}
+    /* 領取按鈕動效：掃光 → 輕彈 → 箭頭前推，每 3 秒一輪。只動 transform（合成層），唔觸發重排、唔影響 CLS。
+       用偽元素實現，因為 selectCard() 會用 textContent 改寫按鈕文字 */
+    .cta[data-wa]{position:relative;overflow:hidden;isolation:isolate;animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite}
+    .cta[data-wa]::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:-40%;width:28%;background:linear-gradient(105deg,rgba(255,255,255,0),rgba(255,255,255,.45) 50%,rgba(255,255,255,0));transform:skewX(-18deg);animation:cta-shine 3s ease-in-out 1.2s infinite;pointer-events:none}
+    .cta[data-wa]::after{content:"";flex:none;width:8px;height:8px;margin-left:1px;border-top:2.5px solid currentColor;border-right:2.5px solid currentColor;transform:rotate(45deg);animation:cta-arrow 3s ease-in-out 1.2s infinite}
+    .cta[data-wa]:active{animation:none}
+    .cta.cta-idle,.cta.cta-idle::before,.cta.cta-idle::after,
+    .floating-cta-wrap:not(.show) .cta,.floating-cta-wrap:not(.show) .cta::before,.floating-cta-wrap:not(.show) .cta::after{animation-play-state:paused}
+    @keyframes cta-bounce{0%,58%,100%{transform:none}66%{transform:translateY(-14px) scale(1.07)}74%{transform:translateY(0) scale(.96)}82%{transform:translateY(-7px) scale(1.035)}90%{transform:none}}
+    @keyframes cta-shine{0%,38%{transform:translateX(0) skewX(-18deg)}60%,100%{transform:translateX(520%) skewX(-18deg)}}
+    @keyframes cta-arrow{0%,62%,100%{transform:translateX(0) rotate(45deg)}70%{transform:translateX(4px) rotate(45deg)}78%{transform:translateX(0) rotate(45deg)}}
+    @media (prefers-reduced-motion:reduce){.cta[data-wa],.cta[data-wa]::before,.cta[data-wa]::after{animation:none}}
+    .cta-note{text-align:center;margin:9px 0 0;color:#5a6474;font-size:13px;line-height:1.5}
+    section{padding:32px 20px}.section-white{background:#fff}.section-blue{background:#f6f4ef}
+    .section-label{display:inline-block;font-size:13px;font-weight:900;letter-spacing:.06em;color:var(--orange2);margin-bottom:8px;padding:4px 10px;border-radius:999px;background:#fff1dc}
+    h2{margin:0;font-size:26px;line-height:1.35;letter-spacing:-.015em;color:#17243e;font-weight:950}h2 .hl{color:var(--red)}h2 .hl-o{color:var(--orange2)}.section-intro{margin:10px 0 0;font-size:16px;line-height:1.75;color:var(--muted)}
+    .section-intro b{color:#17243e}
+    .method-card{margin-top:18px;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 5px 18px rgba(41,74,119,.04)}
+    .method-row{display:grid;grid-template-columns:48px 1fr;gap:12px;align-items:center;padding:16px 15px;border-bottom:1px solid #eeeae3}.method-row:last-child{border-bottom:0}
+    .method-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fff4d6;color:#b66b09;font-size:18px;font-weight:900}.method-row strong{display:block;font-size:17px;color:#1f2d47;margin-bottom:3px}.method-row p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}.method-result{margin-top:14px;padding:13px 14px;border-radius:12px;background:#fff7da;border:1px solid #f3df9a;color:#3a4558;font-size:15px;font-weight:800;text-align:center;line-height:1.5}
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}.stat{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 13px;min-height:104px}.stat-label{font-size:14px;color:#4a5568;font-weight:800}.stat-value{font-size:26px;line-height:1.1;font-weight:950;color:#192640;margin-top:8px;letter-spacing:-.02em}.stat-change{font-size:14px;font-weight:900;margin-top:6px}.up{color:var(--green)}.down{color:var(--red)}.neutral{color:var(--navy2)}
+    .stat.stat-hot{background:#fff8ec;border-color:#f1c877}
+    .market-points{margin-top:18px;border-top:1px solid #e3e0d9}.market-point{display:grid;grid-template-columns:36px 1fr;gap:11px;padding:16px 0;border-bottom:1px solid #e3e0d9}.num{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#fff4d6;color:#b66b09;font-size:14px;font-weight:900}.market-point strong{display:block;font-size:17px;line-height:1.45;color:#1f2d47;margin-bottom:5px}.market-point p{margin:0;color:var(--muted);font-size:15px;line-height:1.75}.market-point p b{color:#17243e}.source-line{margin-top:14px;font-size:12px;color:#6b7380;line-height:1.65}.source-line a{text-decoration:underline;text-underline-offset:2px}    .category-list{display:grid;gap:10px;margin-top:17px}.category-card{background:#fff;border:1px solid rgba(36,57,104,.11);border-radius:15px;padding:15px;box-shadow:0 5px 18px rgba(41,74,119,.04)}.category-top{display:flex;align-items:center;justify-content:space-between;gap:9px}.category-num{font-size:11px;font-weight:900;color:#fff;background:var(--navy);padding:5px 7px;border-radius:7px}.category-badge{font-size:10px;font-weight:900;color:#a86107;background:#fff2c6;padding:5px 7px;border-radius:7px}.category-card h3{margin:9px 0 5px;font-size:17px;color:#182640}.category-card p{margin:0;color:#657287;font-size:12px;line-height:1.6}.category-card.active{border-color:#f1c877;box-shadow:0 8px 22px rgba(229,124,21,.08)}
+    .list-note{margin-top:12px;padding:12px 13px;border-radius:13px;background:rgba(255,255,255,.65);border:1px dashed #bfd2e1}.list-note strong{display:block;font-size:12px;color:#283957;margin-bottom:7px}.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{font-size:10px;font-weight:800;color:#4b5c73;background:#fff;border:1px solid #dce6ee;padding:5px 7px;border-radius:999px}
+    .trust{display:flex;gap:14px;align-items:center;margin-top:18px;padding:16px;background:#fff;border:1px solid var(--border);border-radius:15px}.avatar{width:72px;height:72px;border-radius:15px;object-fit:cover;border:1px solid #e8e5de;background:#fff;flex:none}.trust h3{margin:0 0 4px;font-size:19px;color:#1a2741}.trust p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}.yt-link{display:inline-flex;align-items:center;gap:4px;margin-top:8px;color:var(--navy2);font-weight:850;font-size:14px;min-height:32px}
+    .trust-points{display:grid;gap:9px;margin-top:14px}.trust-point{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;background:rgba(255,255,255,.75);border:1px solid #dce6ee;border-radius:13px;font-size:15px;line-height:1.55;color:#2c3a52;font-weight:700}.trust-point i{flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center}
+    .final-card{margin-top:20px;padding:24px 18px 20px;border-radius:18px;background:#fff;border:1px solid #e7e5df;border-top:4px solid #f28b24;box-shadow:var(--shadow);text-align:center}.mini-label{display:inline-block;font-size:13px;font-weight:900;color:#fff;letter-spacing:.04em;background:#f28b24;padding:4px 10px;border-radius:999px}.final-card h2{font-size:26px;margin-top:10px}.final-card p{font-size:15px;line-height:1.7;color:var(--muted);margin:10px 0 0}.final-card p b{color:#17243e}.reception{margin-top:11px;font-size:13px;line-height:1.5;color:#5a6474;font-weight:700}
+    footer{padding:18px 18px calc(96px + env(safe-area-inset-bottom));text-align:center;color:#7d776d;background:#f6f4ef;font-size:12px;line-height:1.7;border-top:1px solid #ebe8e0}
+    footer .fine{margin:10px 0 0}footer .fine b{display:block;color:#17243e;font-size:12px;letter-spacing:.04em}
+    .floating-cta-wrap{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(520px,100%);z-index:30;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(246,244,239,0),rgba(246,244,239,.96) 28%,rgba(246,244,239,.99));opacity:0;pointer-events:none;transition:opacity .2s ease}.floating-cta-wrap.show{opacity:1;pointer-events:auto}.floating-cta{width:100%;min-height:58px;margin:0;border-radius:15px;box-shadow:0 10px 24px rgba(229,124,21,.24);font-size:18px}
+
+    .hero-heading{margin:14px 0 6px;font-size:33px;line-height:1.22;letter-spacing:-.02em;color:#15233d;font-weight:950}
+    .hero-heading .accent{color:var(--orange2)}.hero-heading .hl{color:var(--red)}
+    .hero-lead{margin:6px 0 8px;color:#3a4558;font-size:16px;line-height:1.65;font-weight:700}
+    .hero-lead b{color:#15233d;background:linear-gradient(transparent 60%,#ffe08a 60%)}
+    .tape{margin:2px 0 12px;padding:12px 14px;background:rgba(255,255,255,.94);border:1px solid rgba(36,57,104,.12);border-radius:14px}
+    .tape-main{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px}
+    .tape-main span{font-size:15px;font-weight:800;color:#4a5568}
+    .tape-main b{font-size:30px;line-height:1.1;font-weight:950;color:#15233d;letter-spacing:-.02em}
+    .tape-main em{font-style:normal;font-size:16px;font-weight:900}
+    .tape-side{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px;font-size:15px;font-weight:800;color:#3a4558}
+    .tape-side b{font-weight:950;color:#15233d}
+
+    .hero-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin:14px 0 0;border:1px solid #e7e5df;border-radius:14px;overflow:hidden;background:#fff}
+    .hstep{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:8px 6px;background:transparent;border:0;border-right:1px solid #e7e5df;border-radius:0;font-size:15px;font-weight:900;color:#17243e;white-space:nowrap}
+    .hstep:last-child{border-right:0}
+    .hstep-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--orange);color:#fff;font-size:14px;font-weight:950;display:flex;align-items:center;justify-content:center}
+    .hstep:last-child .hstep-n{background:var(--green)}
+    .slider-wrap{position:relative;margin:6px -20px 0;padding-left:20px;overflow:hidden}
+    .slider{position:relative;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:3px 48px 8px 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .slider::-webkit-scrollbar{display:none}
+    .hero-card{flex:0 0 calc(100% - 44px);scroll-snap-align:start;min-height:180px;border-radius:17px;padding:16px 15px 15px;background:#fff;border:1px solid #e7e5df;box-shadow:0 9px 26px rgba(36,57,104,.08);position:relative;overflow:hidden}
+    .hero-card:before{content:"";position:absolute;width:126px;height:126px;border-radius:50%;right:-54px;top:-54px;background:#edf6fb}
+    .hero-card:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,var(--orange),var(--yellow))}
+    .hero-card.active{border-color:rgba(242,139,36,.45);box-shadow:0 10px 28px rgba(229,124,21,.12)}
+    .card-tag{display:inline-flex;align-items:center;gap:6px;position:relative;z-index:1;padding:5px 10px;border-radius:999px;background:#f28b24;color:#fff;font-size:13px;font-weight:950;letter-spacing:.02em}
+    .card-tag i{display:block;width:7px;height:7px;border-radius:50%;background:#fff}
+    .hero-card h3{position:relative;z-index:1;margin:11px 0 7px;font-size:23px;line-height:1.25;letter-spacing:-.015em;color:#17243e;font-weight:950}
+    .hero-card p{position:relative;z-index:1;margin:0;color:#3f4b5e;font-size:15px;line-height:1.65;font-weight:650}
+    .hero-card p b{color:#c94b3f}
+    .card-meta{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+    .card-meta span{font-size:13px;font-weight:850;color:#33465f;background:#f4f7fa;border:1px solid #e3eaf0;padding:5px 9px;border-radius:999px}
+    .slider-dots{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:6px}
+    .slider-dot{min-height:44px;border:1px solid #e7e5df;border-radius:12px;padding:0 4px;background:#fff;color:#4a5568;font-size:15px;font-weight:900;transition:.15s;cursor:pointer}
+    .slider-dot.active{border-color:#f28b24;background:#f28b24;color:#fff;box-shadow:0 4px 12px rgba(229,124,21,.16)}
+    .cta.cta-top{margin-top:0;min-height:68px;border-radius:17px;font-size:21px;background:linear-gradient(135deg,#ffa33a,#e8700f);animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite,cta-glow 1.8s ease-out infinite}
+    @keyframes cta-glow{0%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 0 rgba(242,139,36,.55)}70%,100%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 11px rgba(242,139,36,0)}}
+    @media (prefers-reduced-motion:reduce){.cta.cta-top{animation:none}}
+    .join-ticker{height:44px;overflow:hidden;margin:4px 0 8px;background:#fff;border:1.5px solid rgba(31,157,98,.45);border-radius:999px;box-shadow:0 8px 18px rgba(31,157,98,.16)}
+    .join-ticker-track{animation:join-roll 16s linear infinite}
+    .join-line{height:44px;display:flex;align-items:center;justify-content:center;gap:8px;color:#14301f;font-size:16px;font-weight:950;white-space:nowrap}
+    .join-line i{flex:none;width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 5px rgba(31,157,98,.2)}
+    @keyframes join-roll{
+      0%,15%{transform:translateY(0)}
+      20%,35%{transform:translateY(-44px)}
+      40%,55%{transform:translateY(-88px)}
+      60%,75%{transform:translateY(-132px)}
+      80%,95%{transform:translateY(-176px)}
+      100%{transform:translateY(-220px)}
+    }
+    @media (prefers-reduced-motion:reduce){.join-ticker-track{animation:none}}
+    .hero-cta-sub{display:flex;align-items:center;justify-content:center;width:fit-content;margin:8px auto 2px;padding:6px 14px;border-radius:999px;background:#fff6ea;border:1px solid rgba(242,139,36,.35);color:#c0630c;font-size:14px;line-height:1.3;font-weight:800}
+    .hero-cta-sub[hidden]{display:none}
+    .hero-choice{margin-top:10px;text-align:center;color:#5a6474;font-size:13px;line-height:1.5}
+    .hero-qualify-note{text-align:center;margin:8px 0 0;color:#8a5a1f;font-size:14px;line-height:1.5;font-weight:800}
+
+    .lead-gate{position:fixed;inset:0;z-index:60;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .lead-gate.show{display:flex}
+    .lead-gate .gate-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .lead-gate .gate-kicker{font-size:14px;font-weight:900;color:var(--orange2);letter-spacing:.02em}
+    .gate-close-x{width:40px;height:40px;border:0;border-radius:50%;background:#efebe4;color:#5a6474;font-size:22px;line-height:1;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center}
+    .lead-gate .gate-options{display:grid;gap:10px;margin-top:16px}
+    .gate-option{position:relative;width:100%;min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 15px;border:2px solid #e4dfd6;border-radius:18px;background:#fff;color:#30415f;font-size:18px;font-weight:900;text-align:left;cursor:pointer;box-shadow:0 4px 14px rgba(36,57,104,.03);font-family:inherit}
+    a.gate-option{text-decoration:none;-webkit-touch-callout:none}
+    .gate-step{display:none}
+    .gate-step.active{display:block}
+    .gate-progress{display:flex;align-items:center;gap:6px;margin:0 0 8px}
+    .gate-progress-dot{width:26px;height:6px;border-radius:999px;background:#e3ddd3}
+    .gate-progress-dot.on{background:var(--orange)}
+    .gate-progress-text{margin-left:4px;font-size:13px;font-weight:800;color:#6b7380}
+    .lead-gate .gate-panel.on-step2>.gate-top,.lead-gate .gate-panel.on-step2>.gate-progress{display:none}
+    .gate-top2{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .gate-step-text{font-size:15px;font-weight:900;color:#7e8795}
+    .gate-bar{height:6px;border-radius:999px;background:#e8e3da;overflow:hidden;margin-bottom:14px}
+    .gate-bar i{display:block;width:100%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#f0a04a,#f6c979)}
+    .gate-intro{padding:13px 14px;border:1px solid #ebe5db;border-radius:18px;background:linear-gradient(180deg,#fffdfa,#f8f5ef)}
+    .gate-intro strong{display:block;font-size:16px;color:#202f49;margin-bottom:4px}
+    .gate-intro p{margin:0;color:#5a6474;font-size:14px;line-height:1.55}
+    .gate-selected-tip{margin-top:10px;padding:9px 12px;border-radius:13px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:14px;font-weight:800}
+    .gate-selected-tip b{color:#bc6d12}
+    .gate-option-arrow{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-size:20px;color:#aeb7c4;background:#f7f8fa;border:1px solid #edf0f4}
+    .gate-back{min-height:56px;padding:0 18px;border:1px solid #dfdad1;border-radius:15px;background:#f3f1ec;color:#556177;font-size:17px;font-weight:950;cursor:pointer;font-family:inherit}
+    .gate-step[data-step="2"] .gate-title{margin-top:12px;font-size:20px}
+    .gate-step[data-step="2"] .gate-option{min-height:0;padding:11px 12px;font-size:15px}
+    .gate-option-main{display:flex;align-items:center;gap:12px;min-width:0}
+    .gate-option-icon{width:42px;height:42px;border-radius:12px;background:linear-gradient(180deg,#fff6e7,#fff1d5);color:#b96809;display:flex;align-items:center;justify-content:center;flex:none;font-size:17px;font-weight:950;border:1px solid #f2dfb9}
+    .gate-option-title{display:block;color:#253550;line-height:1.3}
+    .gate-option small{display:block;margin-top:4px;color:#5a6474;font-size:13px;line-height:1.45;font-weight:700}
+    .gate-option-check{width:28px;height:28px;border-radius:50%;flex:none;border:2px solid #cfd5de;background:#fff;position:relative}
+    .gate-option.active{border-color:#ee9a3a;background:linear-gradient(180deg,#fffdfa,#fff4e3)}
+    .gate-option.active .gate-option-check{border-color:#e8881f;background:#e8881f}
+    .gate-option.active .gate-option-check:after{content:"";position:absolute;left:8px;top:4px;width:7px;height:12px;border-right:3px solid #fff;border-bottom:3px solid #fff;transform:rotate(45deg)}
+    .gate-actions{display:flex;gap:10px;margin-top:14px}
+    .gate-go-tip{flex:1;display:flex;flex-direction:column;justify-content:center;padding:6px 12px;border-radius:15px;background:#effaf3;border:1px solid #cfe9d9;color:#3f6b52;font-size:13px;line-height:1.45;font-weight:800;text-align:center}
+    .gate-go-tip b{color:#1f7a45;font-size:16px;font-weight:950}
+    .gate-trust{margin-top:10px;text-align:center;color:#6b7380;font-size:12px;line-height:1.55}
+
+    .gate-panel{width:100%;max-width:520px;background:linear-gradient(180deg,#fff 0%,#f6f4ef 100%);border-radius:28px 28px 0 0;box-shadow:0 -16px 42px rgba(13,23,39,.18);padding:14px 18px calc(18px + env(safe-area-inset-bottom));max-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border:1px solid rgba(255,255,255,.55)}
+    .gate-handle{width:54px;height:5px;border-radius:999px;background:#e7e5df;margin:0 auto 13px}
+    .gate-title{margin:6px 0 0;font-size:24px;line-height:1.35;color:#1b2943;font-weight:950;letter-spacing:-.015em}
+    .gate-desc{margin:8px 0 0;color:#4a5568;font-size:15px;line-height:1.6}
+    .wa-fallback{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .wa-fallback.show{display:flex}
+    .wa-fallback .gate-panel{text-align:center}
+    .wa-fallback .gate-title{margin-top:4px}
+    .wa-fallback .cta{margin-top:14px}
+    .wa-alt{display:flex;gap:9px;margin-top:10px}
+    .wa-alt button,.wa-alt a{flex:1;min-height:46px;display:flex;align-items:center;justify-content:center;border:1px solid #dfdad1;background:#fff;color:#33435f;border-radius:13px;font-size:13px;font-weight:900;cursor:pointer}
+    .wa-alt button:active,.wa-alt a:active{transform:scale(.97);background:#f3f1ec}
+    .wa-number{margin-top:10px;font-size:12px;color:#5d6a7d;font-weight:800}
+    .wa-browser-tip{display:none;margin-top:10px;padding:9px 11px;border-radius:12px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:11px;line-height:1.5;font-weight:800}
+    .wa-browser-tip.show{display:block}
+    .wa-close{margin-top:12px;border:0;background:none;color:#8e95a0;font-size:12px;font-weight:800;padding:8px;cursor:pointer}
+    @media(min-width:521px){.lead-gate,.wa-fallback{align-items:center;padding:18px}.gate-panel{border-radius:26px;padding-bottom:20px}}
+
+    @media(max-width:360px){h1{font-size:34px}.hero-heading{font-size:28px;margin-top:10px}.hero-lead{font-size:15px;margin-bottom:8px}.hero-steps{margin-top:10px;gap:0}.hstep{font-size:14px;gap:4px;padding:8px 4px}.hstep-n{width:22px;height:22px;font-size:13px}.hero-card{min-height:0;padding:13px 14px}.hero-card h3{font-size:21px;margin:8px 0 5px}.card-meta{display:none}.hero{padding:14px 16px 16px}section{padding-left:16px;padding-right:16px}.stat-value{font-size:23px}.gate-title{font-size:22px}.cta{font-size:18px}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero" id="top">
+      <div class="hero-inner">
+        <div class="hero-above">
+        <div class="tape" aria-label="Clôture du CAC 40">
+          <div class="tape-main"><span>CAC 40</span><b>7 782,82</b><em class="down">−0,36 %</em></div>
+          <div class="tape-side"><span>Clôture du 23 octobre</span><span>−28,44 pts</span></div>
+        </div>
+        <div class="eyebrow"><span class="dot"></span><span>26 octobre · liste mise à jour</span></div>
+        <h1 class="hero-heading">Votre action a encore baissé ?<br><span class="hl">La liste du 26 octobre est prête.</span><br><span class="accent">Recevez-la sur WhatsApp.</span></h1>
+        <p class="hero-lead">Vendredi 23 octobre, le CAC 40 a clôturé à 7 782,82 points, en baisse de 0,36 %.<br><b>Un appui, la liste part sur WhatsApp.</b></p>
+        </div>
+
+        <div class="join-ticker" aria-hidden="true">
+          <div class="join-ticker-track">
+            <div class="join-line"><i></i>Marc · il y a 5 min · a demandé la liste</div>
+            <div class="join-line"><i></i>Sophie · il y a 8 min · a rejoint le groupe</div>
+            <div class="join-line"><i></i>Luc · il y a 12 min · a demandé la liste</div>
+            <div class="join-line"><i></i>Anne · il y a 16 min · a rejoint le groupe</div>
+            <div class="join-line"><i></i>Paul · il y a 21 min · a demandé la liste</div>
+            <div class="join-line"><i></i>Marc · il y a 5 min · a demandé la liste</div>
+          </div>
+        </div>
+        <a class="cta cta-top" href="https://wa.me/33600000000?text=Bonjour%2C%20je%20veux%20la%20liste%20d%27actions%20du%2026%20octobre%20et%20le%20lien%20du%20groupe.%20Merci%20de%20me%20l%27envoyer." role="button" data-wa data-location="hero" id="hero-cta">Recevoir les valeurs à suivre</a>
+        <div class="hero-cta-sub" id="hero-cta-sub">Gratuit aujourd'hui · places limitées</div>
+
+        <div class="slider-wrap">
+          <div class="slider" id="hero-slider" aria-label="Listes du jour">
+            <article class="hero-card" data-slide="blackhorse" tabindex="0">
+              <span class="card-tag"><i></i>À suivre</span>
+              <h3>Valeurs à suivre</h3>
+              <p>Le marché se sépare. Quelles valeurs ont du volume ? <b>Une liste pour le voir.</b></p>
+              <div class="card-meta"><span>Gratuit</span><span>Chaque jour</span><span>Lisible</span></div>
+            </article>
+
+            <article class="hero-card" data-slide="picks" tabindex="0">
+              <span class="card-tag"><i></i>Du jour</span>
+              <h3>Idées du jour</h3>
+              <p>Quelques valeurs à regarder avant l'ouverture, <b>avec la raison pour chacune.</b></p>
+              <div class="card-meta"><span>Gratuit</span><span>Avant l'ouverture</span><span>Avec la raison</span></div>
+            </article>
+
+            <article class="hero-card" data-slide="income" tabindex="0">
+              <span class="card-tag"><i></i>Dividende</span>
+              <h3>Actions à dividende</h3>
+              <p>Vous voulez un revenu plus régulier ? <b>Une sélection de valeurs qui versent un dividende.</b></p>
+              <div class="card-meta"><span>Gratuit</span><span>Dividende</span><span>Plus long terme</span></div>
+            </article>
+          </div>
+        </div>
+
+        <div class="slider-dots" aria-label="Changer de liste">
+          <button class="slider-dot" type="button" data-dot="blackhorse">À suivre</button>
+          <button class="slider-dot" type="button" data-dot="picks">Du jour</button>
+          <button class="slider-dot" type="button" data-dot="income">Dividende</button>
+        </div>
+
+        <div class="hero-steps" aria-label="Étapes">
+          <div class="hstep"><span class="hstep-n">1</span><span>Choisir</span></div>
+          <div class="hstep"><span class="hstep-n">2</span><span>Recevoir</span></div>
+          <div class="hstep"><span class="hstep-n">3</span><span>WhatsApp</span></div>
+        </div>
+        <div class="hero-choice" id="hero-choice">Choix : À suivre · ouvrez WhatsApp, puis envoyez</div>
+        <div class="hero-qualify-note">Gratuit · aucun formulaire · vous envoyez le message déjà écrit</div>
+        <div class="hero-proof">Mis à jour avant l'ouverture · clôture du 23 octobre, sources publiques</div>
+      </div>
+    </section>
+
+    <section class="section-blue" id="trust">
+      <div class="final-card" id="final-cta">
+        <div class="mini-label">26 OCT · liste prête</div>
+        <h2 id="final-title">Le marché se sépare.<br>La liste du jour est prête.</h2>
+        <p id="final-copy">Choisissez une direction. Sur WhatsApp, <b>appuyez sur Envoyer</b> pour recevoir la liste.</p>
+        <a class="cta" href="https://wa.me/33600000000?text=Bonjour%2C%20je%20veux%20la%20liste%20d%27actions%20du%2026%20octobre%20et%20le%20lien%20du%20groupe.%20Merci%20de%20me%20l%27envoyer." role="button" data-wa data-location="final" id="final-button">Recevoir les valeurs à suivre</a>
+        <div class="reception" id="reception-text">Accueil : Camille</div>
+      </div>
+    </section>
+
+    <footer>
+      Liste actions France · informations de marché publiques
+      <p class="fine"><b>Avertissement</b>Ce contenu reprend des informations de marché publiques. Il ne constitue pas un conseil en investissement ni une offre. La liste et le groupe servent à l'échange. Aucun rendement n'est garanti. Les marchés varient. Investir comporte un risque de perte en capital.</p>
+      <p class="fine">Clôture du 23 octobre 2026 : CAC 40 à 7 782,82 points, −0,36 %. Sources : Yahoo Finance, Les Echos.</p>
+    </footer>
+  </main>
+
+  <div class="floating-cta-wrap" id="floating-cta-wrap" aria-hidden="true">
+    <a class="cta floating-cta" href="https://wa.me/33600000000?text=Bonjour%2C%20je%20veux%20la%20liste%20d%27actions%20du%2026%20octobre%20et%20le%20lien%20du%20groupe.%20Merci%20de%20me%20l%27envoyer." role="button" data-wa data-location="floating" id="floating-button">Recevoir les valeurs à suivre</a>
+  </div>
+
+  <div class="lead-gate" id="lead-gate" aria-hidden="true">
+    <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="gate-title-1">
+      <div class="gate-handle"></div>
+      <div class="gate-top">
+        <div class="gate-kicker" id="gate-kicker">26 OCT · liste prête</div>
+        <button class="gate-close-x" type="button" id="gate-cancel" aria-label="Fermer">×</button>
+      </div>
+      <div class="gate-progress"><span class="gate-progress-dot on"></span><span class="gate-progress-dot" id="gate-progress-2"></span><span class="gate-progress-text" id="gate-progress-text">Étape 1 sur 2</span></div>
+      <div class="gate-step active" data-step="1">
+        <h3 class="gate-title" id="gate-title-1">Quelle liste voulez-vous recevoir ?</h3>
+        <p class="gate-desc">Choisissez-en une pour passer à l'étape suivante.</p>
+        <div class="gate-options">
+          <button class="gate-option" type="button" data-question="interest" data-value="Liste des valeurs à suivre">
+            <span class="gate-option-main"><span class="gate-option-icon">01</span><span><span class="gate-option-title">Valeurs à suivre</span><small>Les valeurs qui ont du volume dans un marché séparé</small></span></span><span class="gate-option-check"></span>
+          </button>
+          <button class="gate-option" type="button" data-question="interest" data-value="Liste des idées du jour">
+            <span class="gate-option-main"><span class="gate-option-icon">02</span><span><span class="gate-option-title">Idées du jour</span><small>Quelques valeurs à regarder avant l'ouverture, avec la raison</small></span></span><span class="gate-option-check"></span>
+          </button>
+          <button class="gate-option" type="button" data-question="interest" data-value="Liste des actions à dividende">
+            <span class="gate-option-main"><span class="gate-option-icon">03</span><span><span class="gate-option-title">Actions à dividende</span><small>Des valeurs qui versent un dividende, pour un horizon plus long</small></span></span><span class="gate-option-check"></span>
+          </button>
+        </div>
+      </div>
+      <div class="gate-step" data-step="2">
+        <div class="gate-top2"><div class="gate-kicker">La liste du jour est prête</div><div class="gate-step-text">2 / 2</div></div>
+        <div class="gate-bar"><i></i></div>
+        <div class="gate-intro">
+          <strong>La liste part avec le point que vous choisissez</strong>
+          <p>Choisissez ce que vous voulez voir avec les noms.</p>
+          <div class="gate-selected-tip">Choix : <b id="gate-picked-name">Idées du jour</b></div>
+        </div>
+        <h3 class="gate-title">Que voulez-vous voir avec la liste ?</h3>
+        <p class="gate-desc">Un seul choix. WhatsApp s'ouvre ensuite.</p>
+        <div class="gate-options">
+          <a class="gate-option gate-go" href="https://wa.me/33600000000?text=Bonjour%2C%20je%20veux%20la%20liste%20d%27actions%20du%2026%20octobre%20et%20le%20lien%20du%20groupe.%20Merci%20de%20me%20l%27envoyer." role="button" data-question="priority" data-value="Le nom et la raison du jour">
+            <span class="gate-option-main"><span class="gate-option-icon">01</span><span><span class="gate-option-title">Le nom et la raison du jour</span><small>Savoir quelles valeurs, et pourquoi les regarder aujourd'hui</small></span></span><span class="gate-option-arrow">›</span>
+          </a>
+          <a class="gate-option gate-go" href="https://wa.me/33600000000?text=Bonjour%2C%20je%20veux%20la%20liste%20d%27actions%20du%2026%20octobre%20et%20le%20lien%20du%20groupe.%20Merci%20de%20me%20l%27envoyer." role="button" data-question="priority" data-value="Les volumes et les mouvements récents">
+            <span class="gate-option-main"><span class="gate-option-icon">02</span><span><span class="gate-option-title">Les volumes et les mouvements récents</span><small>Voir les volumes et ce qui a bougé récemment</small></span></span><span class="gate-option-arrow">›</span>
+          </a>
+          <a class="gate-option gate-go" href="https://wa.me/33600000000?text=Bonjour%2C%20je%20veux%20la%20liste%20d%27actions%20du%2026%20octobre%20et%20le%20lien%20du%20groupe.%20Merci%20de%20me%20l%27envoyer." role="button" data-question="priority" data-value="Le secteur et ce qu’il faut surveiller">
+            <span class="gate-option-main"><span class="gate-option-icon">03</span><span><span class="gate-option-title">Le secteur et ce qu’il faut surveiller</span><small>Voir le secteur, puis ce qu'il faut surveiller ensuite</small></span></span><span class="gate-option-arrow">›</span>
+          </a>
+        </div>
+        <div class="gate-actions">
+          <button class="gate-back" type="button" id="gate-back">Retour</button>
+          <div class="gate-go-tip">Choisissez une ligne.<br><b>WhatsApp s'ouvre avec le message.</b></div>
+        </div>
+      </div>
+      <div class="gate-trust">Gratuit · pas de nom, pas de téléphone, pas d'autre formulaire</div>
+    </div>
+  </div>
+
+  <!-- 喚起失敗兜底：App 內置瀏覽器攔截跳轉時，用戶仍有路可走 -->
+  <div class="wa-fallback" id="wa-fallback" aria-hidden="true">
+    <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="wa-fallback-title">
+      <div class="gate-handle"></div>
+      <h3 class="gate-title" id="wa-fallback-title">WhatsApp ne s'est pas ouvert ?</h3>
+      <p class="gate-desc">Réessayez avec le bouton. Une fois WhatsApp ouvert, appuyez sur Envoyer.</p>
+      <a class="cta" id="wa-fallback-open" href="#">Ouvrir WhatsApp et recevoir la liste</a>
+      <div class="wa-alt">
+        <button type="button" id="wa-copy-number">Copier le numéro</button>
+        <button type="button" id="wa-copy-msg">Copier le message</button>
+      </div>
+      <div class="wa-number" id="wa-number-text"></div>
+      <div class="wa-browser-tip" id="wa-browser-tip">Si rien ne s'ouvre : menu en haut à droite, ouvrez dans le navigateur, puis appuyez encore.</div>
+      <button class="wa-close" type="button" id="wa-fallback-close">Fermer</button>
+    </div>
+  </div>
+
+  <script>
+    (function warmWhatsAppLink(){
+      var a = document.getElementById('hero-cta');
+      var href = a && a.getAttribute('href');
+      if (!href || href.indexOf('https://wa.me/') !== 0) return;
+      try {
+        var link = document.createElement('link');
+        link.rel = 'prefetch';
+        link.href = href;
+        document.head.appendChild(link);
+      } catch (e) {}
+    })();
+
+    // ====== 日常設定區：換號 / 換接待只改這裡 ======
+    const CONFIG = {
+      whatsappNumber: "33600000000", // 上線前改成真實法國號碼，國碼 33，不要加 +,
+      receptionist: 'Camille',
+      googleSendTo: '',
+      // 喚起後多少毫秒頁面仍在前台，就彈出兜底面板；App 內置瀏覽器由宿主即時決定放唔放行，可以更快彈
+      fallbackDelay: 1600,
+      fallbackDelayInApp: 1200,
+      // 離線轉化回傳：填入 apps-script/Code.gs 部署後的 Web App 網址（.../exec）；留空則唔上報，留言亦唔加編號
+      leadEndpoint: '',
+      // 留空：不向分流系統回傳，也不上傳
+      eventEndpoint: '',
+      listDate: '26 octobre',
+      // 問卷版：1 = 先出問卷，揀完先跳 WhatsApp；2 = 唔出問卷，直接跳
+      questionnaireMode: 1
+    };
+
+    const gateAnswers = { interest: '', priority: '' };
+    let pendingGateLocation = 'hero';
+
+    (function syncListBadge(){
+      var matched = String(CONFIG.listDate || '').match(/(\d+)/);
+      if (!matched) return;
+      var label = matched[1] + ' OCT · liste prête';
+      document.querySelectorAll('.mini-label').forEach(function(el){ el.textContent = label; });
+      var kicker = document.getElementById('gate-kicker');
+      if (kicker) kicker.textContent = label;
+    })();
+
+    // ====== 廣告點擊 ID：首次帶參數進入時保存 90 日，之後冇參數再訪問都能對返 ======
+    const CLICK_IDS = (() => {
+      const KEY = 'frlist_click_ids';
+      const TTL = 90 * 24 * 3600 * 1000;
+      const q = new URLSearchParams(location.search);
+      const fresh = {};
+      // placement / creative / device 由 Google Ads 最終網址後綴 {placement} {creative} {device} 帶入，用嚟分辨 AASTOCKS、etnet 等來源 App
+      ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'placement', 'creative', 'device'].forEach(k => {
+        const v = q.get(k);
+        if (v) fresh[k] = v.slice(0, 300);
+      });
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+      if (!stored.ts || Date.now() - stored.ts > TTL) stored = {};
+      if (fresh.gclid || fresh.gbraid || fresh.wbraid) {
+        stored = Object.assign({}, fresh, { ts: Date.now() });
+        try { localStorage.setItem(KEY, JSON.stringify(stored)); } catch (e) {}
+      }
+      return Object.assign({}, stored, fresh);
+    })();
+
+    // 進線語。唔寫接待名。
+    const LINE_BANK = [
+      "Bonjour, je veux la liste d'actions du 26 octobre et le lien du groupe. Merci de me l'envoyer."
+    ];
+    const LAST_MSG_KEY = 'frlist_last_msg';
+
+    const PAGE_START = Date.now();
+
+    // ====== 打點：gtag.js 已載入就即時發；未載入（網絡慢 / 用戶極快點擊）就先存本地，之後或下次打開頁面補報 ======
+    const PENDING_KEY = 'frlist_pending_events';
+
+    // ====== WhatsApp 跳轉：先判斷打開環境，再揀喚起方式 ======
+    const UA = navigator.userAgent || '';
+    const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const IS_ANDROID = /Android/i.test(UA);
+    const IN_APP_RE = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|musical_ly|Bytedance|Snapchat|Pinterest|LinkedInApp/i;
+    // iOS：Safari / SFSafariViewController / Chrome / Google App 的 UA 都帶 "Safari/"，宿主 App 自建的 WKWebView 不帶
+    const IOS_WEBVIEW = IS_IOS && (!/Safari\//.test(UA) || IN_APP_RE.test(UA));
+    // Android：系統 WebView 的 UA 帶 "; wv)"；Chrome Custom Tabs（AdMob / YouTube / Gmail 常用）與 Chrome 相同
+    const ANDROID_WEBVIEW = IS_ANDROID && (/; wv\)/.test(UA) || IN_APP_RE.test(UA));
+    // intent:// 交給 Chrome、小米、華為、Edge、Custom Tabs。三星瀏覽器 SamsungBrowser 的 intent:// 會把頁面拆掉又拉不起 App，改走 wa.me。Firefox、UC、QQ 同樣走 wa.me。
+    const ANDROID_INTENT_OK = IS_ANDROID && /Chrome\/\d+/.test(UA) && !/SamsungBrowser|UCBrowser|Quark|MQQBrowser|Opera Mini|Firefox|FxiOS/i.test(UA);
+    const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
+                 : IS_ANDROID ? (ANDROID_WEBVIEW ? 'android_webview' : 'android_browser')
+                 : 'desktop';
+
+    function buildWhatsAppUrls(message) {
+      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+      const text = encodeURIComponent(message);
+      const universal = `https://wa.me/${phone}?text=${text}`;
+      return {
+        phone,
+        universal,
+        scheme: `whatsapp://send?phone=${phone}&text=${text}`,
+        // 冇裝普通版（或只裝 Business 版）時 Chrome 會自動轉去 fallback，wa.me 再交俾已安裝嘅 App
+        intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end`
+      };
+    }
+
+    function copyByCommand(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      return ok;
+    }
+
+    function copyText(text, btn, okLabel) {
+      const original = btn.textContent;
+      const showCopied = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
+      // 先試同步方法：部分 WebView 冇 clipboard API，而且 await 之後會失去用戶手勢
+      if (copyByCommand(text)) { showCopied(); return; }
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(showCopied, () => {});
+    }
+
+    function sendEvent(name, extra) {
+      if (!CONFIG.eventEndpoint) return;
+      try {
+        const body = JSON.stringify(Object.assign({
+          event: name,
+          ts: Date.now(),
+          since_load_ms: Date.now() - PAGE_START,
+          wa_env: WA_ENV,
+          link_type: waAttempt ? waAttempt.linkType : '',
+          cta: waAttempt ? waAttempt.placement : '',
+          transaction_id: waAttempt ? (waAttempt.txId || '') : '',
+          placement_app: CLICK_IDS.placement || '',
+          creative: CLICK_IDS.creative || '',
+          device: CLICK_IDS.device || '',
+          gclid: CLICK_IDS.gclid || '',
+          gbraid: CLICK_IDS.gbraid || '',
+          wbraid: CLICK_IDS.wbraid || '',
+          number: CONFIG.whatsappNumber,
+          visible: !document.hidden,
+          page: location.origin + location.pathname,
+          ua: UA.slice(0, 300)
+        }, extra || {}));
+        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.eventEndpoint, new Blob([body], { type: 'text/plain' }))) return;
+        fetch(CONFIG.eventEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true });
+      } catch (e) {}
+    }
+
+    function trackEvent(name, params) {
+      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
+      if (gtagReady()) { try { gtag('event', name, payload); } catch (e) {} return; }
+      // 帶 transaction_id 嘅事件（Google Ads 轉化）：即時推入 gtag 隊列 + 本地暫存雙保險。
+      // 用戶跳去 WhatsApp 後頁面轉入後台、定時器被暫停，但 gtag.js 載入完成嘅回調仍會執行並即時發出；
+      // 之後補發嘅同一 transaction_id 由 Google Ads 自動去重，唔會重複計算
+      if (payload.transaction_id) { try { gtag('event', name, payload); } catch (e) {} }
+      try {
+        const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+        list.push({ name, params: payload, ts: Date.now() });
+        localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(-50)));
+      } catch (e) {
+        try { gtag('event', name, payload); } catch (e2) {}
+      }
+    }
+
+    function gtagReady() { return typeof gtag === 'function' && !!window.google_tag_manager; }
+
+    function flushPendingEvents(force) {
+      if (!gtagReady() && !(force && typeof gtag === 'function')) return;
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) {}
+      if (!list.length) return;
+      try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
+      const cutoff = Date.now() - 7 * 86400000;
+      list.filter(ev => ev && ev.ts > cutoff).forEach(ev => {
+        try { gtag('event', ev.name, Object.assign({}, ev.params, { deferred: 1 })); } catch (e) {}
+      });
+    }
+
+    function openWhatsAppScheme(url) {
+      const frame = document.createElement('iframe');
+      frame.style.display = 'none';
+      frame.src = url;
+      document.body.appendChild(frame);
+      setTimeout(() => frame.remove(), 3000);
+    }
+
+    function buildLeadMessage(leadCode) {
+      const full = String(CONFIG.receptionist || '').trim();
+      const who = (full.split(/\s+/)[0] || 'Bonjour');
+      const day = CONFIG.listDate || "aujourd'hui";
+      const fillTemplate = (tpl) => tpl.split('{r}').join(who).split('{d}').join(day);
+      let last = '';
+      try { last = localStorage.getItem(LAST_MSG_KEY) || ''; } catch (e) {}
+      let msg = fillTemplate(LINE_BANK[0]);
+      for (let n = 0; n < 6; n++) {
+        msg = fillTemplate(LINE_BANK[Math.floor(Math.random() * LINE_BANK.length)]);
+        if (msg !== last) break;
+      }
+      try { localStorage.setItem(LAST_MSG_KEY, msg); } catch (e) {}
+      if (gateAnswers.interest) {
+        msg += '\nJe veux voir : ' + gateAnswers.interest;
+        if (gateAnswers.priority) msg += ' ; point : ' + gateAnswers.priority;
+      }
+      return msg + (leadCode ? '\n(réf. ' + leadCode + ')' : '');
+    }
+
+    function makeLeadCode() {
+      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+      const bytes = new Uint8Array(6);
+      (window.crypto || window.msCrypto).getRandomValues(bytes);
+      return Array.from(bytes, b => chars[b % chars.length]).join('');
+    }
+
+    function postLead(payload) {
+      if (!CONFIG.leadEndpoint) return;
+      // text/plain 唔會觸發 CORS 預檢；Apps Script 只需收到請求，回應內容唔重要
+      const body = JSON.stringify(payload);
+      try {
+        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.leadEndpoint, new Blob([body], { type: 'text/plain' }))) return;
+      } catch (e) {}
+      try { fetch(CONFIG.leadEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true }); } catch (e) {}
+    }
+
+    function prepareFallback(urls, message) {
+      fallbackPayload = { phone: urls.phone, message, universal: urls.universal };
+      const hrefByEnv = {
+        ios_browser: urls.universal,
+        ios_webview: urls.scheme,
+        // 第一次 intent:// 冇反應先會見到兜底，重試改行 wa.me（App Link／官方頁），唔再重複同一條路
+        android_browser: urls.universal,
+        android_webview: urls.scheme,
+        desktop: urls.universal
+      };
+      waFallbackOpen.href = hrefByEnv[WA_ENV];
+      waNumberText.textContent = `WhatsApp : +${urls.phone}`;
+      waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
+    }
+
+    function hideFallback() {
+      if (!waFallback.classList.contains('show')) return;
+      waFallback.classList.remove('show');
+      waFallback.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function showFallback() {
+      if (!waAttempt || waAttempt.left || document.hidden) return;
+      waFallback.classList.add('show');
+      waFallback.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      trackEvent('wa_fallback_shown', { placement: waAttempt.placement });
+      sendEvent('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+      // 安卓 WebView：隱藏 iframe 的 whatsapp:// 沒把 App 拉到前台。此時仍在用戶點擊之後，
+      // 自動再開一次 https://wa.me/。https 不會把頁面打成 ERR_UNKNOWN_URL_SCHEME。
+      // 已經進後台的不會走到這裡。只跳一次。
+      if (WA_ENV === 'android_webview' && !waAttempt.webHop && fallbackPayload.universal) {
+        waAttempt.webHop = true;
+        try { window.location.href = fallbackPayload.universal; } catch (e) {}
+      }
+    }
+
+    function armFallback(delay) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(showFallback, delay);
+    }
+
+    function markAppOpened() {
+      if (!waAttempt || waAttempt.left) return;
+      waAttempt.left = true;
+      clearTimeout(fallbackTimer);
+      hideFallback();
+      trackEvent('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
+      sendEvent('wa_app_opened', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+    }
+
+    function sendPageView() {
+      if (pageViewSent) return;
+      pageViewSent = true;
+      sendEvent('page_view', { variant: currentKey, referrer: (document.referrer || '').slice(0, 200) });
+    }
+
+    function selectCard(key, {scroll=false, track=true} = {}) {
+      if (!VARIANTS[key]) return;
+      currentKey = key;
+      const data = VARIANTS[key];
+
+      cards.forEach(card => card.classList.toggle('active', card.dataset.slide === key));
+      dots.forEach(dot => dot.classList.toggle('active', dot.dataset.dot === key));
+
+      heroCta.textContent = data.button;
+      finalButton.textContent = data.button;
+      floatingButton.textContent = data.button;
+      heroChoice.textContent = `Choix : ${data.label} · ouvrez WhatsApp, puis envoyez`;
+
+      if (scroll) {
+        const card = cards.find(c => c.dataset.slide === key);
+        if (card) slider.scrollTo({left: card.offsetLeft - slider.offsetLeft, behavior:'smooth'});
+      }
+
+      if (track) {
+        try {
+          if (typeof fbq === 'function') fbq('trackCustom','LandingVariantView',{variant:key});
+        } catch(e){}
+      }
+    }
+
+    function openWhatsApp(e, locationName) {
+      const anchor = e && e.currentTarget && e.currentTarget.tagName === 'A' ? e.currentTarget : null;
+      if (redirecting) return; // 2 秒內重複點擊：href 仍然係上次嘅正確連結，預設導航照跳
+      redirecting = true;
+      setTimeout(() => { redirecting = false; }, 2000);
+
+      const interest = gateAnswers.interest || cardInterest[currentKey] || 'Liste des valeurs à suivre';
+      const priority = gateAnswers.priority || '';
+      const leadCode = CONFIG.leadEndpoint ? makeLeadCode() : '';
+      const txId = Date.now().toString(36) + '-' + makeLeadCode();
+      const message = buildLeadMessage(leadCode);
+      const urls = buildWhatsAppUrls(message);
+
+      let target = urls.universal, linkType = 'universal';
+      if (WA_ENV === 'ios_webview') { target = urls.scheme; linkType = 'scheme'; }
+      else if (WA_ENV === 'android_browser' && ANDROID_INTENT_OK) { target = urls.intent; linkType = 'intent'; }
+      if (WA_ENV === 'android_webview') linkType = 'iframe';
+
+      if (WA_ENV === 'android_webview') {
+        if (e) e.preventDefault();
+        openWhatsAppScheme(urls.scheme);
+      } else if (anchor) {
+        anchor.href = target;
+        if (WA_ENV === 'desktop') { anchor.target = '_blank'; anchor.rel = 'noopener'; }
+      } else if (WA_ENV === 'desktop') {
+        window.open(target, '_blank');
+      } else {
+        window.location.href = target;
+      }
+
+      // ---------- 以下全部喺跳轉已交俾瀏覽器之後先執行 ----------
+      waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false, linkType, txId };
+      try {
+        prepareFallback(urls, message);
+        if (WA_ENV !== 'desktop') armFallback((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
+      } catch (err) {}
+
+      try {
+        postLead({
+          code: leadCode,
+          gclid: CLICK_IDS.gclid || '',
+          gbraid: CLICK_IDS.gbraid || '',
+          wbraid: CLICK_IDS.wbraid || '',
+          utm_source: CLICK_IDS.utm_source || '',
+          utm_medium: CLICK_IDS.utm_medium || '',
+          utm_campaign: CLICK_IDS.utm_campaign || '',
+          utm_content: CLICK_IDS.utm_content || '',
+          utm_term: CLICK_IDS.utm_term || '',
+          placement_app: CLICK_IDS.placement || '',
+          creative: CLICK_IDS.creative || '',
+          interest: interest,
+          priority: priority,
+          variant: currentKey,
+          placement: locationName || 'unknown',
+          wa_env: WA_ENV,
+          number: CONFIG.whatsappNumber,
+          receptionist: CONFIG.receptionist,
+          page: location.origin + location.pathname,
+          ua: UA.slice(0, 300)
+        });
+      } catch (err) {}
+
+      try {
+        if (typeof fbq === 'function') {
+          fbq('track', 'Contact', { content_name: 'WhatsApp', content_category: 'Lead' });
+          fbq('trackCustom', 'WhatsAppClick', { placement: locationName || 'unknown', variant: currentKey, wa_env: WA_ENV });
+        }
+      } catch (err) {}
+      sendPageView();
+      trackEvent('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
+      trackEvent('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
+      sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: interest, priority: priority, gtag_ready: gtagReady() });
+    }
+
+    function updateFloatingBar(){
+      const pastHero = window.scrollY > heroThreshold;
+      const show = pastHero && !finalVisible;
+      floatingWrap.classList.toggle('show', show);
+      floatingWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+
+    function queueFloatingBar(){
+      if (floatTicking) return;
+      floatTicking = true;
+      requestAnimationFrame(() => { floatTicking = false; updateFloatingBar(); });
+    }
+
+    function refreshHeroThreshold() { heroThreshold = Math.max(180, heroSection.offsetHeight * .72); queueFloatingBar(); }
+
+    // 6 位編號，去掉 0/O/1/I/L 等易混字元，方便客服肉眼核對
+
+    // 每一步都獨立送一條；全部排喺跳轉之後、各自 try/catch，任何失敗都唔影響跳轉
+
+    // ====== 首屏三張卡：廣告參數決定預設卡，但用戶可自由左右滑 ======
+    const VARIANTS = {
+      blackhorse: {
+        key:'blackhorse',
+        label:'À suivre',
+        button:'Recevoir les valeurs à suivre',
+        message:"Bonjour, je veux la liste d'actions du 26 octobre et le lien du groupe. Merci de me l'envoyer."
+      },
+      picks: {
+        key:'picks',
+        label:'Du jour',
+        button:'Recevoir les idées du jour',
+        message:"Bonjour, je veux la liste d'actions du 26 octobre et le lien du groupe. Merci de me l'envoyer."
+      },
+      income: {
+        key:'income',
+        label:'Dividende',
+        button:'Recevoir la sélection dividende',
+        message:"Bonjour, je veux la liste d'actions du 26 octobre et le lien du groupe. Merci de me l'envoyer."
+      }
+    };
+
+    const ORDER = ['blackhorse','picks','income'];
+    const params = new URLSearchParams(location.search);
+    const hadExplicitFocus = Boolean(params.get('focus') || params.get('utm_content'));
+    let rawFocus = (params.get('focus') || params.get('utm_content') || '').toLowerCase();
+
+    if (rawFocus.includes('black') || rawFocus.includes('horse') || rawFocus.includes('suivre')) rawFocus = 'blackhorse';
+    else if (rawFocus.includes('pick') || rawFocus.includes('jour') || rawFocus.includes('idee') || rawFocus.includes('idée')) rawFocus = 'picks';
+    else if (rawFocus.includes('income') || rawFocus.includes('dividend') || rawFocus.includes('dividende')) rawFocus = 'income';
+    else rawFocus = 'blackhorse';
+
+    let currentKey = VARIANTS[rawFocus] ? rawFocus : 'blackhorse';
+    let userInteracted = false;
+    let autoHintDone = false;
+
+    const slider = document.getElementById('hero-slider');
+    const cards = [...document.querySelectorAll('.hero-card')];
+    const dots = [...document.querySelectorAll('.slider-dot')];
+    const heroCta = document.getElementById('hero-cta');
+    const finalButton = document.getElementById('final-button');
+    const floatingButton = document.getElementById('floating-button');
+    const heroChoice = document.getElementById('hero-choice');
+    const receptionText = document.getElementById('reception-text');
+
+    receptionText.textContent = `Accueil : ${CONFIG.receptionist}`;
+
+    // Initial slide follows ad parameter
+    selectCard(currentKey, {scroll:false, track:true});
+    requestAnimationFrame(() => {
+      const card = cards.find(c => c.dataset.slide === currentKey);
+      if (card) slider.scrollLeft = card.offsetLeft - slider.offsetLeft;
+    });
+
+    // Detect which card is nearest the left edge after swiping
+    let scrollTimer;
+    slider.addEventListener('scroll', () => {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        const left = slider.scrollLeft;
+        let nearest = cards[0], min = Infinity;
+        cards.forEach(card => {
+          const d = Math.abs((card.offsetLeft - slider.offsetLeft) - left);
+          if (d < min) { min = d; nearest = card; }
+        });
+        if (nearest && nearest.dataset.slide !== currentKey) selectCard(nearest.dataset.slide, {scroll:false, track:true});
+      }, 90);
+    }, {passive:true});
+
+    // Any touch/drag stops the one-time auto hint
+    ['touchstart','pointerdown','wheel'].forEach(evt => {
+      slider.addEventListener(evt, () => { userInteracted = true; }, {passive:true});
+    });
+
+    dots.forEach(dot => dot.addEventListener('click', () => {
+      userInteracted = true;
+      selectCard(dot.dataset.dot, {scroll:true, track:true});
+    }));
+
+    // One gentle automatic nudge to show there are multiple cards, then stop.
+    // If the ad already opened on card 2 or 3, nudge to the next card; never loops continuously.
+    setTimeout(() => {
+      if (hadExplicitFocus || userInteracted || autoHintDone || document.visibilityState !== 'visible') return;
+      autoHintDone = true;
+      const i = ORDER.indexOf(currentKey);
+      const next = ORDER[Math.min(i + 1, ORDER.length - 1)];
+      if (next !== currentKey) selectCard(next, {scroll:true, track:true});
+    }, 3000);
+
+    let redirecting = false;
+    const cardInterest = { blackhorse:'Liste des valeurs à suivre', picks:'Liste des idées du jour', income:'Liste des actions à dividende' };
+
+    ['load', 'pageshow'].forEach(evt => window.addEventListener(evt, flushPendingEvents));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) flushPendingEvents(); });
+    const flushPoll = setInterval(() => { flushPendingEvents(); if (gtagReady()) clearInterval(flushPoll); }, 800);
+    // 30 秒後仍偵測唔到 gtag.js 就緒：直接推入 gtag 隊列，等佢載入後自行發送，避免事件一直積壓
+    setTimeout(() => { clearInterval(flushPoll); flushPendingEvents(true); }, 30000);
+
+    // 宿主唔處理自訂 scheme 時，只係 iframe 失敗；主頁面唔會變成 ERR_UNKNOWN_URL_SCHEME 錯誤頁，兜底面板仍然可用
+
+    const waFallback = document.getElementById('wa-fallback');
+    const waFallbackOpen = document.getElementById('wa-fallback-open');
+    const waCopyNumber = document.getElementById('wa-copy-number');
+    const waCopyMsg = document.getElementById('wa-copy-msg');
+    const waNumberText = document.getElementById('wa-number-text');
+    const waBrowserTip = document.getElementById('wa-browser-tip');
+    let waAttempt = null;
+    let fallbackTimer = 0;
+    let fallbackPayload = { phone: '', message: '' };
+
+    // 頁面轉入後台 = WhatsApp 已被喚起
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) markAppOpened();
+      else redirecting = false;
+    });
+    window.addEventListener('pagehide', () => clearTimeout(fallbackTimer));
+    // 系統確認框（Android 揀 App、iOS「喺 WhatsApp 開啟？」）會令頁面失焦但仍然可見，期間唔好彈兜底
+    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) armFallback(3500); });
+    window.addEventListener('focus', () => {
+      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) armFallback(900);
+    });
+    window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
+
+    // 冇點領取按鈕就唔向分流系統回傳。page_view 只在 openWhatsApp 裡補發一次。
+    let pageViewSent = false;
+
+    // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
+    // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
+    waFallbackOpen.addEventListener('click', () => {
+      waAttempt = { t: Date.now(), placement: 'fallback', left: false, linkType: 'retry', txId: waAttempt ? waAttempt.txId : '' };
+      trackEvent('wa_fallback_click', {});
+      sendEvent('wa_fallback_click', {});
+    });
+    waCopyNumber.addEventListener('click', () => {
+      copyText(`+${fallbackPayload.phone}`, waCopyNumber, 'Numéro copié');
+      trackEvent('wa_copy_number', {});
+      sendEvent('wa_copy_number', {});
+    });
+    waCopyMsg.addEventListener('click', () => {
+      copyText(fallbackPayload.message, waCopyMsg, 'Message copié');
+      trackEvent('wa_copy_message', {});
+      sendEvent('wa_copy_message', {});
+    });
+    document.getElementById('wa-fallback-close').addEventListener('click', hideFallback);
+    waFallback.addEventListener('click', e => { if (e.target === waFallback) hideFallback(); });
+
+    const leadGate = document.getElementById('lead-gate');
+    const gateSteps = [...document.querySelectorAll('.gate-step')];
+    const interestOptions = [...document.querySelectorAll('.gate-option[data-question="interest"]')];
+    const priorityOptions = [...document.querySelectorAll('.gate-option[data-question="priority"]')];
+    const gatePickedName = document.getElementById('gate-picked-name');
+    const gatePanel = leadGate.querySelector('.gate-panel');
+    const gateProgress2 = document.getElementById('gate-progress-2');
+    const interestToKey = { 'Liste des valeurs à suivre':'blackhorse', 'Liste des idées du jour':'picks', 'Liste des actions à dividende':'income' };
+    const useQuestionnaire = Number(CONFIG.questionnaireMode) === 1;
+
+    function showGateStep(step) {
+      gateSteps.forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
+      gateProgress2.classList.toggle('on', step === 2);
+      gatePanel.classList.toggle('on-step2', step === 2);
+      gatePanel.scrollTop = 0;
+      if (step === 2) {
+        const picked = interestOptions.find(el => el.dataset.value === gateAnswers.interest);
+        gatePickedName.textContent = picked ? picked.querySelector('.gate-option-title').textContent : gateAnswers.interest;
+        sendEvent('gate_step2', { cta: pendingGateLocation, variant: currentKey, interest: gateAnswers.interest });
+      }
+    }
+
+    function closeLeadGate() {
+      leadGate.classList.remove('show');
+      leadGate.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function openLeadGate(locationName) {
+      pendingGateLocation = locationName || 'hero';
+      gateAnswers.interest = cardInterest[currentKey] || 'Liste des valeurs à suivre';
+      gateAnswers.priority = '';
+      interestOptions.forEach(el => el.classList.toggle('active', el.dataset.value === gateAnswers.interest));
+      priorityOptions.forEach(el => el.classList.remove('active'));
+      showGateStep(1);
+      leadGate.classList.add('show');
+      leadGate.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      sendPageView();
+      sendEvent('gate_open', { cta: pendingGateLocation, variant: currentKey });
+    }
+
+    if (useQuestionnaire) {
+      document.querySelectorAll('[data-wa]').forEach(btn => {
+        btn.setAttribute('aria-haspopup', 'dialog');
+        btn.setAttribute('aria-controls', 'lead-gate');
+      });
+    }
+
+    interestOptions.forEach(btn => {
+      btn.addEventListener('click', () => {
+        gateAnswers.interest = btn.dataset.value;
+        interestOptions.forEach(el => el.classList.toggle('active', el === btn));
+        const key = interestToKey[gateAnswers.interest];
+        if (key && key !== currentKey) selectCard(key, { scroll: false, track: false });
+        setTimeout(() => showGateStep(2), 120);
+      });
+    });
+    document.getElementById('gate-back').addEventListener('click', () => showGateStep(1));
+    document.getElementById('gate-cancel').addEventListener('click', () => {
+      sendEvent('gate_close', { cta: pendingGateLocation, how: 'x', step: gatePanel.classList.contains('on-step2') ? 2 : 1 });
+      closeLeadGate();
+    });
+    leadGate.addEventListener('click', e => {
+      if (e.target !== leadGate) return;
+      sendEvent('gate_close', { cta: pendingGateLocation, how: 'backdrop', step: gatePanel.classList.contains('on-step2') ? 2 : 1 });
+      closeLeadGate();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && leadGate.classList.contains('show')) closeLeadGate();
+    });
+    priorityOptions.forEach(opt => {
+      opt.addEventListener('click', e => {
+        gateAnswers.priority = opt.dataset.value;
+        priorityOptions.forEach(el => el.classList.toggle('active', el === opt));
+        closeLeadGate();
+        openWhatsApp(e, pendingGateLocation);
+      });
+    });
+
+    document.querySelectorAll('[data-wa]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        if (useQuestionnaire) {
+          e.preventDefault();
+          openLeadGate(btn.dataset.location);
+          return;
+        }
+        openWhatsApp(e, btn.dataset.location);
+      });
+    });
+
+    // Mobile floating CTA: show after hero, hide at final CTA.
+    const floatingWrap = document.getElementById('floating-cta-wrap');
+    const heroSection = document.getElementById('top');
+    const finalCta = document.getElementById('final-cta');
+    let finalVisible = false;
+
+    const finalObserver = new IntersectionObserver(entries => {
+      finalVisible = entries[0] && entries[0].isIntersecting;
+      updateFloatingBar();
+    }, {threshold:.18});
+    finalObserver.observe(finalCta);
+
+    // 滾動中只讀 scrollY；hero 高度只喺 resize 時讀，避免每次滾動強制排版，並用 rAF 合併同一幀內多次觸發
+    let heroThreshold = Math.max(180, heroSection.offsetHeight * .72);
+    let floatTicking = false;
+
+    window.addEventListener('scroll',queueFloatingBar,{passive:true});
+
+    window.addEventListener('resize', refreshHeroThreshold, {passive:true});
+    window.addEventListener('load', refreshHeroThreshold, {once:true});
+    updateFloatingBar();
+
+    // 按鈕離開畫面就暫停動效
+    if ('IntersectionObserver' in window) {
+      const ctaObserver = new IntersectionObserver(entries => {
+        entries.forEach(en => en.target.classList.toggle('cta-idle', !en.isIntersecting));
+      });
+      [heroCta, finalButton].forEach(btn => ctaObserver.observe(btn));
+    }
+  </script>
+</body>
+</html>
