@@ -1,0 +1,827 @@
+<!doctype html>
+<!-- 10.26号版 -->
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f6f4ef">
+  <meta name="format-detection" content="telephone=no">
+
+  <!-- 預熱 wa.me：只建立 DNS 和連線，不會打開 WhatsApp。intent:// 同 whatsapp:// 唔經呢條連線。 -->
+  <link rel="dns-prefetch" href="https://wa.me">
+  <link rel="preconnect" href="https://wa.me">
+
+  <title>講經MAN｜10月26日港股名單｜免費領取</title>
+  <meta name="description" content="講經MAN整理10月23日港股收市數據：恒指收23,093.37點，升0.69%；1247隻升、714隻跌，恒生科技升2.05%。附10月26日最新觀察名單，免費領取。">
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-ES9MEXDPGX"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-ES9MEXDPGX');
+  </script>
+
+  <style>
+    :root{
+      --paper:#f6f4ef;--white:#fff;--ink:#17233a;--navy:#243968;--navy2:#315489;
+      --orange:#f28b24;--orange2:#d96e12;--yellow:#ffd94a;--blue:#edf6fb;
+      --muted:#4a5568;--border:#e7e5df;--green:#1f9d62;--red:#c94b3f;--shadow:0 8px 26px rgba(35,57,104,.08)
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html{scroll-behavior:smooth;background:#e9e8e4;touch-action:manipulation}
+    body{margin:0;color:var(--ink);background:#e9e8e4;font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","PingFang HK","Microsoft JhengHei","Noto Sans TC",Arial,sans-serif;-webkit-font-smoothing:antialiased;touch-action:manipulation}
+    a{color:inherit;text-decoration:none;-webkit-user-select:none;user-select:none}
+    button{font:inherit;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+    #trust,footer{content-visibility:auto;contain-intrinsic-size:1px 500px}
+    .page{width:100%;max-width:520px;margin:0 auto;background:var(--paper);min-height:100vh;overflow:hidden;box-shadow:0 0 30px rgba(0,0,0,.04)}
+    .hero{position:relative;padding:16px 20px 16px;background:#f6f4ef;border-bottom:1px solid #e7e5df}
+    .hero:after{content:"";position:absolute;inset:0;background:transparent;pointer-events:none}.hero-inner{position:relative;z-index:1}
+    .joint-rec{display:block;width:100%;height:auto;margin:0 0 10px;border-radius:14px;background:#fff}
+    .eyebrow{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;background:#fff;border:1px solid rgba(36,57,104,.12);color:#243968;font-size:14px;font-weight:850;box-shadow:0 5px 16px rgba(36,57,104,.05)}
+    .eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--red);animation:live-dot 1.6s ease-in-out infinite}
+    @keyframes live-dot{0%,100%{opacity:1}50%{opacity:.35}}
+    h1{margin:12px 0 8px;font-size:38px;line-height:1.08;letter-spacing:-.035em;color:#15233d;font-weight:950} h1 .accent{color:var(--orange2)}
+    .hero-kickers{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 0}.hero-kickers span{font-size:12px;font-weight:800;color:#334a6b;background:rgba(255,255,255,.72);border:1px solid rgba(36,57,104,.09);padding:6px 9px;border-radius:999px}
+    .hero-sub{margin:11px 0 0;font-size:15px;line-height:1.68;color:#42516b;font-weight:650}.hero-proof{margin-top:10px;color:#5a6474;font-size:12px;line-height:1.55;text-align:center}
+    .cta{-webkit-touch-callout:none;width:100%;min-height:60px;border:0;border-radius:15px;display:flex;align-items:center;justify-content:center;gap:8px;padding:15px 18px;margin-top:16px;color:#fff;background:linear-gradient(135deg,#f59a2e,#e77c15);font-size:19px;line-height:1.3;font-weight:900;box-shadow:0 11px 22px rgba(229,124,21,.22);cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .cta:active{transform:scale(.98) translateY(1px);opacity:.94;transition:transform .06s ease,opacity .06s ease}
+    /* 領取按鈕動效：掃光 → 輕彈 → 箭頭前推，每 3 秒一輪。只動 transform（合成層），唔觸發重排、唔影響 CLS。
+       用偽元素實現，因為 selectCard() 會用 textContent 改寫按鈕文字 */
+    .cta[data-wa]{position:relative;overflow:hidden;isolation:isolate;animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite}
+    .cta[data-wa]::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:-40%;width:28%;background:linear-gradient(105deg,rgba(255,255,255,0),rgba(255,255,255,.45) 50%,rgba(255,255,255,0));transform:skewX(-18deg);animation:cta-shine 3s ease-in-out 1.2s infinite;pointer-events:none}
+    .cta[data-wa]::after{content:"";flex:none;width:8px;height:8px;margin-left:1px;border-top:2.5px solid currentColor;border-right:2.5px solid currentColor;transform:rotate(45deg);animation:cta-arrow 3s ease-in-out 1.2s infinite}
+    .cta[data-wa]:active{animation:none}
+    .cta.cta-idle,.cta.cta-idle::before,.cta.cta-idle::after,
+    .floating-cta-wrap:not(.show) .cta,.floating-cta-wrap:not(.show) .cta::before,.floating-cta-wrap:not(.show) .cta::after{animation-play-state:paused}
+    @keyframes cta-bounce{0%,58%,100%{transform:none}66%{transform:translateY(-14px) scale(1.07)}74%{transform:translateY(0) scale(.96)}82%{transform:translateY(-7px) scale(1.035)}90%{transform:none}}
+    @keyframes cta-shine{0%,38%{transform:translateX(0) skewX(-18deg)}60%,100%{transform:translateX(520%) skewX(-18deg)}}
+    @keyframes cta-arrow{0%,62%,100%{transform:translateX(0) rotate(45deg)}70%{transform:translateX(4px) rotate(45deg)}78%{transform:translateX(0) rotate(45deg)}}
+    @media (prefers-reduced-motion:reduce){.cta[data-wa],.cta[data-wa]::before,.cta[data-wa]::after{animation:none}}
+    .cta-note{text-align:center;margin:9px 0 0;color:#5a6474;font-size:13px;line-height:1.5}
+    section{padding:32px 20px}.section-white{background:#fff}.section-blue{background:#f6f4ef}
+    .section-label{display:inline-block;font-size:13px;font-weight:900;letter-spacing:.06em;color:var(--orange2);margin-bottom:8px;padding:4px 10px;border-radius:999px;background:#fff1dc}
+    h2{margin:0;font-size:26px;line-height:1.35;letter-spacing:-.015em;color:#17243e;font-weight:950}h2 .hl{color:var(--red)}h2 .hl-o{color:var(--orange2)}.section-intro{margin:10px 0 0;font-size:16px;line-height:1.75;color:var(--muted)}
+    .section-intro b{color:#17243e}
+    .method-card{margin-top:18px;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 5px 18px rgba(41,74,119,.04)}
+    .method-row{display:grid;grid-template-columns:48px 1fr;gap:12px;align-items:center;padding:16px 15px;border-bottom:1px solid #eeeae3}.method-row:last-child{border-bottom:0}
+    .method-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fff4d6;color:#b66b09;font-size:18px;font-weight:900}.method-row strong{display:block;font-size:17px;color:#1f2d47;margin-bottom:3px}.method-row p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}.method-result{margin-top:14px;padding:13px 14px;border-radius:12px;background:#fff7da;border:1px solid #f3df9a;color:#3a4558;font-size:15px;font-weight:800;text-align:center;line-height:1.5}
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}.stat{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 13px;min-height:104px}.stat-label{font-size:14px;color:#4a5568;font-weight:800}.stat-value{font-size:26px;line-height:1.1;font-weight:950;color:#192640;margin-top:8px;letter-spacing:-.02em}.stat-change{font-size:14px;font-weight:900;margin-top:6px}.up{color:var(--green)}.down{color:var(--red)}.neutral{color:var(--navy2)}
+    .stat.stat-hot{background:#fff8ec;border-color:#f1c877}
+    .market-points{margin-top:18px;border-top:1px solid #e3e0d9}.market-point{display:grid;grid-template-columns:36px 1fr;gap:11px;padding:16px 0;border-bottom:1px solid #e3e0d9}.num{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#fff4d6;color:#b66b09;font-size:14px;font-weight:900}.market-point strong{display:block;font-size:17px;line-height:1.45;color:#1f2d47;margin-bottom:5px}.market-point p{margin:0;color:var(--muted);font-size:15px;line-height:1.75}.market-point p b{color:#17243e}.source-line{margin-top:14px;font-size:12px;color:#6b7380;line-height:1.65}.source-line a{text-decoration:underline;text-underline-offset:2px}    .category-list{display:grid;gap:10px;margin-top:17px}.category-card{background:#fff;border:1px solid rgba(36,57,104,.11);border-radius:15px;padding:15px;box-shadow:0 5px 18px rgba(41,74,119,.04)}.category-top{display:flex;align-items:center;justify-content:space-between;gap:9px}.category-num{font-size:11px;font-weight:900;color:#fff;background:var(--navy);padding:5px 7px;border-radius:7px}.category-badge{font-size:10px;font-weight:900;color:#a86107;background:#fff2c6;padding:5px 7px;border-radius:7px}.category-card h3{margin:9px 0 5px;font-size:17px;color:#182640}.category-card p{margin:0;color:#657287;font-size:12px;line-height:1.6}.category-card.active{border-color:#f1c877;box-shadow:0 8px 22px rgba(229,124,21,.08)}
+    .list-note{margin-top:12px;padding:12px 13px;border-radius:13px;background:rgba(255,255,255,.65);border:1px dashed #bfd2e1}.list-note strong{display:block;font-size:12px;color:#283957;margin-bottom:7px}.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{font-size:10px;font-weight:800;color:#4b5c73;background:#fff;border:1px solid #dce6ee;padding:5px 7px;border-radius:999px}
+    .trust{display:flex;gap:14px;align-items:center;margin-top:18px;padding:16px;background:#fff;border:1px solid var(--border);border-radius:15px}.avatar{width:72px;height:72px;border-radius:15px;object-fit:cover;border:1px solid #e8e5de;background:#fff;flex:none}.trust h3{margin:0 0 4px;font-size:19px;color:#1a2741}.trust p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}.yt-link{display:inline-flex;align-items:center;gap:4px;margin-top:8px;color:var(--navy2);font-weight:850;font-size:14px;min-height:32px}
+    .trust-points{display:grid;gap:9px;margin-top:14px}.trust-point{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;background:rgba(255,255,255,.75);border:1px solid #dce6ee;border-radius:13px;font-size:15px;line-height:1.55;color:#2c3a52;font-weight:700}.trust-point i{flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center}
+    .final-card{margin-top:20px;padding:24px 18px 20px;border-radius:18px;background:#fff;border:1px solid #e7e5df;border-top:4px solid #f28b24;box-shadow:var(--shadow);text-align:center}.mini-label{display:inline-block;font-size:13px;font-weight:900;color:#fff;letter-spacing:.04em;background:#f28b24;padding:4px 10px;border-radius:999px}.final-card h2{font-size:26px;margin-top:10px}.final-card p{font-size:15px;line-height:1.7;color:var(--muted);margin:10px 0 0}.final-card p b{color:#17243e}.reception{margin-top:11px;font-size:13px;line-height:1.5;color:#5a6474;font-weight:700}
+    footer{padding:18px 18px calc(96px + env(safe-area-inset-bottom));text-align:center;color:#7d776d;background:#f6f4ef;font-size:12px;line-height:1.7;border-top:1px solid #ebe8e0}
+    footer .fine{margin:10px 0 0}footer .fine b{display:block;color:#17243e;font-size:12px;letter-spacing:.04em}
+    .floating-cta-wrap{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(520px,100%);z-index:30;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(246,244,239,0),rgba(246,244,239,.96) 28%,rgba(246,244,239,.99));opacity:0;pointer-events:none;transition:opacity .2s ease}.floating-cta-wrap.show{opacity:1;pointer-events:auto}.floating-cta{width:100%;min-height:58px;margin:0;border-radius:15px;box-shadow:0 10px 24px rgba(229,124,21,.24);font-size:18px}
+
+    .hero-heading{margin:14px 0 6px;font-size:33px;line-height:1.22;letter-spacing:-.02em;color:#15233d;font-weight:950}
+    .hero-heading .accent{color:var(--orange2)}.hero-heading .hl{color:var(--red)}
+    .hero-lead{margin:6px 0 8px;color:#3a4558;font-size:16px;line-height:1.65;font-weight:700}
+    .hero-lead b{color:#15233d;background:linear-gradient(transparent 60%,#ffe08a 60%)}
+    .tape{margin:2px 0 12px;padding:12px 14px;background:rgba(255,255,255,.94);border:1px solid rgba(36,57,104,.12);border-radius:14px}
+    .tape-main{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px}
+    .tape-main span{font-size:15px;font-weight:800;color:#4a5568}
+    .tape-main b{font-size:30px;line-height:1.1;font-weight:950;color:#15233d;letter-spacing:-.02em}
+    .tape-main em{font-style:normal;font-size:16px;font-weight:900}
+    .tape-side{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px;font-size:15px;font-weight:800;color:#3a4558}
+    .tape-side b{font-weight:950;color:#15233d}
+
+    .hero-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin:14px 0 0;border:1px solid #e7e5df;border-radius:14px;overflow:hidden;background:#fff}
+    .hstep{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:8px 6px;background:transparent;border:0;border-right:1px solid #e7e5df;border-radius:0;font-size:15px;font-weight:900;color:#17243e;white-space:nowrap}
+    .hstep:last-child{border-right:0}
+    .hstep-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--orange);color:#fff;font-size:14px;font-weight:950;display:flex;align-items:center;justify-content:center}
+    .hstep:last-child .hstep-n{background:var(--green)}
+    .slider-wrap{position:relative;margin:6px -20px 0;padding-left:20px;overflow:hidden}
+    .slider{position:relative;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:3px 48px 8px 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .slider::-webkit-scrollbar{display:none}
+    .hero-card{flex:0 0 calc(100% - 44px);scroll-snap-align:start;min-height:180px;border-radius:17px;padding:16px 15px 15px;background:#fff;border:1px solid #e7e5df;box-shadow:0 9px 26px rgba(36,57,104,.08);position:relative;overflow:hidden}
+    .hero-card:before{content:"";position:absolute;width:126px;height:126px;border-radius:50%;right:-54px;top:-54px;background:#edf6fb}
+    .hero-card:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,var(--orange),var(--yellow))}
+    .hero-card.active{border-color:rgba(242,139,36,.45);box-shadow:0 10px 28px rgba(229,124,21,.12)}
+    .card-tag{display:inline-flex;align-items:center;gap:6px;position:relative;z-index:1;padding:5px 10px;border-radius:999px;background:#f28b24;color:#fff;font-size:13px;font-weight:950;letter-spacing:.02em}
+    .card-tag i{display:block;width:7px;height:7px;border-radius:50%;background:#fff}
+    .hero-card h3{position:relative;z-index:1;margin:11px 0 7px;font-size:23px;line-height:1.25;letter-spacing:-.015em;color:#17243e;font-weight:950}
+    .hero-card p{position:relative;z-index:1;margin:0;color:#3f4b5e;font-size:15px;line-height:1.65;font-weight:650}
+    .hero-card p b{color:#c94b3f}
+    .card-meta{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+    .card-meta span{font-size:13px;font-weight:850;color:#33465f;background:#f4f7fa;border:1px solid #e3eaf0;padding:5px 9px;border-radius:999px}
+    .slider-dots{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:6px}
+    .slider-dot{min-height:44px;border:1px solid #e7e5df;border-radius:12px;padding:0 4px;background:#fff;color:#4a5568;font-size:15px;font-weight:900;transition:.15s;cursor:pointer}
+    .slider-dot.active{border-color:#f28b24;background:#f28b24;color:#fff;box-shadow:0 4px 12px rgba(229,124,21,.16)}
+    .cta.cta-top{margin-top:0;min-height:68px;border-radius:17px;font-size:21px;background:linear-gradient(135deg,#ffa33a,#e8700f);animation:cta-bounce 3s cubic-bezier(.3,.7,.4,1) 1.2s infinite,cta-glow 1.8s ease-out infinite}
+    @keyframes cta-glow{0%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 0 rgba(242,139,36,.55)}70%,100%{box-shadow:0 12px 24px rgba(229,124,21,.30),0 0 0 11px rgba(242,139,36,0)}}
+    @media (prefers-reduced-motion:reduce){.cta.cta-top{animation:none}}
+    .join-ticker{height:44px;overflow:hidden;margin:4px 0 8px;background:#fff;border:1.5px solid rgba(31,157,98,.45);border-radius:999px;box-shadow:0 8px 18px rgba(31,157,98,.16)}
+    .join-ticker-track{animation:join-roll 16s linear infinite}
+    .join-line{height:44px;display:flex;align-items:center;justify-content:center;gap:8px;color:#14301f;font-size:16px;font-weight:950;white-space:nowrap}
+    .join-line i{flex:none;width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 5px rgba(31,157,98,.2)}
+    @keyframes join-roll{
+      0%,15%{transform:translateY(0)}
+      20%,35%{transform:translateY(-44px)}
+      40%,55%{transform:translateY(-88px)}
+      60%,75%{transform:translateY(-132px)}
+      80%,95%{transform:translateY(-176px)}
+      100%{transform:translateY(-220px)}
+    }
+    @media (prefers-reduced-motion:reduce){.join-ticker-track{animation:none}}
+    .hero-cta-sub{display:flex;align-items:center;justify-content:center;width:fit-content;margin:8px auto 2px;padding:6px 14px;border-radius:999px;background:#fff6ea;border:1px solid rgba(242,139,36,.35);color:#c0630c;font-size:14px;line-height:1.3;font-weight:800}
+    .hero-cta-sub[hidden]{display:none}
+    .hero-choice{margin-top:10px;text-align:center;color:#5a6474;font-size:13px;line-height:1.5}
+    .hero-qualify-note{text-align:center;margin:8px 0 0;color:#8a5a1f;font-size:14px;line-height:1.5;font-weight:800}
+
+    .gate-panel{width:100%;max-width:520px;background:linear-gradient(180deg,#fff 0%,#f6f4ef 100%);border-radius:28px 28px 0 0;box-shadow:0 -16px 42px rgba(13,23,39,.18);padding:14px 18px calc(18px + env(safe-area-inset-bottom));max-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border:1px solid rgba(255,255,255,.55)}
+    .gate-handle{width:54px;height:5px;border-radius:999px;background:#e7e5df;margin:0 auto 13px}
+    .gate-title{margin:6px 0 0;font-size:24px;line-height:1.35;color:#1b2943;font-weight:950;letter-spacing:-.015em}
+    .gate-desc{margin:8px 0 0;color:#4a5568;font-size:15px;line-height:1.6}
+    .wa-fallback{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;justify-content:center;background:rgba(14,22,35,.52);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+    .wa-fallback.show{display:flex}
+    .wa-fallback .gate-panel{text-align:center}
+    .wa-fallback .gate-title{margin-top:4px}
+    .wa-fallback .cta{margin-top:14px}
+    .wa-alt{display:flex;gap:9px;margin-top:10px}
+    .wa-alt button,.wa-alt a{flex:1;min-height:46px;display:flex;align-items:center;justify-content:center;border:1px solid #dfdad1;background:#fff;color:#33435f;border-radius:13px;font-size:13px;font-weight:900;cursor:pointer}
+    .wa-alt button:active,.wa-alt a:active{transform:scale(.97);background:#f3f1ec}
+    .wa-number{margin-top:10px;font-size:12px;color:#5d6a7d;font-weight:800}
+    .wa-browser-tip{display:none;margin-top:10px;padding:9px 11px;border-radius:12px;background:#fff6e8;border:1px solid #f0ddb7;color:#76531d;font-size:11px;line-height:1.5;font-weight:800}
+    .wa-browser-tip.show{display:block}
+    .wa-close{margin-top:12px;border:0;background:none;color:#8e95a0;font-size:12px;font-weight:800;padding:8px;cursor:pointer}
+    @media(min-width:521px){.wa-fallback{align-items:center;padding:18px}.gate-panel{border-radius:26px;padding-bottom:20px}}
+
+    @media(max-width:360px){h1{font-size:34px}.hero-heading{font-size:28px;margin-top:10px}.hero-lead{font-size:15px;margin-bottom:8px}.hero-steps{margin-top:10px;gap:0}.hstep{font-size:14px;gap:4px;padding:8px 4px}.hstep-n{width:22px;height:22px;font-size:13px}.hero-card{min-height:0;padding:13px 14px}.hero-card h3{font-size:21px;margin:8px 0 5px}.card-meta{display:none}.hero{padding:14px 16px 16px}section{padding-left:16px;padding-right:16px}.stat-value{font-size:23px}.gate-title{font-size:22px}.cta{font-size:18px}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero" id="top">
+      <div class="hero-inner">
+        <div class="hero-above">
+        <img class="joint-rec" src="data:image/webp;base64,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" alt="聯合推薦 AASTOCKS 與 經濟通" width="594" height="113">
+        <div class="eyebrow"><span class="dot"></span><span>10月26日 · 今日名單已更新</span></div>
+        <h1 class="hero-heading">你隻股又跌？<br><span class="hl">入群跟成班人一齊學，<br>免費拎心水名單</span><br><span class="accent">今日已經整理好</span></h1>
+        <p class="hero-lead">10月23日收市，指數升0.69%，1247 隻股升、714 隻股跌。<br>名單由講經MAN 聯同 AASTOCKS、經濟通數據合作整理，<b>按一下，WhatsApp 直接收名單。</b></p>
+        </div>
+
+        <div class="join-ticker" aria-hidden="true">
+          <div class="join-ticker-track">
+            <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
+            <div class="join-line"><i></i>黃太 · 8分鐘前入群一齊學</div>
+            <div class="join-line"><i></i>李生 · 12分鐘前領取名單並入群</div>
+            <div class="join-line"><i></i>張小姐 · 16分鐘前入群，拎咗心水名單</div>
+            <div class="join-line"><i></i>林生 · 21分鐘前加入，一齊學</div>
+            <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
+          </div>
+        </div>
+        <a class="cta cta-top" href="https://wa.me/85294602874?text=%E6%83%B3%E6%94%9E%E4%BB%BD%E5%BF%83%E6%B0%B4%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E4%BA%A6%E6%83%B3%E5%85%A5%E7%BE%A4%E5%90%8C%E5%A4%A7%E5%AE%B6%E4%B8%80%E9%BD%8A%E7%A0%94%E7%A9%B6%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" role="button" data-wa data-location="hero" id="hero-cta">免費領取今日潛力黑馬名單</a>
+        <div class="hero-cta-sub" id="hero-cta-sub">今日可以免費領取，名額有限</div>
+
+        <div class="slider-wrap">
+          <div class="slider" id="hero-slider" aria-label="今日精選分類">
+            <article class="hero-card" data-slide="blackhorse" tabindex="0">
+              <span class="card-tag"><i></i>潛力黑馬</span>
+              <h3>今日潛力黑馬名單</h3>
+              <p>大市分化，邊啲股<b>有大戶跟緊</b>？我哋幫你揀出嚟，一份名單睇晒。</p>
+              <div class="card-meta"><span>免費領取</span><span>每日更新</span><span>一睇就明</span></div>
+            </article>
+
+            <article class="hero-card" data-slide="picks" tabindex="0">
+              <span class="card-tag"><i></i>今日心水</span>
+              <h3>今日心水股名單</h3>
+              <p>今日最值得留意嘅幾隻股，<b>每隻都講埋原因</b>，開市前睇一睇就得。</p>
+              <div class="card-meta"><span>免費領取</span><span>開市前更新</span><span>附埋原因</span></div>
+            </article>
+
+            <article class="hero-card" data-slide="income" tabindex="0">
+              <span class="card-tag"><i></i>高息收息</span>
+              <h3>高息收息精選</h3>
+              <p>想穩穩陣陣收息？<b>派息穩定嘅收息股</b>，幫你揀好咗，啱長線慢慢收。</p>
+              <div class="card-meta"><span>免費領取</span><span>派息穩定</span><span>啱長線</span></div>
+            </article>
+          </div>
+        </div>
+
+        <div class="slider-dots" aria-label="切換分類">
+          <button class="slider-dot" type="button" data-dot="blackhorse">潛力黑馬</button>
+          <button class="slider-dot" type="button" data-dot="picks">今日心水</button>
+          <button class="slider-dot" type="button" data-dot="income">高息收息</button>
+        </div>
+
+        <div class="hero-steps" aria-label="領取步驟">
+          <div class="hstep"><span class="hstep-n">1</span><span>揀名單</span></div>
+          <div class="hstep"><span class="hstep-n">2</span><span>按領取</span></div>
+          <div class="hstep"><span class="hstep-n">3</span><span>WhatsApp 收</span></div>
+        </div>
+        <div class="hero-choice" id="hero-choice">目前選擇：潛力黑馬 · 打開後按「發送」即收</div>
+        <div class="hero-qualify-note">完全免費 · 唔使填任何資料 · 打開後按發送</div>
+        <div class="hero-proof">每日開市前更新 · 內容按公開市場資訊整理</div>
+      </div>
+    </section>
+
+    <section class="section-blue" id="trust">
+      <div class="final-card" id="final-cta">
+        <div class="mini-label">19 OCT 名單已整理</div>
+        <h2 id="final-title">大市分化更要揀啱股<br>今日完整名單已經整理好</h2>
+        <p id="final-copy">揀好你想睇嘅方向，開啟 WhatsApp 後<b>直接按「發送」</b>，即可免費領取完整名單。</p>
+        <a class="cta" href="https://wa.me/85294602874?text=%E6%83%B3%E6%94%9E%E4%BB%BD%E5%BF%83%E6%B0%B4%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E4%BA%A6%E6%83%B3%E5%85%A5%E7%BE%A4%E5%90%8C%E5%A4%A7%E5%AE%B6%E4%B8%80%E9%BD%8A%E7%A0%94%E7%A9%B6%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" role="button" data-wa data-location="final" id="final-button">免費領取今日潛力黑馬名單</a>
+        <div class="reception" id="reception-text">本次由助理Nicole 黃嘉欣 接待</div>
+      </div>
+    </section>
+
+    <footer>
+      講經MAN · 公開市場資訊整理
+      <p class="fine"><b>免責聲明</b>內容按公開市場資訊整理，只供參考，不構成任何投資建議或要約。名單同群組只作學習交流，不保證回報。市場情況會變動，投資涉及風險。</p>
+      <p class="fine"><b>聯絡地址</b>尖沙咀廣東道36號中港城一座18樓<br>電話 +852 26880089</p>
+    </footer>
+  </main>
+
+  <div class="floating-cta-wrap" id="floating-cta-wrap" aria-hidden="true">
+    <a class="cta floating-cta" href="https://wa.me/85294602874?text=%E6%83%B3%E6%94%9E%E4%BB%BD%E5%BF%83%E6%B0%B4%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E4%BA%A6%E6%83%B3%E5%85%A5%E7%BE%A4%E5%90%8C%E5%A4%A7%E5%AE%B6%E4%B8%80%E9%BD%8A%E7%A0%94%E7%A9%B6%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" role="button" data-wa data-location="floating" id="floating-button">免費領取今日潛力黑馬名單</a>
+  </div>
+
+  <!-- 喚起失敗兜底：App 內置瀏覽器攔截跳轉時，用戶仍有路可走 -->
+  <div class="wa-fallback" id="wa-fallback" aria-hidden="true">
+    <div class="gate-panel" role="dialog" aria-modal="true" aria-labelledby="wa-fallback-title">
+      <div class="gate-handle"></div>
+      <h3 class="gate-title" id="wa-fallback-title">未自動開啟 WhatsApp？</h3>
+      <p class="gate-desc">按下面按鈕再試一次，打開後直接按「發送」即可領取名單。</p>
+      <a class="cta" id="wa-fallback-open" href="#">開啟 WhatsApp 領取名單</a>
+      <div class="wa-alt">
+        <button type="button" id="wa-copy-number">複製 WhatsApp 號碼</button>
+        <button type="button" id="wa-copy-msg">複製留言內容</button>
+      </div>
+      <div class="wa-number" id="wa-number-text"></div>
+      <div class="wa-browser-tip" id="wa-browser-tip">如仍未能開啟：請按右上角「⋯」，選擇「在瀏覽器中開啟」，再按一次領取按鈕。</div>
+      <button class="wa-close" type="button" id="wa-fallback-close">關閉</button>
+    </div>
+  </div>
+
+  <script>
+    (function warmWhatsAppLink(){
+      var a = document.getElementById('hero-cta');
+      var href = a && a.getAttribute('href');
+      if (!href || href.indexOf('https://wa.me/') !== 0) return;
+      try {
+        var link = document.createElement('link');
+        link.rel = 'prefetch';
+        link.href = href;
+        document.head.appendChild(link);
+      } catch (e) {}
+    })();
+
+    // ====== 日常設定區：換號 / 換接待只改這裡 ======
+    const CONFIG = {
+      whatsappNumber: "85294602874",
+      receptionist: 'Nicole 黃嘉欣',
+      googleSendTo: 'AW-364192896/4AipCP_viZYdEIDJ1K0B',
+      // 喚起後多少毫秒頁面仍在前台，就彈出兜底面板；App 內置瀏覽器由宿主即時決定放唔放行，可以更快彈
+      fallbackDelay: 1600,
+      fallbackDelayInApp: 1200,
+      // 離線轉化回傳：填入 apps-script/Code.gs 部署後的 Web App 網址（.../exec）；留空則唔上報，留言亦唔加編號
+      leadEndpoint: '',
+      // 留空：不向分流系統回傳，也不上傳
+      eventEndpoint: '',
+      listDate: '10月26日'
+    };
+
+    // ====== 廣告點擊 ID：首次帶參數進入時保存 90 日，之後冇參數再訪問都能對返 ======
+    const CLICK_IDS = (() => {
+      const KEY = 'econman_click_ids';
+      const TTL = 90 * 24 * 3600 * 1000;
+      const q = new URLSearchParams(location.search);
+      const fresh = {};
+      // placement / creative / device 由 Google Ads 最終網址後綴 {placement} {creative} {device} 帶入，用嚟分辨 AASTOCKS、etnet 等來源 App
+      ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'placement', 'creative', 'device'].forEach(k => {
+        const v = q.get(k);
+        if (v) fresh[k] = v.slice(0, 300);
+      });
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+      if (!stored.ts || Date.now() - stored.ts > TTL) stored = {};
+      if (fresh.gclid || fresh.gbraid || fresh.wbraid) {
+        stored = Object.assign({}, fresh, { ts: Date.now() });
+        try { localStorage.setItem(KEY, JSON.stringify(stored)); } catch (e) {}
+      }
+      return Object.assign({}, stored, fresh);
+    })();
+
+    // 進線語。唔寫接待名。
+    const LINE_BANK = [
+      '想攞份心水股名單，亦想入群同大家一齊研究，麻煩send個入群Link畀我，唔該！'
+    ];
+    const LAST_MSG_KEY = 'econman_last_msg';
+
+    const PAGE_START = Date.now();
+
+    // ====== 打點：gtag.js 已載入就即時發；未載入（網絡慢 / 用戶極快點擊）就先存本地，之後或下次打開頁面補報 ======
+    const PENDING_KEY = 'econman_pending_events';
+
+    // ====== WhatsApp 跳轉：先判斷打開環境，再揀喚起方式 ======
+    const UA = navigator.userAgent || '';
+    const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const IS_ANDROID = /Android/i.test(UA);
+    const IN_APP_RE = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|musical_ly|Bytedance|Snapchat|Pinterest|LinkedInApp/i;
+    // iOS：Safari / SFSafariViewController / Chrome / Google App 的 UA 都帶 "Safari/"，宿主 App 自建的 WKWebView 不帶
+    const IOS_WEBVIEW = IS_IOS && (!/Safari\//.test(UA) || IN_APP_RE.test(UA));
+    // Android：系統 WebView 的 UA 帶 "; wv)"；Chrome Custom Tabs（AdMob / YouTube / Gmail 常用）與 Chrome 相同
+    const ANDROID_WEBVIEW = IS_ANDROID && (/; wv\)/.test(UA) || IN_APP_RE.test(UA));
+    // intent:// 交給 Chrome、小米、華為、Edge、Custom Tabs。三星瀏覽器 SamsungBrowser 的 intent:// 會把頁面拆掉又拉不起 App，改走 wa.me。Firefox、UC、QQ 同樣走 wa.me。
+    const ANDROID_INTENT_OK = IS_ANDROID && /Chrome\/\d+/.test(UA) && !/SamsungBrowser|UCBrowser|Quark|MQQBrowser|Opera Mini|Firefox|FxiOS/i.test(UA);
+    const WA_ENV = IS_IOS ? (IOS_WEBVIEW ? 'ios_webview' : 'ios_browser')
+                 : IS_ANDROID ? (ANDROID_WEBVIEW ? 'android_webview' : 'android_browser')
+                 : 'desktop';
+
+    function buildWhatsAppUrls(message) {
+      const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g, '');
+      const text = encodeURIComponent(message);
+      const universal = `https://wa.me/${phone}?text=${text}`;
+      return {
+        phone,
+        universal,
+        scheme: `whatsapp://send?phone=${phone}&text=${text}`,
+        // 冇裝普通版（或只裝 Business 版）時 Chrome 會自動轉去 fallback，wa.me 再交俾已安裝嘅 App
+        intent: `intent://send?phone=${phone}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${encodeURIComponent(universal)};end`
+      };
+    }
+
+    function copyByCommand(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      return ok;
+    }
+
+    function copyText(text, btn, okLabel) {
+      const original = btn.textContent;
+      const showCopied = () => { btn.textContent = okLabel; setTimeout(() => { btn.textContent = original; }, 1800); };
+      // 先試同步方法：部分 WebView 冇 clipboard API，而且 await 之後會失去用戶手勢
+      if (copyByCommand(text)) { showCopied(); return; }
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(showCopied, () => {});
+    }
+
+    function sendEvent(name, extra) {
+      if (!CONFIG.eventEndpoint) return;
+      try {
+        const body = JSON.stringify(Object.assign({
+          event: name,
+          ts: Date.now(),
+          since_load_ms: Date.now() - PAGE_START,
+          wa_env: WA_ENV,
+          link_type: waAttempt ? waAttempt.linkType : '',
+          cta: waAttempt ? waAttempt.placement : '',
+          transaction_id: waAttempt ? (waAttempt.txId || '') : '',
+          placement_app: CLICK_IDS.placement || '',
+          creative: CLICK_IDS.creative || '',
+          device: CLICK_IDS.device || '',
+          gclid: CLICK_IDS.gclid || '',
+          gbraid: CLICK_IDS.gbraid || '',
+          wbraid: CLICK_IDS.wbraid || '',
+          number: CONFIG.whatsappNumber,
+          visible: !document.hidden,
+          page: location.origin + location.pathname,
+          ua: UA.slice(0, 300)
+        }, extra || {}));
+        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.eventEndpoint, new Blob([body], { type: 'text/plain' }))) return;
+        fetch(CONFIG.eventEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true });
+      } catch (e) {}
+    }
+
+    function trackEvent(name, params) {
+      const payload = Object.assign({ transport_type: 'beacon', wa_env: WA_ENV, ad_placement: CLICK_IDS.placement || '(none)' }, params);
+      if (gtagReady()) { try { gtag('event', name, payload); } catch (e) {} return; }
+      // 帶 transaction_id 嘅事件（Google Ads 轉化）：即時推入 gtag 隊列 + 本地暫存雙保險。
+      // 用戶跳去 WhatsApp 後頁面轉入後台、定時器被暫停，但 gtag.js 載入完成嘅回調仍會執行並即時發出；
+      // 之後補發嘅同一 transaction_id 由 Google Ads 自動去重，唔會重複計算
+      if (payload.transaction_id) { try { gtag('event', name, payload); } catch (e) {} }
+      try {
+        const list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+        list.push({ name, params: payload, ts: Date.now() });
+        localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(-50)));
+      } catch (e) {
+        try { gtag('event', name, payload); } catch (e2) {}
+      }
+    }
+
+    function gtagReady() { return typeof gtag === 'function' && !!window.google_tag_manager; }
+
+    function flushPendingEvents(force) {
+      if (!gtagReady() && !(force && typeof gtag === 'function')) return;
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) {}
+      if (!list.length) return;
+      try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
+      const cutoff = Date.now() - 7 * 86400000;
+      list.filter(ev => ev && ev.ts > cutoff).forEach(ev => {
+        try { gtag('event', ev.name, Object.assign({}, ev.params, { deferred: 1 })); } catch (e) {}
+      });
+    }
+
+    function openWhatsAppScheme(url) {
+      const frame = document.createElement('iframe');
+      frame.style.display = 'none';
+      frame.src = url;
+      document.body.appendChild(frame);
+      setTimeout(() => frame.remove(), 3000);
+    }
+
+    function buildLeadMessage(leadCode) {
+      const full = String(CONFIG.receptionist || '').trim();
+      const who = (full.split(/\s+/)[0] || '你好');
+      const day = CONFIG.listDate || '今日';
+      const fillTemplate = (tpl) => tpl.split('{r}').join(who).split('{d}').join(day);
+      let last = '';
+      try { last = localStorage.getItem(LAST_MSG_KEY) || ''; } catch (e) {}
+      let msg = fillTemplate(LINE_BANK[0]);
+      for (let n = 0; n < 6; n++) {
+        msg = fillTemplate(LINE_BANK[Math.floor(Math.random() * LINE_BANK.length)]);
+        if (msg !== last) break;
+      }
+      try { localStorage.setItem(LAST_MSG_KEY, msg); } catch (e) {}
+      return msg + (leadCode ? '\n（編號：' + leadCode + '）' : '');
+    }
+
+    function makeLeadCode() {
+      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+      const bytes = new Uint8Array(6);
+      (window.crypto || window.msCrypto).getRandomValues(bytes);
+      return Array.from(bytes, b => chars[b % chars.length]).join('');
+    }
+
+    function postLead(payload) {
+      if (!CONFIG.leadEndpoint) return;
+      // text/plain 唔會觸發 CORS 預檢；Apps Script 只需收到請求，回應內容唔重要
+      const body = JSON.stringify(payload);
+      try {
+        if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.leadEndpoint, new Blob([body], { type: 'text/plain' }))) return;
+      } catch (e) {}
+      try { fetch(CONFIG.leadEndpoint, { method: 'POST', body, mode: 'no-cors', keepalive: true }); } catch (e) {}
+    }
+
+    function prepareFallback(urls, message) {
+      fallbackPayload = { phone: urls.phone, message, universal: urls.universal };
+      const hrefByEnv = {
+        ios_browser: urls.universal,
+        ios_webview: urls.scheme,
+        // 第一次 intent:// 冇反應先會見到兜底，重試改行 wa.me（App Link／官方頁），唔再重複同一條路
+        android_browser: urls.universal,
+        android_webview: urls.scheme,
+        desktop: urls.universal
+      };
+      waFallbackOpen.href = hrefByEnv[WA_ENV];
+      waNumberText.textContent = `WhatsApp 號碼：+${urls.phone}`;
+      waBrowserTip.classList.toggle('show', IOS_WEBVIEW || ANDROID_WEBVIEW);
+    }
+
+    function hideFallback() {
+      if (!waFallback.classList.contains('show')) return;
+      waFallback.classList.remove('show');
+      waFallback.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function showFallback() {
+      if (!waAttempt || waAttempt.left || document.hidden) return;
+      waFallback.classList.add('show');
+      waFallback.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      trackEvent('wa_fallback_shown', { placement: waAttempt.placement });
+      sendEvent('wa_fallback_shown', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+      // 安卓 WebView：隱藏 iframe 的 whatsapp:// 沒把 App 拉到前台。此時仍在用戶點擊之後，
+      // 自動再開一次 https://wa.me/。https 不會把頁面打成 ERR_UNKNOWN_URL_SCHEME。
+      // 已經進後台的不會走到這裡。只跳一次。
+      if (WA_ENV === 'android_webview' && !waAttempt.webHop && fallbackPayload.universal) {
+        waAttempt.webHop = true;
+        try { window.location.href = fallbackPayload.universal; } catch (e) {}
+      }
+    }
+
+    function armFallback(delay) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(showFallback, delay);
+    }
+
+    function markAppOpened() {
+      if (!waAttempt || waAttempt.left) return;
+      waAttempt.left = true;
+      clearTimeout(fallbackTimer);
+      hideFallback();
+      trackEvent('wa_app_opened', { placement: waAttempt.placement, wa_ms: Date.now() - waAttempt.t });
+      sendEvent('wa_app_opened', { transaction_id: waAttempt.txId || '', wa_ms: Date.now() - waAttempt.t });
+    }
+
+    function sendPageView() {
+      if (pageViewSent) return;
+      pageViewSent = true;
+      sendEvent('page_view', { variant: currentKey, referrer: (document.referrer || '').slice(0, 200) });
+    }
+
+    function selectCard(key, {scroll=false, track=true} = {}) {
+      if (!VARIANTS[key]) return;
+      currentKey = key;
+      const data = VARIANTS[key];
+
+      cards.forEach(card => card.classList.toggle('active', card.dataset.slide === key));
+      dots.forEach(dot => dot.classList.toggle('active', dot.dataset.dot === key));
+
+      heroCta.textContent = data.button;
+      finalButton.textContent = data.button;
+      floatingButton.textContent = data.button;
+      heroChoice.textContent = `目前選擇：${data.label} · 打開後按「發送」即收`;
+
+      if (scroll) {
+        const card = cards.find(c => c.dataset.slide === key);
+        if (card) slider.scrollTo({left: card.offsetLeft - slider.offsetLeft, behavior:'smooth'});
+      }
+
+      if (track) {
+        try {
+          if (typeof fbq === 'function') fbq('trackCustom','LandingVariantView',{variant:key});
+        } catch(e){}
+      }
+    }
+
+    function openWhatsApp(e, locationName) {
+      const anchor = e && e.currentTarget && e.currentTarget.tagName === 'A' ? e.currentTarget : null;
+      if (redirecting) return; // 2 秒內重複點擊：href 仍然係上次嘅正確連結，預設導航照跳
+      redirecting = true;
+      setTimeout(() => { redirecting = false; }, 2000);
+
+      const interest = cardInterest[currentKey] || '近期潛力黑馬名單';
+      const leadCode = CONFIG.leadEndpoint ? makeLeadCode() : '';
+      const txId = Date.now().toString(36) + '-' + makeLeadCode();
+      const message = buildLeadMessage(leadCode);
+      const urls = buildWhatsAppUrls(message);
+
+      let target = urls.universal, linkType = 'universal';
+      if (WA_ENV === 'ios_webview') { target = urls.scheme; linkType = 'scheme'; }
+      else if (WA_ENV === 'android_browser' && ANDROID_INTENT_OK) { target = urls.intent; linkType = 'intent'; }
+      if (WA_ENV === 'android_webview') linkType = 'iframe';
+
+      if (WA_ENV === 'android_webview') {
+        if (e) e.preventDefault();
+        openWhatsAppScheme(urls.scheme);
+      } else if (anchor) {
+        anchor.href = target;
+        if (WA_ENV === 'desktop') { anchor.target = '_blank'; anchor.rel = 'noopener'; }
+      } else if (WA_ENV === 'desktop') {
+        window.open(target, '_blank');
+      } else {
+        window.location.href = target;
+      }
+
+      // ---------- 以下全部喺跳轉已交俾瀏覽器之後先執行 ----------
+      waAttempt = { t: Date.now(), placement: locationName || 'unknown', left: false, linkType, txId };
+      try {
+        prepareFallback(urls, message);
+        if (WA_ENV !== 'desktop') armFallback((IOS_WEBVIEW || ANDROID_WEBVIEW) ? CONFIG.fallbackDelayInApp : CONFIG.fallbackDelay);
+      } catch (err) {}
+
+      try {
+        postLead({
+          code: leadCode,
+          gclid: CLICK_IDS.gclid || '',
+          gbraid: CLICK_IDS.gbraid || '',
+          wbraid: CLICK_IDS.wbraid || '',
+          utm_source: CLICK_IDS.utm_source || '',
+          utm_medium: CLICK_IDS.utm_medium || '',
+          utm_campaign: CLICK_IDS.utm_campaign || '',
+          utm_content: CLICK_IDS.utm_content || '',
+          utm_term: CLICK_IDS.utm_term || '',
+          placement_app: CLICK_IDS.placement || '',
+          creative: CLICK_IDS.creative || '',
+          interest: interest,
+          priority: '',
+          variant: currentKey,
+          placement: locationName || 'unknown',
+          wa_env: WA_ENV,
+          number: CONFIG.whatsappNumber,
+          receptionist: CONFIG.receptionist,
+          page: location.origin + location.pathname,
+          ua: UA.slice(0, 300)
+        });
+      } catch (err) {}
+
+      try {
+        if (typeof fbq === 'function') {
+          fbq('track', 'Contact', { content_name: 'WhatsApp', content_category: 'Lead' });
+          fbq('trackCustom', 'WhatsAppClick', { placement: locationName || 'unknown', variant: currentKey, wa_env: WA_ENV });
+        }
+      } catch (err) {}
+      sendPageView();
+      trackEvent('whatsapp_click', { event_label: locationName || 'unknown', landing_variant: currentKey, lead_code: leadCode });
+      trackEvent('conversion', { send_to: CONFIG.googleSendTo, transaction_id: txId });
+      sendEvent('whatsapp_click', { transaction_id: txId, lead_code: leadCode, variant: currentKey, interest: interest, priority: '', gtag_ready: gtagReady() });
+    }
+
+    function updateFloatingBar(){
+      const pastHero = window.scrollY > heroThreshold;
+      const show = pastHero && !finalVisible;
+      floatingWrap.classList.toggle('show', show);
+      floatingWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+
+    function queueFloatingBar(){
+      if (floatTicking) return;
+      floatTicking = true;
+      requestAnimationFrame(() => { floatTicking = false; updateFloatingBar(); });
+    }
+
+    function refreshHeroThreshold() { heroThreshold = Math.max(180, heroSection.offsetHeight * .72); queueFloatingBar(); }
+
+    // 6 位編號，去掉 0/O/1/I/L 等易混字元，方便客服肉眼核對
+
+    // 每一步都獨立送一條；全部排喺跳轉之後、各自 try/catch，任何失敗都唔影響跳轉
+
+    // ====== 首屏三張卡：廣告參數決定預設卡，但用戶可自由左右滑 ======
+    const VARIANTS = {
+      blackhorse: {
+        key:'blackhorse',
+        label:'潛力黑馬',
+        button:'免費領取今日潛力黑馬名單',
+        message:'想攞份心水股名單，亦想入群同大家一齊研究，麻煩send個入群Link畀我，唔該！'
+      },
+      picks: {
+        key:'picks',
+        label:'今日心水',
+        button:'免費領取今日心水股名單',
+        message:'想攞份心水股名單，亦想入群同大家一齊研究，麻煩send個入群Link畀我，唔該！'
+      },
+      income: {
+        key:'income',
+        label:'高息收息',
+        button:'免費領取高息收息精選名單',
+        message:'想攞份心水股名單，亦想入群同大家一齊研究，麻煩send個入群Link畀我，唔該！'
+      }
+    };
+
+    const ORDER = ['blackhorse','picks','income'];
+    const params = new URLSearchParams(location.search);
+    const hadExplicitFocus = Boolean(params.get('focus') || params.get('utm_content'));
+    let rawFocus = (params.get('focus') || params.get('utm_content') || '').toLowerCase();
+
+    if (rawFocus.includes('black') || rawFocus.includes('horse') || rawFocus.includes('黑馬')) rawFocus = 'blackhorse';
+    else if (rawFocus.includes('pick') || rawFocus.includes('心水')) rawFocus = 'picks';
+    else if (rawFocus.includes('income') || rawFocus.includes('dividend') || rawFocus.includes('高息') || rawFocus.includes('收息')) rawFocus = 'income';
+    else rawFocus = 'blackhorse';
+
+    let currentKey = VARIANTS[rawFocus] ? rawFocus : 'blackhorse';
+    let userInteracted = false;
+    let autoHintDone = false;
+
+    const slider = document.getElementById('hero-slider');
+    const cards = [...document.querySelectorAll('.hero-card')];
+    const dots = [...document.querySelectorAll('.slider-dot')];
+    const heroCta = document.getElementById('hero-cta');
+    const finalButton = document.getElementById('final-button');
+    const floatingButton = document.getElementById('floating-button');
+    const heroChoice = document.getElementById('hero-choice');
+    const receptionText = document.getElementById('reception-text');
+
+    receptionText.textContent = `本次由助理${CONFIG.receptionist} 接待`;
+
+    // Initial slide follows ad parameter
+    selectCard(currentKey, {scroll:false, track:true});
+    requestAnimationFrame(() => {
+      const card = cards.find(c => c.dataset.slide === currentKey);
+      if (card) slider.scrollLeft = card.offsetLeft - slider.offsetLeft;
+    });
+
+    // Detect which card is nearest the left edge after swiping
+    let scrollTimer;
+    slider.addEventListener('scroll', () => {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        const left = slider.scrollLeft;
+        let nearest = cards[0], min = Infinity;
+        cards.forEach(card => {
+          const d = Math.abs((card.offsetLeft - slider.offsetLeft) - left);
+          if (d < min) { min = d; nearest = card; }
+        });
+        if (nearest && nearest.dataset.slide !== currentKey) selectCard(nearest.dataset.slide, {scroll:false, track:true});
+      }, 90);
+    }, {passive:true});
+
+    // Any touch/drag stops the one-time auto hint
+    ['touchstart','pointerdown','wheel'].forEach(evt => {
+      slider.addEventListener(evt, () => { userInteracted = true; }, {passive:true});
+    });
+
+    dots.forEach(dot => dot.addEventListener('click', () => {
+      userInteracted = true;
+      selectCard(dot.dataset.dot, {scroll:true, track:true});
+    }));
+
+    // One gentle automatic nudge to show there are multiple cards, then stop.
+    // If the ad already opened on card 2 or 3, nudge to the next card; never loops continuously.
+    setTimeout(() => {
+      if (hadExplicitFocus || userInteracted || autoHintDone || document.visibilityState !== 'visible') return;
+      autoHintDone = true;
+      const i = ORDER.indexOf(currentKey);
+      const next = ORDER[Math.min(i + 1, ORDER.length - 1)];
+      if (next !== currentKey) selectCard(next, {scroll:true, track:true});
+    }, 3000);
+
+    let redirecting = false;
+    const cardInterest = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
+
+    ['load', 'pageshow'].forEach(evt => window.addEventListener(evt, flushPendingEvents));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) flushPendingEvents(); });
+    const flushPoll = setInterval(() => { flushPendingEvents(); if (gtagReady()) clearInterval(flushPoll); }, 800);
+    // 30 秒後仍偵測唔到 gtag.js 就緒：直接推入 gtag 隊列，等佢載入後自行發送，避免事件一直積壓
+    setTimeout(() => { clearInterval(flushPoll); flushPendingEvents(true); }, 30000);
+
+    // 宿主唔處理自訂 scheme 時，只係 iframe 失敗；主頁面唔會變成 ERR_UNKNOWN_URL_SCHEME 錯誤頁，兜底面板仍然可用
+
+    const waFallback = document.getElementById('wa-fallback');
+    const waFallbackOpen = document.getElementById('wa-fallback-open');
+    const waCopyNumber = document.getElementById('wa-copy-number');
+    const waCopyMsg = document.getElementById('wa-copy-msg');
+    const waNumberText = document.getElementById('wa-number-text');
+    const waBrowserTip = document.getElementById('wa-browser-tip');
+    let waAttempt = null;
+    let fallbackTimer = 0;
+    let fallbackPayload = { phone: '', message: '' };
+
+    // 頁面轉入後台 = WhatsApp 已被喚起
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) markAppOpened();
+      else redirecting = false;
+    });
+    window.addEventListener('pagehide', () => clearTimeout(fallbackTimer));
+    // 系統確認框（Android 揀 App、iOS「喺 WhatsApp 開啟？」）會令頁面失焦但仍然可見，期間唔好彈兜底
+    window.addEventListener('blur', () => { if (waAttempt && !waAttempt.left) armFallback(3500); });
+    window.addEventListener('focus', () => {
+      if (waAttempt && !waAttempt.left && !waFallback.classList.contains('show')) armFallback(900);
+    });
+    window.addEventListener('pageshow', e => { if (e.persisted) { redirecting = false; clearTimeout(fallbackTimer); } });
+
+    // 冇點領取按鈕就唔向分流系統回傳。page_view 只在 openWhatsApp 裡補發一次。
+    let pageViewSent = false;
+
+    // 點擊 → 第一步就把正確連結寫入 <a href>，交俾瀏覽器預設導航（等同用戶親手點連結，最容易被宿主 App 放行）。
+    // 兜底、上報全部排喺跳轉之後；就算下面任何一行出錯，跳轉都已經發生。
+    waFallbackOpen.addEventListener('click', () => {
+      waAttempt = { t: Date.now(), placement: 'fallback', left: false, linkType: 'retry', txId: waAttempt ? waAttempt.txId : '' };
+      trackEvent('wa_fallback_click', {});
+      sendEvent('wa_fallback_click', {});
+    });
+    waCopyNumber.addEventListener('click', () => {
+      copyText(`+${fallbackPayload.phone}`, waCopyNumber, '已複製號碼 ✓');
+      trackEvent('wa_copy_number', {});
+      sendEvent('wa_copy_number', {});
+    });
+    waCopyMsg.addEventListener('click', () => {
+      copyText(fallbackPayload.message, waCopyMsg, '已複製留言 ✓');
+      trackEvent('wa_copy_message', {});
+      sendEvent('wa_copy_message', {});
+    });
+    document.getElementById('wa-fallback-close').addEventListener('click', hideFallback);
+    waFallback.addEventListener('click', e => { if (e.target === waFallback) hideFallback(); });
+
+    document.querySelectorAll('[data-wa]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        openWhatsApp(e, btn.dataset.location);
+      });
+    });
+
+    // Mobile floating CTA: show after hero, hide at final CTA.
+    const floatingWrap = document.getElementById('floating-cta-wrap');
+    const heroSection = document.getElementById('top');
+    const finalCta = document.getElementById('final-cta');
+    let finalVisible = false;
+
+    const finalObserver = new IntersectionObserver(entries => {
+      finalVisible = entries[0] && entries[0].isIntersecting;
+      updateFloatingBar();
+    }, {threshold:.18});
+    finalObserver.observe(finalCta);
+
+    // 滾動中只讀 scrollY；hero 高度只喺 resize 時讀，避免每次滾動強制排版，並用 rAF 合併同一幀內多次觸發
+    let heroThreshold = Math.max(180, heroSection.offsetHeight * .72);
+    let floatTicking = false;
+
+    window.addEventListener('scroll',queueFloatingBar,{passive:true});
+
+    window.addEventListener('resize', refreshHeroThreshold, {passive:true});
+    window.addEventListener('load', refreshHeroThreshold, {once:true});
+    updateFloatingBar();
+
+    // 按鈕離開畫面就暫停動效
+    if ('IntersectionObserver' in window) {
+      const ctaObserver = new IntersectionObserver(entries => {
+        entries.forEach(en => en.target.classList.toggle('cta-idle', !en.isIntersecting));
+      });
+      [heroCta, finalButton].forEach(btn => ctaObserver.observe(btn));
+    }
+  </script>
+</body>
+</html>
