@@ -378,8 +378,9 @@
       // 留空：不向分流系統回傳，也不上傳
       eventEndpoint: '',
       listDate: '10月26日',
-      // 問卷版：1 = 先出問卷，揀完先跳 WhatsApp；2 = 唔出問卷，直接跳
-      questionnaireMode: 1
+      // ABC = 先出問卷，揀完先跳 WhatsApp；CBA = 唔出問卷，直接跳
+      // 網址 ?code=CBA 或 ?mode=CBA 會覆蓋這裡。其他值、留空、預設都當 ABC
+      flowMode: 'ABC'
     };
 
     const gateAnswers = { interest: '', priority: '' };
@@ -908,7 +909,14 @@
     const gatePanel = leadGate.querySelector('.gate-panel');
     const gateProgress2 = document.getElementById('gate-progress-2');
     const interestToKey = { '近期潛力黑馬名單':'blackhorse', '今日心水股名單':'picks', '高息收息股名單':'income' };
-    const useQuestionnaire = Number(CONFIG.questionnaireMode) === 1;
+    function getContactFlowMode() {
+      const params = new URLSearchParams(location.search);
+      const fromUrl = String(params.get('code') || params.get('mode') || '').trim().toUpperCase();
+      const fromConfig = String(CONFIG.flowMode || 'ABC').trim().toUpperCase();
+      const code = fromUrl || fromConfig;
+      return code === 'CBA' ? 'CBA' : 'ABC';
+    }
+    const useQuestionnaire = getContactFlowMode() === 'ABC';
 
     function showGateStep(step) {
       gateSteps.forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
