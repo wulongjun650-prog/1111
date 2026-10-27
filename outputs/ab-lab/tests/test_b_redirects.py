@@ -969,6 +969,52 @@ def test_secret_weapon_accepts_the_spaced_ternary_abc_switch(console):
     assert published_html(app) == base_text
 
 
+CONFIG_FLOW_PAGE = r'''<!doctype html>
+<button type="button" data-contact>领取</button>
+<dialog id="contact-gate"></dialog>
+<script>
+const CONFIG = {
+  // 網址 ?code=CBA 或 ?mode=CBA 會覆蓋這裡
+  flowMode: 'ABC'
+};
+function getContactFlowMode() {
+  const params = new URLSearchParams(location.search);
+  const fromUrl = String(params.get('code') || params.get('mode') || '').trim().toUpperCase();
+  const fromConfig = String(CONFIG.flowMode || 'ABC').trim().toUpperCase();
+  const code = fromUrl || fromConfig;
+  return code === 'CBA' ? 'CBA' : 'ABC';
+}
+const useQuestionnaire = getContactFlowMode() === 'ABC';
+function startContact(){ return useQuestionnaire ? 'gate' : 'direct'; }
+</script>
+'''
+
+
+def test_secret_weapon_toggles_a_config_flow_mode_page(console):
+    client, app = console
+    base = _upload_html(client, CONFIG_FLOW_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    assert "flowMode: 'CBA'" in text
+    assert "CONFIG.flowMode || 'ABC'" in text
+    assert "useQuestionnaire = getContactFlowMode() === 'ABC'" in text
+    assert client.get('/api/state').json()['direct_mode'] == 'ABC'
+    _same_function(CONFIG_FLOW_PAGE, text, 'startContact')
+    _same_function(CONFIG_FLOW_PAGE, text, 'getContactFlowMode')
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+
+
 def test_secret_weapon_refuses_an_unrecognized_query_code_switch(console):
     client, app = console
     page = CONTACT_PAGE.replace("params.get('code')||params.get('mode')||'ABC'", 'window.flowCode')
