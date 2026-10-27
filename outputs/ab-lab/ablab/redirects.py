@@ -1755,6 +1755,19 @@ _CONTACT_GATE = re.compile(
     r"useContactGate\s*=\s*contactFlowMode\s*===\s*(['\"])ABC\1",
     re.IGNORECASE,
 )
+# Some pages keep the mode on CONFIG.flowMode and only use || 'ABC' when that field is empty.
+_CONFIG_FLOW = re.compile(
+    r"(flowMode\s*:\s*)(['\"])(ABC|CBA|ABCABC)\2",
+    re.IGNORECASE,
+)
+_CONFIG_FLOW_READ = re.compile(
+    r"CONFIG\.flowMode\s*\|\|\s*(['\"])(?:ABC|CBA|ABCABC)\1",
+    re.IGNORECASE,
+)
+_QUESTION_GATE = re.compile(
+    r"useQuestionnaire\s*=\s*getContactFlowMode\(\s*\)\s*===\s*(['\"])ABC\1",
+    re.IGNORECASE,
+)
 
 
 def flow_kind(text):
@@ -1768,7 +1781,7 @@ def flow_kind(text):
     return None
 
 
-def _contact_shape(text):
+def _query_contact_shape(text):
     return (
         isinstance(text, str)
         and 'getContactFlowMode' in text
@@ -1778,14 +1791,36 @@ def _contact_shape(text):
     )
 
 
+def _config_flow_shape(text):
+    if not (
+        isinstance(text, str)
+        and 'getContactFlowMode' in text
+        and _CONTACT_CBA.search(text)
+        and _QUESTION_GATE.search(text)
+        and _CONFIG_FLOW_READ.search(text)
+    ):
+        return False
+    tokens = {match.group(3).upper() for match in _CONFIG_FLOW.finditer(text)}
+    return len(tokens) == 1
+
+
+def _contact_shape(text):
+    return _query_contact_shape(text) or _config_flow_shape(text)
+
+
 def _contact_tokens(text):
-    tokens = [match.group(4).upper() for match in _CONTACT_FALLBACK.finditer(text)]
+    if _query_contact_shape(text):
+        tokens = [match.group(4).upper() for match in _CONTACT_FALLBACK.finditer(text)]
+    elif _config_flow_shape(text):
+        tokens = [match.group(3).upper() for match in _CONFIG_FLOW.finditer(text)]
+    else:
+        tokens = []
     if len(set(tokens)) != 1:
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
     return tokens[0]
 
 
-def _replace_contact_token(text, token):
+def _replace_query_token(text, token):
     def repl(match):
         if match.group(4).upper() == token:
             return match.group(0)
@@ -1807,6 +1842,32 @@ def _replace_contact_token(text, token):
     if folded != folded_updated:
         raise ValueError('跳转代码发生了变化，已取消')
     return updated
+
+
+def _replace_config_flow_token(text, token):
+    def repl(match):
+        if match.group(3).upper() == token:
+            return match.group(0)
+        return f"{match.group(1)}{match.group(2)}{token}{match.group(2)}"
+
+    updated, count = _CONFIG_FLOW.subn(repl, text)
+    if count == 0:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+
+    def fold(value):
+        return _CONFIG_FLOW.sub(lambda match: f"{match.group(1)}{match.group(2)}ABC{match.group(2)}", value)
+
+    if fold(text) != fold(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    return updated
+
+
+def _replace_contact_token(text, token):
+    if _query_contact_shape(text):
+        return _replace_query_token(text, token)
+    if _config_flow_shape(text):
+        return _replace_config_flow_token(text, token)
+    raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
 
 
 def _weapon_mode(token):
