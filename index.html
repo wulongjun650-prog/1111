@@ -45,6 +45,7 @@
     .profile-image-container img{width:100%;height:100%;object-fit:cover;object-position:center}
     .kk1-name{margin:0 0 12px;font-size:26px;line-height:1.2;color:#15233d;font-weight:950;letter-spacing:-.02em}
     .kk1-lead{margin:0 0 16px;font-size:15px;line-height:1.72;color:#1f4e8c;font-weight:700;text-align:left}
+    .kk1-content-image{display:block;width:100%;height:auto;margin:14px 0 16px;border-radius:12px;background:#fff;border:1px solid #e7e5df}
     .kk1-promo{margin:0 0 14px;padding:16px 14px 14px;border-radius:14px;background:linear-gradient(145deg,#1a2741,#243968);color:#fff;text-align:left;border:1px solid #1a2741;box-shadow:0 8px 22px rgba(26,39,65,.18)}
     .kk1-promo-tag{display:inline-block;margin:0 0 10px;padding:5px 10px;border-radius:999px;background:#c94b3f;font-size:12px;font-weight:900;letter-spacing:.04em}
     .kk1-promo h2{margin:0 0 8px;font-size:22px;line-height:1.25;font-weight:950;color:#ffd94a}
@@ -54,6 +55,12 @@
     .kk1-promo-chips span{font-size:11px;font-weight:800;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18)}
     .kk1-callout{margin:18px 0 16px;padding:14px 12px;font-size:17px;line-height:1.55;font-weight:900;color:#c94b3f;text-align:center;background:#fff4f4;border:2px solid #e8a0a0;border-radius:12px;box-shadow:0 4px 12px rgba(201,75,63,.1)}
     .kk1-urgency{margin:0 0 8px;font-size:15px;line-height:1.65;font-weight:800;color:#c94b3f;text-align:center}
+        .cta.cta-kk1{background:linear-gradient(90deg,#5D9CEC 0%,#4A89DC 100%);box-shadow:0 4px 12px rgba(74,137,220,.22);animation:kk1-pulse 2s ease-in-out infinite;font-size:18px}
+    .cta.cta-kk1 img{width:30px;height:30px;flex:none;border-radius:6px}
+    .cta.cta-intro{margin-bottom:22px}
+    .kk1-bottom{margin:4px 0 8px}
+    @keyframes kk1-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
+    @media (prefers-reduced-motion:reduce){.cta.cta-kk1{animation:none}}
     .cta.cta-intro{margin-top:4px;margin-bottom:4px;min-height:56px;font-size:18px}
 
     .host-card{margin:0 0 12px;padding:14px 12px 11px;background:#fff;border:1px solid #e4eef2;border-top:3px solid #087c67;border-radius:16px}
@@ -242,86 +249,21 @@
           </div>
           <div class="kk1-text">
             <h1 class="kk1-name">富途牛牛</h1>
-            <p class="kk1-lead">我哋成立咗一個免費交流群，專門同對投資有興趣嘅朋友一齊學習同分享經驗，過去 3 個月跟呢套方法嘅朋友當中，頭 20% 嘅成員平均回報率已經超過 150%，呢度唔講虛浮廢話，今次組合大放送，教你 3 大避險心法，清楚拆解邊啲股份勿沾手，直接公開富途牛牛精選嘅「中特估 + 滙控 + 高息股」避險穩健組合，免費獲取 3 隻收息必買股！</p>
-            <div class="kk1-promo" aria-label="富途牛牛精選組合">
-              <span class="kk1-promo-tag">組合大放送</span>
-              <h2>中特估 + 滙控 + 高息股</h2>
-              <p>教你 <b>3 大避險心法</b>，清楚拆解邊啲股份勿沾手，直接公開<b>富途牛牛精選</b>避險穩健組合，免費獲取 <b>3 隻收息必買股</b>！</p>
-              <div class="kk1-promo-chips"><span>3 大避險心法</span><span>富途牛牛精選</span><span>收息必買股</span></div>
-            </div>
-            <a class="cta cta-intro" href="https://wa.me/85265453614?text=%E6%88%91%E6%83%B3%E5%8A%A0%E5%85%A5%E5%AF%8C%E9%80%94%E7%89%9B%E7%89%9B%E4%BA%A4%E6%B5%81%E7%BE%A4%EF%BC%8C%E6%94%9E%E6%9C%80%E6%96%B0%E6%94%B6%E6%81%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" role="button" data-wa data-location="intro">WhatsApp 免費攞名單・加入交流群</a>
+            <p class="kk1-lead">我哋成立咗一個免費交流群，專門同對投資有興趣嘅朋友一齊學習同分享經驗，過去 3 個月跟呢套方法嘅朋友當中，頭 20% 嘅成員平均回報率已經超過 150%，呢度唔講虛浮廢話，今次組合大放送，教你 3 大避險心法，清楚拆解邊啲股份勿沾手，直接公開富途牛牛精選嘅「中特估 + 滙控 + 高息股」避險穩健組合，免費獲取 3 隻收息必買股！<br><img class="kk1-content-image" src="static/picture/kk1-banner.jpg" alt="富途牛牛港股名單" width="1376" height="768" loading="lazy"></p>
+            <a class="cta cta-kk1 cta-intro" href="https://wa.me/85265453614?text=%E6%88%91%E6%83%B3%E5%8A%A0%E5%85%A5%E5%AF%8C%E9%80%94%E7%89%9B%E7%89%9B%E4%BA%A4%E6%B5%81%E7%BE%A4%EF%BC%8C%E6%94%9E%E6%9C%80%E6%96%B0%E6%94%B6%E6%81%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" role="button" data-wa data-location="intro"><img src="static/picture/whatsapp.png" alt="" width="30" height="30" aria-hidden="true"><span>WhatsApp 免費攞名單・加入交流群</span></a>
             <p class="kk1-callout">進入 WhatsApp 研討社群後，只要加助理為好友，即可免費獲取最新飆升股情報！</p>
             <p class="kk1-urgency">親愛的股民老友記，為咗回報大家一直以來嘅信任同支持，富途牛牛團隊推出一個前所未有嘅特別企劃！即刻免費加入我哋嘅 WhatsApp 研討社群，不單止可以免費獲取 5 隻潛力飆升股名單，助理仲會同大家分享由散戶穩健翻倍嘅實戰心法！名額僅限前 100 名，即刻點擊連結免費加入，群組等你！</p>
           </div>
         </section>
-        <div class="eyebrow"><span class="dot"></span><span>10月28日 · 今日名單已更新</span></div>
-        <h1 class="hero-heading">港股又跌？仲自己一個人研究？<br><span class="hl">加入富途牛牛官方港股交流群<br>免費攞最新心水股名單！</span><br><span class="accent">每日港股重點整理｜熱門股份研究｜股友交流</span></h1>
+        </div>
+        <div class="kk1-bottom" id="final-cta">
+          <a class="cta cta-kk1 cta-bottom" href="https://wa.me/85265453614?text=%E6%88%91%E6%83%B3%E5%8A%A0%E5%85%A5%E5%AF%8C%E9%80%94%E7%89%9B%E7%89%9B%E4%BA%A4%E6%B5%81%E7%BE%A4%EF%BC%8C%E6%94%9E%E6%9C%80%E6%96%B0%E6%94%B6%E6%81%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" role="button" data-wa data-location="hero" id="hero-cta"><img src="static/picture/whatsapp.png" alt="" width="30" height="30" aria-hidden="true"><span>WhatsApp 免費攞名單・加入交流群</span></a>
+          <p class="reception" id="reception-text" hidden>本次由助理Nicole 黃嘉欣 接待</p>
         </div>
 
-        <div class="join-ticker" aria-hidden="true">
-          <div class="join-ticker-track">
-            <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
-            <div class="join-line"><i></i>黃太 · 8分鐘前入群一齊學</div>
-            <div class="join-line"><i></i>李生 · 12分鐘前領取名單並入群</div>
-            <div class="join-line"><i></i>張小姐 · 16分鐘前入群，拎咗心水名單</div>
-            <div class="join-line"><i></i>林生 · 21分鐘前加入，一齊學</div>
-            <div class="join-line"><i></i>陳生 · 5分鐘前入群學習，並領取名單</div>
-          </div>
-        </div>
-        <a class="cta cta-top" href="https://wa.me/85265453614?text=%E6%88%91%E6%83%B3%E5%8A%A0%E5%85%A5%E5%AF%8C%E9%80%94%E7%89%9B%E7%89%9B%E4%BA%A4%E6%B5%81%E7%BE%A4%EF%BC%8C%E6%94%9E%E6%9C%80%E6%96%B0%E6%94%B6%E6%81%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" role="button" data-wa data-location="hero" id="hero-cta">WhatsApp 免費攞名單・加入交流群</a>
-        <div class="hero-cta-sub" id="hero-cta-sub">今日可以免費領取，名額有限</div>
-
-        <div class="slider-wrap">
-          <div class="slider" id="hero-slider" aria-label="今日精選分類">
-            <article class="hero-card" data-slide="blackhorse" tabindex="0">
-              <span class="card-tag"><i></i>潛力黑馬</span>
-              <h3>今日潛力黑馬名單</h3>
-              <p>大市分化，邊啲股<b>有大戶跟緊</b>？我哋幫你揀出嚟，一份名單睇晒。</p>
-              <div class="card-meta"><span>免費領取</span><span>每日更新</span><span>一睇就明</span></div>
-            </article>
-
-            <article class="hero-card" data-slide="picks" tabindex="0">
-              <span class="card-tag"><i></i>今日心水</span>
-              <h3>今日心水股名單</h3>
-              <p>今日最值得留意嘅幾隻股，<b>每隻都講埋原因</b>，開市前睇一睇就得。</p>
-              <div class="card-meta"><span>免費領取</span><span>開市前更新</span><span>附埋原因</span></div>
-            </article>
-
-            <article class="hero-card" data-slide="income" tabindex="0">
-              <span class="card-tag"><i></i>高息收息</span>
-              <h3>高息收息精選</h3>
-              <p>想穩穩陣陣收息？<b>派息穩定嘅收息股</b>，幫你揀好咗，啱長線慢慢收。</p>
-              <div class="card-meta"><span>免費領取</span><span>派息穩定</span><span>啱長線</span></div>
-            </article>
-          </div>
-        </div>
-
-        <div class="slider-dots" aria-label="切換分類">
-          <button class="slider-dot" type="button" data-dot="blackhorse">潛力黑馬</button>
-          <button class="slider-dot" type="button" data-dot="picks">今日心水</button>
-          <button class="slider-dot" type="button" data-dot="income">高息收息</button>
-        </div>
-
-        <div class="hero-steps" aria-label="領取步驟">
-          <div class="hstep"><span class="hstep-n">1</span><span>揀名單</span></div>
-          <div class="hstep"><span class="hstep-n">2</span><span>按領取</span></div>
-          <div class="hstep"><span class="hstep-n">3</span><span>WhatsApp 收</span></div>
-        </div>
-        <div class="hero-choice" id="hero-choice">目前選擇：潛力黑馬 · 打開後按「發送」即收</div>
-        <div class="hero-qualify-note">完全免費 · 唔使填任何資料 · 打開後按發送</div>
-        <div class="hero-proof">每日開市前更新 · 內容按公開市場資訊整理</div>
       </div>
     </section>
 
-    <section class="section-blue" id="trust">
-      <div class="final-card" id="final-cta">
-        <div class="mini-label">28 OCT 名單已整理</div>
-        <h2 id="final-title">大市分化更要揀啱股<br>今日完整名單已經整理好</h2>
-        <p id="final-copy">揀好你想睇嘅方向，開啟 WhatsApp 後<b>直接按「發送」</b>，即可免費領取完整名單。</p>
-        <a class="cta" href="https://wa.me/85265453614?text=%E6%88%91%E6%83%B3%E5%8A%A0%E5%85%A5%E5%AF%8C%E9%80%94%E7%89%9B%E7%89%9B%E4%BA%A4%E6%B5%81%E7%BE%A4%EF%BC%8C%E6%94%9E%E6%9C%80%E6%96%B0%E6%94%B6%E6%81%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" role="button" data-wa data-location="final" id="final-button">WhatsApp 免費攞名單・加入交流群</a>
-        <div class="reception" id="reception-text">本次由助理Nicole 黃嘉欣 接待</div>
-      </div>
-    </section>
 
     <footer>
       富途牛牛 · 公開市場資訊整理
@@ -343,8 +285,8 @@
         <button class="gate-close-x" type="button" id="gate-cancel" aria-label="關閉">×</button>
       </div>
       <div class="gate-step active" data-step="1">
-        <h3 class="gate-title" id="gate-title-1">你想先收邊份名單？</h3>
-        <p class="gate-desc">揀一份，即刻打開 WhatsApp。</p>
+        <h3 class="gate-title" id="gate-title-1">您希望優先解鎖哪一種精選名單？</h3>
+        <p class="gate-desc">揀一項，確認後打開 WhatsApp。</p>
         <div class="gate-options">
           <a class="gate-option active" href="https://wa.me/85265453614?text=%E6%88%91%E6%83%B3%E5%8A%A0%E5%85%A5%E5%AF%8C%E9%80%94%E7%89%9B%E7%89%9B%E4%BA%A4%E6%B5%81%E7%BE%A4%EF%BC%8C%E6%94%9E%E6%9C%80%E6%96%B0%E6%94%B6%E6%81%AF%E8%82%A1%E5%90%8D%E5%96%AE%EF%BC%8C%E9%BA%BB%E7%85%A9send%E5%80%8B%E5%85%A5%E7%BE%A4Link%E7%95%80%E6%88%91%EF%BC%8C%E5%94%94%E8%A9%B2%EF%BC%81" role="button" data-question="interest" data-value="近期潛力黑馬名單">
             <span class="gate-option-main"><span class="gate-option-icon">黑</span><span><span class="gate-option-title">潛力黑馬名單</span><small>分化市有大戶跟緊嘅方向</small></span></span><span class="gate-option-check"></span>
@@ -656,10 +598,11 @@
       cards.forEach(card => card.classList.toggle('active', card.dataset.slide === key));
       dots.forEach(dot => dot.classList.toggle('active', dot.dataset.dot === key));
 
-      heroCta.textContent = data.button;
-      finalButton.textContent = data.button;
-      floatingButton.textContent = data.button;
-      heroChoice.textContent = `目前選擇：${data.label} · 打開後按「發送」即收`;
+      const btnLabel = data.button || 'WhatsApp 免費攞名單・加入交流群';
+      if (heroCta) heroCta.querySelector('span') ? (heroCta.querySelector('span').textContent = btnLabel) : (heroCta.textContent = btnLabel);
+      if (finalButton) finalButton.textContent = btnLabel;
+      if (floatingButton) floatingButton.querySelector('span') ? (floatingButton.querySelector('span').textContent = btnLabel) : (floatingButton.textContent = btnLabel);
+      if (heroChoice) heroChoice.textContent = `目前選擇：${data.label} · 打開後按「發送」即收`;
 
       if (scroll) {
         const card = cards.find(c => c.dataset.slide === key);
@@ -813,8 +756,9 @@
     const heroChoice = document.getElementById('hero-choice');
     const receptionText = document.getElementById('reception-text');
 
-    receptionText.textContent = `本次由助理${CONFIG.receptionist} 接待`;
+    if (receptionText) receptionText.textContent = `本次由助理${CONFIG.receptionist} 接待`;
 
+    if (slider && cards.length) {
     // Initial slide follows ad parameter
     selectCard(currentKey, {scroll:false, track:true});
     requestAnimationFrame(() => {
@@ -856,6 +800,7 @@
       const next = ORDER[Math.min(i + 1, ORDER.length - 1)];
       if (next !== currentKey) selectCard(next, {scroll:true, track:true});
     }, 3000);
+    }
 
     let redirecting = false;
     const cardInterest = { blackhorse:'近期潛力黑馬名單', picks:'今日心水股名單', income:'高息收息股名單' };
@@ -1013,7 +958,7 @@
       const ctaObserver = new IntersectionObserver(entries => {
         entries.forEach(en => en.target.classList.toggle('cta-idle', !en.isIntersecting));
       });
-      [heroCta, finalButton].forEach(btn => ctaObserver.observe(btn));
+      [heroCta, finalButton].filter(Boolean).forEach(btn => ctaObserver.observe(btn));
     }
   </script>
 </body>
