@@ -61,6 +61,7 @@ tr.campaign-alert td{background:#fff4f4;color:#8d3b3b}
 .version-codes[hidden] { display: none !important; }
 .tracking-full { max-width: 720px; }
 .tracking-full textarea { min-height: 150px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.detect-form { align-items: end; }
 .log-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 18px; margin-bottom: 18px; }
 .log-toolbar .filter-bar { padding-bottom: 0; }
 .log-watch { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-left: auto; }

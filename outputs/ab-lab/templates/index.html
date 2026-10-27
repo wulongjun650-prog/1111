@@ -46,6 +46,7 @@
       <button class="nav-item" data-tab="campaign"><span aria-hidden="true">▦</span>投放数据</button>
       <button class="nav-item" data-tab="speed"><span aria-hidden="true">↯</span>网站测速</button>
       <button class="nav-item" data-tab="domains"><span aria-hidden="true">◎</span>域名管理</button>
+      {% if account.role == 'admin' %}<button class="nav-item" data-tab="detect"><span aria-hidden="true">◉</span>检测模式</button>{% endif %}
       {% if account.role == 'admin' %}<button class="nav-item" data-tab="accounts"><span aria-hidden="true">◎</span>账号管理</button>{% endif %}
     </nav>
     <div class="sidebar-note"><span class="status-dot"></span> {{ '自用服务器环境' if deployment else '本地实验环境' }}<p><span id="sidebar-theme">正在读取主题</span><br>仅管理后台可见</p></div>
@@ -119,6 +120,25 @@
           <p class="subtle">探测点落在别的国家时，这次网速不计入。评分实验室不在香港或韩国。从外网打开落地页，会计入那个网站自己的访问。</p>
         </article>
       </section>
+
+      {% if account.role == 'admin' %}
+      <section id="panel-detect" class="tab-panel" aria-label="检测模式" hidden>
+        <article class="card">
+          <div class="card-heading"><div><p class="eyebrow">WATCH</p><h2>检测模式</h2></div><button id="detect-check" class="button secondary small" type="button">立即检查</button></div>
+          <p class="muted">输入任意一个域名，不必是双子星里的站。系统每分钟打开它的公开首页。问卷模式、WhatsApp 号码或其他内容一变，就自动记下来。</p>
+          <form id="detect-form" class="filter-bar detect-form">
+            <label class="grow">域名<input id="detect-domain" name="domain" required maxlength="253" placeholder="example.com" autocomplete="off" spellcheck="false"></label>
+            <button class="button primary" type="submit">加入监控</button>
+          </form>
+          <p id="detect-status" class="subtle" role="status">还没有加入域名。</p>
+          <div class="table-scroll"><table><thead><tr><th>域名</th><th>问卷模式</th><th>号码</th><th>最近检查</th><th></th></tr></thead><tbody id="detect-rows"><tr><td class="empty-state" colspan="5">还没有监控域名。</td></tr></tbody></table></div>
+        </article>
+        <article class="card">
+          <div class="card-heading"><div><h2>变动记录</h2><p class="card-caption">问卷、号码和其他改动</p></div></div>
+          <div class="table-scroll"><table><thead><tr><th>时间</th><th>域名</th><th>变动</th><th>记录</th></tr></thead><tbody id="detect-events"><tr><td class="empty-state" colspan="4">还没有变动。</td></tr></tbody></table></div>
+        </article>
+      </section>
+      {% endif %}
 
       <section id="panel-domains" class="tab-panel" aria-label="域名管理" hidden>
         <article class="card" id="domain-add-panel" hidden><div class="card-heading"><div><p class="eyebrow">ADD DOMAIN</p><h2>添加域名</h2></div><button id="cancel-domain-add" class="button secondary small">收起</button></div><p class="muted">填写你拥有的完整域名。不修改已有宝塔站点。</p>
