@@ -395,7 +395,7 @@ def base_app():
     return app
 
 
-def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registry_dir=None, server_ip='', cloudflare=None):
+def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registry_dir=None, server_ip='', cloudflare=None, detect_watch=False):
     if server_ip:
         from .provisioning import public_ipv4
         server_ip = public_ipv4(server_ip)
@@ -945,6 +945,32 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         authorized_site(request, site_id)
         return {'items': registry.events(site_id)}
 
+    @app.get('/api/detect-mode')
+    def read_detect_mode(request: Request):
+        require_admin(request)
+        from .detect_mode import read_detect
+        return read_detect(registry)
+
+    @app.post('/api/detect-mode')
+    def add_detect_mode(body: dict, request: Request):
+        require_admin(request)
+        if not isinstance(body, dict) or set(body) != {'domain'}:
+            raise ValueError('只需提交一个域名')
+        from .detect_mode import add_target, parse_domain
+        return add_target(registry, parse_domain(body.get('domain', '')), getattr(app.state, 'detect_fetch', None))
+
+    @app.post('/api/detect-mode/check')
+    def check_detect_mode(request: Request):
+        require_admin(request)
+        from .detect_mode import check_detect
+        return check_detect(registry, getattr(app.state, 'detect_fetch', None))
+
+    @app.delete('/api/detect-mode')
+    def remove_detect_mode(request: Request, domain: str = ''):
+        require_admin(request)
+        from .detect_mode import remove_target
+        return remove_target(registry, domain)
+
     routes = APIRouter()
 
     @app.get('/', response_class=HTMLResponse)
@@ -1073,6 +1099,10 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
 
     app.state.trust_watch = TrustWatch(trust_sites, app.state.trust_checker, after_site_change)
     app.state.trust_watch.start()
+    from .detect_mode import DetectWatch
+    app.state.detect_watch = DetectWatch(registry)
+    if detect_watch:
+        app.state.detect_watch.start()
     from .desk import DeskError, SheetWriter, buyer_quote, review_tickets
     from .desk_window import WorkOrderWindow
     app.state.desk_reader = WorkOrderWindow(Path(data_dir) / 'desk-browser', timeout=180)

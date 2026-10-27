@@ -66,6 +66,7 @@ def main():
         options = {'deployment': deployment, 'registry_dir': config.get('registry_dir')}
         if args.service == 'admin':
             options['server_ip'] = config.get('server_ip', '')
+            options['detect_watch'] = True
         uvicorn.run(factory(args.data, **options), host='127.0.0.1', port=port, proxy_headers=False, access_log=False, limit_concurrency=40, timeout_keep_alive=5)
         return
     children = []
