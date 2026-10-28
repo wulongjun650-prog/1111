@@ -1799,6 +1799,11 @@ _REQUEST_GATE = re.compile(
     r"requestMode\s*===\s*(['\"])CBA\1",
     re.IGNORECASE,
 )
+# lead-modal pages open the picker with openLeadConfirm. Skipping still uses buildWhatsAppUrl.
+_LEAD_OPEN_CALL = re.compile(r"(?<!function )openLeadConfirm\(\s*(el|this)\s*\)")
+_LEAD_DIRECT_CALL = re.compile(
+    r"completeLeadAndGo\(\s*(el|this)\.dataset\.message\s*\|\|\s*(['\"])\2\s*,\s*(['\"])direct\3\s*\)"
+)
 
 
 def flow_kind(text):
@@ -1807,7 +1812,7 @@ def flow_kind(text):
         return None
     if re.search(r'directMode\s*:', text):
         return 'config'
-    if 'getContactFlowMode' in text or _request_modal_shape(text):
+    if 'getContactFlowMode' in text or _request_modal_shape(text) or _lead_modal_shape(text):
         return 'contact'
     return None
 
@@ -1833,6 +1838,54 @@ def _config_flow_shape(text):
         return False
     tokens = {match.group(3).upper() for match in _CONFIG_FLOW.finditer(text)}
     return len(tokens) == 1
+
+
+def _lead_calls(text):
+    opens = list(_LEAD_OPEN_CALL.finditer(text))
+    directs = list(_LEAD_DIRECT_CALL.finditer(text))
+    return opens, directs
+
+
+def _lead_modal_shape(text):
+    """The picker is optional. The WhatsApp jump stays location.assign(buildWhatsAppUrl())."""
+    if not isinstance(text, str):
+        return False
+    if 'id="lead-modal"' not in text and "id='lead-modal'" not in text:
+        return False
+    if 'function buildWhatsAppUrl' not in text or 'function openLeadConfirm' not in text:
+        return False
+    if 'function completeLeadAndGo' not in text or 'window.location.assign(buildWhatsAppUrl(' not in text:
+        return False
+    opens, directs = _lead_calls(text)
+    if opens and directs:
+        return False
+    subjects = [match.group(1) for match in opens or directs]
+    return sorted(subjects) == ['el', 'this']
+
+
+def _replace_lead_calls(text, skip):
+    """skip=True goes straight to the existing WhatsApp builder. The builder itself stays."""
+    def repl_open(match):
+        if not skip:
+            return match.group(0)
+        return f"completeLeadAndGo({match.group(1)}.dataset.message || '', 'direct')"
+
+    def repl_direct(match):
+        if skip:
+            return match.group(0)
+        return f"openLeadConfirm({match.group(1)})"
+
+    updated = _LEAD_DIRECT_CALL.sub(repl_direct, _LEAD_OPEN_CALL.sub(repl_open, text))
+
+    def fold(value):
+        value = _LEAD_OPEN_CALL.sub(lambda match: f"LEAD({match.group(1)})", value)
+        return _LEAD_DIRECT_CALL.sub(lambda match: f"LEAD({match.group(1)})", value)
+
+    if fold(text) != fold(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    if text.count('window.location.assign(buildWhatsAppUrl(') != updated.count('window.location.assign(buildWhatsAppUrl('):
+        raise ValueError('跳转代码发生了变化，已取消')
+    return updated
 
 
 def _request_modal_shape(text):
@@ -1968,6 +2021,9 @@ def read_direct_mode(text):
     if 'getContactFlowMode' not in text:
         if _request_modal_shape(text):
             return _weapon_mode(_contact_tokens(text))
+        if _lead_modal_shape(text):
+            opens, _directs = _lead_calls(text)
+            return 'CBA' if opens else 'ABC'
         return None
     if not _contact_shape(text):
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
@@ -2000,6 +2056,10 @@ def set_direct_mode(text, mode):
         return _replace_contact_token(text, _file_token(mode))
     if _request_modal_shape(text):
         return _replace_request_mode(text, _file_token(mode))
+    if _lead_modal_shape(text):
+        if mode == 'ABCABC':
+            raise ValueError('这页的开关只有 ABC 和 CBA，没有改动')
+        return _replace_lead_calls(text, skip=(mode == 'ABC'))
     if not isinstance(text, str) or not re.search(r'directMode\s*:', text):
         return None
     if not _DIRECT_MODE.search(text):
@@ -2033,4 +2093,6 @@ def blank_direct_mode(text):
         text = _DIRECT_MODE.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(2)}", text)
     if _contact_shape(text):
         text = _replace_contact_token(text, 'ABC')
+    if _lead_modal_shape(text):
+        text = _replace_lead_calls(text, skip=False)
     return text

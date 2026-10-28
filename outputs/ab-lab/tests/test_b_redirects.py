@@ -1072,6 +1072,59 @@ def test_secret_weapon_toggles_a_request_modal(console):
     assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
 
 
+LEAD_MODAL_PAGE = r'''<!doctype html>
+<button type="button" data-wa data-location="hero" data-message="你好，我想免費領取今日港股心水股名單，麻煩發給我，謝謝。">领取</button>
+<div id="lead-modal" class="lead-modal" hidden></div>
+<button type="button" id="floating-btn">浮条</button>
+<script>
+function buildWhatsAppUrl(message){
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g,'');
+  const p = new URLSearchParams();
+  p.set('phone', phone);
+  p.set('text', message || '你好，我想免費領取今日完整港股名單，麻煩發給我，謝謝。');
+  p.set('type','phone_number');
+  p.set('app_absent','0');
+  return 'https://api.whatsapp.com/send?' + p.toString();
+}
+function openLeadConfirm(el){ leadModal.classList.add('open'); }
+function completeLeadAndGo(message, choice){
+  window.location.assign(buildWhatsAppUrl(message));
+}
+document.querySelectorAll('[data-wa]').forEach(el=>el.addEventListener('click',e=>{
+  e.preventDefault();
+  openLeadConfirm(el);
+}));
+document.getElementById('floating-btn').addEventListener('click',function(){ openLeadConfirm(this); });
+</script>
+'''
+
+
+def test_secret_weapon_toggles_the_lead_modal_without_touching_the_jump(console):
+    client, app = console
+    base = _upload_html(client, LEAD_MODAL_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    assert "completeLeadAndGo(el.dataset.message || '', 'direct')" in text
+    assert "completeLeadAndGo(this.dataset.message || '', 'direct')" in text
+    assert "openLeadConfirm(el);" not in text
+    assert "function openLeadConfirm(el)" in text
+    assert "window.location.assign(buildWhatsAppUrl(message))" in text
+    _same_function(LEAD_MODAL_PAGE, text, 'buildWhatsAppUrl')
+    _same_function(LEAD_MODAL_PAGE, text, 'completeLeadAndGo')
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+
+
 def test_secret_weapon_refuses_an_unrecognized_query_code_switch(console):
     client, app = console
     page = CONTACT_PAGE.replace("params.get('code')||params.get('mode')||'ABC'", 'window.flowCode')
