@@ -1015,6 +1015,63 @@ def test_secret_weapon_toggles_a_config_flow_mode_page(console):
     assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
 
 
+REQUEST_MODAL_PAGE = r'''<!doctype html>
+<a class="js-whatsapp" href="#request-modal">Demander</a>
+<a class="request-choice" href="https://wa.me/33778635545">FR</a>
+<div id="request-modal" hidden></div>
+<script>
+const CAC = [__HUGE__];
+const CONFIG = { whatsappNumber: '33778635545', requestMode: 'ABC' };
+const number = CONFIG.whatsappNumber.trim();
+const numberIsValid = /^[1-9][0-9]{7,14}$/.test(number);
+const actions = [...document.querySelectorAll('.js-whatsapp')];
+const requestMode = String(CONFIG.requestMode || 'ABC').trim().toUpperCase();
+if (requestMode === 'CBA' && numberIsValid) {
+  actions.forEach(link => { link.href = 'https://wa.me/' + number; });
+}
+function openRequest(evt) { evt.preventDefault(); }
+actions.forEach(link => link.addEventListener('click', evt => {
+  if (requestMode === 'CBA') return;
+  openRequest(evt);
+}));
+</script>
+'''.replace('__HUGE__', ','.join('1' for _ in range(400)))
+
+
+def test_a_long_chart_still_exposes_the_whatsapp_number():
+    from ablab.redirects import PageParser, Scanner
+    scanner = Scanner('index.html', REQUEST_MODAL_PAGE)
+    PageParser(scanner).feed(scanner.text)
+    phones = [item['url'] for item in scanner.spans if item['kind'] == 'whatsapp_number']
+    assert phones.count('33778635545') == 2
+    assert any('赋值过长' in item for item in scanner.warnings)
+
+
+def test_secret_weapon_toggles_a_request_modal(console):
+    client, app = console
+    base = _upload_html(client, REQUEST_MODAL_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    numbers = [item['url'] for item in scan['occurrences'] if item['kind'] == 'whatsapp_number']
+    assert numbers.count('33778635545') == 2
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    assert "requestMode: 'CBA'" in text
+    assert "requestMode === 'CBA'" in text
+    assert "whatsappNumber: '33778635545'" in text
+    _same_function(REQUEST_MODAL_PAGE, text, 'openRequest')
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+
+
 def test_secret_weapon_refuses_an_unrecognized_query_code_switch(console):
     client, app = console
     page = CONTACT_PAGE.replace("params.get('code')||params.get('mode')||'ABC'", 'window.flowCode')

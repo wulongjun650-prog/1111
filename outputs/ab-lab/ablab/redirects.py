@@ -291,6 +291,12 @@ def _phone_digits(token):
     return digits if 8 <= len(digits) <= 15 else None
 
 
+_WHATSAPP_NUMBER_FIELD = re.compile(
+    r"whatsappNumber\s*:\s*(['\"])(\d{8,15})\1",
+    re.IGNORECASE,
+)
+
+
 def _whatsapp_phone_at(url):
     """Offsets of the phone token inside a WhatsApp URL, plus its digits."""
     if not isinstance(url, str) or not _whatsapp_url(url):
@@ -421,7 +427,14 @@ class Scanner:
         definitions = {scope:{} for scope in parents}
         for index, token in enumerate(tokens[:-1]):
             if token.kind == 'identifier' and tokens[index + 1].value == '=' and (index == 0 or tokens[index-1].value not in ('.', ']')):
-                end = _expression_end(tokens, index + 2, text)
+                try:
+                    end = _expression_end(tokens, index + 2, text)
+                except ValueError as error:
+                    if '过于复杂' not in str(error):
+                        raise
+                    line = bisect.bisect_right(self.lines, offset + token.start)
+                    self.warnings.append(f'{self.path}:{line} 有一段赋值过长，已跳过，其余号码仍会扫描。')
+                    continue
                 definitions[scopes[index]].setdefault(token.value, []).append(tokens[index + 2:end])
         # Plain functions and arrows that build a URL and hand it to location.
         # Only the returned expression is replaceable; the call itself is not.
@@ -1150,6 +1163,7 @@ class Scanner:
                 argument = tokens[beginning:finish]
                 collect(argument, 'js_location', scope_of(argument, scopes[index]))
         self._note_loose_whatsapp_numbers(tokens, offset, mapping)
+        self._note_whatsapp_number_fields(text, offset)
 
     def _overlaps(self, start, end):
         return any(start < span['_end'] and end > span['_start'] for span in self.spans)
@@ -1177,6 +1191,14 @@ class Scanner:
             if self._overlaps(start, end):
                 continue
             self.add(start, end, digits, 'whatsapp_number', mode='js_digits')
+
+    def _note_whatsapp_number_fields(self, text, offset):
+        """CONFIG.whatsappNumber is the value the page copies into wa.me at load."""
+        for match in _WHATSAPP_NUMBER_FIELD.finditer(text):
+            start, end = offset + match.start(2), offset + match.end(2)
+            if self._overlaps(start, end):
+                continue
+            self.add(start, end, match.group(2), 'whatsapp_number', mode='js_digits')
 
 
 class PageParser(HTMLParser):
@@ -1768,6 +1790,15 @@ _QUESTION_GATE = re.compile(
     r"useQuestionnaire\s*=\s*getContactFlowMode\(\s*\)\s*===\s*(['\"])ABC\1",
     re.IGNORECASE,
 )
+# A choice modal stores ABC on requestMode. CBA skips the modal and opens WhatsApp.
+_REQUEST_MODE = re.compile(
+    r"(requestMode\s*:\s*)(['\"])(ABC|CBA)\2",
+    re.IGNORECASE,
+)
+_REQUEST_GATE = re.compile(
+    r"requestMode\s*===\s*(['\"])CBA\1",
+    re.IGNORECASE,
+)
 
 
 def flow_kind(text):
@@ -1776,7 +1807,7 @@ def flow_kind(text):
         return None
     if re.search(r'directMode\s*:', text):
         return 'config'
-    if 'getContactFlowMode' in text:
+    if 'getContactFlowMode' in text or _request_modal_shape(text):
         return 'contact'
     return None
 
@@ -1804,8 +1835,20 @@ def _config_flow_shape(text):
     return len(tokens) == 1
 
 
+def _request_modal_shape(text):
+    if not (
+        isinstance(text, str)
+        and 'request-modal' in text
+        and 'whatsappNumber' in text
+        and _REQUEST_GATE.search(text)
+    ):
+        return False
+    tokens = {match.group(3).upper() for match in _REQUEST_MODE.finditer(text)}
+    return len(tokens) == 1
+
+
 def _contact_shape(text):
-    return _query_contact_shape(text) or _config_flow_shape(text)
+    return _query_contact_shape(text) or _config_flow_shape(text) or _request_modal_shape(text)
 
 
 def _contact_tokens(text):
@@ -1813,6 +1856,8 @@ def _contact_tokens(text):
         tokens = [match.group(4).upper() for match in _CONTACT_FALLBACK.finditer(text)]
     elif _config_flow_shape(text):
         tokens = [match.group(3).upper() for match in _CONFIG_FLOW.finditer(text)]
+    elif _request_modal_shape(text):
+        tokens = [match.group(3).upper() for match in _REQUEST_MODE.finditer(text)]
     else:
         tokens = []
     if len(set(tokens)) != 1:
@@ -1862,11 +1907,31 @@ def _replace_config_flow_token(text, token):
     return updated
 
 
+def _replace_request_mode(text, token):
+    def repl(match):
+        if match.group(3).upper() == token:
+            return match.group(0)
+        return f"{match.group(1)}{match.group(2)}{token}{match.group(2)}"
+
+    updated, count = _REQUEST_MODE.subn(repl, text)
+    if count == 0:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+
+    def fold(value):
+        return _REQUEST_MODE.sub(lambda match: f"{match.group(1)}{match.group(2)}ABC{match.group(2)}", value)
+
+    if fold(text) != fold(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    return updated
+
+
 def _replace_contact_token(text, token):
     if _query_contact_shape(text):
         return _replace_query_token(text, token)
     if _config_flow_shape(text):
         return _replace_config_flow_token(text, token)
+    if _request_modal_shape(text):
+        return _replace_request_mode(text, token)
     raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
 
 
@@ -1901,6 +1966,8 @@ def read_direct_mode(text):
                 return mode
         return 'CBA'
     if 'getContactFlowMode' not in text:
+        if _request_modal_shape(text):
+            return _weapon_mode(_contact_tokens(text))
         return None
     if not _contact_shape(text):
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
@@ -1931,6 +1998,8 @@ def set_direct_mode(text, mode):
         if not _contact_shape(text):
             raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
         return _replace_contact_token(text, _file_token(mode))
+    if _request_modal_shape(text):
+        return _replace_request_mode(text, _file_token(mode))
     if not isinstance(text, str) or not re.search(r'directMode\s*:', text):
         return None
     if not _DIRECT_MODE.search(text):
