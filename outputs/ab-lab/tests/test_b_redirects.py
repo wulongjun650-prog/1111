@@ -1125,6 +1125,103 @@ def test_secret_weapon_toggles_the_lead_modal_without_touching_the_jump(console)
     assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
 
 
+LEAD_ENTRY_PAGE = r'''<!doctype html>
+<div class="wa-infobg" id="wa-infobg"></div>
+<div class="lead-modal" id="lead-modal"></div>
+<a href="https://www.youtube.com/@money-tab">YouTube</a>
+<script>
+const CONFIG = {
+  questionGateEnabled: false,
+  whatsappNumber: '85291658064',
+  googleConversionSendTo: 'AW-17612748781/vDRpCIalsp0dEO3vtM5B'
+};
+let QUESTION_GATE_ENABLED = gateParam === 'off' ? false : gateParam === 'on' ? true : CONFIG.questionGateEnabled;
+let leadEntryMode = 'notice';
+function setLeadEntryMode(code){
+  if(code === 'ABC'){
+    leadEntryMode = 'question';
+    QUESTION_GATE_ENABLED = true;
+  }else if(code === 'CBA'){
+    leadEntryMode = 'direct';
+    QUESTION_GATE_ENABLED = false;
+  }else{return;}
+}
+function buildWaUrl(message){
+  const phone=String(CONFIG.whatsappNumber||'').replace(/\D/g,'');
+  return 'https://api.whatsapp.com/send?phone='+encodeURIComponent(phone)+'&text='+encodeURIComponent(message)+'&type=phone_number&app_absent=0';
+}
+function goWhatsApp(){
+  const message = '你好，我想領取港美股精選名單，依家可以發畀我嗎？';
+  window.location.href=buildWaUrl(message);
+}
+function routeLead(direction,source){
+  if(leadEntryMode === 'question'){
+    openLead(direction);
+  }else if(leadEntryMode === 'direct'){
+    goWhatsApp();
+  }else{
+    openWaInfo(source);
+  }
+}
+</script>
+'''
+
+
+def test_secret_weapon_toggles_lead_entry_without_touching_the_jump(console):
+    client, app = console
+    base = _upload_html(client, LEAD_ENTRY_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    assert 'questionGateEnabled: false' in text
+    assert "let leadEntryMode = 'direct'" in text
+    assert "let leadEntryMode = 'question'" not in text.split('function setLeadEntryMode')[0]
+    assert "whatsappNumber: '85291658064'" in text
+    assert 'window.location.href=buildWaUrl(message);' in text
+    _same_function(LEAD_ENTRY_PAGE, text, 'setLeadEntryMode')
+    _same_function(LEAD_ENTRY_PAGE, text, 'buildWaUrl')
+    _same_function(LEAD_ENTRY_PAGE, text, 'goWhatsApp')
+    _same_function(LEAD_ENTRY_PAGE, text, 'routeLead')
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    shown = published_html(app)
+    assert 'questionGateEnabled: false' in shown
+    assert "let leadEntryMode = 'notice'" in shown
+    _same_function(LEAD_ENTRY_PAGE, shown, 'buildWaUrl')
+    _same_function(LEAD_ENTRY_PAGE, shown, 'goWhatsApp')
+    assert app.state.store.slots()['B'] != base
+
+
+def test_whatsapp_number_replace_keeps_the_quotes_and_the_jump(console):
+    client, app = console
+    base = _upload_html(client, LEAD_ENTRY_PAGE)
+    before = (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+    scan = client.get('/api/b-redirects').json()
+    numbers = [item for item in scan['occurrences'] if item['kind'] == 'whatsapp_number']
+    assert [item['url'] for item in numbers] == ['85291658064']
+    added = client.post('/api/b-redirects/numbers', json={'phones': ['85211112222'], 'note': '一线'})
+    assert added.status_code == 200, added.text
+    chosen = added.json()['numbers'][0]
+    response = client.post('/api/b-redirects/numbers/apply', json={
+        'version_id': scan['version']['id'], 'number_id': chosen['id'],
+        'occurrence_ids': [numbers[0]['id']], 'expected_published': scan['published_version']})
+    assert response.status_code == 200, response.text
+    text = published_html(app)
+    assert "whatsappNumber: '85211112222'" in text
+    assert '85291658064' not in text
+    assert text.replace('85211112222', '85291658064') == before
+    assert 'https://www.youtube.com/@money-tab' in text
+    assert 'window.location.href=buildWaUrl(message);' in text
+
+
 def test_secret_weapon_refuses_an_unrecognized_query_code_switch(console):
     client, app = console
     page = CONTACT_PAGE.replace("params.get('code')||params.get('mode')||'ABC'", 'window.flowCode')

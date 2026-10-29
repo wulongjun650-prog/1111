@@ -165,7 +165,7 @@ fetch(buildWhatsAppUrl('nope'));'''
     assert count == 1
     rewritten = (pages / version['id'] / 'index.html').read_text(encoding='utf-8')
     assert '85257980601' not in rewritten
-    assert '85299990000' in rewritten
+    assert "whatsappNumber: '85299990000'" in rewritten
     assert 'api.whatsapp.com' in rewritten
     assert "params.set('text', message)" in rewritten
     rescanned, _ = redirects.scan_bundle(pages / version['id'], version['id'])
