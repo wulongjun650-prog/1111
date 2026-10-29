@@ -1047,7 +1047,14 @@ class Scanner:
             if _url(resolved):
                 digits = _phone_digits(phone_token) if phone_token and _whatsapp_url(resolved) else None
                 if digits:
-                    # The built chat URL stays in source. Only the phone literal is replaceable.
+                    # The built chat URL stays in source. Only the digit run is replaceable.
+                    raw_token = phone_token.value
+                    at = raw_token.find(digits)
+                    if at >= 0 and not mapping:
+                        start = phone_token.start + at
+                        end = start + len(digits)
+                        self.add(offset + start, offset + end, digits, 'whatsapp_number', mode='js_digits')
+                        return True
                     start, end = phone_token.start, phone_token.end
                 else:
                     digits = None
@@ -1800,6 +1807,11 @@ _REQUEST_GATE = re.compile(
     re.IGNORECASE,
 )
 # lead-modal pages open the picker with openLeadConfirm. Skipping still uses buildWhatsAppUrl.
+# This page keeps ABC/CBA in questionGateEnabled and the initial leadEntryMode.
+_GATE_ENABLED = re.compile(r"(questionGateEnabled\s*:\s*)(true|false)\b")
+_LEAD_ENTRY_INIT = re.compile(
+    r"(let\s+leadEntryMode\s*=\s*)(['\"])(notice|question|direct)\2"
+)
 _LEAD_OPEN_CALL = re.compile(r"(?<!function )openLeadConfirm\(\s*(el|this)\s*\)")
 _LEAD_DIRECT_CALL = re.compile(
     r"completeLeadAndGo\(\s*(el|this)\.dataset\.message\s*\|\|\s*(['\"])\2\s*,\s*(['\"])direct\3\s*\)"
@@ -1812,7 +1824,7 @@ def flow_kind(text):
         return None
     if re.search(r'directMode\s*:', text):
         return 'config'
-    if 'getContactFlowMode' in text or _request_modal_shape(text) or _lead_modal_shape(text):
+    if 'getContactFlowMode' in text or _request_modal_shape(text) or _lead_modal_shape(text) or _lead_entry_shape(text):
         return 'contact'
     return None
 
@@ -1885,6 +1897,70 @@ def _replace_lead_calls(text, skip):
         raise ValueError('跳转代码发生了变化，已取消')
     if text.count('window.location.assign(buildWhatsAppUrl(') != updated.count('window.location.assign(buildWhatsAppUrl('):
         raise ValueError('跳转代码发生了变化，已取消')
+    return updated
+
+
+def _lead_entry_parts(text):
+    return list(_GATE_ENABLED.finditer(text)), list(_LEAD_ENTRY_INIT.finditer(text))
+
+
+def _lead_entry_shape(text):
+    """ABC opens the questions. CBA goes straight to the existing WhatsApp builder."""
+    if not isinstance(text, str):
+        return False
+    if 'id="lead-modal"' not in text and "id='lead-modal'" not in text:
+        return False
+    if 'function setLeadEntryMode' not in text or 'function buildWaUrl' not in text:
+        return False
+    if not re.search(r'window\.location\.href\s*=\s*buildWaUrl\s*\(', text):
+        return False
+    if "leadEntryMode = 'question'" not in text and 'leadEntryMode = "question"' not in text:
+        return False
+    if "leadEntryMode = 'direct'" not in text and 'leadEntryMode = "direct"' not in text:
+        return False
+    gates, modes = _lead_entry_parts(text)
+    return len(gates) == 1 and len(modes) == 1
+
+
+def _lead_entry_file_token(text):
+    _gates, modes = _lead_entry_parts(text)
+    return 'ABC' if modes[0].group(3) == 'question' else 'CBA'
+
+
+def _replace_lead_entry(text, mode):
+    """mode is the weapon mode. Only the gate boolean and the initial mode word change."""
+    if mode == 'ABCABC':
+        raise ValueError('这页的开关只有 ABC 和 CBA，没有改动')
+    gate = 'true' if mode == 'CBA' else 'false'
+    entry = 'question' if mode == 'CBA' else 'direct'
+
+    def repl_gate(match):
+        if match.group(2) == gate:
+            return match.group(0)
+        return match.group(1) + gate
+
+    def repl_mode(match):
+        if match.group(3) == entry:
+            return match.group(0)
+        return f"{match.group(1)}{match.group(2)}{entry}{match.group(2)}"
+
+    updated = _LEAD_ENTRY_INIT.sub(repl_mode, _GATE_ENABLED.sub(repl_gate, text), count=1)
+
+    def fold(value):
+        value = _GATE_ENABLED.sub(lambda match: match.group(1) + 'BOOL', value, count=1)
+        return _LEAD_ENTRY_INIT.sub(
+            lambda match: match.group(1) + match.group(2) + 'MODE' + match.group(2),
+            value,
+            count=1,
+        )
+
+    if fold(text) != fold(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    for name in ('setLeadEntryMode', 'buildWaUrl', 'goWhatsApp', 'routeLead'):
+        old = _js_function_span(text, name)
+        new = _js_function_span(updated, name)
+        if (old is None) != (new is None) or (old and text[old[0]:old[1]] != updated[new[0]:new[1]]):
+            raise ValueError('跳转代码发生了变化，已取消')
     return updated
 
 
@@ -2024,6 +2100,8 @@ def read_direct_mode(text):
         if _lead_modal_shape(text):
             opens, _directs = _lead_calls(text)
             return 'CBA' if opens else 'ABC'
+        if _lead_entry_shape(text):
+            return _weapon_mode(_lead_entry_file_token(text))
         return None
     if not _contact_shape(text):
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
@@ -2060,6 +2138,8 @@ def set_direct_mode(text, mode):
         if mode == 'ABCABC':
             raise ValueError('这页的开关只有 ABC 和 CBA，没有改动')
         return _replace_lead_calls(text, skip=(mode == 'ABC'))
+    if _lead_entry_shape(text):
+        return _replace_lead_entry(text, mode)
     if not isinstance(text, str) or not re.search(r'directMode\s*:', text):
         return None
     if not _DIRECT_MODE.search(text):
@@ -2095,4 +2175,6 @@ def blank_direct_mode(text):
         text = _replace_contact_token(text, 'ABC')
     if _lead_modal_shape(text):
         text = _replace_lead_calls(text, skip=False)
+    if _lead_entry_shape(text):
+        text = _replace_lead_entry(text, 'CBA')
     return text
