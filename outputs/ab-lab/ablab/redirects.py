@@ -1905,8 +1905,10 @@ def _lead_entry_parts(text):
 
 
 def _lead_entry_shape(text):
-    """ABC opens the questions. CBA goes straight to the existing WhatsApp builder."""
+    """The questionnaire is the 我明白了 notice. CBA skips it and uses buildWaUrl."""
     if not isinstance(text, str):
+        return False
+    if 'id="wa-infobg"' not in text and "id='wa-infobg'" not in text:
         return False
     if 'id="lead-modal"' not in text and "id='lead-modal'" not in text:
         return False
@@ -1924,15 +1926,17 @@ def _lead_entry_shape(text):
 
 def _lead_entry_file_token(text):
     _gates, modes = _lead_entry_parts(text)
-    return 'ABC' if modes[0].group(3) == 'question' else 'CBA'
+    # direct skips the notice. notice is the 我明白了 picture.
+    return 'CBA' if modes[0].group(3) == 'direct' else 'ABC'
 
 
 def _replace_lead_entry(text, mode):
     """mode is the weapon mode. Only the gate boolean and the initial mode word change."""
     if mode == 'ABCABC':
         raise ValueError('这页的开关只有 ABC 和 CBA，没有改动')
-    gate = 'true' if mode == 'CBA' else 'false'
-    entry = 'question' if mode == 'CBA' else 'direct'
+    # CBA on the weapon means the notice is showing. ABC means the click skips it.
+    gate = 'false'
+    entry = 'notice' if mode == 'CBA' else 'direct'
 
     def repl_gate(match):
         if match.group(2) == gate:

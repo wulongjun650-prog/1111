@@ -1126,6 +1126,7 @@ def test_secret_weapon_toggles_the_lead_modal_without_touching_the_jump(console)
 
 
 LEAD_ENTRY_PAGE = r'''<!doctype html>
+<div class="wa-infobg" id="wa-infobg"></div>
 <div class="lead-modal" id="lead-modal"></div>
 <a href="https://www.youtube.com/@money-tab">YouTube</a>
 <script>
@@ -1170,16 +1171,17 @@ def test_secret_weapon_toggles_lead_entry_without_touching_the_jump(console):
     client, app = console
     base = _upload_html(client, LEAD_ENTRY_PAGE)
     state = client.get('/api/state').json()
-    assert state['direct_mode'] == 'ABC'
+    assert state['direct_mode'] == 'CBA'
     assert state['direct_switch'] == 'contact'
     scan = client.get('/api/b-redirects').json()
     wrote = client.post('/api/b-redirects/direct-entry', json={
         'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
     assert wrote.status_code == 200, wrote.text
-    assert wrote.json()['kind'] == 'cba'
+    assert wrote.json()['kind'] == 'abc'
     text = published_html(app)
-    assert 'questionGateEnabled: true' in text
-    assert "let leadEntryMode = 'question'" in text
+    assert 'questionGateEnabled: false' in text
+    assert "let leadEntryMode = 'direct'" in text
+    assert "let leadEntryMode = 'question'" not in text.split('function setLeadEntryMode')[0]
     assert "whatsappNumber: '85291658064'" in text
     assert 'window.location.href=buildWaUrl(message);' in text
     _same_function(LEAD_ENTRY_PAGE, text, 'setLeadEntryMode')
@@ -1189,13 +1191,12 @@ def test_secret_weapon_toggles_lead_entry_without_touching_the_jump(console):
     again = client.post('/api/b-redirects/direct-entry', json={
         'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
     assert again.status_code == 200, again.text
-    assert again.json()['kind'] == 'abc'
-    skipped = published_html(app)
-    assert 'questionGateEnabled: false' in skipped
-    assert "let leadEntryMode = 'direct'" in skipped
-    assert "let leadEntryMode = 'notice'" not in skipped
-    _same_function(LEAD_ENTRY_PAGE, skipped, 'buildWaUrl')
-    _same_function(LEAD_ENTRY_PAGE, skipped, 'goWhatsApp')
+    assert again.json()['kind'] == 'cba'
+    shown = published_html(app)
+    assert 'questionGateEnabled: false' in shown
+    assert "let leadEntryMode = 'notice'" in shown
+    _same_function(LEAD_ENTRY_PAGE, shown, 'buildWaUrl')
+    _same_function(LEAD_ENTRY_PAGE, shown, 'goWhatsApp')
     assert app.state.store.slots()['B'] != base
 
 
