@@ -25,7 +25,8 @@ from .bitbrowser import (
     health as bitbrowser_health,
     list_profiles as list_bitbrowser_profiles,
     load_api_base as load_bitbrowser_api_base,
-    save_api_base as save_bitbrowser_api_base,
+    load_api_token as load_bitbrowser_api_token,
+    save_local_api as save_bitbrowser_local_api,
 )
 from .browser_provider import (
     ADSPOWER,
@@ -283,7 +284,8 @@ HELP_TEXT = """GGAds 协议管理器使用帮助
 1. 指纹浏览器窗口
    就是比特浏览器或 AdsPower 中相互隔离的浏览器环境；每个窗口下面可以添加多个 Google Ads CID。
    本软件默认使用比特浏览器：在“批量任务”点击“导入比特浏览器窗口”，可批量读取窗口编号、名称和运行状态。
-   比特浏览器 Local API 默认为 http://127.0.0.1:54345，可通过“比特 Local API 设置”修改并测试连接。
+   比特浏览器 7.1.5 的 Local API 默认是 http://127.0.0.1:54345。程序会读取比特浏览器配置里的实际端口，并同时尝试本机 IPv4 和 IPv6。
+   如果「系统设置 → Local API」里打开了鉴权控制，请在“比特 Local API 设置”填写 API Token。
    导入只保存窗口资料，不会启动窗口；后续账户刷新、预检或业务任务才会按需打开选中的已停止窗口。
    AdsPower 继续兼容：在“兼容操作”中选择“添加 AdsPower 窗口”或“读取 AdsPower 窗口编号”。
    AdsPower 请在左侧“API & MCP”页面启用 Local API（默认端口 50325）；API 暂时不可用时，已有编号会保留。
@@ -315,7 +317,7 @@ HELP_TEXT = """GGAds 协议管理器使用帮助
 
 二、推荐使用流程
 
-1. 启动比特浏览器并启用 Local API；首次使用可点击“比特 Local API 设置”检查默认 54345 端口。
+1. 启动并登录比特浏览器 7.1.5，打开「系统设置 → Local API」确认本地接口已开启。开了鉴权控制时，把 API Token 填到“比特 Local API 设置”。
 2. 在“批量任务”页点击“导入比特浏览器窗口”；导入时窗口可以是运行中或已停止。
    使用 AdsPower 时，请从“兼容操作”选择“添加 AdsPower 窗口”。
 3. 选中窗口，点击“添加 CID”，填写 CID 和引用的内容方案。
@@ -869,18 +871,19 @@ class _ManagedBitBrowserDialog(tk.Toplevel):
 
 
 class BitBrowserSettingsDialog(_ManagedBitBrowserDialog):
-    """Edit only the loopback BitBrowser Local API address."""
+    """Edit the loopback BitBrowser Local API address and 7.1.5 API token."""
 
     def __init__(self, parent: tk.Misc) -> None:
         super().__init__(parent)
         self._init_lifecycle()
         self.title("比特浏览器 Local API 设置")
-        self.geometry("650x220")
+        self.geometry("700x360")
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
         self.results: queue.Queue[tuple[bool, str]] = queue.Queue()
         self.columnconfigure(1, weight=1)
+        self._token_visible = tk.BooleanVar(value=False)
 
         ttk.Label(self, text="Local API 地址").grid(
             row=0, column=0, padx=14, pady=(18, 8), sticky="w"
@@ -890,13 +893,33 @@ class BitBrowserSettingsDialog(_ManagedBitBrowserDialog):
         self.api_base.insert(0, load_bitbrowser_api_base())
         ttk.Label(
             self,
-            text="仅允许本机 HTTP 地址，例如 http://127.0.0.1:54345。",
+            text="7.1.5 默认 http://127.0.0.1:54345。改过端口时，程序会读比特浏览器配置里的实际端口。",
             foreground=COLOR_MUTED,
+            wraplength=660,
         ).grid(row=1, column=0, columnspan=2, padx=14, pady=5, sticky="w")
-        self.status = ttk.Label(self, text="尚未测试连接", foreground=COLOR_MUTED)
-        self.status.grid(row=2, column=0, columnspan=2, padx=14, pady=5, sticky="w")
+        ttk.Label(self, text="API Token").grid(row=2, column=0, padx=14, pady=(8, 4), sticky="w")
+        self.api_token = ttk.Entry(self, show="*")
+        self.api_token.grid(row=2, column=1, padx=14, pady=(8, 4), sticky="ew")
+        self.api_token.insert(0, load_bitbrowser_api_token())
+        token_hint = ttk.Frame(self)
+        token_hint.grid(row=3, column=0, columnspan=2, padx=14, pady=5, sticky="ew")
+        ttk.Label(
+            token_hint,
+            text="只在「系统设置 → Local API」开启了鉴权控制时填写。请求会带上 x-api-key。",
+            foreground=COLOR_MUTED,
+        ).pack(side="left")
+        ttk.Checkbutton(
+            token_hint,
+            text="显示",
+            variable=self._token_visible,
+            command=self._toggle_token,
+        ).pack(side="right")
+        self.status = ttk.Label(
+            self, text="尚未测试连接", foreground=COLOR_MUTED, wraplength=660
+        )
+        self.status.grid(row=4, column=0, columnspan=2, padx=14, pady=5, sticky="w")
         actions = ttk.Frame(self)
-        actions.grid(row=3, column=0, columnspan=2, padx=14, pady=(14, 12), sticky="e")
+        actions.grid(row=5, column=0, columnspan=2, padx=14, pady=(14, 12), sticky="e")
         ttk.Button(actions, text="取消", command=self._close).pack(side="right")
         ttk.Button(
             actions, text="保存", command=self._save, style="Success.TButton"
@@ -913,9 +936,12 @@ class BitBrowserSettingsDialog(_ManagedBitBrowserDialog):
         self.api_base.focus_set()
         self.wait_window(self)
 
+    def _toggle_token(self) -> None:
+        self.api_token.configure(show="" if self._token_visible.get() else "*")
+
     def _save(self) -> bool:
         try:
-            save_bitbrowser_api_base(self.api_base.get())
+            save_bitbrowser_local_api(self.api_base.get(), self.api_token.get())
         except Exception as exc:
             messagebox.showerror("保存失败", str(exc), parent=self)
             return False
