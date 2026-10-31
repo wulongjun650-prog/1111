@@ -19,7 +19,13 @@ from .ads import (
     parse_campaigns,
 )
 from .config import data_dir, format_cid
-from .image_upload import download_preview_image, upload_images
+from .image_upload import (
+    download_first_preview,
+    manager_ocid_from_page,
+    missing_image_message,
+    resolve_image_preview_urls,
+    upload_images,
+)
 from .portable_copy import (
     AD_GROUP_SNAPSHOT_FIELDS,
     APP_AD_SNAPSHOT_FIELDS,
@@ -79,6 +85,39 @@ def _asset_id(item: Any) -> str:
     if not isinstance(asset, dict):
         return ""
     return str(asset.get("1") or "")
+
+
+def referenced_image_filenames(ads: list[dict[str, Any]]) -> dict[str, str]:
+    """Asset id to filename for image slots the manifest treats as images.
+
+    Display uses landscape/square/portrait. App campaigns use the image list.
+    Text assets are not included, even when they still carry a source asset id.
+    """
+    names: dict[str, str] = {}
+    for ad in ads:
+        mutable = (ad.get("13") or {}).get("100") or {}
+        app_assets = mutable.get("44")
+        display_creative = mutable.get("41")
+        if isinstance(app_assets, dict) and app_assets:
+            creative, fields = app_assets, ("4",)
+        elif isinstance(display_creative, dict) and display_creative:
+            creative, fields = display_creative, ("1", "2", "20")
+        else:
+            continue
+        for field in fields:
+            values = creative.get(field) or []
+            if not isinstance(values, list):
+                continue
+            for wrapper in values:
+                if not isinstance(wrapper, dict):
+                    continue
+                asset = wrapper.get("1") if isinstance(wrapper.get("1"), dict) else {}
+                asset_id = str(asset.get("1") or "")
+                if asset_id:
+                    names.setdefault(
+                        asset_id, str(asset.get("2") or f"asset-{asset_id}.png"),
+                    )
+    return names
 
 
 def asset_reference_manifest(ads: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -280,6 +319,44 @@ class PortableCampaignWorkflow:
                     })
         return list(records.values())
 
+    def _with_resolved_previews(
+        self, ads: list[dict[str, Any]], assets: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        """Fill image slots that the ad payload did not already give a URL for."""
+        filenames = referenced_image_filenames(ads)
+        have = {item["source_asset_id"] for item in assets}
+        missing = [asset_id for asset_id in filenames if asset_id not in have]
+        if not missing:
+            return assets
+        previews = resolve_image_preview_urls(
+            self.source.page, self.source.ocid,
+            manager_ocid_from_page(self.source.page, self.source.ocid),
+            missing, ads, log=self.log,
+        )
+        for asset_id in missing:
+            urls = previews.get(asset_id) or []
+            if not urls:
+                continue
+            assets.append({
+                "source_asset_id": asset_id,
+                "filename": filenames[asset_id],
+                "preview_url": urls[0],
+                "preview_urls": urls,
+            })
+        return assets
+
+    @staticmethod
+    def _require_image_previews(
+        ads: list[dict[str, Any]], assets: list[dict[str, str]],
+    ) -> None:
+        referenced = set(referenced_image_filenames(ads))
+        downloadable = {item["source_asset_id"] for item in assets if item.get("preview_url") or item.get("preview_urls")}
+        missing = sorted(referenced - downloadable)
+        if missing:
+            raise RuntimeError(missing_image_message(
+                missing, "素材库没有这些图片的预览地址，广告数据里也没有",
+            ))
+
     def export(self, campaign_id: str) -> dict[str, Any]:
         campaign_id = str(campaign_id)
         self.log(f"[{format_cid(self.source.cid)}] 读取广告系列、广告组、广告及素材引用")
@@ -289,10 +366,13 @@ class PortableCampaignWorkflow:
         assets_dir = folder / "assets"
         assets_dir.mkdir(parents=True, exist_ok=False)
         assets = self._image_records(ads)
+        assets = self._with_resolved_previews(ads, assets)
+        self._require_image_previews(ads, assets)
         for index, asset in enumerate(assets, 1):
-            content, mime, final_url = download_preview_image(
-                self.source.page, asset["preview_url"],
+            content, mime, final_url = download_first_preview(
+                self.source.page, asset,
             )
+            asset.pop("preview_urls", None)
             suffix = ".png" if mime == "image/png" else ".jpg"
             relative_path = Path("assets") / f"{index:03d}-{asset['source_asset_id']}{suffix}"
             target = folder / relative_path
@@ -305,16 +385,6 @@ class PortableCampaignWorkflow:
                 "size": str(len(content)),
             })
         manifest = asset_reference_manifest(ads)
-        referenced_images = {
-            ref["source_asset_id"]
-            for ad_manifest in manifest
-            for ref in ad_manifest["references"]
-            if ref["kind"].endswith("image")
-        }
-        downloadable_images = {item["source_asset_id"] for item in assets}
-        missing = sorted(referenced_images - downloadable_images)
-        if missing:
-            raise RuntimeError(f"来源图片素材无法完整下载：{', '.join(missing)}")
         snapshot: dict[str, Any] = {
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
             "created_at": datetime.now().astimezone().isoformat(),

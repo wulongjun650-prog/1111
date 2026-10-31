@@ -20,7 +20,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, urlsplit
 
 from .ads import (
     AdCatalog,
@@ -33,9 +32,10 @@ from .ads import (
 )
 from .config import data_dir, format_cid
 from .image_upload import (
-    asset_folder_readback_request,
-    download_preview_image,
-    parse_asset_folder_readback,
+    download_first_preview,
+    manager_ocid_from_page,
+    missing_image_message,
+    resolve_image_preview_urls,
     upload_images,
     validate_image,
 )
@@ -87,6 +87,7 @@ from .portable_copy_workflow import (
     _asset_id,
     _idempotency_key,
     asset_reference_manifest,
+    referenced_image_filenames,
     snapshot_identity,
     validate_snapshot,
     validate_snapshot_files,
@@ -274,57 +275,34 @@ class SnapshotExporter:
         return results
 
     def _manager_ocid(self) -> str:
-        query = parse_qs(urlsplit(self.source.page.url).query)
-        uscid = str((query.get("uscid") or [""])[0])
-        return uscid if uscid.isdigit() else self.source.ocid
+        return manager_ocid_from_page(self.source.page, self.source.ocid)
 
-    def _image_records(self, ads: list[dict[str, Any]]) -> list[dict[str, str]]:
-        """Resolve every image asset referenced by `ads` to a downloadable preview URL.
+    def _image_records(self, ads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Resolve every referenced image to one or more preview URLs.
 
-        Wrapper metadata inside the ad response (13.100.41/44) only carries
-        `asset_id`/`filename` — the real `preview_url` is not embedded there and
-        must be read back per-asset via AssetFolderService.List, same as
-        `ads.py::AdManager.reference_images()`.
+        An exact AssetFolder hit is the normal path. Images that come back
+        twice, under the child account rather than the manager, or only as a
+        URL already stored on the ad are still kept. Callers reject any
+        referenced image that still has no URL.
         """
-        asset_ids: dict[str, str] = {}
-        for ad in ads:
-            mutable = (ad.get("13") or {}).get("100") or {}
-            app_assets = mutable.get("44")
-            display_creative = mutable.get("41")
-            creative = app_assets if isinstance(app_assets, dict) and app_assets else display_creative
-            if not isinstance(creative, dict):
-                continue
-            image_field_values = list(creative.get("4") or []) + list(creative.get("1") or []) + list(
-                creative.get("2") or []
-            ) + list(creative.get("20") or [])
-            for wrapper in image_field_values:
-                asset = wrapper.get("1") or {}
-                asset_id = str(asset.get("1") or "")
-                if asset_id:
-                    asset_ids.setdefault(asset_id, str(asset.get("2") or f"asset-{asset_id}.png"))
-        if not asset_ids:
+        filenames = referenced_image_filenames(ads)
+        if not filenames:
             return []
-        manager_ocid = self._manager_ocid()
-        records: list[dict[str, str]] = []
-        for asset_id, filename in asset_ids.items():
-            response = self.source.page.rpc(
-                "/aw_cm/editing/_/rpc/AssetFolderService/List",
-                asset_folder_readback_request(self.source.ocid, manager_ocid, asset_id),
-                timeout=90,
-            )
-            matches = [
-                item for item in parse_asset_folder_readback(response, account_id=self.source.ocid)
-                if item.get("asset_id") == asset_id
-            ]
-            if len(matches) != 1:
+        previews = resolve_image_preview_urls(
+            self.source.page, self.source.ocid, self._manager_ocid(),
+            filenames, ads, log=self.log,
+        )
+        records: list[dict[str, Any]] = []
+        for asset_id, filename in filenames.items():
+            urls = previews.get(asset_id) or []
+            if not urls:
                 continue
-            preview = str(matches[0].get("preview_url") or "")
-            if preview:
-                records.append({
-                    "source_asset_id": asset_id,
-                    "filename": filename,
-                    "preview_url": preview,
-                })
+            records.append({
+                "source_asset_id": asset_id,
+                "filename": filename,
+                "preview_url": urls[0],
+                "preview_urls": urls,
+            })
         return records
 
     def export(self, campaign_id: str, export_dir: Path | None = None) -> dict[str, Any]:
@@ -337,10 +315,24 @@ class SnapshotExporter:
         assets_dir = folder / "assets"
         assets_dir.mkdir(parents=True, exist_ok=False)
         assets = self._image_records(ads)
+        manifest = asset_reference_manifest(ads)
+        referenced_images = {
+            ref["source_asset_id"]
+            for ad_manifest in manifest
+            for ref in ad_manifest["references"]
+            if ref["kind"].endswith("image")
+        }
+        downloadable_images = {item["source_asset_id"] for item in assets}
+        missing = sorted(referenced_images - downloadable_images)
+        if missing:
+            raise RuntimeError(missing_image_message(
+                missing, "素材库没有这些图片的预览地址，广告数据里也没有",
+            ))
         for index, asset in enumerate(assets, 1):
-            content, mime, final_url = download_preview_image(
-                self.source.page, asset["preview_url"],
+            content, mime, final_url = download_first_preview(
+                self.source.page, asset,
             )
+            asset.pop("preview_urls", None)
             suffix = ".png" if mime == "image/png" else ".jpg"
             relative_path = Path("assets") / f"{index:03d}-{asset['source_asset_id']}{suffix}"
             target = folder / relative_path
@@ -352,17 +344,6 @@ class SnapshotExporter:
                 "sha256": hashlib.sha256(content).hexdigest(),
                 "size": str(len(content)),
             })
-        manifest = asset_reference_manifest(ads)
-        referenced_images = {
-            ref["source_asset_id"]
-            for ad_manifest in manifest
-            for ref in ad_manifest["references"]
-            if ref["kind"].endswith("image")
-        }
-        downloadable_images = {item["source_asset_id"] for item in assets}
-        missing = sorted(referenced_images - downloadable_images)
-        if missing:
-            raise RuntimeError(f"来源图片素材无法完整下载：{', '.join(missing)}")
         channel = int(campaign.get("15") or 0)
         self.log(f"[{format_cid(self.source.cid)}] 读取否定关键词/展示位置排除共享集合关联")
         negative_keywords, shared_sets = self._shared_sets_snapshot(campaign_id)

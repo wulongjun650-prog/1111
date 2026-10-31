@@ -14,7 +14,8 @@ import os
 import struct
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
+from urllib.parse import urlsplit
 
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -56,6 +57,10 @@ REFERENCE_IMAGE_HOST_SUFFIXES = (
     ".googlesyndication.com", ".googleusercontent.com", ".gstatic.com",
 )
 MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024
+ASSET_FOLDER_LIST_PATH = "/aw_cm/editing/_/rpc/AssetFolderService/List"
+# A filtered read can miss images that are still on the ad (another folder,
+# another customer scope, or a type filter). Cap the unfiltered fallback.
+MAX_IMAGE_CATALOG_PAGES = 20
 
 
 @dataclass(frozen=True)
@@ -344,6 +349,7 @@ def asset_folder_list_request(
     offset: int = 0,
     limit: int = 50,
     asset_id: str | int | None = None,
+    images_only: bool = True,
 ) -> dict[str, Any]:
     account = str(_numeric_id(account_id, "account_id"))
     manager = str(_numeric_id(manager_id, "manager_id"))
@@ -353,6 +359,16 @@ def asset_folder_list_request(
     if asset_id is not None:
         asset = str(_numeric_id(asset_id, "asset_id"))
         filters.append({"1": "asset_id", "2": 3, "4": [{"3": asset}]})
+    options: list[dict[str, str]] = []
+    if images_only:
+        options.append({"1": "enabledAssetTypes", "2": "(2)"})
+    options.extend([
+        {"1": "enableSubfolderSearch", "2": "true"},
+        {"1": "isAggregatedPolicyEnabled", "2": "true"},
+        {"1": "isExtensionsPolicyEnabled", "2": "false"},
+        {"1": "enableVideoEditability", "2": "false"},
+        {"1": "enableTfaa", "2": "true"},
+    ])
     return {
         "1": {"3": {"1": account, "3": manager}},
         "2": {
@@ -365,14 +381,7 @@ def asset_folder_list_request(
             "7": {"1": int(offset), "2": int(limit)},
             "14": True,
         },
-        "3": [
-            {"1": "enabledAssetTypes", "2": "(2)"},
-            {"1": "enableSubfolderSearch", "2": "true"},
-            {"1": "isAggregatedPolicyEnabled", "2": "true"},
-            {"1": "isExtensionsPolicyEnabled", "2": "false"},
-            {"1": "enableVideoEditability", "2": "false"},
-            {"1": "enableTfaa", "2": "true"},
-        ],
+        "3": options,
     }
 
 
@@ -384,21 +393,85 @@ def asset_folder_readback_request(
     )
 
 
+def hosted_image_url(value: Any) -> str:
+    """Return a normalized https URL on an allowed Google image host, or ''."""
+    if not isinstance(value, str):
+        return ""
+    parsed = urlsplit(value.strip())
+    host = str(parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not any(
+        host == suffix[1:] or host.endswith(suffix)
+        for suffix in REFERENCE_IMAGE_HOST_SUFFIXES
+    ):
+        return ""
+    return parsed.geturl()
+
+
+def _unique(values: Iterable[str]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if value and value not in result:
+            result.append(value)
+    return result
+
+
+def extract_hosted_image_urls(value: Any) -> list[str]:
+    """Depth-first unique image URLs embedded anywhere in a protocol payload."""
+    found: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, str):
+            url = hosted_image_url(node)
+            if url:
+                found.append(url)
+        elif isinstance(node, dict):
+            for child in node.values():
+                walk(child)
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+
+    walk(value)
+    return _unique(found)
+
+
+def preview_urls_from_asset_row(row: dict[str, Any]) -> list[str]:
+    """Preview URLs for one AssetFolder row.
+
+    Field 24 is the full preview and field 17 is the thumbnail. Some image
+    rows leave both empty and put the https URL in another field, so those
+    strings count too. Non-URL values (a type flag in field 17, for example)
+    are ignored.
+    """
+    explicit: list[str] = []
+    for key in ("24", "17"):
+        url = hosted_image_url(row.get(key))
+        if url:
+            explicit.append(url)
+    return _unique([*explicit, *extract_hosted_image_urls(row)])
+
+
 def parse_asset_folder_readback(
-    payload: dict[str, Any], *, account_id: str | int,
+    payload: dict[str, Any], *, account_id: str | int, strict_account: bool = True,
 ) -> list[dict[str, Any]]:
     expected_account = str(_numeric_id(account_id, "account_id"))
     rows = payload.get("1") or [] if isinstance(payload, dict) else []
+    if isinstance(rows, dict):
+        rows = [rows]
     result = []
     for row in rows:
         if not isinstance(row, dict):
             continue
         row_account = str(row.get("1") or "")
         if row_account != expected_account:
-            raise PermissionError(f"素材回读属于其他内部账户：{row_account}")
+            if strict_account:
+                raise PermissionError(f"素材回读属于其他内部账户：{row_account}")
+            if row_account:
+                continue
         asset_id = str(row.get("2") or "")
         if not asset_id.isdigit():
             continue
+        preview_urls = preview_urls_from_asset_row(row)
         result.append({
             "account_id": row_account,
             "asset_id": asset_id,
@@ -408,10 +481,285 @@ def parse_asset_folder_readback(
             "file_size": int(row.get("14") or 0),
             "width": int(row.get("15") or 0),
             "height": int(row.get("16") or 0),
-            "preview_url": str(row.get("24") or row.get("17") or ""),
+            "preview_url": preview_urls[0] if preview_urls else "",
+            "preview_urls": preview_urls,
             "aspect_ratio": float(row.get("62") or 0),
         })
     return result
+
+
+def _digit_ids(value: Any, *, minimum: int, maximum: int) -> list[str]:
+    found: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for child in node.values():
+                walk(child)
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+        else:
+            text = str(node or "")
+            if text.isdigit() and minimum <= len(text) <= maximum and text not in found:
+                found.append(text)
+
+    walk(value)
+    return found
+
+
+def image_urls_by_asset(root: Any, asset_ids: Iterable[str]) -> dict[str, list[str]]:
+    """Map each asset id to image URLs in the smallest payload that contains only that id.
+
+    A whole ad contains every image, so its URLs are not assigned there. The
+    wrapper (or the media block) that contains exactly one requested asset id
+    owns the URLs nested inside it.
+    """
+    wanted = {str(asset_id) for asset_id in asset_ids if str(asset_id).isdigit()}
+    found = {asset_id: [] for asset_id in wanted}
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            owned = [asset_id for asset_id in _digit_ids(node, minimum=12, maximum=16) if asset_id in wanted]
+            if len(owned) == 1:
+                found[owned[0]].extend(extract_hosted_image_urls(node))
+                return
+            for child in node.values():
+                visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                visit(child)
+
+    visit(root)
+    return {asset_id: _unique(urls) for asset_id, urls in found.items()}
+
+
+def manager_ocid_from_page(page: Any, ocid: str) -> str:
+    query = {}
+    url = str(getattr(page, "url", "") or "")
+    if url:
+        from urllib.parse import parse_qs
+        query = parse_qs(urlsplit(url).query)
+    uscid = str((query.get("uscid") or [""])[0])
+    return uscid if uscid.isdigit() else str(ocid)
+
+
+def _folder_scopes(account_id: str, manager_id: str) -> list[tuple[str, str]]:
+    account = str(account_id)
+    manager = str(manager_id or account_id)
+    scopes = [(account, manager)]
+    if manager != account:
+        scopes.append((account, account))
+        scopes.append((manager, manager))
+    return scopes
+
+
+def _raw_asset_rows(payload: Any) -> list[dict[str, Any]]:
+    rows = payload.get("1") if isinstance(payload, dict) else None
+    if isinstance(rows, dict):
+        return [rows]
+    if isinstance(rows, list):
+        return [row for row in rows if isinstance(row, dict)]
+    return []
+
+
+def _alternate_asset_id(row: dict[str, Any], asset_id: str, excluded: set[str]) -> str:
+    """A single other asset id on this row, used when a crop points at its original."""
+    candidates = [
+        item for item in _digit_ids(row, minimum=10, maximum=13)
+        if item != asset_id and item not in excluded
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    return ""
+
+
+def missing_image_message(asset_ids: Iterable[str], reason: str) -> str:
+    joined = ", ".join(str(asset_id) for asset_id in asset_ids)
+    return f"来源图片素材无法完整下载：{joined}（{reason}）"
+
+
+def resolve_image_preview_urls(
+    page: Any,
+    account_id: str,
+    manager_id: str,
+    asset_ids: Iterable[str],
+    ads: list[dict[str, Any]] | None = None,
+    *,
+    log: Callable[[str], None] | None = None,
+    max_catalog_pages: int = MAX_IMAGE_CATALOG_PAGES,
+) -> dict[str, list[str]]:
+    """Find downloadable preview URLs for image asset ids referenced by an ad.
+
+    The exact AssetFolder query is enough for an ordinary uploaded image. It
+    returns nothing, or a row with no preview, for images that are still on
+    the ad: a second copy of the row, a child-account versus manager scope,
+    a non-image type filter, a cropped asset whose file lives on the original,
+    or a URL already present on the ad payload. Those are tried in that order.
+    Callers must still fail when an id is absent from the result.
+    """
+    wanted = [str(asset_id) for asset_id in asset_ids if str(asset_id).isdigit()]
+    previews: dict[str, list[str]] = {asset_id: [] for asset_id in wanted}
+    for ad in ads or []:
+        for asset_id, urls in image_urls_by_asset(ad, wanted).items():
+            previews[asset_id] = _unique([*previews[asset_id], *urls])
+
+    account = str(_numeric_id(account_id, "account_id"))
+    manager = str(_numeric_id(manager_id or account_id, "manager_id"))
+    excluded_ids = {account, manager}
+    scopes = _folder_scopes(account, manager)
+    seen_row: set[str] = set()
+
+    def note(text: str) -> None:
+        if log is not None:
+            log(text)
+
+    def remember(asset_id: str, urls: list[str]) -> None:
+        if urls:
+            # Folder URLs are the full asset; ad-embedded URLs stay as backups.
+            previews[asset_id] = _unique([*urls, *previews[asset_id]])
+
+    def fetch(account_scope: str, manager_scope: str, *, asset_id: str | None, images_only: bool, offset: int) -> Any:
+        return page.rpc(
+            ASSET_FOLDER_LIST_PATH,
+            asset_folder_list_request(
+                account_scope, manager_scope,
+                offset=offset, limit=50, asset_id=asset_id, images_only=images_only,
+            ),
+            timeout=90,
+        )
+
+    def absorb(payload: Any, account_scope: str, pending: set[str]) -> dict[str, dict[str, Any]]:
+        parsed: dict[str, dict[str, Any]] = {}
+        for item in parse_asset_folder_readback(
+            payload, account_id=account_scope, strict_account=False,
+        ):
+            asset_id = str(item.get("asset_id") or "")
+            if asset_id not in pending:
+                continue
+            current = parsed.get(asset_id)
+            if current is None:
+                parsed[asset_id] = item
+                continue
+            urls = _unique([
+                *(current.get("preview_urls") or []),
+                *(item.get("preview_urls") or []),
+            ])
+            current["preview_urls"] = urls
+            current["preview_url"] = urls[0] if urls else ""
+        raw_by_id: dict[str, dict[str, Any]] = {}
+        blocked = excluded_ids | set(wanted)
+        for raw in _raw_asset_rows(payload):
+            asset_id = str(raw.get("2") or "")
+            if asset_id not in parsed:
+                continue
+            seen_row.add(asset_id)
+            previous = raw_by_id.get(asset_id)
+            if previous is None or (
+                not _alternate_asset_id(previous, asset_id, blocked)
+                and _alternate_asset_id(raw, asset_id, blocked)
+            ):
+                raw_by_id[asset_id] = raw
+        for asset_id, item in parsed.items():
+            remember(asset_id, list(item.get("preview_urls") or []))
+        return raw_by_id
+
+    raw_for_alternate: dict[str, dict[str, Any]] = {}
+    for images_only, pending_ids in (
+        (True, list(wanted)),
+        (False, [asset_id for asset_id in wanted if not previews[asset_id]]),
+    ):
+        if not pending_ids:
+            continue
+        if not images_only:
+            note(f"图片类型筛选没有预览，改为不限类型再查：{', '.join(pending_ids)}")
+        for asset_id in pending_ids:
+            if previews[asset_id] and not images_only:
+                continue
+            for account_scope, manager_scope in scopes:
+                try:
+                    payload = fetch(
+                        account_scope, manager_scope,
+                        asset_id=asset_id, images_only=images_only, offset=0,
+                    )
+                except PermissionError:
+                    continue
+                found = absorb(payload, account_scope, {asset_id})
+                if found.get(asset_id):
+                    raw_for_alternate[asset_id] = found[asset_id]
+                if previews[asset_id]:
+                    break
+
+    for asset_id in [item for item in wanted if not previews[item]]:
+        raw = raw_for_alternate.get(asset_id) or {}
+        alternate = _alternate_asset_id(raw, asset_id, excluded_ids | set(wanted))
+        if not alternate:
+            continue
+        note(f"素材 {asset_id} 没有预览，改读它关联的原始素材 {alternate}")
+        for account_scope, manager_scope in scopes:
+            try:
+                payload = fetch(
+                    account_scope, manager_scope,
+                    asset_id=alternate, images_only=True, offset=0,
+                )
+            except PermissionError:
+                continue
+            parsed = parse_asset_folder_readback(
+                payload, account_id=account_scope, strict_account=False,
+            )
+            urls = next((
+                list(item.get("preview_urls") or [])
+                for item in parsed if item.get("asset_id") == alternate
+            ), [])
+            if urls:
+                remember(asset_id, urls)
+                break
+
+    missing = [asset_id for asset_id in wanted if not previews[asset_id] and asset_id not in seen_row]
+    if missing:
+        note(f"精确查询没有这些图片，改为翻页读取素材库：{', '.join(missing)}")
+        for account_scope, manager_scope in scopes:
+            if not missing:
+                break
+            seen_on_scope: set[str] = set()
+            for page_index in range(max_catalog_pages):
+                if not missing:
+                    break
+                payload = fetch(
+                    account_scope, manager_scope,
+                    asset_id=None, images_only=True, offset=page_index * 50,
+                )
+                raw_rows = _raw_asset_rows(payload)
+                page_ids = [str(raw.get("2") or "") for raw in raw_rows if raw.get("2")]
+                if page_ids and all(asset_id in seen_on_scope for asset_id in page_ids):
+                    break
+                seen_on_scope.update(page_ids)
+                absorb(payload, account_scope, set(missing))
+                missing = [asset_id for asset_id in missing if not previews[asset_id]]
+                if len(raw_rows) < 50:
+                    break
+    return {asset_id: urls for asset_id, urls in previews.items() if urls}
+
+
+def download_first_preview(
+    page: Any, asset: dict[str, Any], *,
+    downloader: Callable[..., tuple[bytes, str, str]] | None = None,
+) -> tuple[bytes, str, str]:
+    """Download the first preview URL that returns image bytes."""
+    fetch = downloader or download_preview_image
+    urls = _unique([
+        *(str(url) for url in asset.get("preview_urls") or []),
+        str(asset.get("preview_url") or ""),
+    ])
+    asset_id = str(asset.get("source_asset_id") or "")
+    if not urls:
+        raise RuntimeError(missing_image_message([asset_id], "没有预览地址"))
+    errors: list[str] = []
+    for url in urls:
+        try:
+            return fetch(page, url)
+        except Exception as exc:
+            errors.append(str(exc))
+    raise RuntimeError(missing_image_message([asset_id], errors[-1]))
 
 
 _DOWNLOAD_PREVIEW_JS = r"""
