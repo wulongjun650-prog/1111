@@ -152,28 +152,39 @@ def budget_gate_message(amount_micros: int, currency: str) -> str:
     )
 
 
-def final_url_gate_message(url: str) -> str:
+def _account_label(account: str) -> str:
+    text = str(account or "").strip()
+    return f"目标账号 {text}" if text else "正在导入的那个目标账号"
+
+
+def final_url_gate_message(url: str, *, account: str = "") -> str:
     shown = url or "快照里的落地页"
+    who = _account_label(account)
     return (
         f"建广告时这个落地页需要你本人确认：{shown}。"
-        f"请在目标账号网页里用这个网址发布一条暂停广告。弹出密钥时摸一下 U 盘。"
-        f"完成后重新点导入。已经建好的系列、广告组和图片会接着用，不会重来。"
+        f"请切到{who}的比特浏览器窗口，在 Google Ads 页面上摸密钥。"
+        f"摸的是登录这个目标账号时绑定的那把钥匙，不是来源账号的钥匙。"
+        f"摸完后重新点导入。已经建好的系列、广告组和图片会接着用，不会重来。"
     )
 
 
-def reauth_gate_message(step: str) -> str:
+def reauth_gate_message(step: str, *, account: str = "") -> str:
+    who = _account_label(account)
     return (
-        f"{step}需要你在网页上亲手确认。请打开目标账号的 Google Ads 页面完成这一步。"
-        f"弹出密钥时摸一下 U 盘。完成后重新点导入。"
+        f"{step}要摸物理密钥。请切到{who}的比特浏览器窗口，在 Google Ads 页面上摸。"
+        f"摸的是登录这个目标账号时绑定的那把钥匙，不是来源账号的钥匙。"
+        f"摸完后重新点导入。已经建好的系列、广告组和图片会接着用，不会重来。"
     )
 
 
-def human_gate_for_error(step: str, error: str, *, final_url: str = "") -> HumanActionRequired | None:
+def human_gate_for_error(
+    step: str, error: str, *, final_url: str = "", account: str = "",
+) -> HumanActionRequired | None:
     text = str(error or "").upper()
     if "UNPHISHABLE" in text or ("FINAL_URL" in text and "PHISH" in text):
-        return HumanActionRequired("final_url", final_url_gate_message(final_url))
+        return HumanActionRequired("final_url", final_url_gate_message(final_url, account=account))
     if "REAUTH" in text or "PROOF_TOKEN" in text:
-        return HumanActionRequired("reauth", reauth_gate_message(step))
+        return HumanActionRequired("reauth", reauth_gate_message(step, account=account))
     return None
 
 

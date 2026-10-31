@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import unittest
 
+import json
+
 from .portable_copy import (
+    _service_error,
     claim_named_group,
     copy_failure_message,
     place_ad_with_retries,
     poll_until_one,
+    portable_display_ad_request,
     recover_after_poll,
     verification_failure,
 )
@@ -110,6 +114,8 @@ class PlaceAdRetryTest(unittest.TestCase):
         message = str(caught.exception)
         self.assertIn("试了 3 次还没成功", message)
         self.assertIn("没有新广告", message)
+        self.assertIn("没有再建系列", message)
+        self.assertIn("没有要求物理密钥", message)
         self.assertEqual(message.count("第"), 3)
 
     def test_wrong_status_is_not_created_again(self) -> None:
@@ -274,6 +280,60 @@ class PlaceAdRetryTest(unittest.TestCase):
         self.assertIn("HTTP 0", http)
         self.assertIn("没有连上页面", http)
         self.assertNotIn("<html>", http)
+
+    def test_batch_error_hidden_in_a_json_string_is_read(self) -> None:
+        message = _service_error({
+            "1": ['{"5":{"2":["FIELD_ERROR_REQUIRED"]}}'],
+        })
+        self.assertIn("FIELD_ERROR_REQUIRED", message)
+        self.assertIn("字段", message)
+
+    def test_field_error_is_not_retried(self) -> None:
+        submits: list[int] = []
+
+        def submit() -> dict:
+            submits.append(1)
+            return {"1": ['{"5":{"2":["FIELD_ERROR_REQUIRED"]}}']}
+
+        with self.assertRaises(RuntimeError) as caught:
+            place_ad_with_retries(
+                read_ads=lambda: [],
+                submit=submit,
+                poll_new_ad=lambda _known: {},
+                group_id="g",
+                expected_status=2,
+                reserved_ids=set(),
+                log=lambda _text: None,
+                pause=lambda _seconds: None,
+            )
+        self.assertEqual(submits, [1])
+        self.assertIn("新建广告被拒绝", str(caught.exception))
+        self.assertIn("FIELD_ERROR_REQUIRED", str(caught.exception))
+
+    def test_display_ad_drops_source_asset_ids(self) -> None:
+        source = {"13": {"3": 103, "19": 35, "100": {"1": ["https://shop.example/a"], "41": {
+            "5": [{"1": {"1": "999999999999", "3": {"1": "标题一"}, "17": 1}}],
+            "6": {"1": {"1": "888888888888", "3": {"1": "长标题"}, "17": 1}},
+            "7": [{"1": {"3": {"1": "描述一"}, "17": 1}}],
+            "8": "商店名",
+            "9": [{"1": {"1": "555555555555", "17": 1}}],
+        }}}}
+        request = portable_display_ad_request(
+            ocid="7660960056",
+            campaign_id="10",
+            ad_group_id="20",
+            temporary_id="-1",
+            source_ad=source,
+            landscape_assets=[{"target_asset_id": "111111111111", "filename": "l.jpg"}],
+            square_assets=[{"target_asset_id": "222222222222", "filename": "s.jpg"}],
+        )
+        body = json.dumps(request, ensure_ascii=False)
+        self.assertNotIn("999999999999", body)
+        self.assertNotIn("888888888888", body)
+        self.assertNotIn("555555555555", body)
+        self.assertIn("111111111111", body)
+        self.assertIn("标题一", body)
+        self.assertIn("商店名", body)
 
 
 if __name__ == "__main__":

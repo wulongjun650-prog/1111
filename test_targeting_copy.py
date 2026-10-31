@@ -71,6 +71,13 @@ class HumanGateTest(unittest.TestCase):
         self.assertIsNotNone(gate)
         assert gate is not None
         self.assertEqual(gate.reason, "reauth")
+        named = human_gate_for_error(
+            "新建广告", "AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED", account="110-669-3913",
+        )
+        self.assertIsNotNone(named)
+        assert named is not None
+        self.assertIn("110-669-3913", str(named))
+        self.assertIn("不是来源账号", str(named))
 
     def test_other_errors_stay_errors(self) -> None:
         self.assertIsNone(human_gate_for_error("新建广告组", "FIELD_ERROR_REQUIRED"))

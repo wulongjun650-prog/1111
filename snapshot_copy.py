@@ -776,7 +776,9 @@ class SnapshotImporter:
                     wrote_this_run = True
                     error = _service_error(response)
                     if error:
-                        gate = human_gate_for_error("新建广告系列", error)
+                        gate = human_gate_for_error(
+                            "新建广告系列", error, account=format_cid(self.target.cid),
+                        )
                         if gate:
                             raise gate
                         raise RuntimeError(
@@ -854,7 +856,9 @@ class SnapshotImporter:
                 wrote_this_run = True
                 error = _service_error(response)
                 if error:
-                    gate = human_gate_for_error("新建广告组", error)
+                    gate = human_gate_for_error(
+                        "新建广告组", error, account=format_cid(self.target.cid),
+                    )
                     if gate:
                         raise gate
                     raise RuntimeError(f"新建广告组失败：{error}")
@@ -1023,8 +1027,8 @@ class SnapshotImporter:
                     expected_status=target_child_status,
                     reserved_ids=mapped_ad_ids,
                     log=self.log,
-                    gate_for_error=lambda error, url=final_urls[:1]: human_gate_for_error(
-                        "新建广告", error, final_url=url[0] if url else "",
+                    gate_for_error=lambda error, url=final_urls[:1], cid=format_cid(self.target.cid): human_gate_for_error(
+                        "新建广告", error, final_url=url[0] if url else "", account=cid,
                     ),
                 )
                 if submitted:

@@ -15,6 +15,8 @@ from .ads import (
     ad_list_request,
     build_batch_request,
     campaign_list_request,
+    _asset_text,
+    _text_asset,
     image_asset_wrapper,
     parse_ad_groups,
     parse_ads,
@@ -580,6 +582,13 @@ def portable_app_ad_request(
         } for asset in target_assets]
     else:
         app_ad.pop("4", None)
+    allowed_assets = {
+        str(asset["target_asset_id"])
+        for asset in target_assets
+        if asset.get("target_asset_id")
+    }
+    app_ad = _drop_unmapped_assets(app_ad, allowed_assets)
+    mutable = _drop_unmapped_assets(mutable, allowed_assets)
     mutable["9"] = str(temporary_id)
     mutable["44"] = app_ad
     outer = {
@@ -624,15 +633,35 @@ def portable_display_ad_request(
         raise ValueError("来源广告不是可重建的响应式展示广告")
     if not landscape_assets or not square_assets:
         raise ValueError("响应式展示广告必须同时包含横图和方图素材映射")
-    creative["1"] = [image_asset_wrapper(a["target_asset_id"], a.get("filename") or "") for a in landscape_assets]
-    creative["2"] = [image_asset_wrapper(a["target_asset_id"], a.get("filename") or "") for a in square_assets]
-    if portrait_assets:
-        creative["20"] = [image_asset_wrapper(a["target_asset_id"], a.get("filename") or "") for a in portrait_assets]
+    landscape = [image_asset_wrapper(a["target_asset_id"], a.get("filename") or "") for a in landscape_assets]
+    square = [image_asset_wrapper(a["target_asset_id"], a.get("filename") or "") for a in square_assets]
+    portraits = [
+        image_asset_wrapper(a["target_asset_id"], a.get("filename") or "")
+        for a in (portrait_assets or [])
+    ]
+    headlines = _creative_texts(creative.get("5"))
+    long_headline = " ".join(_creative_texts(creative.get("6")))
+    descriptions = _creative_texts(creative.get("7"))
+    business_name = " ".join(_creative_texts(creative.get("8")))
+    if not headlines or not long_headline or not descriptions or not business_name:
+        raise ValueError("来源展示广告缺少标题、长标题、描述或商家名称，不能新建广告")
+    allowed_assets = {
+        str(asset["target_asset_id"])
+        for asset in (*landscape_assets, *square_assets, *(portrait_assets or []))
+        if asset.get("target_asset_id")
+    }
+    creative["1"] = landscape
+    creative["2"] = square
+    if portraits:
+        creative["20"] = portraits
     else:
         creative.pop("20", None)
-    creative["5"] = _without_source_text_ids(creative.get("5"))
-    creative["6"] = _without_source_text_id(creative.get("6"))
-    creative["7"] = _without_source_text_ids(creative.get("7"))
+    creative["5"] = [_text_asset(value) for value in headlines]
+    creative["6"] = _text_asset(long_headline)
+    creative["7"] = [_text_asset(value) for value in descriptions]
+    creative["8"] = business_name
+    creative = _drop_unmapped_assets(creative, allowed_assets)
+    mutable = _drop_unmapped_assets(mutable, allowed_assets)
     mutable["9"] = str(temporary_id)
     mutable["41"] = creative
     final_urls = [str(value) for value in (mutable.get("1") or outer_source.get("5") or []) if value]
@@ -658,7 +687,9 @@ def portable_display_ad_request(
     return build_batch_request(request)
 
 
-def _service_error(value: Any) -> str:
+def _service_error(value: Any, depth: int = 0) -> str:
+    if depth > 4:
+        return ""
     if isinstance(value, dict):
         # 字段号 "5"/"2" 只在错误响应结构里代表错误列表；同样的字段号在其他消息
         # 类型里可能被复用为字符串/数字（如 ad_group 响应的 "21.5" 是出价金额），
@@ -670,17 +701,113 @@ def _service_error(value: Any) -> str:
             if shown:
                 return shown
         for nested in value.values():
-            found = _service_error(nested)
+            found = _service_error(nested, depth + 1)
             if found:
                 return found
     elif isinstance(value, list):
         for nested in value:
-            found = _service_error(nested)
+            found = _service_error(nested, depth + 1)
             if found:
                 return found
-    elif isinstance(value, str) and value.startswith(("MUTATE_ERROR_", "INTERNAL_ERROR")):
-        return value
+    elif isinstance(value, str):
+        text = value.strip()
+        if text[:1] in "{[":
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, (dict, list)):
+                found = _service_error(parsed, depth + 1)
+                if found:
+                    return found
+        if text.startswith((
+            "MUTATE_ERROR_", "INTERNAL_ERROR", "FIELD_ERROR", "AUTH_ERROR",
+            "POLICY", "STRING_ERROR", "AUTHORIZATION_ERROR",
+        )):
+            return format_protocol_errors([text]) or text
     return ""
+
+
+def _response_hint(response: Any) -> str:
+    if response is None or response == "" or response == {}:
+        return "接口没有带回具体内容"
+    try:
+        text = response if isinstance(response, str) else json.dumps(response, ensure_ascii=False)
+    except TypeError:
+        text = str(response)
+    text = " ".join(text.split())
+    if len(text) > 280:
+        text = text[:280] + "…"
+    return f"接口返回：{text}"
+
+
+_NO_RETRY_MARKERS = (
+    "FIELD_ERROR", "POLICY", "STRING_ERROR", "MUTATE_ERROR",
+    "CRITERION_ERROR", "AUTHORIZATION_ERROR", "REQUEST_ERROR",
+)
+
+
+def _can_retry_ad_error(error: str) -> bool:
+    text = str(error or "").upper()
+    return not any(marker in text for marker in _NO_RETRY_MARKERS)
+
+
+def _creative_texts(value: Any) -> list[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text and not text.isdigit() else []
+    if isinstance(value, dict):
+        text = _asset_text(value).strip()
+        if text:
+            return [text]
+        raw = value.get("1")
+        if isinstance(raw, str) and raw.strip() and not raw.strip().isdigit():
+            return [raw.strip()]
+        return []
+    if isinstance(value, list):
+        texts: list[str] = []
+        for item in value:
+            for text in _creative_texts(item):
+                if text not in texts:
+                    texts.append(text)
+        return texts
+    return []
+
+
+def _wrapper_asset_id(value: dict[str, Any]) -> str:
+    inner = value.get("1")
+    if not isinstance(inner, dict):
+        return ""
+    asset_id = str(inner.get("1") or "")
+    if asset_id.isdigit() and len(asset_id) >= 8:
+        return asset_id
+    return ""
+
+
+_DROP_ASSET = object()
+
+
+def _drop_unmapped_assets(value: Any, allowed: set[str]) -> Any:
+    """Remove asset wrappers that still point at the source account."""
+    if isinstance(value, list):
+        kept = []
+        for item in value:
+            cleaned = _drop_unmapped_assets(item, allowed)
+            if cleaned is _DROP_ASSET:
+                continue
+            kept.append(cleaned)
+        return kept
+    if isinstance(value, dict):
+        if _wrapper_asset_id(value) and _wrapper_asset_id(value) not in allowed:
+            return _DROP_ASSET
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            child = _drop_unmapped_assets(item, allowed)
+            if child is _DROP_ASSET:
+                continue
+            cleaned[key] = child
+        return cleaned
+    return value
 
 
 AD_CREATE_ATTEMPTS = 3
@@ -811,6 +938,8 @@ def place_ad_with_retries(
             gate = gate_for_error(error) if gate_for_error else None
             if gate:
                 raise gate
+            if not _can_retry_ad_error(error):
+                raise RuntimeError(f"新建广告被拒绝：{error}")
             reasons.append(f"第{attempt}次：{error}")
             if attempt < attempts:
                 sleeper(1)
@@ -839,11 +968,19 @@ def place_ad_with_retries(
                     log(f"广告组里有 {len(matched)} 条暂停广告，先用了 {chosen.get('ad_id')}")
                     return chosen, submitted
                 text = describe_unreadable_ad(latest, group_id, seen | known, expected_status)
+            hint = _response_hint(response)
+            if hint:
+                text = f"{text}。{hint}"
             reasons.append(f"第{attempt}次：{text}")
             if attempt < attempts:
                 sleeper(1)
     detail = " ".join(reasons) if reasons else "广告组里没有新广告"
-    raise RuntimeError(f"广告试了 {attempts} 次还没成功。{detail}")
+    raise RuntimeError(
+        f"广告试了 {attempts} 次还没成功。这 {attempts} 次都只提交了广告，"
+        f"没有再建系列，也没有再建广告组。{detail} "
+        f"返回里没有要求物理密钥。如果目标账号的网页自己弹出了密钥，"
+        f"摸的是正在导入的那个窗口里、这个目标账号绑定的钥匙，不是来源账号的。"
+    )
 
 
 def _prefer_newest_ad(rows: list[dict[str, Any]]) -> dict[str, Any]:
