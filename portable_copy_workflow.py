@@ -46,13 +46,14 @@ from .portable_copy import (
     SUPPORTED_CHANNELS,
     _list_request,
     _service_error,
+    place_ad_with_retries,
     portable_ad_group_request,
     portable_app_ad_request,
     portable_campaign_batch_request,
     portable_display_ad_request,
 )
 from .protocol import AccountPage, ProtocolRunner
-from .targeting_copy import HumanActionRequired
+from .targeting_copy import HumanActionRequired, human_gate_for_error
 
 
 SNAPSHOT_SCHEMA_VERSION = 3
@@ -764,22 +765,7 @@ class PortableCampaignWorkflow:
                 target_group_id = str(group_map.get(source_group_id) or "")
                 if not target_group_id:
                     raise RuntimeError(f"广告 {source_ad_id} 找不到目标广告组映射")
-                current_ads = self._read_ads(target_group_id)
                 mapped_ad_ids = {str(value) for value in ad_map.values()}
-                recoverable_ads = [
-                    row for row in current_ads
-                    if str(row.get("ad_group_id")) == target_group_id
-                    and row.get("status_raw") == target_child_status
-                    and str(row.get("ad_id")) not in mapped_ad_ids
-                ]
-                if len(recoverable_ads) > 1:
-                    raise RuntimeError("发现多个未记录的同状态广告，无法安全恢复")
-                if recoverable_ads:
-                    ad_map[source_ad_id] = str(recoverable_ads[0]["ad_id"])
-                    state["current_step"] = "ads_created"
-                    self._write_state(state_path, state)
-                    continue
-                before_ids = {str(row.get("ad_id")) for row in current_ads}
                 creative_path = (((source_ad.get("13") or {}).get("100") or {}))
                 if channel == APP_CHANNEL:
                     source_image_ids = {
@@ -793,14 +779,11 @@ class PortableCampaignWorkflow:
                     ]
                     if len(mapped_assets) != len(source_image_ids):
                         raise RuntimeError(f"广告 {source_ad_id} 的图片素材映射不完整")
-                    response = self.target.page.rpc(
-                        "/aw_cm/editing/_/rpc/BatchService/Batch",
-                        portable_app_ad_request(
-                            ocid=self.target.ocid, campaign_id=campaign_id,
-                            ad_group_id=target_group_id, temporary_id=f"-{index}",
-                            source_ad=source_ad, target_assets=mapped_assets,
-                            target_child_status=target_child_status,
-                        ),
+                    ad_request = portable_app_ad_request(
+                        ocid=self.target.ocid, campaign_id=campaign_id,
+                        ad_group_id=target_group_id, temporary_id=f"-{index}",
+                        source_ad=source_ad, target_assets=mapped_assets,
+                        target_child_status=target_child_status,
                     )
                 else:
                     display_creative = creative_path.get("41") or {}
@@ -819,29 +802,53 @@ class PortableCampaignWorkflow:
                     landscape_assets = _mapped("1", "横图")
                     square_assets = _mapped("2", "方图")
                     portrait_assets = _mapped("20", "竖图")
-                    response = self.target.page.rpc(
-                        "/aw_cm/editing/_/rpc/BatchService/Batch",
-                        portable_display_ad_request(
-                            ocid=self.target.ocid, campaign_id=campaign_id,
-                            ad_group_id=target_group_id, temporary_id=f"-{index}",
-                            source_ad=source_ad,
-                            landscape_assets=landscape_assets,
-                            square_assets=square_assets,
-                            portrait_assets=portrait_assets,
-                            target_child_status=target_child_status,
-                        ),
+                    ad_request = portable_display_ad_request(
+                        ocid=self.target.ocid, campaign_id=campaign_id,
+                        ad_group_id=target_group_id, temporary_id=f"-{index}",
+                        source_ad=source_ad,
+                        landscape_assets=landscape_assets,
+                        square_assets=square_assets,
+                        portrait_assets=portrait_assets,
+                        target_child_status=target_child_status,
                     )
-                wrote_this_run = True
-                error = _service_error(response)
-                if error:
-                    raise RuntimeError(f"新建广告失败：{error}")
-                created_ad = self._poll_one(
-                    lambda gid=target_group_id: self._read_ads(gid),
-                    lambda row, known=before_ids: row.get("ad_group_id") == target_group_id
-                    and str(row.get("ad_id")) not in known
-                    and row.get("status_raw") == target_child_status,
-                    "广告",
+                final_urls = [
+                    str(value)
+                    for value in (
+                        ((source_ad.get("13") or {}).get("100") or {}).get("1")
+                        or (source_ad.get("13") or {}).get("5")
+                        or []
+                    )
+                    if value
+                ]
+
+                def submit(request: dict[str, Any] = ad_request) -> Any:
+                    return self.target.page.rpc(
+                        "/aw_cm/editing/_/rpc/BatchService/Batch", request,
+                    )
+
+                def poll(known: set[str], gid: str = target_group_id) -> dict[str, Any]:
+                    return self._poll_one(
+                        lambda group_id=gid: self._read_ads(group_id),
+                        lambda row, existing=known: str(row.get("ad_group_id")) == gid
+                        and str(row.get("ad_id")) not in existing
+                        and row.get("status_raw") == target_child_status,
+                        "广告",
+                    )
+
+                created_ad, submitted = place_ad_with_retries(
+                    read_ads=lambda gid=target_group_id: self._read_ads(gid),
+                    submit=submit,
+                    poll_new_ad=poll,
+                    group_id=target_group_id,
+                    expected_status=target_child_status,
+                    reserved_ids=mapped_ad_ids,
+                    log=self.log,
+                    gate_for_error=lambda error, url=final_urls[:1]: human_gate_for_error(
+                        "新建广告", error, final_url=url[0] if url else "",
+                    ),
                 )
+                if submitted:
+                    wrote_this_run = True
                 ad_map[source_ad_id] = str(created_ad["ad_id"])
                 state["current_step"] = "ads_created"
                 self._write_state(state_path, state)
