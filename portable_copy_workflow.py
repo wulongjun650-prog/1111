@@ -9,6 +9,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from .account_level_copy import (
+    apply_account_settings,
+    apply_campaign_goals,
+    ensure_account_level_state,
+    read_account_level,
+    summarize_account_level,
+)
 from .ads import (
     AdCatalog,
     ad_group_list_request,
@@ -19,7 +26,13 @@ from .ads import (
     parse_campaigns,
 )
 from .config import data_dir, format_cid
-from .image_upload import download_preview_image, upload_images
+from .image_upload import (
+    download_first_preview,
+    manager_ocid_from_page,
+    missing_image_message,
+    resolve_image_preview_urls,
+    upload_images,
+)
 from .portable_copy import (
     AD_GROUP_SNAPSHOT_FIELDS,
     APP_AD_SNAPSHOT_FIELDS,
@@ -33,12 +46,14 @@ from .portable_copy import (
     SUPPORTED_CHANNELS,
     _list_request,
     _service_error,
+    place_ad_with_retries,
     portable_ad_group_request,
     portable_app_ad_request,
     portable_campaign_batch_request,
     portable_display_ad_request,
 )
 from .protocol import AccountPage, ProtocolRunner
+from .targeting_copy import HumanActionRequired, human_gate_for_error
 
 
 SNAPSHOT_SCHEMA_VERSION = 3
@@ -47,7 +62,9 @@ SCHEMA_NOTES = {
     "negative_keywords": "replicated",
     "shared_sets": "replicated",
     "custom_audiences": "replicated",
-    "content_suitability": "not_implemented",
+    "campaign_criteria": "replicated",
+    "ad_group_criteria": "replicated",
+    "content_suitability": "replicated",
 }
 
 
@@ -77,6 +94,39 @@ def _asset_id(item: Any) -> str:
     if not isinstance(asset, dict):
         return ""
     return str(asset.get("1") or "")
+
+
+def referenced_image_filenames(ads: list[dict[str, Any]]) -> dict[str, str]:
+    """Asset id to filename for image slots the manifest treats as images.
+
+    Display uses landscape/square/portrait. App campaigns use the image list.
+    Text assets are not included, even when they still carry a source asset id.
+    """
+    names: dict[str, str] = {}
+    for ad in ads:
+        mutable = (ad.get("13") or {}).get("100") or {}
+        app_assets = mutable.get("44")
+        display_creative = mutable.get("41")
+        if isinstance(app_assets, dict) and app_assets:
+            creative, fields = app_assets, ("4",)
+        elif isinstance(display_creative, dict) and display_creative:
+            creative, fields = display_creative, ("1", "2", "20")
+        else:
+            continue
+        for field in fields:
+            values = creative.get(field) or []
+            if not isinstance(values, list):
+                continue
+            for wrapper in values:
+                if not isinstance(wrapper, dict):
+                    continue
+                asset = wrapper.get("1") if isinstance(wrapper.get("1"), dict) else {}
+                asset_id = str(asset.get("1") or "")
+                if asset_id:
+                    names.setdefault(
+                        asset_id, str(asset.get("2") or f"asset-{asset_id}.png"),
+                    )
+    return names
 
 
 def asset_reference_manifest(ads: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -150,6 +200,14 @@ def snapshot_identity(snapshot: dict[str, Any]) -> str:
         "shared_sets": snapshot.get("shared_sets") or [],
         "custom_audiences": snapshot.get("custom_audiences") or [],
     }
+    # Older snapshots were hashed without these keys. Include them only when
+    # the file actually has them, so existing snapshot_id values still match.
+    for key in ("campaign_criteria", "ad_group_criteria", "targeting_gaps"):
+        if key in snapshot:
+            content[key] = snapshot.get(key) or []
+    # account_level is new. Old files omit it, so their snapshot_id stays valid.
+    if "account_level" in snapshot:
+        content["account_level"] = snapshot.get("account_level") or {}
     return _sha256_json(content)
 
 
@@ -273,6 +331,44 @@ class PortableCampaignWorkflow:
                     })
         return list(records.values())
 
+    def _with_resolved_previews(
+        self, ads: list[dict[str, Any]], assets: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        """Fill image slots that the ad payload did not already give a URL for."""
+        filenames = referenced_image_filenames(ads)
+        have = {item["source_asset_id"] for item in assets}
+        missing = [asset_id for asset_id in filenames if asset_id not in have]
+        if not missing:
+            return assets
+        previews = resolve_image_preview_urls(
+            self.source.page, self.source.ocid,
+            manager_ocid_from_page(self.source.page, self.source.ocid),
+            missing, ads, log=self.log,
+        )
+        for asset_id in missing:
+            urls = previews.get(asset_id) or []
+            if not urls:
+                continue
+            assets.append({
+                "source_asset_id": asset_id,
+                "filename": filenames[asset_id],
+                "preview_url": urls[0],
+                "preview_urls": urls,
+            })
+        return assets
+
+    @staticmethod
+    def _require_image_previews(
+        ads: list[dict[str, Any]], assets: list[dict[str, str]],
+    ) -> None:
+        referenced = set(referenced_image_filenames(ads))
+        downloadable = {item["source_asset_id"] for item in assets if item.get("preview_url") or item.get("preview_urls")}
+        missing = sorted(referenced - downloadable)
+        if missing:
+            raise RuntimeError(missing_image_message(
+                missing, "素材库没有这些图片的预览地址，广告数据里也没有",
+            ))
+
     def export(self, campaign_id: str) -> dict[str, Any]:
         campaign_id = str(campaign_id)
         self.log(f"[{format_cid(self.source.cid)}] 读取广告系列、广告组、广告及素材引用")
@@ -282,10 +378,13 @@ class PortableCampaignWorkflow:
         assets_dir = folder / "assets"
         assets_dir.mkdir(parents=True, exist_ok=False)
         assets = self._image_records(ads)
+        assets = self._with_resolved_previews(ads, assets)
+        self._require_image_previews(ads, assets)
         for index, asset in enumerate(assets, 1):
-            content, mime, final_url = download_preview_image(
-                self.source.page, asset["preview_url"],
+            content, mime, final_url = download_first_preview(
+                self.source.page, asset,
             )
+            asset.pop("preview_urls", None)
             suffix = ".png" if mime == "image/png" else ".jpg"
             relative_path = Path("assets") / f"{index:03d}-{asset['source_asset_id']}{suffix}"
             target = folder / relative_path
@@ -298,16 +397,12 @@ class PortableCampaignWorkflow:
                 "size": str(len(content)),
             })
         manifest = asset_reference_manifest(ads)
-        referenced_images = {
-            ref["source_asset_id"]
-            for ad_manifest in manifest
-            for ref in ad_manifest["references"]
-            if ref["kind"].endswith("image")
-        }
-        downloadable_images = {item["source_asset_id"] for item in assets}
-        missing = sorted(referenced_images - downloadable_images)
-        if missing:
-            raise RuntimeError(f"来源图片素材无法完整下载：{', '.join(missing)}")
+        self.log(f"[{format_cid(self.source.cid)}] 读取账号内容适宜性和联系人转化目标")
+        account_level = read_account_level(self.source.page, self.source.ocid, campaign_id)
+        self.log(
+            f"[{format_cid(self.source.cid)}] 账号："
+            f"{summarize_account_level({'account_level': account_level})}"
+        )
         snapshot: dict[str, Any] = {
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
             "created_at": datetime.now().astimezone().isoformat(),
@@ -321,6 +416,7 @@ class PortableCampaignWorkflow:
             "shared_sets": [],
             "custom_audiences": [],
             "content_suitability": None,
+            "account_level": account_level,
             "schema_notes": dict(SCHEMA_NOTES),
         }
         snapshot["snapshot_id"] = snapshot_identity(snapshot)
@@ -389,6 +485,7 @@ class PortableCampaignWorkflow:
                 or str(state.get("idempotency_key")) != idempotency_key
             ):
                 raise RuntimeError("幂等状态与当前快照或目标 CID 不匹配")
+            ensure_account_level_state(state)
             return path, state
         state = {
             "schema_version": STATE_SCHEMA_VERSION,
@@ -404,6 +501,11 @@ class PortableCampaignWorkflow:
             "created_ad_groups": {},
             "created_ads": {},
             "asset_map": [],
+            "account_exclusion_keys": [],
+            "conversion_actions_ready": [],
+            "campaign_goal_applied": False,
+            "inventory_applied": False,
+            "account_level_warnings": [],
         }
         self._write_state(path, state)
         return path, state
@@ -520,6 +622,15 @@ class PortableCampaignWorkflow:
         wrote_this_run = False
         try:
             validate_snapshot_files(snapshot)
+            ensure_account_level_state(state)
+            if snapshot.get("account_level"):
+                self.log(f"[{format_cid(self.target.cid)}] 补账号内容适宜性和联系人转化目标")
+                if apply_account_settings(
+                    self.target.page, self.target.ocid, snapshot.get("account_level"), state, self.log,
+                ):
+                    wrote_this_run = True
+                state["current_step"] = "account_level_applied"
+                self._write_state(state_path, state)
             campaign_id = str(state.get("created_campaign_id") or "")
             name = self._campaign_name(snapshot, key)
             if not campaign_id:
@@ -564,6 +675,19 @@ class PortableCampaignWorkflow:
                 ), None)
                 if not created_campaign:
                     raise RuntimeError("状态记录中的目标广告系列不存在或状态不符")
+
+            if snapshot.get("account_level"):
+                if apply_campaign_goals(
+                    self.target.page,
+                    self.target.ocid,
+                    campaign_id,
+                    snapshot.get("account_level") or {},
+                    state,
+                    self.log,
+                ):
+                    wrote_this_run = True
+                state["current_step"] = "campaign_goals_applied"
+                self._write_state(state_path, state)
 
             group_map = state["created_ad_groups"]
             for index, source_group in enumerate(snapshot["ad_groups"], 1):
@@ -641,22 +765,7 @@ class PortableCampaignWorkflow:
                 target_group_id = str(group_map.get(source_group_id) or "")
                 if not target_group_id:
                     raise RuntimeError(f"广告 {source_ad_id} 找不到目标广告组映射")
-                current_ads = self._read_ads(target_group_id)
                 mapped_ad_ids = {str(value) for value in ad_map.values()}
-                recoverable_ads = [
-                    row for row in current_ads
-                    if str(row.get("ad_group_id")) == target_group_id
-                    and row.get("status_raw") == target_child_status
-                    and str(row.get("ad_id")) not in mapped_ad_ids
-                ]
-                if len(recoverable_ads) > 1:
-                    raise RuntimeError("发现多个未记录的同状态广告，无法安全恢复")
-                if recoverable_ads:
-                    ad_map[source_ad_id] = str(recoverable_ads[0]["ad_id"])
-                    state["current_step"] = "ads_created"
-                    self._write_state(state_path, state)
-                    continue
-                before_ids = {str(row.get("ad_id")) for row in current_ads}
                 creative_path = (((source_ad.get("13") or {}).get("100") or {}))
                 if channel == APP_CHANNEL:
                     source_image_ids = {
@@ -670,14 +779,11 @@ class PortableCampaignWorkflow:
                     ]
                     if len(mapped_assets) != len(source_image_ids):
                         raise RuntimeError(f"广告 {source_ad_id} 的图片素材映射不完整")
-                    response = self.target.page.rpc(
-                        "/aw_cm/editing/_/rpc/BatchService/Batch",
-                        portable_app_ad_request(
-                            ocid=self.target.ocid, campaign_id=campaign_id,
-                            ad_group_id=target_group_id, temporary_id=f"-{index}",
-                            source_ad=source_ad, target_assets=mapped_assets,
-                            target_child_status=target_child_status,
-                        ),
+                    ad_request = portable_app_ad_request(
+                        ocid=self.target.ocid, campaign_id=campaign_id,
+                        ad_group_id=target_group_id, temporary_id=f"-{index}",
+                        source_ad=source_ad, target_assets=mapped_assets,
+                        target_child_status=target_child_status,
                     )
                 else:
                     display_creative = creative_path.get("41") or {}
@@ -696,29 +802,53 @@ class PortableCampaignWorkflow:
                     landscape_assets = _mapped("1", "横图")
                     square_assets = _mapped("2", "方图")
                     portrait_assets = _mapped("20", "竖图")
-                    response = self.target.page.rpc(
-                        "/aw_cm/editing/_/rpc/BatchService/Batch",
-                        portable_display_ad_request(
-                            ocid=self.target.ocid, campaign_id=campaign_id,
-                            ad_group_id=target_group_id, temporary_id=f"-{index}",
-                            source_ad=source_ad,
-                            landscape_assets=landscape_assets,
-                            square_assets=square_assets,
-                            portrait_assets=portrait_assets,
-                            target_child_status=target_child_status,
-                        ),
+                    ad_request = portable_display_ad_request(
+                        ocid=self.target.ocid, campaign_id=campaign_id,
+                        ad_group_id=target_group_id, temporary_id=f"-{index}",
+                        source_ad=source_ad,
+                        landscape_assets=landscape_assets,
+                        square_assets=square_assets,
+                        portrait_assets=portrait_assets,
+                        target_child_status=target_child_status,
                     )
-                wrote_this_run = True
-                error = _service_error(response)
-                if error:
-                    raise RuntimeError(f"新建广告失败：{error}")
-                created_ad = self._poll_one(
-                    lambda gid=target_group_id: self._read_ads(gid),
-                    lambda row, known=before_ids: row.get("ad_group_id") == target_group_id
-                    and str(row.get("ad_id")) not in known
-                    and row.get("status_raw") == target_child_status,
-                    "广告",
+                final_urls = [
+                    str(value)
+                    for value in (
+                        ((source_ad.get("13") or {}).get("100") or {}).get("1")
+                        or (source_ad.get("13") or {}).get("5")
+                        or []
+                    )
+                    if value
+                ]
+
+                def submit(request: dict[str, Any] = ad_request) -> Any:
+                    return self.target.page.rpc(
+                        "/aw_cm/editing/_/rpc/BatchService/Batch", request,
+                    )
+
+                def poll(known: set[str], gid: str = target_group_id) -> dict[str, Any]:
+                    return self._poll_one(
+                        lambda group_id=gid: self._read_ads(group_id),
+                        lambda row, existing=known: str(row.get("ad_group_id")) == gid
+                        and str(row.get("ad_id")) not in existing
+                        and row.get("status_raw") == target_child_status,
+                        "广告",
+                    )
+
+                created_ad, submitted = place_ad_with_retries(
+                    read_ads=lambda gid=target_group_id: self._read_ads(gid),
+                    submit=submit,
+                    poll_new_ad=poll,
+                    group_id=target_group_id,
+                    expected_status=target_child_status,
+                    reserved_ids=mapped_ad_ids,
+                    log=self.log,
+                    gate_for_error=lambda error, url=final_urls[:1]: human_gate_for_error(
+                        "新建广告", error, final_url=url[0] if url else "",
+                    ),
                 )
+                if submitted:
+                    wrote_this_run = True
                 ad_map[source_ad_id] = str(created_ad["ad_id"])
                 state["current_step"] = "ads_created"
                 self._write_state(state_path, state)
@@ -735,6 +865,11 @@ class PortableCampaignWorkflow:
                 snapshot, state_path, state, verification,
                 idempotent=not wrote_this_run,
             )
+        except HumanActionRequired as exc:
+            state["status"] = "needs_human"
+            state["failure_reason"] = str(exc)
+            self._write_state(state_path, state)
+            raise
         except Exception as exc:
             state["status"] = "failed"
             state["failure_reason"] = str(exc)

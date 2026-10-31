@@ -669,6 +669,151 @@ def _service_error(value: Any) -> str:
     return ""
 
 
+AD_CREATE_ATTEMPTS = 3
+
+
+def _ad_status_name(status: Any) -> str:
+    return {1: "已启用", 2: "已暂停", 3: "已移除"}.get(int(status or 0), f"状态 {status}")
+
+
+def describe_unreadable_ad(
+    rows: list[dict[str, Any]],
+    group_id: str,
+    known_ids: set[str],
+    expected_status: int,
+) -> str:
+    """Say what the ad group actually contained when the new paused ad was missing."""
+    expected = _ad_status_name(expected_status)
+    fresh = [
+        row for row in rows
+        if str(row.get("ad_group_id") or "") == str(group_id)
+        and str(row.get("ad_id") or "") not in known_ids
+        and int(row.get("status_raw") or 0) != 3
+    ]
+    if not fresh:
+        return "广告组里没有新广告"
+    names = "、".join(_ad_status_name(row.get("status_raw")) for row in fresh[:3])
+    if len(fresh) > 3:
+        names += f" 等 {len(fresh)} 条"
+    return f"新广告是{names}，不是{expected}"
+
+
+def _matching_ads(
+    rows: list[dict[str, Any]], group_id: str, known_ids: set[str], expected_status: int,
+) -> list[dict[str, Any]]:
+    return [
+        row for row in rows
+        if str(row.get("ad_group_id") or "") == str(group_id)
+        and str(row.get("ad_id") or "") not in known_ids
+        and int(row.get("status_raw") or 0) == int(expected_status)
+    ]
+
+
+def place_ad_with_retries(
+    *,
+    read_ads: Callable[[], list[dict[str, Any]]],
+    submit: Callable[[], Any],
+    poll_new_ad: Callable[[set[str]], dict[str, Any]],
+    group_id: str,
+    expected_status: int,
+    reserved_ids: set[str],
+    log: Callable[[str], None],
+    gate_for_error: Callable[[str], BaseException | None] | None = None,
+    attempts: int = AD_CREATE_ATTEMPTS,
+    pause: Callable[[float], None] | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Create one ad, then read it back. Try up to three times, then say why.
+
+    A paused ad already in the group is reused. An ad with another status is not
+    created again. A USB-key prompt stops immediately.
+    """
+    reasons: list[str] = []
+    submitted = False
+    known = {str(item) for item in reserved_ids}
+    sleeper = pause or time.sleep
+    for attempt in range(1, attempts + 1):
+        try:
+            rows = read_ads()
+        except Exception as exc:
+            if type(exc).__name__ == "HumanActionRequired":
+                raise
+            reasons.append(f"第{attempt}次：读取广告失败：{exc}")
+            if attempt < attempts:
+                sleeper(1)
+            continue
+        matched = _matching_ads(rows, group_id, known, expected_status)
+        if len(matched) == 1:
+            if attempt > 1:
+                log(f"第{attempt}次读到广告")
+            return matched[0], submitted
+        if len(matched) > 1:
+            raise RuntimeError("广告组里有多条新的暂停广告，无法判断用哪一条")
+        fresh = [
+            row for row in rows
+            if str(row.get("ad_group_id") or "") == str(group_id)
+            and str(row.get("ad_id") or "") not in known
+            and int(row.get("status_raw") or 0) != 3
+        ]
+        if fresh:
+            reasons.append(f"第{attempt}次：{describe_unreadable_ad(rows, group_id, known, expected_status)}")
+            if attempt < attempts:
+                sleeper(1)
+            continue
+        if attempt > 1:
+            log(f"广告还没出现，第{attempt}次再试")
+        seen = {
+            str(row.get("ad_id") or "")
+            for row in rows
+            if str(row.get("ad_group_id") or "") == str(group_id) and row.get("ad_id")
+        }
+        try:
+            response = submit()
+        except Exception as exc:
+            if type(exc).__name__ == "HumanActionRequired":
+                raise
+            reasons.append(f"第{attempt}次：{exc}")
+            if attempt < attempts:
+                sleeper(1)
+            continue
+        submitted = True
+        error = _service_error(response)
+        if error:
+            gate = gate_for_error(error) if gate_for_error else None
+            if gate:
+                raise gate
+            reasons.append(f"第{attempt}次：{error}")
+            if attempt < attempts:
+                sleeper(1)
+            continue
+        try:
+            return poll_new_ad(seen), submitted
+        except Exception as exc:
+            if type(exc).__name__ == "HumanActionRequired":
+                raise
+            text = str(exc)
+            if "多个匹配" in text:
+                raise
+            try:
+                latest = read_ads()
+            except Exception as read_exc:
+                if type(read_exc).__name__ == "HumanActionRequired":
+                    raise
+                latest = []
+                text = f"读取广告失败：{read_exc}"
+            else:
+                matched = _matching_ads(latest, group_id, known, expected_status)
+                if len(matched) == 1:
+                    return matched[0], submitted
+                if len(matched) > 1:
+                    raise RuntimeError("广告组里有多条新的暂停广告，无法判断用哪一条")
+                text = describe_unreadable_ad(latest, group_id, seen | known, expected_status)
+            reasons.append(f"第{attempt}次：{text}")
+            if attempt < attempts:
+                sleeper(1)
+    detail = " ".join(reasons) if reasons else "广告组里没有新广告"
+    raise RuntimeError(f"广告试了 {attempts} 次还没成功。{detail}")
+
+
 class PortableCampaignRebuilder:
     """Read one campaign to local files, then recreate it in another browser session."""
 

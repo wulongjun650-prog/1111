@@ -495,10 +495,26 @@ class CDPPage:
             session["__lu"] = query["euid"][0]
         js = """
         (async (args) => {
-          let source = document.documentElement.outerHTML;
-          for (const script of document.scripts) source += script.textContent || '';
-          const match = source.match(/AA[A-Za-z0-9_\\-]{18,}:\\d{13}/);
-          if (!match) return JSON.stringify({status: 0, error: '页面中未找到 XSRF 令牌'});
+          const readToken = () => {
+            try {
+              const wiz = window.WIZ_global_data && window.WIZ_global_data.SNlM0e;
+              if (typeof wiz === 'string' && wiz.indexOf(':') > 0) return wiz;
+            } catch (e) {}
+            let source = '';
+            try { source = document.documentElement.outerHTML || ''; } catch (e) {}
+            for (const script of document.scripts) source += script.textContent || '';
+            const patterns = [
+              /SNlM0e["']?\\s*[:=]\\s*["']([A-Za-z0-9_\\-]{8,}:\\d{10,})["']/,
+              /(A[A-Za-z0-9_\\-]{18,}:\\d{13})/
+            ];
+            for (const pattern of patterns) {
+              const found = source.match(pattern);
+              if (found) return found[1];
+            }
+            return '';
+          };
+          const token = readToken();
+          if (!token) return JSON.stringify({status: 0, error: '页面中未找到 XSRF 令牌'});
           const form = new URLSearchParams(args.session);
           form.set('__ar', args.ar);
           const response = await fetch(args.path + '?authuser=0&xt=awn', {
@@ -506,7 +522,7 @@ class CDPPage:
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
               'X-Same-Domain': '1',
-              'X-Framework-Xsrf-Token': match[0]
+              'X-Framework-Xsrf-Token': token
             },
             body: form.toString()
           });
@@ -808,6 +824,97 @@ def classify_account_status(
     return "状态未知", raw
 
 
+_SELECTACCOUNT_URL = "https://ads.google.com/nav/selectaccount?authuser=0"
+_LOGIN_HOSTS = {"accounts.google.com", "myaccount.google.com"}
+_XSRF_PATTERNS = (
+    re.compile(r"""SNlM0e["']?\s*[:=]\s*["']([A-Za-z0-9_\-]{8,}:\d{10,})["']"""),
+    re.compile(r"""(A[A-Za-z0-9_\-]{18,}:\d{13})"""),
+)
+_LOGIN_PAGE_MESSAGE = (
+    "这个比特窗口打开的是 Google 登录页。"
+    "请先在窗口里登录 Google Ads，看到账户列表后再点刷新。"
+)
+_XSRF_PAGE_MESSAGE = (
+    "选择账户页面里没有 XSRF 令牌。"
+    "请在这个比特窗口里打开并登录 Google Ads，确认能看到账户列表后再点刷新。"
+)
+
+
+def is_google_login_url(url: str) -> bool:
+    parsed = urllib.parse.urlsplit(str(url or ""))
+    host = (parsed.hostname or "").lower()
+    if host in _LOGIN_HOSTS or host.endswith(".accounts.google.com"):
+        return True
+    path = parsed.path or ""
+    return "ServiceLogin" in path or path.startswith("/signin") or path.startswith("/v3/signin")
+
+
+def _same_document(current: str, url: str) -> bool:
+    left = urllib.parse.urlsplit(str(current or ""))
+    right = urllib.parse.urlsplit(str(url or ""))
+    return (
+        (left.hostname or "").lower() == (right.hostname or "").lower()
+        and (left.path or "").rstrip("/") == (right.path or "").rstrip("/")
+    )
+
+
+def extract_xsrf_token(*chunks: str) -> str:
+    source = "\n".join(chunk for chunk in chunks if chunk)
+    for pattern in _XSRF_PATTERNS:
+        match = pattern.search(source)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _page_href(page: Any) -> str:
+    try:
+        value = page.evaluate("window.location.href", timeout=8)
+    except Exception:
+        return ""
+    return str(value or "")
+
+
+def ensure_page_url(page: Any, url: str, *, timeout: float = 25.0) -> str:
+    """Finish navigation when the new tab is still blank or on another site.
+
+    Current Chromium builds can ignore the URL on ``PUT /json/new`` and leave
+    the tab at ``about:blank``. Google Ads then has no XSRF token to read.
+    """
+    current = _page_href(page)
+    if is_google_login_url(current):
+        return current
+    if not _same_document(current, url):
+        page.command("Page.navigate", {"url": url}, timeout=min(float(timeout), 20.0))
+    deadline = time.monotonic() + float(timeout)
+    blank_deadline = time.monotonic() + min(float(timeout), 8.0)
+    last = current
+    stable_ads = 0
+    while time.monotonic() < deadline:
+        last = _page_href(page) or last
+        if is_google_login_url(last):
+            return last
+        try:
+            ready = str(page.evaluate("document.readyState", timeout=8) or "")
+        except Exception:
+            ready = ""
+        if _same_document(last, url) and ready == "complete":
+            return last
+        parsed = urllib.parse.urlsplit(last)
+        host = (parsed.hostname or "").lower()
+        path = parsed.path or ""
+        if host == "ads.google.com" and path not in {"", "/"} and ready == "complete":
+            stable_ads += 1
+            if stable_ads >= 2:
+                return last
+        else:
+            stable_ads = 0
+        if last in {"", "about:blank", "chrome://newtab/"} and time.monotonic() >= blank_deadline:
+            break
+        time.sleep(0.4)
+    return last
+
+
 class ProtocolRunner:
     def __init__(
         self,
@@ -849,9 +956,14 @@ class ProtocolRunner:
         also serve as the carrier page for querying every newly discovered scope.
         The caller is responsible for closing the returned page/target.
         """
-        target = open_cdp_target(endpoint, "https://ads.google.com/nav/selectaccount?authuser=0")
+        target = open_cdp_target(endpoint, _SELECTACCOUNT_URL)
         page = CDPPage(target)
         try:
+            landed = ensure_page_url(page, _SELECTACCOUNT_URL)
+            if landed:
+                page.url = landed
+            if is_google_login_url(landed):
+                raise RuntimeError(_LOGIN_PAGE_MESSAGE)
             gaia_response = None
             last_error: Exception | None = None
             for attempt in range(10):
@@ -863,6 +975,8 @@ class ProtocolRunner:
                 except Exception as exc:  # page still loading / xsrf token not rendered yet
                     last_error = exc
             if gaia_response is None:
+                if last_error is not None and "未找到 XSRF" in str(last_error):
+                    raise RuntimeError(_XSRF_PAGE_MESSAGE) from last_error
                 raise last_error or RuntimeError("身份识别页面加载超时")
             user_id = str((gaia_response.get("1") or {}).get("2") or "")
             if not user_id:
