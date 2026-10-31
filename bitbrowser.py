@@ -1,10 +1,10 @@
 """Offline-testable client for the BitBrowser local HTTP API.
 
-BitBrowser 7.1.5 still defaults to ``http://127.0.0.1:54345``, but the live
-port is whatever the client wrote to ``%APPDATA%\\bitbrowser\\config.json``
-(``localServerAddress``). That build can also require an ``x-api-key`` header
-after Local API authentication is turned on. A closed default port is
-WinError 10061; a black-holed one surfaces as a timeout.
+BitBrowser 7.1.5 shows the live address under 系统设置 → Local API. On the
+current client that address is ``http://127.0.0.1:54346``. Older builds used
+54345. The port is also written to ``%APPDATA%\\bitbrowser\\config.json``.
+When 开启鉴权控制 is on, requests need an ``X-API-KEY`` header. When that
+switch is off, the header must be omitted.
 """
 
 from __future__ import annotations
@@ -18,11 +18,13 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_API_BASE = "http://127.0.0.1:54345"
+# 7.1.5 settings page shows this port. 54345 is the previous client default.
+_KNOWN_PORTS = (54346, 54345)
+DEFAULT_API_BASE = "http://127.0.0.1:54346"
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _PROBE_TIMEOUT = 1.5
 _ADDRESS_KEYS = {"localserveraddress", "localapiurl", "localapiaddress"}
-_EXPLICIT_PORT_KEYS = {"localapiport", "localserverport"}
+_EXPLICIT_PORT_KEYS = {"localapiport", "localserverport", "apiport"}
 _PORT_PARENTS = {"localapi", "localserver", "local_api"}
 _TOKEN_KEYS = {"localapitoken", "x-api-key", "x_api_key"}
 _TOKEN_PARENTS = {"localapi", "localserver", "local_api"}
@@ -97,16 +99,25 @@ def _saved_api_base() -> str | None:
         return None
 
 
+def _port_of(base: str) -> int | None:
+    try:
+        return urllib.parse.urlsplit(base).port
+    except ValueError:
+        return None
+
+
 def load_api_base() -> str:
     environment = os.environ.get("BITBROWSER_API_BASE", "").strip()
     if environment:
         return normalize_api_base(environment)
     saved = _saved_api_base()
-    if saved:
+    if saved and _port_of(saved) not in _KNOWN_PORTS:
         return saved
     discovered = _discovered_bases()
     if discovered:
         return discovered[0]
+    if saved:
+        return saved
     return DEFAULT_API_BASE
 
 
@@ -305,10 +316,10 @@ def _variants(base: str) -> list[str]:
 def api_base_candidates() -> list[str]:
     """Loopback addresses to try, preferred address first.
 
-    An explicit environment address is used alone. A saved non-default
-    address wins over the config file. Otherwise the port BitBrowser wrote
-    to disk is tried before the historical 54345 default, because 7.1.5
-    keeps the live port in that file.
+    An explicit environment address is used alone. A saved address is used
+    first only when it is not one of the two well-known ports, so an old
+    saved ``54345`` does not hide the ``54346`` shown on the 7.1.5 page.
+    The config file is next, then 54346, then 54345.
     """
     ordered: list[str] = []
 
@@ -323,13 +334,13 @@ def api_base_candidates() -> list[str]:
         add([normalize_api_base(environment)])
         return ordered
     saved = _saved_api_base()
-    discovered = _discovered_bases()
-    if saved and saved != DEFAULT_API_BASE:
+    if saved and _port_of(saved) not in _KNOWN_PORTS:
         add([saved])
-        add(discovered)
-    else:
-        add(discovered)
-        add([saved or DEFAULT_API_BASE])
+    add(_discovered_bases())
+    for port in _KNOWN_PORTS:
+        add([f"http://127.0.0.1:{port}"])
+    if saved:
+        add([saved])
     return ordered
 
 
@@ -357,7 +368,7 @@ def _down_message(tried: list[str], last: BaseException | None) -> str:
 def _call(base: str, path: str, payload: dict[str, Any] | None, token: str, timeout: float) -> dict[str, Any]:
     headers = {"Content-Type": "application/json"}
     if token:
-        headers["x-api-key"] = token
+        headers["X-API-KEY"] = token
     request = urllib.request.Request(
         base + path,
         data=json.dumps(payload or {}, ensure_ascii=False).encode("utf-8"),

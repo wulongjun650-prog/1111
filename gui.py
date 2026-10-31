@@ -284,8 +284,8 @@ HELP_TEXT = """GGAds 协议管理器使用帮助
 1. 指纹浏览器窗口
    就是比特浏览器或 AdsPower 中相互隔离的浏览器环境；每个窗口下面可以添加多个 Google Ads CID。
    本软件默认使用比特浏览器：在“批量任务”点击“导入比特浏览器窗口”，可批量读取窗口编号、名称和运行状态。
-   比特浏览器 7.1.5 的 Local API 默认是 http://127.0.0.1:54345。程序会读取比特浏览器配置里的实际端口，并同时尝试本机 IPv4 和 IPv6。
-   如果「系统设置 → Local API」里打开了鉴权控制，请在“比特 Local API 设置”填写 API Token。
+   比特浏览器 7.1.5 的本地接口在「系统设置 → Local API」里查看。当前这版优先连接 http://127.0.0.1:54346，连不上再试 54345。
+   「开启鉴权控制」是关掉的时候，不用填 API Token。只有打开那个开关后，才把 Token 填到“比特 Local API 设置”，请求会带 X-API-KEY。
    导入只保存窗口资料，不会启动窗口；后续账户刷新、预检或业务任务才会按需打开选中的已停止窗口。
    AdsPower 继续兼容：在“兼容操作”中选择“添加 AdsPower 窗口”或“读取 AdsPower 窗口编号”。
    AdsPower 请在左侧“API & MCP”页面启用 Local API（默认端口 50325）；API 暂时不可用时，已有编号会保留。
@@ -317,7 +317,7 @@ HELP_TEXT = """GGAds 协议管理器使用帮助
 
 二、推荐使用流程
 
-1. 启动并登录比特浏览器 7.1.5，打开「系统设置 → Local API」确认本地接口已开启。开了鉴权控制时，把 API Token 填到“比特 Local API 设置”。
+1. 启动并登录比特浏览器 7.1.5。打开「系统设置 → Local API」，确认本地接口是 http://127.0.0.1:54346。鉴权控制关着就不要填 Token。
 2. 在“批量任务”页点击“导入比特浏览器窗口”；导入时窗口可以是运行中或已停止。
    使用 AdsPower 时，请从“兼容操作”选择“添加 AdsPower 窗口”。
 3. 选中窗口，点击“添加 CID”，填写 CID 和引用的内容方案。
@@ -893,7 +893,7 @@ class BitBrowserSettingsDialog(_ManagedBitBrowserDialog):
         self.api_base.insert(0, load_bitbrowser_api_base())
         ttk.Label(
             self,
-            text="7.1.5 默认 http://127.0.0.1:54345。改过端口时，程序会读比特浏览器配置里的实际端口。",
+            text="7.1.5 的系统设置里本地接口是 http://127.0.0.1:54346。程序会先连这个端口。",
             foreground=COLOR_MUTED,
             wraplength=660,
         ).grid(row=1, column=0, columnspan=2, padx=14, pady=5, sticky="w")
@@ -905,7 +905,7 @@ class BitBrowserSettingsDialog(_ManagedBitBrowserDialog):
         token_hint.grid(row=3, column=0, columnspan=2, padx=14, pady=5, sticky="ew")
         ttk.Label(
             token_hint,
-            text="只在「系统设置 → Local API」开启了鉴权控制时填写。请求会带上 x-api-key。",
+            text="鉴权控制关着就留空。只有打开那个开关后才填写，请求会带上 X-API-KEY。",
             foreground=COLOR_MUTED,
         ).pack(side="left")
         ttk.Checkbutton(

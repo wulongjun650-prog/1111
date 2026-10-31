@@ -44,8 +44,8 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 class _Server(ThreadingHTTPServer):
-    def __init__(self) -> None:
-        super().__init__(("127.0.0.1", 0), _Handler)
+    def __init__(self, port: int = 0) -> None:
+        super().__init__(("127.0.0.1", port), _Handler)
         self.seen: list[dict[str, str | None]] = []
         self.required_key: str | None = None
 
@@ -129,6 +129,23 @@ class BitBrowserApiTest(unittest.TestCase):
         self.assertIn("Local API", message)
         self.assertIn("7.1.5", message)
         self.assertIn("127.0.0.1:1", message)
+
+    def test_715_page_port_wins_over_a_saved_old_default(self) -> None:
+        try:
+            page = _Server(54346)
+        except OSError:
+            self.skipTest("54346 is already in use")
+        thread = threading.Thread(target=page.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(page.shutdown)
+        self.addCleanup(page.server_close)
+        self.addCleanup(lambda: thread.join(timeout=3))
+        bitbrowser.save_local_api("http://127.0.0.1:54345", "")
+        self.assertEqual(bitbrowser.api_base_candidates()[0], "http://127.0.0.1:54346")
+        bitbrowser.health(timeout=2.0)
+        self.assertEqual(page.seen[0]["host"], "127.0.0.1:54346")
+        self.assertIsNone(page.seen[0]["key"])
+        self.assertFalse(self.server.seen)
 
     def test_candidates_try_ipv4_then_ipv6_loopback(self) -> None:
         os.environ["BITBROWSER_API_BASE"] = "http://127.0.0.1:54345"
