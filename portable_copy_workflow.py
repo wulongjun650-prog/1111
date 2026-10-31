@@ -47,6 +47,8 @@ SCHEMA_NOTES = {
     "negative_keywords": "replicated",
     "shared_sets": "replicated",
     "custom_audiences": "replicated",
+    "campaign_criteria": "replicated",
+    "ad_group_criteria": "replicated",
     "content_suitability": "not_implemented",
 }
 
@@ -150,6 +152,11 @@ def snapshot_identity(snapshot: dict[str, Any]) -> str:
         "shared_sets": snapshot.get("shared_sets") or [],
         "custom_audiences": snapshot.get("custom_audiences") or [],
     }
+    # Older snapshots were hashed without these keys. Include them only when
+    # the file actually has them, so existing snapshot_id values still match.
+    for key in ("campaign_criteria", "ad_group_criteria", "targeting_gaps"):
+        if key in snapshot:
+            content[key] = snapshot.get(key) or []
     return _sha256_json(content)
 
 

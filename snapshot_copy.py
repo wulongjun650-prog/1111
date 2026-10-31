@@ -92,6 +92,16 @@ from .portable_copy_workflow import (
     validate_snapshot_files,
 )
 from .protocol import AccountPage, ProtocolRunner
+from .targeting_copy import (
+    HumanActionRequired,
+    apply_criteria,
+    budget_gate_message,
+    human_gate_for_error,
+    read_targeting,
+    select_existing_budget,
+    summarize_targeting,
+)
+from .warmup import campaign_detail_request, parse_campaign_details
 
 
 def compose_campaign_name(label: str) -> str:
@@ -360,6 +370,13 @@ class SnapshotExporter:
         if channel == DISPLAY_CHANNEL:
             self.log(f"[{format_cid(self.source.cid)}] 读取受众定向条件关联")
             custom_audiences = self._audiences_snapshot(campaign_id, groups)
+        self.log(f"[{format_cid(self.source.cid)}] 读取主题、地区、语言、设备、投放时段")
+        group_ids = [str(group.get("3") or "") for group in groups if group.get("3")]
+        targeting = read_targeting(self.source.page, self.source.ocid, campaign_id, group_ids)
+        self.log(
+            f"[{format_cid(self.source.cid)}] 定向："
+            f"{summarize_targeting(targeting)}"
+        )
         snapshot: dict[str, Any] = {
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
             "created_at": datetime.now().astimezone().isoformat(),
@@ -372,6 +389,9 @@ class SnapshotExporter:
             "negative_keywords": negative_keywords,
             "shared_sets": shared_sets,
             "custom_audiences": custom_audiences,
+            "campaign_criteria": targeting["campaign_criteria"],
+            "ad_group_criteria": targeting["ad_group_criteria"],
+            "targeting_gaps": targeting["targeting_gaps"],
             "content_suitability": None,
             "schema_notes": dict(SCHEMA_NOTES),
         }
@@ -475,6 +495,11 @@ class SnapshotImporter:
                 or str(state.get("idempotency_key")) != idempotency_key
             ):
                 raise RuntimeError("幂等状态与当前快照或目标 CID 不匹配")
+            state.setdefault("criterion_applied", [])
+            state.setdefault("targeting_warnings", [])
+            state.setdefault("shared_set_map", {})
+            state.setdefault("shared_sets_associated_ids", [])
+            state.setdefault("audience_sync", {})
             return path, state
         state = {
             "schema_version": STATE_SCHEMA_VERSION,
@@ -493,6 +518,8 @@ class SnapshotImporter:
             "shared_set_map": {},
             "shared_sets_associated_ids": [],
             "audience_sync": {},
+            "criterion_applied": [],
+            "targeting_warnings": [],
         }
         self._write_state(path, state)
         return path, state
@@ -698,19 +725,30 @@ class SnapshotImporter:
                         raise RuntimeError("同名广告系列状态与本次重建目标不一致")
                     created_campaign = matches[0]
                 else:
+                    budget_id = str(existing_budget_id or "") or self._matching_budget(snapshot)
+                    self.log(
+                        f"[{format_cid(self.target.cid)}] 使用已有预算 {budget_id}，"
+                        "不新建预算，这一步不用密钥"
+                    )
                     response = self.target.page.rpc(
                         "/aw_cm/editing/_/rpc/BatchService/Batch",
                         portable_campaign_batch_request(
                             ocid=self.target.ocid, name=name,
                             source_campaign=snapshot["campaign"],
                             target_status=target_status,
-                            existing_budget_id=existing_budget_id,
+                            existing_budget_id=budget_id,
                         ),
                     )
                     wrote_this_run = True
                     error = _service_error(response)
                     if error:
-                        raise RuntimeError(f"新建广告系列失败：{error}")
+                        gate = human_gate_for_error("新建广告系列", error)
+                        if gate:
+                            raise gate
+                        raise RuntimeError(
+                            f"新建广告系列失败：{error}。"
+                            "如果提示预算已被占用，请再建一条相同金额的日预算，然后重新导入。"
+                        )
                     created_campaign = self._poll_one(
                         self._read_campaigns,
                         lambda row: row.get("name") == name
@@ -772,6 +810,33 @@ class SnapshotImporter:
                 group_map[source_group_id] = str(created_group["ad_group_id"])
                 state["current_step"] = "groups_created"
                 self._write_state(state_path, state)
+
+            criterion_entries = list(snapshot.get("campaign_criteria") or []) + list(
+                snapshot.get("ad_group_criteria") or []
+            )
+            if criterion_entries:
+                self.log(
+                    f"[{format_cid(self.target.cid)}] 写入主题、地区、语言、设备、投放时段等定向"
+                )
+                apply_criteria(
+                    self.target.page,
+                    self.target.ocid,
+                    campaign_id,
+                    criterion_entries,
+                    group_map=group_map,
+                    applied_keys=state["criterion_applied"],
+                    log=self.log,
+                )
+                wrote_this_run = True
+                state["current_step"] = "criteria_applied"
+                self._write_state(state_path, state)
+            for gap in snapshot.get("targeting_gaps") or []:
+                warning = (
+                    f"有一条定向没识别，没有写入"
+                    f"（criterion {gap.get('source_criterion_id') or ''}）"
+                )
+                if warning not in state["targeting_warnings"]:
+                    state["targeting_warnings"].append(warning)
 
             asset_map = state["asset_map"]
             if snapshot.get("assets") and not asset_map:
@@ -879,6 +944,20 @@ class SnapshotImporter:
                 wrote_this_run = True
                 error = _service_error(response)
                 if error:
+                    final_urls = [
+                        str(value)
+                        for value in (
+                            ((source_ad.get("13") or {}).get("100") or {}).get("1")
+                            or (source_ad.get("13") or {}).get("5")
+                            or []
+                        )
+                        if value
+                    ]
+                    gate = human_gate_for_error(
+                        "新建广告", error, final_url=final_urls[0] if final_urls else "",
+                    )
+                    if gate:
+                        raise gate
                     raise RuntimeError(f"新建广告失败：{error}")
                 created_ad = self._poll_one(
                     lambda gid=target_group_id: self._read_ads(gid),
@@ -1063,11 +1142,30 @@ class SnapshotImporter:
                 snapshot, state_path, state, verification,
                 idempotent=not wrote_this_run,
             )
+        except HumanActionRequired as exc:
+            state["status"] = "needs_human"
+            state["failure_reason"] = str(exc)
+            self._write_state(state_path, state)
+            raise
         except Exception as exc:
             state["status"] = "failed"
             state["failure_reason"] = str(exc)
             self._write_state(state_path, state)
             raise RuntimeError(f"可移植复制失败（状态：{state_path}）：{exc}") from exc
+
+    def _matching_budget(self, snapshot: dict[str, Any]) -> str:
+        amount = str((snapshot.get("campaign") or {}).get("17") or "")
+        if not amount.isdigit() or int(amount) <= 0:
+            raise RuntimeError("来源广告系列缺少有效日预算，不能匹配目标账号里的现成预算")
+        currency = str((snapshot.get("campaign") or {}).get("18") or "").strip().upper()
+        rows = parse_campaign_details(self.target.page.rpc(
+            "/aw/_/rpc/CampaignService/List",
+            campaign_detail_request(self.target.ocid),
+        ))
+        budget_id = select_existing_budget(rows, int(amount))
+        if not budget_id:
+            raise HumanActionRequired("budget", budget_gate_message(int(amount), currency))
+        return budget_id
 
     @staticmethod
     def _result(
@@ -1092,9 +1190,15 @@ class SnapshotImporter:
             "asset_map": list(state["asset_map"]),
             "shared_set_map": dict(state.get("shared_set_map", {})),
             "audience_sync": dict(state.get("audience_sync", {})),
+            "targeting_warnings": list(state.get("targeting_warnings") or []),
             "post_read_verified": verification["ok"],
             "verification": verification,
             "rebuild_strategy": "local_portable_snapshot",
+            "next_step": (
+                "系列已暂停。请到目标账号网页打开这条系列，点发布。弹出密钥时摸一下 U 盘。"
+                if int(state.get("campaign_status") or 0) == PAUSED_CAMPAIGN
+                else "系列已按你的选择启用。如果网页还要求确认，请自己点发布并摸一下 U 盘。"
+            ),
         }
 
 

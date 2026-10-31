@@ -151,6 +151,7 @@ from .snapshot_copy import (
     batch_recreate,
     compose_campaign_name,
 )
+from .targeting_copy import summarize_targeting
 from .warmup import (
     DEFAULT_DAILY_BUDGET,
     SOURCE_CAMPAIGN_NAME,
@@ -11752,7 +11753,16 @@ class GGAdsApp(tk.Tk):
                 f"{len(result.get('ads') or [])} 广告 / "
                 f"{len(result.get('assets') or [])} 图片\n{result.get('snapshot_path')}"
             )
-            messagebox.showinfo("导出成功", f"快照已保存到：\n{result.get('snapshot_path')}")
+            gaps = result.get("targeting_gaps") or []
+            gap_line = (
+                f"\n还有 {len(gaps)} 条定向没识别，导入时不会带上。"
+                if gaps else ""
+            )
+            messagebox.showinfo(
+                "导出成功",
+                f"快照已保存到：\n{result.get('snapshot_path')}"
+                f"\n定向：{summarize_targeting(result)}{gap_line}",
+            )
 
         self._run_async("导出快照", task, success)
 
@@ -11939,6 +11949,8 @@ class GGAdsApp(tk.Tk):
             f"素材来源：{asset_override_dir or '快照自带素材'}\n\n"
             "执行前会重新读取每个目标 CID 余额，只有余额可识别且大于 0 才创建；"
             "币种不同时会尝试按日预算自动换算汇率（出价目标金额不换算，需人工核对）。"
+            "不会新建预算：目标账号里要先有一条金额相同的日预算。"
+            "系列先暂停。最后请你在网页上点发布，弹出密钥时摸一下 U 盘。"
             "单个账户失败不影响其余账户继续执行。确定继续？"
         )
         if not messagebox.askyesno("确认批量导入", prompt):
@@ -12021,10 +12033,17 @@ class GGAdsApp(tk.Tk):
             self.snap_batch_results = results
             self._render_snap_batch_results(results)
             ok = sum(1 for item in results if item.get("success"))
-            messagebox.showinfo(
-                "批量导入完成",
-                f"成功 {ok} / {len(results)} 个目标账户，详见结果区与运行报告。",
-            )
+            lines = [f"成功 {ok} / {len(results)} 个目标账户"]
+            for item in results:
+                label = str(item.get("cid_display") or item.get("cid") or "")
+                if item.get("success"):
+                    if item.get("next_step"):
+                        lines.append(f"{label}：{item['next_step']}")
+                    for warning in item.get("targeting_warnings") or []:
+                        lines.append(f"{label}：{warning}")
+                elif item.get("error"):
+                    lines.append(f"{label}：{item['error']}")
+            messagebox.showinfo("批量导入完成", "\n".join(lines))
 
         self._run_async("批量导入快照", task, success)
 
