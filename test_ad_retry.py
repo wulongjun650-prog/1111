@@ -20,6 +20,7 @@ from .protocol import (
     reauth_header_from_event,
     rpc_http_failure,
     rpc_rejected_message,
+    user_saved_on_page,
 )
 from .targeting_copy import HumanActionRequired, human_gate_for_error
 
@@ -454,6 +455,94 @@ class ReauthCaptureTest(unittest.TestCase):
             )
         self.assertIn("3 分钟", str(caught.exception))
         self.assertIn("广告没有建", str(caught.exception))
+
+    def test_our_own_write_is_not_treated_as_the_user(self) -> None:
+        event = {"params": {"request": {
+            "method": "POST",
+            "url": "https://ads.google.com/aw_cm/editing/_/rpc/BatchService/Batch",
+            "headers": {"X-GGAds-Copy": "1", "X-Goog-First-Party-Reauth": "tok"},
+        }}}
+        self.assertEqual(reauth_header_from_event(event), ("", ""))
+        self.assertFalse(user_saved_on_page(event))
+
+    def test_budget_save_without_a_key_popup_still_creates_the_ad(self) -> None:
+        class Page:
+            def __init__(self) -> None:
+                self.extra_headers: dict[str, str] = {}
+
+            def command(self, method: str, params: dict | None = None, timeout: float = 15) -> dict:
+                return {}
+
+            def drain_events(self, prefix: str = "") -> list:
+                return [{
+                    "params": {"request": {
+                        "method": "POST",
+                        "url": "https://ads.google.com/aw_cm/_/rpc/CampaignBudgetService/Mutate",
+                        "headers": {"X-Framework-Xsrf-Token": "abc:1"},
+                    }},
+                }]
+
+        submits: list[int] = []
+
+        def submit() -> dict:
+            submits.append(1)
+            if len(submits) == 1:
+                return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
+            return {}
+
+        ad, submitted = place_ad_letting_user_unlock(
+            Page(),
+            account="110-669-3913",
+            log=lambda _text: None,
+            read_ads=lambda: [{"ad_id": "9", "ad_group_id": "g", "status_raw": 2}] if len(submits) > 1 else [],
+            submit=submit,
+            poll_new_ad=lambda _known: {"ad_id": "9", "ad_group_id": "g", "status_raw": 2},
+            group_id="g",
+            expected_status=2,
+            reserved_ids=set(),
+            gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+            pause=lambda _seconds: None,
+        )
+        self.assertEqual(ad["ad_id"], "9")
+        self.assertTrue(submitted)
+        self.assertEqual(submits, [1, 1])
+
+    def test_black_verification_line_is_enough(self) -> None:
+        class Page:
+            def __init__(self) -> None:
+                self.extra_headers: dict[str, str] = {}
+
+            def command(self, method: str, params: dict | None = None, timeout: float = 15) -> dict:
+                return {}
+
+            def drain_events(self, prefix: str = "") -> list:
+                return []
+
+            def evaluate(self, expression: str, timeout: float = 45) -> bool:
+                return True
+
+        submits: list[int] = []
+
+        def submit() -> dict:
+            submits.append(1)
+            if len(submits) == 1:
+                return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
+            return {}
+
+        ad, _submitted = place_ad_letting_user_unlock(
+            Page(),
+            account="110-669-3913",
+            log=lambda _text: None,
+            read_ads=lambda: [{"ad_id": "8", "ad_group_id": "g", "status_raw": 2}] if len(submits) > 1 else [],
+            submit=submit,
+            poll_new_ad=lambda _known: {"ad_id": "8", "ad_group_id": "g", "status_raw": 2},
+            group_id="g",
+            expected_status=2,
+            reserved_ids=set(),
+            gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+            pause=lambda _seconds: None,
+        )
+        self.assertEqual(ad["ad_id"], "8")
 
 
 if __name__ == "__main__":

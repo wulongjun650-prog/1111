@@ -4,6 +4,7 @@ import json
 import re
 import time
 import urllib.parse
+import urllib.request
 from datetime import date, datetime, timezone
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -518,9 +519,18 @@ def extract_billing_balance(payload: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _browser_http(ws_url: str) -> str:
+    parsed = urllib.parse.urlsplit(str(ws_url or "").replace("ws://", "http://", 1).replace("wss://", "https://", 1))
+    if not parsed.hostname or not parsed.port:
+        return ""
+    return f"http://{parsed.hostname}:{parsed.port}"
+
+
 class CDPPage:
     def __init__(self, target: dict):
         self.url = str(target.get("url") or "")
+        self.ws_url = str(target.get("webSocketDebuggerUrl") or "")
+        self.browser_http = _browser_http(self.ws_url)
         self.ws = ws_connect(target["webSocketDebuggerUrl"], max_size=None, open_timeout=15)
         self.counter = 0
         self.pending_events: list[dict] = []
@@ -642,7 +652,8 @@ class CDPPage:
           const headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
             'X-Same-Domain': '1',
-            'X-Framework-Xsrf-Token': token
+            'X-Framework-Xsrf-Token': token,
+            'X-GGAds-Copy': '1'
           };
           const extra = args.extraHeaders || {};
           for (const key of Object.keys(extra)) {
@@ -690,27 +701,40 @@ class CDPPage:
 _REAUTH_HEADER_MARKERS = ("reauth", "rapt", "proof-token", "prooftoken")
 
 
-def reauth_header_from_event(event: dict[str, Any]) -> tuple[str, str]:
-    """Return the reauth header from a CDP network event, if the page sent one."""
+def _event_request(event: dict[str, Any]) -> tuple[dict[str, str], str, str]:
     params = event.get("params") if isinstance(event, dict) else None
     if not isinstance(params, dict):
+        return {}, "", ""
+    request = params.get("request") if isinstance(params.get("request"), dict) else {}
+    headers: dict[str, str] = {}
+    for source in (request.get("headers"), params.get("headers")):
+        if isinstance(source, dict):
+            for key, value in source.items():
+                headers[str(key)] = str(value or "")
+    url = str(request.get("url") or params.get("url") or "")
+    method = str(request.get("method") or params.get("method") or "").upper()
+    return headers, url, method
+
+
+def _is_our_request(headers: dict[str, str]) -> bool:
+    return any(str(key).lower() == "x-ggads-copy" for key in headers)
+
+
+def reauth_header_from_event(event: dict[str, Any]) -> tuple[str, str]:
+    """Return the reauth header from a CDP network event, if the page sent one."""
+    headers, url, _method = _event_request(event)
+    if not headers and not url:
         return "", ""
-    request = params.get("request") if isinstance(params.get("request"), dict) else params
-    headers = request.get("headers") if isinstance(request, dict) else None
-    if isinstance(headers, dict):
-        for key, value in headers.items():
-            name = str(key or "").strip()
-            lowered = name.lower().replace("_", "-")
-            if not any(marker in lowered for marker in _REAUTH_HEADER_MARKERS):
-                continue
-            text = str(value or "").strip()
-            if text and text.lower() not in {"0", "1", "true", "false"}:
-                return name, text
-    url = ""
-    if isinstance(request, dict):
-        url = str(request.get("url") or "")
-    if not url:
-        url = str(params.get("url") or "")
+    if _is_our_request(headers):
+        return "", ""
+    for key, value in headers.items():
+        name = str(key or "").strip()
+        lowered = name.lower().replace("_", "-")
+        if not any(marker in lowered for marker in _REAUTH_HEADER_MARKERS):
+            continue
+        text = str(value or "").strip()
+        if text and text.lower() not in {"0", "1", "true", "false"}:
+            return name, text
     query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
     for key in ("rapt", "reauth"):
         values = query.get(key) or []
@@ -718,6 +742,114 @@ def reauth_header_from_event(event: dict[str, Any]) -> tuple[str, str]:
         if token:
             return "X-Goog-First-Party-Reauth", token
     return "", ""
+
+
+def user_saved_on_page(event: dict[str, Any]) -> bool:
+    """A budget or campaign save in the Ads tab, not one of our own writes."""
+    headers, url, method = _event_request(event)
+    if not url or _is_our_request(headers):
+        return False
+    parsed = urllib.parse.urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    path = (parsed.path or "").lower()
+    if host == "accounts.google.com" and any(bit in path for bit in ("reauth", "challenge", "signin")):
+        return True
+    return host == "ads.google.com" and method == "POST" and ("/mutate" in path or path.endswith("/batch"))
+
+
+def page_shows_verification(page: Any) -> bool:
+    try:
+        value = page.evaluate(
+            "(() => { const text = document.body ? document.body.innerText : ''; "
+            "const tail = text.slice(-12000); "
+            "return tail.indexOf('完成身份验证') >= 0 || tail.indexOf('您现在可以继续操作') >= 0; })()"
+        )
+    except Exception:
+        return False
+    return bool(value)
+
+
+def _list_auth_pages(http_base: str) -> list[dict[str, Any]]:
+    if not http_base:
+        return []
+    with urllib.request.urlopen(http_base.rstrip("/") + "/json/list", timeout=3) as response:  # noqa: S310
+        targets = json.loads(response.read().decode("utf-8", "replace"))
+    pages: list[dict[str, Any]] = []
+    for target in targets if isinstance(targets, list) else []:
+        if target.get("type") != "page" or not target.get("webSocketDebuggerUrl"):
+            continue
+        host = (urllib.parse.urlsplit(str(target.get("url") or "")).hostname or "").lower()
+        if host in {"ads.google.com", "accounts.google.com"}:
+            pages.append(target)
+    return pages
+
+
+def _open_sibling_watchers(page: Any) -> list[Any]:
+    http_base = str(getattr(page, "browser_http", "") or "")
+    own = str(getattr(page, "ws_url", "") or "")
+    if not http_base:
+        return []
+    try:
+        targets = _list_auth_pages(http_base)
+    except Exception:
+        return []
+    opened: list[Any] = []
+    for target in targets:
+        if own and str(target.get("webSocketDebuggerUrl") or "") == own:
+            continue
+        if len(opened) >= 4:
+            break
+        try:
+            opened.append(CDPPage(target))
+        except Exception:
+            continue
+    return opened
+
+
+def wait_for_ad_unlock(
+    page: Any,
+    *,
+    timeout: float = 180.0,
+    pause: Callable[[float], None] | None = None,
+) -> tuple[str, str, bool]:
+    """Wait until the Ads tab verifies, saves, or sends a reauth header.
+
+    The third value is false when the wait ends with nothing to retry.
+    A save or the black “身份验证完成” line counts even when no key dialog appears.
+    """
+    page.command("Network.enable", {})
+    extras = _open_sibling_watchers(page)
+    for extra in extras:
+        try:
+            extra.command("Network.enable", {})
+        except Exception:
+            pass
+    sleeper = pause or time.sleep
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    try:
+        while True:
+            for watcher in (page, *extras):
+                try:
+                    events = watcher.drain_events("Network.")
+                except Exception:
+                    events = []
+                for event in events:
+                    name, value = reauth_header_from_event(event)
+                    if name:
+                        return name, value, True
+                    if user_saved_on_page(event):
+                        return "", "", True
+                if page_shows_verification(watcher):
+                    return "", "", True
+            if time.monotonic() >= deadline:
+                return "", "", False
+            sleeper(0.4)
+    finally:
+        for extra in extras:
+            try:
+                extra.close()
+            except Exception:
+                pass
 
 
 def capture_reauth_header(

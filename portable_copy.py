@@ -29,7 +29,7 @@ from .protocol import (
     CAMPAIGN_STATUS_ENABLED,
     CAMPAIGN_STATUS_PAUSED,
     ProtocolRunner,
-    capture_reauth_header,
+    wait_for_ad_unlock,
     format_protocol_errors,
 )
 from .protocol_catalog import (
@@ -1005,20 +1005,33 @@ def place_ad_letting_user_unlock(
         if exc.reason != "reauth":
             raise
         log(reauth_wait_message(account))
-        try:
-            name, value = capture_reauth_header(page, timeout=reauth_timeout)
-        except Exception as hook_exc:
-            raise HumanActionRequired(
-                "reauth", f"没能监听目标网页的验证：{hook_exc}",
-            ) from hook_exc
-        if not name:
-            raise HumanActionRequired("reauth", reauth_timeout_message(account)) from exc
-        headers = getattr(page, "extra_headers", None)
-        if not isinstance(headers, dict):
-            raise HumanActionRequired("reauth", "当前页面不能附带验证，广告没有提交。")
-        headers[name] = value
-        log("已经拿到网页上的验证，正在把广告建上")
-        return place_ad_with_retries(log=log, **place_kwargs)
+        deadline = time.monotonic() + max(0.0, float(reauth_timeout))
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise HumanActionRequired("reauth", reauth_timeout_message(account)) from exc
+            try:
+                name, value, ready = wait_for_ad_unlock(page, timeout=remaining)
+            except Exception as hook_exc:
+                raise HumanActionRequired(
+                    "reauth", f"没能监听目标网页的验证：{hook_exc}",
+                ) from hook_exc
+            if not ready:
+                raise HumanActionRequired("reauth", reauth_timeout_message(account)) from exc
+            headers = getattr(page, "extra_headers", None)
+            if name:
+                if not isinstance(headers, dict):
+                    raise HumanActionRequired("reauth", "当前页面不能附带验证，广告没有提交。")
+                headers[name] = value
+            log("网页上的验证已经完成，正在把广告建上")
+            try:
+                return place_ad_with_retries(log=log, **place_kwargs)
+            except HumanActionRequired as again:
+                if again.reason != "reauth":
+                    raise
+                exc = again
+                log("这次验证还没被广告认下。请再改一次日预算并保存，看到黑字就留在窗口里。")
+                time.sleep(1)
 
 
 def _prefer_newest_ad(rows: list[dict[str, Any]]) -> dict[str, Any]:
