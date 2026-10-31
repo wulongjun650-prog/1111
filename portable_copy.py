@@ -22,7 +22,13 @@ from .ads import (
 )
 from .config import data_dir, format_cid
 from .image_upload import download_preview_image, upload_images
-from .protocol import AccountPage, CAMPAIGN_STATUS_ENABLED, CAMPAIGN_STATUS_PAUSED, ProtocolRunner
+from .protocol import (
+    AccountPage,
+    CAMPAIGN_STATUS_ENABLED,
+    CAMPAIGN_STATUS_PAUSED,
+    ProtocolRunner,
+    format_protocol_errors,
+)
 from .protocol_catalog import (
     CAMPAIGN_STATUS_LABELS,
     CHILD_STATUS_ENABLED,
@@ -660,7 +666,9 @@ def _service_error(value: Any) -> str:
         field5 = value.get("5")
         errors = (field5.get("2") if isinstance(field5, dict) else None) or []
         if errors and isinstance(errors, list):
-            return str(errors[0])
+            shown = format_protocol_errors(errors)
+            if shown:
+                return shown
         for nested in value.values():
             found = _service_error(nested)
             if found:
@@ -864,7 +872,191 @@ def verification_failure(verification: dict[str, Any]) -> str:
         if not ok
     ]
     detail = "、".join(failed) if failed else "没有具体项目"
+    extra = [str(item) for item in (verification.get("details") or []) if str(item)]
+    if extra:
+        detail = f"{detail}。{' '.join(extra)}"
     return f"写完之后对不上：{detail}"
+
+
+def explain_verification_gaps(
+    *,
+    checks: dict[str, Any],
+    snapshot: dict[str, Any],
+    campaign_id: str,
+    campaigns: list[dict[str, Any]],
+    expected_status: int,
+    expected_child_status: int,
+    group_map: dict[str, str],
+    groups_by_id: dict[str, dict[str, Any]],
+    ad_map: dict[str, str],
+    ads_by_id: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Name the objects that failed the post-write check."""
+    lines: list[str] = []
+    if checks.get("campaign_exists_expected_status") is False:
+        if len(campaigns) != 1:
+            lines.append(f"记下的系列 {campaign_id or '（空）'} 现在不在账号里")
+        else:
+            lines.append(
+                f"系列 {campaign_id} 状态是{_campaign_status_name(campaigns[0].get('status_raw'))}，"
+                f"要的是{_campaign_status_name(expected_status)}"
+            )
+    if checks.get("all_groups_mapped") is False:
+        lines.append(
+            f"广告组记下了 {len(group_map)} 个，快照里有 {len(snapshot.get('ad_groups') or [])} 个"
+        )
+    if checks.get("all_groups_exist_expected_status") is False:
+        problems: list[str] = []
+        for target_id in list(group_map.values())[:5]:
+            row = groups_by_id.get(target_id)
+            if row is None:
+                problems.append(f"{target_id} 不在")
+            elif int(row.get("status_raw") or 0) != int(expected_child_status):
+                problems.append(f"{target_id} 是{_ad_status_name(row.get('status_raw'))}")
+            elif str(row.get("campaign_id") or "") != str(campaign_id):
+                problems.append(f"{target_id} 不在这个系列里")
+        if problems:
+            lines.append("广告组：" + "、".join(problems))
+    if checks.get("all_ads_mapped") is False:
+        lines.append(
+            f"广告记下了 {len(ad_map)} 条，快照里有 {len(snapshot.get('ads') or [])} 条"
+        )
+    if checks.get("all_ads_exist_expected_status") is False:
+        problems = []
+        for source_ad in snapshot.get("ads") or []:
+            source_id = str(source_ad.get("4") or "")
+            target_id = ad_map.get(source_id, "")
+            row = ads_by_id.get(target_id) if target_id else None
+            if not target_id:
+                problems.append(f"来源 {source_id or '未知'} 没有记下")
+            elif row is None:
+                problems.append(f"{target_id} 不在")
+            elif int(row.get("status_raw") or 0) != int(expected_child_status):
+                problems.append(f"{target_id} 是{_ad_status_name(row.get('status_raw'))}")
+            elif str(row.get("ad_group_id") or "") != group_map.get(str(source_ad.get("3") or ""), ""):
+                problems.append(f"{target_id} 不在对应广告组里")
+            if len(problems) >= 5:
+                break
+        if problems:
+            lines.append("广告：" + "、".join(problems))
+    return lines
+
+
+_STEP_LABELS = {
+    "initialized": "刚开始，还没写进账号",
+    "account_level_applied": "账号内容适宜性",
+    "campaign_created": "广告系列已经记下",
+    "campaign_goals_applied": "系列转化目标",
+    "groups_created": "广告组",
+    "criteria_applied": "主题、地区、语言这些定向",
+    "assets_uploaded": "图片",
+    "ads_created": "广告",
+    "shared_sets_merged": "排除列表",
+    "audiences_applied": "受众",
+    "verifying": "写完后的核对",
+    "completed": "已完成",
+}
+
+
+def copy_failure_message(reason: BaseException, *, step: str, state_path: str) -> str:
+    """Dialog text: last finished step, the real reason, then the progress file."""
+    where = _STEP_LABELS.get(str(step or ""), str(step or "还没记下步骤"))
+    return (
+        f"可移植复制失败。\n"
+        f"上次完成到：{where}\n"
+        f"原因：{reason}\n"
+        f"进度文件：{state_path}"
+    )
+
+
+def saved_campaign_problem(
+    rows: list[dict[str, Any]], campaign_id: str, expected_status: int,
+) -> str:
+    found = next(
+        (row for row in rows if str(row.get("campaign_id") or "") == str(campaign_id)),
+        None,
+    )
+    if not found:
+        return f"上次记下的广告系列 {campaign_id} 现在不在这个账号里"
+    return (
+        f"上次记下的广告系列 {campaign_id} 还在，状态是"
+        f"{_campaign_status_name(found.get('status_raw'))}，"
+        f"和这次要的{_campaign_status_name(expected_status)}不一样"
+    )
+
+
+def duplicate_campaigns_message(matches: list[dict[str, Any]], *, marked: bool = False) -> str:
+    shown = "、".join(
+        f"{row.get('campaign_id')}（{_campaign_status_name(row.get('status_raw'))}）"
+        for row in matches[:5]
+    )
+    kind = "同一个幂等标记的" if marked else "同名"
+    return f"目标账号有 {len(matches)} 个{kind}广告系列，无法判断用哪一个。{shown}"
+
+
+def incomplete_assets_message(ad_id: str, label: str, wanted: list[str], have: set[str]) -> str:
+    missing = [item for item in wanted if item not in have]
+    shown = "、".join(missing[:8]) or "未知素材"
+    return f"广告 {ad_id} 的{label}素材映射不完整，缺 {shown}"
+
+
+def describe_match_rows(rows: list[dict[str, Any]], *, campaign: bool) -> str:
+    if not rows:
+        return "列表是空的"
+    status_name = _campaign_status_name if campaign else _ad_status_name
+    parts: list[str] = []
+    for row in rows[:5]:
+        name = str(row.get("name") or "").strip()
+        ident = str(
+            row.get("ad_id") or row.get("ad_group_id") or row.get("campaign_id")
+            or row.get("shared_set_id") or ""
+        )
+        label = f"{name}（{ident}）" if name and ident else (name or ident or "未命名")
+        if row.get("status_raw") is not None:
+            label += f"，状态 {status_name(row.get('status_raw'))}"
+        parts.append(label)
+    return f"读到 {'、'.join(parts)}，一共 {len(rows)} 条"
+
+
+def poll_until_one(
+    reader: Callable[[], list[dict[str, Any]]],
+    predicate: Callable[[dict[str, Any]], bool],
+    label: str,
+    *,
+    campaign: bool = False,
+    attempts: int = 14,
+    pause: Callable[[float], None] | None = None,
+) -> dict[str, Any]:
+    """Read until one row matches. The error names what the last read actually saw."""
+    sleeper = pause or time.sleep
+    last_rows: list[dict[str, Any]] = []
+    last_read_error = ""
+    for attempt in range(attempts):
+        if attempt:
+            sleeper(0.8 + attempt * 0.2)
+        try:
+            rows = reader()
+        except Exception as exc:
+            if type(exc).__name__ == "HumanActionRequired":
+                raise
+            last_read_error = str(exc)
+            continue
+        last_rows = rows if isinstance(rows, list) else []
+        matches = [row for row in last_rows if predicate(row)]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise RuntimeError(
+                f"{label}写后出现多个匹配，无法判断用哪一条。"
+                f"{describe_match_rows(matches, campaign=campaign)}"
+            )
+    if last_rows:
+        seen = describe_match_rows(last_rows, campaign=campaign)
+    elif last_read_error:
+        seen = f"最后一次读取失败：{last_read_error}"
+    else:
+        seen = "一次都没读到"
+    raise RuntimeError(f"{label}写完后查了 {attempts} 次，没有按预期出现。{seen}")
 
 
 def claim_named_group(
@@ -885,7 +1077,8 @@ def claim_named_group(
     ]
     ready = [row for row in same if int(row.get("status_raw") or 0) == int(expected_status)]
     if len(ready) > 1:
-        raise RuntimeError("发现多个未记录的同名同状态广告组，无法安全恢复")
+        shown = "、".join(str(row.get("ad_group_id") or "") for row in ready[:5])
+        raise RuntimeError(f"发现 {len(ready)} 个未记录的同名暂停广告组（{shown}），无法判断用哪一个")
     if len(ready) == 1:
         return ready[0]
     if same:
@@ -928,8 +1121,11 @@ def recover_after_poll(
         if len(matches) == 1:
             return matches[0]
         if len(matches) > 1:
-            raise RuntimeError(f"{label}有多条匹配，无法判断用哪一条") from exc
-        raise RuntimeError(f"{label}没有按预期出现。{describe(rows)}") from exc
+            raise RuntimeError(
+                f"{label}有多条匹配，无法判断用哪一条。"
+                f"{describe_match_rows(matches, campaign=label == '广告系列')} 前面的结果：{exc}"
+            ) from exc
+        raise RuntimeError(f"{label}没有按预期出现。{describe(rows)} 前面的结果：{exc}") from exc
 
 
 class PortableCampaignRebuilder:
@@ -1058,15 +1254,7 @@ class PortableCampaignRebuilder:
 
     @staticmethod
     def _poll_one(reader: Callable[[], list[dict[str, Any]]], predicate: Callable[[dict[str, Any]], bool], label: str) -> dict[str, Any]:
-        for attempt in range(14):
-            if attempt:
-                time.sleep(0.8 + attempt * 0.2)
-            matches = [row for row in reader() if predicate(row)]
-            if len(matches) == 1:
-                return matches[0]
-            if len(matches) > 1:
-                raise RuntimeError(f"{label}写后出现多个匹配对象，停止自动判断")
-        raise RuntimeError(f"{label}协议返回后未能回读新对象")
+        return poll_until_one(reader, predicate, label, campaign=label == "广告系列")
 
     def recreate(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         campaign = snapshot["campaign"]

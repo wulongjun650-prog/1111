@@ -218,7 +218,128 @@ def _json_response(text: str) -> Any:
     try:
         return json.loads(value)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Google Ads 返回的不是有效 JSON: {value[:300]}") from exc
+        snippet = value[:300] + ("…" if len(value) > 300 else "")
+        raise RuntimeError(f"Google Ads 返回的不是有效 JSON: {snippet}") from exc
+
+
+_ERROR_PREFIXES = (
+    ("AUTH_ERROR_REAUTH", "需要你在网页上摸一下密钥"),
+    ("AUTH_ERROR", "登录状态失效，需要重新确认"),
+    ("UNPHISHABLE", "落地页需要你本人确认"),
+    ("MUTATE_ERROR_RESOURCE_NOT_FOUND", "要改的对象不存在"),
+    ("MUTATE_ERROR_RESOURCE_ALREADY_EXISTS", "同样的对象已经存在"),
+    ("MUTATE_ERROR", "写入被拒绝"),
+    ("FIELD_ERROR", "有一项字段不合法"),
+    ("POLICY_ERROR", "被广告政策拦住"),
+    ("STRING_ERROR", "文字不符合要求"),
+    ("CRITERION_ERROR", "定向条件不合法"),
+    ("BUDGET_ERROR", "预算有问题"),
+    ("BIDDING_ERROR", "出价有问题"),
+    ("INTERNAL_ERROR", "Google 这边内部出错"),
+    ("QUOTA_ERROR", "请求太频繁"),
+    ("AUTHORIZATION_ERROR", "没有权限做这一步"),
+    ("DATABASE_ERROR", "Google 这边暂时写不进去"),
+)
+
+_HTTP_STATUS_NOTE = {
+    0: "没有连上页面",
+    400: "请求格式被拒绝",
+    401: "登录失效",
+    403: "没有权限",
+    404: "这个接口不存在",
+    408: "请求超时",
+    429: "请求太频繁",
+    500: "Google 服务器出错",
+    502: "Google 网关出错",
+    503: "Google 暂时不可用",
+}
+
+
+def gloss_protocol_code(code: str) -> str:
+    """Keep the raw code and put a short Chinese meaning in front of it."""
+    text = str(code or "").strip()
+    if not text:
+        return ""
+    for prefix, meaning in _ERROR_PREFIXES:
+        if prefix in text:
+            return text if meaning in text else f"{meaning}（{text}）"
+    return text
+
+
+def _looks_like_protocol_code(value: str) -> bool:
+    text = str(value or "").strip()
+    return bool(text) and "_" in text and text.upper() == text and len(text) < 160
+
+
+def format_protocol_error_item(item: Any) -> str:
+    if isinstance(item, str):
+        return gloss_protocol_code(item)
+    if isinstance(item, dict):
+        bits: list[str] = []
+        for key in ("1", "3", "4", "13", "2"):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                bit = value.strip()
+                bits.append(gloss_protocol_code(bit) if _looks_like_protocol_code(bit) else bit)
+            elif isinstance(value, dict):
+                for nested in value.values():
+                    if isinstance(nested, str) and nested.strip():
+                        bits.append(gloss_protocol_code(nested.strip()))
+        unique: list[str] = []
+        for bit in bits:
+            if bit and bit not in unique:
+                unique.append(bit)
+        if unique:
+            return "，".join(unique[:4])
+        raw = _compact(item)
+        return raw[:300] + ("…" if len(raw) > 300 else "")
+    if item is None:
+        return ""
+    return str(item)[:200]
+
+
+def format_protocol_errors(items: list[Any]) -> str:
+    shown: list[str] = []
+    for item in items[:5]:
+        text = format_protocol_error_item(item)
+        if text and text not in shown:
+            shown.append(text)
+    return "；".join(shown)
+
+
+def rpc_http_failure(path: str, status: Any, body: str) -> str:
+    try:
+        code = int(status or 0)
+    except (TypeError, ValueError):
+        code = 0
+    note = _HTTP_STATUS_NOTE.get(code, "")
+    head = f"{path} 返回 HTTP {status}"
+    if note:
+        head += f"（{note}）"
+    text = str(body or "").strip().replace("\r", " ").replace("\n", " ")
+    if text.startswith("<") or "DOCTYPE" in text[:80].upper():
+        text = "页面返回的不是广告数据，多半是登录掉了，或代理打不开"
+    elif len(text) > 400:
+        text = text[:400] + "…"
+    if text:
+        head += f"：{text}"
+    return head
+
+
+def rpc_rejected_message(path: str, payload: dict[str, Any]) -> str:
+    items: list[Any] = []
+    scope = payload.get("5")
+    if isinstance(scope, dict) and isinstance(scope.get("2"), list):
+        items.extend(scope.get("2") or [])
+    if payload.get("error"):
+        items.append(payload.get("error"))
+    shown = format_protocol_errors(items)
+    if shown:
+        return f"{path} 被拒绝：{shown}"
+    raw = _compact(payload)
+    if len(raw) > 500:
+        raw = raw[:500] + "…"
+    return f"{path} 被拒绝：{raw}"
 
 
 _MONEY_RE = re.compile(
@@ -533,10 +654,11 @@ class CDPPage:
         raw = self.evaluate(f"({js})({_compact(json.loads(arg))})", timeout=timeout)
         envelope = json.loads(raw)
         if envelope.get("status") != 200:
-            raise RuntimeError(
-                f"RPC {path} 失败，HTTP {envelope.get('status')}: "
-                f"{envelope.get('error') or envelope.get('text', '')[:500]}"
-            )
+            raise RuntimeError(rpc_http_failure(
+                path,
+                envelope.get("status"),
+                str(envelope.get("error") or envelope.get("text") or ""),
+            ))
         payload = _json_response(envelope.get("text") or "")
         if isinstance(payload, dict):
             # List responses legitimately use payload["2"]["2"] for projection
@@ -545,8 +667,7 @@ class CDPPage:
             service_scope = payload.get("5")
             server_errors = service_scope.get("2") if isinstance(service_scope, dict) else None
             if payload.get("error") or server_errors:
-                message = _compact(payload)
-                raise RuntimeError(f"Google Ads RPC 拒绝请求: {message[:800]}")
+                raise RuntimeError(rpc_rejected_message(path, payload))
         return payload
 
 

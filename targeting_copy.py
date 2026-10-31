@@ -357,7 +357,10 @@ def apply_criteria(
                 gate = human_gate_for_error(f"写入{level}定向", error)
                 if gate:
                     raise gate
-                raise RuntimeError(f"写入定向失败：{error}")
+                kinds = "、".join(
+                    str(entry.get("kind") or "定向") for entry in chunk[:5]
+                )
+                raise RuntimeError(f"写入{level}定向失败（{kinds}）：{error}")
             applied_keys.extend(keys)
             applied.update(keys)
         log(f"已写入{level}定向 {len(pending)} 条")

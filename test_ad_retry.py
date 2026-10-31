@@ -4,10 +4,13 @@ import unittest
 
 from .portable_copy import (
     claim_named_group,
+    copy_failure_message,
     place_ad_with_retries,
+    poll_until_one,
     recover_after_poll,
     verification_failure,
 )
+from .protocol import rpc_http_failure, rpc_rejected_message
 from .targeting_copy import HumanActionRequired, human_gate_for_error
 
 
@@ -234,6 +237,43 @@ class PlaceAdRetryTest(unittest.TestCase):
             expected_status=2,
             mapped_ids=set(),
         ))
+
+    def test_poll_names_what_the_last_read_saw(self) -> None:
+        with self.assertRaises(RuntimeError) as caught:
+            poll_until_one(
+                lambda: [{"name": "cv2da", "campaign_id": "9", "status_raw": 3}],
+                lambda row: row.get("status_raw") == 5,
+                "广告系列",
+                campaign=True,
+                attempts=1,
+                pause=lambda _seconds: None,
+            )
+        message = str(caught.exception)
+        self.assertIn("查了 1 次", message)
+        self.assertIn("cv2da", message)
+        self.assertIn("已启用", message)
+
+    def test_copy_failure_puts_the_reason_before_the_progress_file(self) -> None:
+        message = copy_failure_message(
+            RuntimeError("新建广告失败：写入被拒绝（MUTATE_ERROR_X）"),
+            step="groups_created",
+            state_path=r"C:\state\rebuild.json",
+        )
+        self.assertLess(message.index("原因："), message.index("进度文件："))
+        self.assertIn("广告组", message)
+        self.assertIn("MUTATE_ERROR_X", message)
+
+    def test_rpc_rejection_keeps_the_code_and_a_chinese_meaning(self) -> None:
+        message = rpc_rejected_message("/aw/_/rpc/AdGroupAdService/Mutate", {
+            "5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]},
+        })
+        self.assertIn("AdGroupAdService/Mutate", message)
+        self.assertIn("密钥", message)
+        self.assertIn("AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED", message)
+        http = rpc_http_failure("/aw/_/rpc/CampaignService/List", 0, "<html>denied</html>")
+        self.assertIn("HTTP 0", http)
+        self.assertIn("没有连上页面", http)
+        self.assertNotIn("<html>", http)
 
 
 if __name__ == "__main__":

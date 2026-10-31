@@ -16,7 +16,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -80,8 +79,14 @@ from .portable_copy import (
     create_shared_set_and_criteria_batch_request,
     _campaign_status_name,
     claim_named_group,
+    copy_failure_message,
     describe_named_rows,
+    duplicate_campaigns_message,
+    explain_verification_gaps,
+    incomplete_assets_message,
     place_ad_with_retries,
+    poll_until_one,
+    saved_campaign_problem,
     portable_ad_group_request,
     recover_after_poll,
     verification_failure,
@@ -460,15 +465,7 @@ class SnapshotImporter:
         predicate: Callable[[dict[str, Any]], bool],
         label: str,
     ) -> dict[str, Any]:
-        for attempt in range(14):
-            if attempt:
-                time.sleep(0.8 + attempt * 0.2)
-            matches = [row for row in reader() if predicate(row)]
-            if len(matches) == 1:
-                return matches[0]
-            if len(matches) > 1:
-                raise RuntimeError(f"{label}写后出现多个匹配对象，停止自动判断")
-        raise RuntimeError(f"{label}协议返回后未能回读新对象")
+        return poll_until_one(reader, predicate, label, campaign=label == "广告系列")
 
     def _state_path(self, snapshot: dict[str, Any], idempotency_key: str) -> Path:
         snapshot_path = Path(str(snapshot.get("snapshot_path") or ""))
@@ -685,7 +682,24 @@ class SnapshotImporter:
                     audiences_synced = False
             checks["audiences_synced"] = audiences_synced
         ok = all(checks.values())
-        return {"ok": ok, "reason": "" if ok else "写后回读校验未全部通过", "checks": checks}
+        details = explain_verification_gaps(
+            checks=checks,
+            snapshot=snapshot,
+            campaign_id=campaign_id,
+            campaigns=campaigns,
+            expected_status=expected_status,
+            expected_child_status=expected_child_status,
+            group_map=group_map,
+            groups_by_id=groups_by_id,
+            ad_map=ad_map,
+            ads_by_id=ads_by_id,
+        )
+        return {
+            "ok": ok,
+            "reason": "" if ok else "写后回读校验未全部通过",
+            "checks": checks,
+            "details": details,
+        }
 
     def recreate(
         self, snapshot: dict[str, Any], *,
@@ -735,7 +749,7 @@ class SnapshotImporter:
                     if row.get("name") == name and row.get("status_raw") != 7
                 ]
                 if len(matches) > 1:
-                    raise RuntimeError("目标 CID 已有多个同名广告系列，无法安全判断")
+                    raise RuntimeError(duplicate_campaigns_message(matches))
                 if matches:
                     if matches[0].get("status_raw") != target_status:
                         raise RuntimeError(
@@ -786,13 +800,16 @@ class SnapshotImporter:
                 state["current_step"] = "campaign_created"
                 self._write_state(state_path, state)
             else:
+                campaign_rows = self._read_campaigns()
                 created_campaign = next((
-                    row for row in self._read_campaigns()
+                    row for row in campaign_rows
                     if str(row.get("campaign_id")) == campaign_id
                     and row.get("status_raw") == target_status
                 ), None)
                 if not created_campaign:
-                    raise RuntimeError("上次记下的广告系列现在不在，或者状态变了")
+                    raise RuntimeError(saved_campaign_problem(
+                        campaign_rows, campaign_id, target_status,
+                    ))
 
             if snapshot.get("account_level"):
                 if apply_campaign_goals(
@@ -936,7 +953,10 @@ class SnapshotImporter:
                         if item["source_asset_id"] in source_image_ids
                     ]
                     if len(mapped_assets) != len(source_image_ids):
-                        raise RuntimeError(f"广告 {source_ad_id} 的图片素材映射不完整")
+                        raise RuntimeError(incomplete_assets_message(
+                            source_ad_id, "图片", sorted(source_image_ids),
+                            {item["source_asset_id"] for item in mapped_assets},
+                        ))
                     ad_request = portable_app_ad_request(
                         ocid=self.target.ocid, campaign_id=campaign_id,
                         ad_group_id=target_group_id, temporary_id=f"-{index}",
@@ -954,7 +974,9 @@ class SnapshotImporter:
                         ]
                         mapped = [asset_by_source_id[i] for i in ids if i in asset_by_source_id]
                         if len(mapped) != len(ids):
-                            raise RuntimeError(f"广告 {source_ad_id} 的{label}素材映射不完整")
+                            raise RuntimeError(incomplete_assets_message(
+                                source_ad_id, label, ids, set(asset_by_source_id),
+                            ))
                         return mapped
 
                     landscape_assets = _mapped("1", "横图")
@@ -1198,7 +1220,9 @@ class SnapshotImporter:
             state["status"] = "failed"
             state["failure_reason"] = str(exc)
             self._write_state(state_path, state)
-            raise RuntimeError(f"可移植复制失败（状态：{state_path}）：{exc}") from exc
+            raise RuntimeError(copy_failure_message(
+                exc, step=str(state.get("current_step") or ""), state_path=str(state_path),
+            )) from exc
 
     def _matching_budget(self, snapshot: dict[str, Any]) -> str:
         amount = str((snapshot.get("campaign") or {}).get("17") or "")

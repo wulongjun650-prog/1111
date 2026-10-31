@@ -133,7 +133,7 @@ def _call(page: Any, path: str, request: dict[str, Any], step: str) -> dict[str,
         gate = human_gate_for_error(step, str(exc))
         if gate:
             raise gate
-        raise RuntimeError(str(exc)) from exc
+        raise RuntimeError(f"{step}失败：{exc}") from exc
     if not isinstance(response, dict):
         raise RuntimeError(f"{step}没有返回数据")
     error = _service_error(response)
@@ -141,7 +141,7 @@ def _call(page: Any, path: str, request: dict[str, Any], step: str) -> dict[str,
         gate = human_gate_for_error(step, error)
         if gate:
             raise gate
-        raise RuntimeError(error)
+        raise RuntimeError(f"{step}失败：{error}")
     return response
 
 
