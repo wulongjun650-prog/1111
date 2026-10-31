@@ -154,6 +154,7 @@ from .snapshot_copy import (
 )
 from .account_level_copy import summarize_account_level
 from .targeting_copy import summarize_targeting
+from .user_confirm import user_confirmation
 from .warmup import (
     DEFAULT_DAILY_BUDGET,
     SOURCE_CAMPAIGN_NAME,
@@ -4344,6 +4345,13 @@ class GGAdsApp(tk.Tk):
             style="Write.TButton",
         )
         self.copy_execute_button.pack(side="left", padx=8)
+        self.copy_confirm_button = ttk.Button(
+            copy_actions,
+            text="用户已确认，继续建广告",
+            command=self._user_confirmed_continue_copy,
+            style="Success.TButton",
+        )
+        self.copy_confirm_button.pack(side="left", padx=8)
 
         ttk.Label(result, text="协议预检 / 复制结果", font=("Microsoft YaHei UI", 10, "bold")).grid(
             row=0, column=0, sticky="w", pady=(0, 5)
@@ -4520,6 +4528,13 @@ class GGAdsApp(tk.Tk):
             style="Write.TButton",
         )
         self.snap_import_button.pack(side="left", padx=8)
+        self.snap_confirm_button = ttk.Button(
+            import_actions,
+            text="用户已确认，继续建广告",
+            command=self._user_confirmed_continue_import,
+            style="Success.TButton",
+        )
+        self.snap_confirm_button.pack(side="left", padx=8)
 
         result_box = ttk.Frame(tab)
         result_box.grid(row=2, column=0, sticky="nsew")
@@ -11614,7 +11629,21 @@ class GGAdsApp(tk.Tk):
 
         self._run_async("层级复制协议预检（只读）", task, success)
 
-    def _entity_copy_execute(self) -> None:
+    def _user_confirmed_continue_copy(self) -> None:
+        user_confirmation.confirm()
+        self._log("已记下：用户已确认。正在继续建广告，不用再改预算。")
+        if self.running:
+            return
+        self._entity_copy_execute(already_confirmed=True)
+
+    def _user_confirmed_continue_import(self) -> None:
+        user_confirmation.confirm()
+        self._log("已记下：用户已确认。正在继续建广告，不用再改预算。")
+        if self.running:
+            return
+        self._snap_import_execute(already_confirmed=True)
+
+    def _entity_copy_execute(self, *, already_confirmed: bool = False) -> None:
         try:
             context = self._entity_copy_loaded_context()
             params = self._entity_copy_parameters()
@@ -11622,20 +11651,31 @@ class GGAdsApp(tk.Tk):
                 self.copy_source_campaign.get()
             ) or {}
         except Exception as exc:
+            if already_confirmed:
+                user_confirmation.clear()
             messagebox.showerror("不能复制", str(exc))
             return
         kind_label = self.copy_kind.get()
-        prompt = (
-            f"复制范围：{kind_label}\n"
-            f"来源：{format_cid(context[2])} · {source.get('name') or source.get('campaign_id')}\n"
-            f"目标：{format_cid(context[5])}\n\n"
-            "Google 会创建新对象；软件随后强制暂停并回读校验。\n"
-            "执行前会重新读取目标 CID 余额，只有余额可识别且大于 0 才创建。\n"
-            "跨窗口广告系列会先下载到本地快照，再用目标窗口权限重新创建；"
-            "图片会重新上传，所有新对象保持暂停。确定继续？"
-        )
-        if not messagebox.askyesno("确认层级复制", prompt):
-            return
+        if already_confirmed:
+            prompt = (
+                "你已经在网页上确认过。软件会接着建广告，系列和广告组不重来。\n"
+                "不用再改预算。确定继续？"
+            )
+            if not messagebox.askyesno("继续建广告", prompt):
+                user_confirmation.clear()
+                return
+        else:
+            prompt = (
+                f"复制范围：{kind_label}\n"
+                f"来源：{format_cid(context[2])} · {source.get('name') or source.get('campaign_id')}\n"
+                f"目标：{format_cid(context[5])}\n\n"
+                "Google 会创建新对象；软件随后强制暂停并回读校验。\n"
+                "执行前会重新读取目标 CID 余额，只有余额可识别且大于 0 才创建。\n"
+                "跨窗口广告系列会先下载到本地快照，再用目标窗口权限重新创建；"
+                "图片会重新上传，所有新对象保持暂停。确定继续？"
+            )
+            if not messagebox.askyesno("确认层级复制", prompt):
+                return
 
         def task():
             report = self._entity_copy_report(*context, "entity_copy")
@@ -11937,19 +11977,25 @@ class GGAdsApp(tk.Tk):
             f"素材来源：{self.snap_asset_override_dir.get().strip() or '快照自带素材'}",
         )
 
-    def _snap_import_execute(self) -> None:
+    def _snap_import_execute(self, *, already_confirmed: bool = False) -> None:
         snapshot = self.snap_import_snapshot
         if not snapshot:
+            if already_confirmed:
+                user_confirmation.clear()
             messagebox.showerror("不能执行", "请先选择快照文件")
             return
         try:
             validate_snapshot(snapshot)
             validate_snapshot_files(snapshot)
         except Exception as exc:
+            if already_confirmed:
+                user_confirmation.clear()
             messagebox.showerror("快照校验失败", str(exc))
             return
         selection = list(self.snap_target_tree.selection())
         if not selection:
+            if already_confirmed:
+                user_confirmation.clear()
             messagebox.showerror("不能执行", "请先勾选至少一个目标账户")
             return
         targets: list[dict[str, Any]] = []
@@ -11958,6 +12004,8 @@ class GGAdsApp(tk.Tk):
             cid = item["cid"]
             label = self.snap_target_labels.get(cid, "").strip()
             if not label:
+                if already_confirmed:
+                    user_confirmation.clear()
                 messagebox.showerror(
                     "不能执行",
                     f"目标账户 {format_cid(cid)} 尚未设置命名标签（双击命名标签列编辑）",
@@ -11982,7 +12030,15 @@ class GGAdsApp(tk.Tk):
             "系列先暂停。最后请你在网页上点发布，弹出密钥时摸一下 U 盘。"
             "单个账户失败不影响其余账户继续执行。确定继续？"
         )
-        if not messagebox.askyesno("确认批量导入", prompt):
+        if already_confirmed:
+            prompt = (
+                "你已经在网页上确认过。软件会接着建广告，系列和广告组不重来。\n"
+                "不用再改预算。确定继续？"
+            )
+            if not messagebox.askyesno("继续建广告", prompt):
+                user_confirmation.clear()
+                return
+        elif not messagebox.askyesno("确认批量导入", prompt):
             return
 
         def task():

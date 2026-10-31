@@ -999,11 +999,32 @@ def place_ad_letting_user_unlock(
         reauth_wait_message,
     )
 
+    from .user_confirm import user_confirmation
+
+    def submit_after_user_confirm() -> tuple[dict[str, Any], bool]:
+        log("你已确认本人验证，正在继续建广告")
+        try:
+            created = place_ad_with_retries(log=log, **place_kwargs)
+        except HumanActionRequired as again:
+            if again.reason != "reauth":
+                raise
+            detail = str(getattr(again, "detail", "") or "").strip()
+            suffix = f"：{detail}" if detail else ""
+            raise HumanActionRequired(
+                "reauth",
+                f"你已经确认过了，广告还是被拒绝{suffix}。系列和广告组还在，没有重来。",
+            ) from again
+        user_confirmation.clear()
+        return created
+
     try:
-        return place_ad_with_retries(log=log, **place_kwargs)
+        created = place_ad_with_retries(log=log, **place_kwargs)
     except HumanActionRequired as exc:
         if exc.reason != "reauth":
+            user_confirmation.clear()
             raise
+        if user_confirmation.consume():
+            return submit_after_user_confirm()
         log(reauth_wait_message(account))
         deadline = time.monotonic() + max(0.0, float(reauth_timeout))
         ignore_toast = False
@@ -1027,6 +1048,8 @@ def place_ad_letting_user_unlock(
                 raise HumanActionRequired(
                     "reauth", f"没能监听目标网页的验证：{hook_exc}",
                 ) from hook_exc
+            if reason == "confirmed":
+                return submit_after_user_confirm()
             if not reason or (value and value in tried):
                 if value and value in tried:
                     ignore_toast = True
@@ -1045,7 +1068,7 @@ def place_ad_letting_user_unlock(
                 ignore_plain_save = True
             log("网页上的验证已经完成，正在把广告建上")
             try:
-                return place_ad_with_retries(log=log, **place_kwargs)
+                created = place_ad_with_retries(log=log, **place_kwargs)
             except HumanActionRequired as again:
                 if again.reason != "reauth":
                     raise
@@ -1060,6 +1083,11 @@ def place_ad_letting_user_unlock(
                         "页面上的验证已经看到了，但这条广告请求没有带上它。"
                         f"{suffix}不用再改预算，黑字不会再出现一次。"
                     )
+                continue
+            user_confirmation.clear()
+            return created
+    user_confirmation.clear()
+    return created
 
 
 def _prefer_newest_ad(rows: list[dict[str, Any]]) -> dict[str, Any]:

@@ -31,6 +31,7 @@ from .config import (
     strip_content_comments,
 )
 from .reporting import ReportPeriod, coerce_report_period, protocol_day
+from .user_confirm import user_confirmation
 from .protocol_catalog import (
     CAMPAIGN_LIST_PATH,
     CAMPAIGN_STATUS_ENABLED,
@@ -884,12 +885,15 @@ def wait_for_ad_unlock(
     ignore_toast: bool = False,
     ignore_plain_save: bool = False,
 ) -> tuple[str, str, str]:
-    """Wait for a proof header, a budget save, or the black verification line.
+    """Wait for a proof header, a budget save, the black line, or the confirm button.
 
-    The third value is ``header``, ``save``, ``toast``, or empty when time runs out.
-    A toast or plain save that was already used can be ignored so a stale black
-    line does not start another ad write.
+    The third value is ``header``, ``save``, ``toast``, ``confirmed``, or empty
+    when time runs out. A toast or plain save that was already used can be
+    ignored so a stale black line does not start another ad write. The confirm
+    button is checked before those signals so one click continues the ad.
     """
+    if user_confirmation.consume():
+        return "", "", "confirmed"
     page.command("Network.enable", {})
     extras = _open_sibling_watchers(page)
     for extra in extras:
@@ -901,6 +905,8 @@ def wait_for_ad_unlock(
     deadline = time.monotonic() + max(0.0, float(timeout))
     try:
         while True:
+            if user_confirmation.consume():
+                return "", "", "confirmed"
             for watcher in (page, *extras):
                 try:
                     events = watcher.drain_events("Network.")

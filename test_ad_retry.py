@@ -23,6 +23,7 @@ from .protocol import (
     user_saved_on_page,
 )
 from .targeting_copy import HumanActionRequired, human_gate_for_error
+from .user_confirm import user_confirmation
 
 
 def _ad(ad_id: str, status: int, group: str = "g") -> dict:
@@ -344,6 +345,12 @@ class PlaceAdRetryTest(unittest.TestCase):
 
 
 class ReauthCaptureTest(unittest.TestCase):
+    def setUp(self) -> None:
+        user_confirmation.clear()
+
+    def tearDown(self) -> None:
+        user_confirmation.clear()
+
     def test_header_is_taken_from_the_page_request(self) -> None:
         name, value = reauth_header_from_event({
             "params": {"request": {"headers": {
@@ -591,6 +598,172 @@ class ReauthCaptureTest(unittest.TestCase):
         self.assertTrue(any("不用再改预算" in line for line in logs))
         self.assertNotIn("再改一次", " ".join(logs))
         self.assertIn("不用再改预算", str(caught.exception))
+
+    def _reauth_page(self):
+        class Page:
+            def __init__(self) -> None:
+                self.extra_headers: dict[str, str] = {}
+                self.commands: list[str] = []
+
+            def command(self, method: str, params: dict | None = None, timeout: float = 15) -> dict:
+                self.commands.append(method)
+                return {}
+
+            def drain_events(self, prefix: str = "") -> list:
+                return []
+
+        return Page()
+
+    def _place(self, page, submit, logs: list[str], submits: list[int], *, reads=None):
+        def wrapped() -> dict:
+            submits.append(1)
+            return submit()
+
+        def read_ads() -> list:
+            if reads is None:
+                return [{"ad_id": "9", "ad_group_id": "g", "status_raw": 2}] if len(submits) > 1 else []
+            return reads()
+
+        return place_ad_letting_user_unlock(
+            page,
+            account="110-669-3913",
+            log=logs.append,
+            read_ads=read_ads,
+            submit=wrapped,
+            poll_new_ad=lambda _known: {"ad_id": "9", "ad_group_id": "g", "status_raw": 2},
+            group_id="g",
+            expected_status=2,
+            reserved_ids=set(),
+            gate_for_error=lambda error: human_gate_for_error("新建广告", error, account="110-669-3913"),
+            pause=lambda _seconds: None,
+            reauth_timeout=0,
+        )
+
+    def test_a_saved_confirmation_creates_the_ad_without_waiting(self) -> None:
+        user_confirmation.confirm()
+        page = self._reauth_page()
+        logs: list[str] = []
+        submits: list[int] = []
+
+        def submit() -> dict:
+            if submit.calls == 0:
+                submit.calls += 1
+                return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
+            submit.calls += 1
+            return {}
+
+        submit.calls = 0
+        ad, _submitted = self._place(page, submit, logs, submits)
+        self.assertEqual(ad["ad_id"], "9")
+        self.assertEqual(submits, [1, 1])
+        self.assertTrue(any("你已确认" in line for line in logs))
+        self.assertFalse(any("软件正在等" in line for line in logs))
+        self.assertEqual(page.commands, [])
+        self.assertFalse(user_confirmation.is_set())
+
+    def test_a_saved_confirmation_stops_after_one_rejected_ad(self) -> None:
+        user_confirmation.confirm()
+        logs: list[str] = []
+        submits: list[int] = []
+        with self.assertRaises(HumanActionRequired) as caught:
+            self._place(
+                self._reauth_page(),
+                lambda: {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}},
+                logs,
+                submits,
+            )
+        self.assertEqual(submits, [1, 1])
+        self.assertIn("你已经确认过了", str(caught.exception))
+        self.assertIn("系列和广告组还在", str(caught.exception))
+        self.assertNotIn("再改一次", str(caught.exception))
+        self.assertNotIn("3 分钟", str(caught.exception))
+        self.assertFalse(any("软件正在等" in line for line in logs))
+        self.assertFalse(user_confirmation.is_set())
+
+    def test_the_confirm_button_during_the_wait_submits_once(self) -> None:
+        page = self._reauth_page()
+        logs: list[str] = []
+        submits: list[int] = []
+
+        def pause(_seconds: float) -> None:
+            user_confirmation.confirm()
+
+        def submit() -> dict:
+            submits.append(1)
+            if len(submits) == 1:
+                return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
+            return {}
+
+        ad, _submitted = place_ad_letting_user_unlock(
+            page,
+            account="110-669-3913",
+            log=logs.append,
+            read_ads=lambda: [{"ad_id": "9", "ad_group_id": "g", "status_raw": 2}] if len(submits) > 1 else [],
+            submit=submit,
+            poll_new_ad=lambda _known: {"ad_id": "9", "ad_group_id": "g", "status_raw": 2},
+            group_id="g",
+            expected_status=2,
+            reserved_ids=set(),
+            gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+            pause=pause,
+            reauth_timeout=5,
+        )
+        self.assertEqual(ad["ad_id"], "9")
+        self.assertEqual(submits, [1, 1])
+        self.assertTrue(any("你已确认" in line for line in logs))
+        self.assertFalse(user_confirmation.is_set())
+
+    def test_confirming_again_during_a_rejected_retry_does_not_loop(self) -> None:
+        logs: list[str] = []
+        submits: list[int] = []
+
+        def pause(_seconds: float) -> None:
+            user_confirmation.confirm()
+
+        def submit() -> dict:
+            submits.append(1)
+            return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
+
+        with self.assertRaises(HumanActionRequired) as caught:
+            place_ad_letting_user_unlock(
+                self._reauth_page(),
+                account="110-669-3913",
+                log=logs.append,
+                read_ads=lambda: [],
+                submit=submit,
+                poll_new_ad=lambda _known: {},
+                group_id="g",
+                expected_status=2,
+                reserved_ids=set(),
+                gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+                pause=pause,
+                reauth_timeout=5,
+            )
+        self.assertEqual(submits, [1, 1])
+        self.assertIn("你已经确认过了", str(caught.exception))
+        self.assertNotIn("再改一次", " ".join(logs) + str(caught.exception))
+
+    def test_a_finished_ad_forgets_a_stale_confirmation(self) -> None:
+        user_confirmation.confirm()
+        submits: list[int] = []
+        ad, submitted = place_ad_letting_user_unlock(
+            self._reauth_page(),
+            account="110-669-3913",
+            log=lambda _text: None,
+            read_ads=lambda: [{"ad_id": "9", "ad_group_id": "g", "status_raw": 2}],
+            submit=lambda: submits.append(1) or {},
+            poll_new_ad=lambda _known: {},
+            group_id="g",
+            expected_status=2,
+            reserved_ids=set(),
+            gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+            pause=lambda _seconds: None,
+            reauth_timeout=0,
+        )
+        self.assertEqual(ad["ad_id"], "9")
+        self.assertFalse(submitted)
+        self.assertEqual(submits, [])
+        self.assertFalse(user_confirmation.is_set())
 
 
 if __name__ == "__main__":
