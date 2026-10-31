@@ -1,0 +1,45 @@
+韩国股民常用股票 APP TOP 10
+更新日期：2026-07-27
+
+说明：以下按各平台最近公开的月活跃用户数（MAU）综合排序。统计月份并不完全一致；Toss证券和KakaoPay证券运行在综合金融APP内。
+
+1. Toss证券（토스증권）
+最近公开MAU：约550万（2026年2月）
+累计注册用户：约860万
+官网：https://www.tossinvest.com/
+
+2. 未来资产证券 M-STOCK（미래에셋증권 M-STOCK）
+最近公开MAU：约382万（2026年6月）
+官网：https://securities.miraeasset.com/
+
+3. Kiwoom证券 英雄门S#（키움증권 영웅문S#）
+最近公开MAU：约354万（2026年6月）
+官网：https://www.kiwoom.com/
+
+4. 三星证券 mPOP（삼성증권 mPOP）
+最近公开MAU：约330万（2026年6月）
+官网：https://www.samsungpop.com/
+
+5. KakaoPay证券（카카오페이증권）
+最近公开MAU：约300万
+官网：https://www.kakaopaysec.com/
+
+6. KB证券 M-able（KB증권 M-able）
+最近公开MAU：约288万（2026年6月）
+官网：https://www.kbsec.com/
+
+7. 韩国投资证券 한투（한국투자증권）
+最近公开MAU：约256万（2026年6月）
+官网：https://www.koreainvestment.com/
+
+8. NH投资证券 NAMUH／나무증권
+最近公开MAU：约242万（2026年1月）
+官网：https://www.mynamuh.com/
+
+9. 新韩证券 SOL证券（신한투자증권 SOL증권）
+最近公开MAU：约193万
+官网：https://www.shinhansec.com/
+
+10. 证券Plus（증권플러스／Stockplus）
+最近可查公开MAU：约109万
+官网：https://www.stockplus.com/
