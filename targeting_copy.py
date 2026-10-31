@@ -168,7 +168,29 @@ def final_url_gate_message(url: str, *, account: str = "") -> str:
     )
 
 
+def reauth_wait_message(account: str = "") -> str:
+    who = _account_label(account)
+    return (
+        f"新建广告要摸密钥。软件正在等{who}的比特浏览器窗口，广告先不建。"
+        f"请打开刚建好的那个系列，点预算，把日预算加上 0.01，再点保存。"
+        f"保存时网页会弹出摸钥匙。摸的是这个目标账号的钥匙，不是来源账号的钥匙。"
+        f"摸完留在这个窗口。软件拿到这次验证后，会自己把广告建上，图片和文案不用填。"
+        f"广告出现以后，日预算可以改回去。"
+    )
+
+
+def reauth_timeout_message(account: str = "") -> str:
+    who = _account_label(account)
+    return (
+        f"等了 3 分钟，没有在{who}的网页上看到密钥验证，广告没有建。"
+        f"请重新点导入。软件再次停下时，打开这个系列的预算，把日预算加上 0.01 并保存，"
+        f"弹出钥匙就摸。摸的是这个目标账号的钥匙。软件会接着把广告建上。"
+    )
+
+
 def reauth_gate_message(step: str, *, account: str = "") -> str:
+    if step == "新建广告":
+        return reauth_wait_message(account)
     who = _account_label(account)
     return (
         f"{step}要摸物理密钥。请切到{who}的比特浏览器窗口，在 Google Ads 页面上摸。"

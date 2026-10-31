@@ -1,3 +1,3 @@
 """GGAds protocol tool."""
 
-__version__ = "0.81.9"
+__version__ = "0.81.10"

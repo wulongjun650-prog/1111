@@ -524,6 +524,7 @@ class CDPPage:
         self.ws = ws_connect(target["webSocketDebuggerUrl"], max_size=None, open_timeout=15)
         self.counter = 0
         self.pending_events: list[dict] = []
+        self.extra_headers: dict[str, str] = {}
 
     def close(self) -> None:
         try:
@@ -638,19 +639,34 @@ class CDPPage:
           if (!token) return JSON.stringify({status: 0, error: '页面中未找到 XSRF 令牌'});
           const form = new URLSearchParams(args.session);
           form.set('__ar', args.ar);
+          const headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Same-Domain': '1',
+            'X-Framework-Xsrf-Token': token
+          };
+          const extra = args.extraHeaders || {};
+          for (const key of Object.keys(extra)) {
+            if (extra[key]) headers[key] = String(extra[key]);
+          }
           const response = await fetch(args.path + '?authuser=0&xt=awn', {
             method: 'POST', credentials: 'include',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'X-Same-Domain': '1',
-              'X-Framework-Xsrf-Token': token
-            },
+            headers,
             body: form.toString()
           });
           return JSON.stringify({status: response.status, text: await response.text()});
         })
         """
-        arg = _compact({"path": path, "session": session, "ar": _compact(request)})
+        extra_headers = {
+            str(key): str(value)
+            for key, value in self.extra_headers.items()
+            if str(key).strip() and str(value).strip()
+        }
+        arg = _compact({
+            "path": path,
+            "session": session,
+            "ar": _compact(request),
+            "extraHeaders": extra_headers,
+        })
         raw = self.evaluate(f"({js})({_compact(json.loads(arg))})", timeout=timeout)
         envelope = json.loads(raw)
         if envelope.get("status") != 200:
@@ -669,6 +685,59 @@ class CDPPage:
             if payload.get("error") or server_errors:
                 raise RuntimeError(rpc_rejected_message(path, payload))
         return payload
+
+
+_REAUTH_HEADER_MARKERS = ("reauth", "rapt", "proof-token", "prooftoken")
+
+
+def reauth_header_from_event(event: dict[str, Any]) -> tuple[str, str]:
+    """Return the reauth header from a CDP network event, if the page sent one."""
+    params = event.get("params") if isinstance(event, dict) else None
+    if not isinstance(params, dict):
+        return "", ""
+    request = params.get("request") if isinstance(params.get("request"), dict) else params
+    headers = request.get("headers") if isinstance(request, dict) else None
+    if isinstance(headers, dict):
+        for key, value in headers.items():
+            name = str(key or "").strip()
+            lowered = name.lower().replace("_", "-")
+            if not any(marker in lowered for marker in _REAUTH_HEADER_MARKERS):
+                continue
+            text = str(value or "").strip()
+            if text and text.lower() not in {"0", "1", "true", "false"}:
+                return name, text
+    url = ""
+    if isinstance(request, dict):
+        url = str(request.get("url") or "")
+    if not url:
+        url = str(params.get("url") or "")
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+    for key in ("rapt", "reauth"):
+        values = query.get(key) or []
+        token = str(values[0] or "").strip() if values else ""
+        if token:
+            return "X-Goog-First-Party-Reauth", token
+    return "", ""
+
+
+def capture_reauth_header(
+    page: Any,
+    *,
+    timeout: float = 180.0,
+    pause: Callable[[float], None] | None = None,
+) -> tuple[str, str]:
+    """Watch the open Google Ads tab until its own request carries a reauth token."""
+    page.command("Network.enable", {})
+    sleeper = pause or time.sleep
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    while True:
+        for event in page.drain_events("Network."):
+            name, value = reauth_header_from_event(event)
+            if name:
+                return name, value
+        if time.monotonic() >= deadline:
+            return "", ""
+        sleeper(0.4)
 
 
 def customer_read_request(ocid: str) -> dict:

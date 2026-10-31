@@ -52,7 +52,7 @@ from .portable_copy import (
     duplicate_campaigns_message,
     explain_verification_gaps,
     incomplete_assets_message,
-    place_ad_with_retries,
+    place_ad_letting_user_unlock,
     poll_until_one,
     saved_campaign_problem,
     portable_ad_group_request,
@@ -889,14 +889,16 @@ class PortableCampaignWorkflow:
                         "广告",
                     )
 
-                created_ad, submitted = place_ad_with_retries(
+                created_ad, submitted = place_ad_letting_user_unlock(
+                    self.target.page,
+                    account=format_cid(self.target.cid),
+                    log=self.log,
                     read_ads=lambda gid=target_group_id: self._read_ads(gid),
                     submit=submit,
                     poll_new_ad=poll,
                     group_id=target_group_id,
                     expected_status=target_child_status,
                     reserved_ids=mapped_ad_ids,
-                    log=self.log,
                     gate_for_error=lambda error, url=final_urls[:1], cid=format_cid(self.target.cid): human_gate_for_error(
                         "新建广告", error, final_url=url[0] if url else "", account=cid,
                     ),

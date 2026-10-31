@@ -8,13 +8,19 @@ from .portable_copy import (
     _service_error,
     claim_named_group,
     copy_failure_message,
+    place_ad_letting_user_unlock,
     place_ad_with_retries,
     poll_until_one,
     portable_display_ad_request,
     recover_after_poll,
     verification_failure,
 )
-from .protocol import rpc_http_failure, rpc_rejected_message
+from .protocol import (
+    capture_reauth_header,
+    reauth_header_from_event,
+    rpc_http_failure,
+    rpc_rejected_message,
+)
 from .targeting_copy import HumanActionRequired, human_gate_for_error
 
 
@@ -334,6 +340,120 @@ class PlaceAdRetryTest(unittest.TestCase):
         self.assertIn("111111111111", body)
         self.assertIn("标题一", body)
         self.assertIn("商店名", body)
+
+
+class ReauthCaptureTest(unittest.TestCase):
+    def test_header_is_taken_from_the_page_request(self) -> None:
+        name, value = reauth_header_from_event({
+            "params": {"request": {"headers": {
+                "X-Framework-Xsrf-Token": "abc:1",
+                "X-Goog-First-Party-Reauth": "rapt-token",
+            }}},
+        })
+        self.assertEqual(name, "X-Goog-First-Party-Reauth")
+        self.assertEqual(value, "rapt-token")
+
+    def test_rapt_query_is_a_header(self) -> None:
+        name, value = reauth_header_from_event({
+            "params": {"request": {"url": "https://ads.google.com/aw?rapt=from-url", "headers": {}}},
+        })
+        self.assertEqual((name, value), ("X-Goog-First-Party-Reauth", "from-url"))
+
+    def test_xsrf_alone_is_not_a_reauth_token(self) -> None:
+        self.assertEqual(reauth_header_from_event({
+            "params": {"request": {"headers": {"X-Framework-Xsrf-Token": "abc:1"}}},
+        }), ("", ""))
+
+    def test_capture_returns_the_first_token_and_stops(self) -> None:
+        class Page:
+            def __init__(self) -> None:
+                self.extra_headers: dict[str, str] = {}
+                self.calls: list[str] = []
+
+            def command(self, method: str, params: dict | None = None, timeout: float = 15) -> dict:
+                self.calls.append(method)
+                return {}
+
+            def drain_events(self, prefix: str = "") -> list:
+                return [{
+                    "method": "Network.requestWillBeSent",
+                    "params": {"request": {"headers": {"X-Goog-First-Party-Reauth": "tok"}}},
+                }]
+
+        page = Page()
+        self.assertEqual(capture_reauth_header(page, timeout=0, pause=lambda _seconds: None), (
+            "X-Goog-First-Party-Reauth", "tok",
+        ))
+        self.assertEqual(page.calls, ["Network.enable"])
+
+    def test_ad_create_retries_once_after_the_page_sends_the_token(self) -> None:
+        class Page:
+            def __init__(self) -> None:
+                self.extra_headers: dict[str, str] = {}
+
+            def command(self, method: str, params: dict | None = None, timeout: float = 15) -> dict:
+                return {}
+
+            def drain_events(self, prefix: str = "") -> list:
+                return [{
+                    "params": {"request": {"headers": {"X-Goog-First-Party-Reauth": "tok"}}},
+                }]
+
+        submits: list[int] = []
+
+        def submit() -> dict:
+            submits.append(1)
+            if len(submits) == 1:
+                return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
+            return {}
+
+        page = Page()
+        logs: list[str] = []
+        ad, submitted = place_ad_letting_user_unlock(
+            page,
+            account="110-669-3913",
+            log=logs.append,
+            read_ads=lambda: [{"ad_id": "9", "ad_group_id": "g", "status_raw": 2}] if len(submits) > 1 else [],
+            submit=submit,
+            poll_new_ad=lambda _known: {"ad_id": "9", "ad_group_id": "g", "status_raw": 2},
+            group_id="g",
+            expected_status=2,
+            reserved_ids=set(),
+            gate_for_error=lambda error: human_gate_for_error("新建广告", error, account="110-669-3913"),
+            pause=lambda _seconds: None,
+        )
+        self.assertEqual(ad["ad_id"], "9")
+        self.assertTrue(submitted)
+        self.assertEqual(submits, [1, 1])
+        self.assertEqual(page.extra_headers, {"X-Goog-First-Party-Reauth": "tok"})
+        self.assertTrue(any("日预算" in line for line in logs))
+        self.assertTrue(any("正在把广告建上" in line for line in logs))
+
+    def test_wait_ends_when_the_page_never_sends_a_token(self) -> None:
+        class Page:
+            def command(self, method: str, params: dict | None = None, timeout: float = 15) -> dict:
+                return {}
+
+            def drain_events(self, prefix: str = "") -> list:
+                return []
+
+        with self.assertRaises(HumanActionRequired) as caught:
+            place_ad_letting_user_unlock(
+                Page(),
+                account="110-669-3913",
+                log=lambda _text: None,
+                read_ads=lambda: [],
+                submit=lambda: {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}},
+                poll_new_ad=lambda _known: {},
+                group_id="g",
+                expected_status=2,
+                reserved_ids=set(),
+                gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+                pause=lambda _seconds: None,
+                reauth_timeout=0,
+            )
+        self.assertIn("3 分钟", str(caught.exception))
+        self.assertIn("广告没有建", str(caught.exception))
 
 
 if __name__ == "__main__":

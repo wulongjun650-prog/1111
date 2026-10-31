@@ -29,6 +29,7 @@ from .protocol import (
     CAMPAIGN_STATUS_ENABLED,
     CAMPAIGN_STATUS_PAUSED,
     ProtocolRunner,
+    capture_reauth_header,
     format_protocol_errors,
 )
 from .protocol_catalog import (
@@ -981,6 +982,43 @@ def place_ad_with_retries(
         f"返回里没有要求物理密钥。如果目标账号的网页自己弹出了密钥，"
         f"摸的是正在导入的那个窗口里、这个目标账号绑定的钥匙，不是来源账号的。"
     )
+
+
+def place_ad_letting_user_unlock(
+    page: Any,
+    *,
+    account: str,
+    log: Callable[[str], None],
+    reauth_timeout: float = 180.0,
+    **place_kwargs: Any,
+) -> tuple[dict[str, Any], bool]:
+    """Create the ad. If Google asks for the key, wait for the page and retry once."""
+    from .targeting_copy import (
+        HumanActionRequired,
+        reauth_timeout_message,
+        reauth_wait_message,
+    )
+
+    try:
+        return place_ad_with_retries(log=log, **place_kwargs)
+    except HumanActionRequired as exc:
+        if exc.reason != "reauth":
+            raise
+        log(reauth_wait_message(account))
+        try:
+            name, value = capture_reauth_header(page, timeout=reauth_timeout)
+        except Exception as hook_exc:
+            raise HumanActionRequired(
+                "reauth", f"没能监听目标网页的验证：{hook_exc}",
+            ) from hook_exc
+        if not name:
+            raise HumanActionRequired("reauth", reauth_timeout_message(account)) from exc
+        headers = getattr(page, "extra_headers", None)
+        if not isinstance(headers, dict):
+            raise HumanActionRequired("reauth", "当前页面不能附带验证，广告没有提交。")
+        headers[name] = value
+        log("已经拿到网页上的验证，正在把广告建上")
+        return place_ad_with_retries(log=log, **place_kwargs)
 
 
 def _prefer_newest_ad(rows: list[dict[str, Any]]) -> dict[str, Any]:
