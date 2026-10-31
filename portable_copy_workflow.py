@@ -46,8 +46,13 @@ from .portable_copy import (
     SUPPORTED_CHANNELS,
     _list_request,
     _service_error,
+    _campaign_status_name,
+    claim_named_group,
+    describe_named_rows,
     place_ad_with_retries,
     portable_ad_group_request,
+    recover_after_poll,
+    verification_failure,
     portable_app_ad_request,
     portable_campaign_batch_request,
     portable_display_ad_request,
@@ -642,7 +647,11 @@ class PortableCampaignWorkflow:
                     raise RuntimeError("目标 CID 已有多个同幂等标记广告系列")
                 if matches:
                     if matches[0].get("status_raw") != target_status:
-                        raise RuntimeError("同幂等标记广告系列状态与本次重建目标不一致")
+                        raise RuntimeError(
+                            "同名广告系列已经在，状态是"
+                            f"{_campaign_status_name(matches[0].get('status_raw'))}，"
+                            f"和这次要的{_campaign_status_name(target_status)}不一样"
+                        )
                     created_campaign = matches[0]
                 else:
                     response = self.target.page.rpc(
@@ -656,11 +665,20 @@ class PortableCampaignWorkflow:
                     wrote_this_run = True
                     error = _service_error(response)
                     if error:
+                        gate = human_gate_for_error("新建广告系列", error)
+                        if gate:
+                            raise gate
                         raise RuntimeError(f"新建广告系列失败：{error}")
-                    created_campaign = self._poll_one(
+                    created_campaign = recover_after_poll(
+                        lambda: self._poll_one(
+                            self._read_campaigns,
+                            lambda row: row.get("name") == name
+                            and row.get("status_raw") == target_status,
+                            "广告系列",
+                        ),
                         self._read_campaigns,
-                        lambda row: row.get("name") == name
-                        and row.get("status_raw") == target_status,
+                        lambda row: row.get("name") == name and row.get("status_raw") == target_status,
+                        lambda rows: describe_named_rows(rows, name, campaign=True),
                         "广告系列",
                     )
                 campaign_id = str(created_campaign["campaign_id"])
@@ -674,7 +692,7 @@ class PortableCampaignWorkflow:
                     and row.get("status_raw") == target_status
                 ), None)
                 if not created_campaign:
-                    raise RuntimeError("状态记录中的目标广告系列不存在或状态不符")
+                    raise RuntimeError("上次记下的广告系列现在不在，或者状态变了")
 
             if snapshot.get("account_level"):
                 if apply_campaign_goals(
@@ -696,17 +714,15 @@ class PortableCampaignWorkflow:
                     continue
                 source_name = str(source_group.get("11") or "Ad group")
                 mapped_group_ids = {str(value) for value in group_map.values()}
-                recoverable_groups = [
-                    row for row in self._read_groups()
-                    if str(row.get("campaign_id")) == campaign_id
-                    and row.get("name") == source_name
-                    and row.get("status_raw") == target_child_status
-                    and str(row.get("ad_group_id")) not in mapped_group_ids
-                ]
-                if len(recoverable_groups) > 1:
-                    raise RuntimeError("发现多个未记录的同名同状态广告组，无法安全恢复")
-                if recoverable_groups:
-                    group_map[source_group_id] = str(recoverable_groups[0]["ad_group_id"])
+                existing_group = claim_named_group(
+                    self._read_groups(),
+                    campaign_id=campaign_id,
+                    name=source_name,
+                    expected_status=target_child_status,
+                    mapped_ids=mapped_group_ids,
+                )
+                if existing_group:
+                    group_map[source_group_id] = str(existing_group["ad_group_id"])
                     state["current_step"] = "groups_created"
                     self._write_state(state_path, state)
                     continue
@@ -721,11 +737,23 @@ class PortableCampaignWorkflow:
                 wrote_this_run = True
                 error = _service_error(response)
                 if error:
+                    gate = human_gate_for_error("新建广告组", error)
+                    if gate:
+                        raise gate
                     raise RuntimeError(f"新建广告组失败：{error}")
-                created_group = self._poll_one(
+                created_group = recover_after_poll(
+                    lambda n=source_name: self._poll_one(
+                        self._read_groups,
+                        lambda row, group_name=n: row.get("campaign_id") == campaign_id
+                        and row.get("name") == group_name
+                        and row.get("status_raw") == target_child_status,
+                        "广告组",
+                    ),
                     self._read_groups,
-                    lambda row, n=source_name: row.get("campaign_id") == campaign_id
-                    and row.get("name") == n and row.get("status_raw") == target_child_status,
+                    lambda row, group_name=source_name: row.get("campaign_id") == campaign_id
+                    and row.get("name") == group_name
+                    and row.get("status_raw") == target_child_status,
+                    lambda rows, group_name=source_name: describe_named_rows(rows, group_name, campaign=False),
                     "广告组",
                 )
                 group_map[source_group_id] = str(created_group["ad_group_id"])
@@ -857,7 +885,7 @@ class PortableCampaignWorkflow:
             self._write_state(state_path, state)
             verification = self.verify(snapshot, state)
             if not verification["ok"]:
-                raise RuntimeError(verification["reason"])
+                raise RuntimeError(verification_failure(verification))
             state["status"] = "completed"
             state["current_step"] = "completed"
             self._write_state(state_path, state)

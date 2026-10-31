@@ -6,6 +6,7 @@ from .account_level_copy import (
     CAMPAIGN_GOAL_MUTATE_PATH,
     CUSTOMER_MUTATE_PATH,
     INVENTORY_FIELD,
+    apply_campaign_goals,
     apply_conversion_actions,
     apply_exclusions,
     apply_inventory,
@@ -140,14 +141,52 @@ class ReadAndApplyTest(unittest.TestCase):
         self.assertEqual(len(result["campaign_goals"]), 1)
         self.assertIn("/Mutate", result["exclusions"][0]["mutate_path"])
 
-    def test_every_exclusion_spec_failing_stops_the_export(self) -> None:
+    def test_every_exclusion_spec_failing_still_returns_the_snapshot_gaps(self) -> None:
         class Page:
             def rpc(self, path: str, request: dict) -> dict:
                 raise RuntimeError("list down")
 
-        with self.assertRaises(RuntimeError) as caught:
-            read_account_level(Page(), SOURCE, CAMPAIGN)
-        self.assertIn("全部读取失败", str(caught.exception))
+        result = read_account_level(Page(), SOURCE, CAMPAIGN)
+        self.assertEqual(result["exclusions"], [])
+        self.assertGreaterEqual(len(result["gaps"]), 8)
+        self.assertTrue(any(gap["kind"] == "content_label" for gap in result["gaps"]))
+
+    def test_campaign_row_is_not_stored_as_a_conversion_goal(self) -> None:
+        class Page:
+            def rpc(self, path: str, request: dict) -> dict:
+                fields = request["2"]["1"]
+                if "campaign_conversion_goal.category" in fields:
+                    return {"1": [{"1": SOURCE, "2": CAMPAIGN, "11": "系列名", "12": 5}]}
+                if "campaign_conversion_goal.biddable" in fields:
+                    return {"1": [{"1": SOURCE, "2": CAMPAIGN, "9": 18, "10": True}]}
+                return {"1": []}
+
+        result = read_account_level(Page(), SOURCE, CAMPAIGN)
+        self.assertEqual(result["campaign_goals"], [])
+        self.assertTrue(any(gap["kind"] == "campaign_goal" for gap in result["gaps"]))
+
+    def test_conversion_write_failure_does_not_stop_the_copy(self) -> None:
+        from .account_level_copy import apply_conversion_actions
+
+        class Page:
+            def rpc(self, path: str, request: dict) -> dict:
+                if path.endswith("/Mutate"):
+                    raise RuntimeError("mutate down")
+                return {"1": []}
+
+        state: dict = {"account_level_warnings": []}
+        wrote = apply_conversion_actions(
+            Page(), TARGET, {
+                "source_ocid": SOURCE,
+                "conversion_actions": [{
+                    "write_fields": ["name", "category", "status", "type"],
+                    "mutate_path": "/aw/_/rpc/ConversionTypeService/Mutate",
+                    "row": {"1": SOURCE, "4": "联系人"},
+                }],
+            }, state, lambda _text: None,
+        )
+        self.assertFalse(wrote)
+        self.assertTrue(state["account_level_warnings"])
 
     def test_reauth_stops_for_the_key(self) -> None:
         class Page:
@@ -269,6 +308,31 @@ class ReadAndApplyTest(unittest.TestCase):
 
     def test_campaign_goal_mutate_path_is_the_inferred_service(self) -> None:
         self.assertTrue(CAMPAIGN_GOAL_MUTATE_PATH.endswith("CampaignConversionGoalService/Mutate"))
+
+    def test_campaign_row_does_not_count_as_an_existing_goal(self) -> None:
+        page = _Recorder({})
+        state: dict = {}
+        account_level = {
+            "source_ocid": SOURCE,
+            "source_campaign_id": CAMPAIGN,
+            "campaign_goals": [{
+                "write_fields": ["campaign_id", "campaign_conversion_goal.biddable"],
+                "mutate_path": CAMPAIGN_GOAL_MUTATE_PATH,
+                "row": {"1": SOURCE, "2": CAMPAIGN, "9": 18, "10": True},
+            }],
+        }
+
+        def rpc(path: str, request: dict) -> dict:
+            page.calls.append((path, request))
+            if path.endswith("/Mutate"):
+                return {"1": {}}
+            return {"1": [{"1": TARGET, "2": "555", "11": "系列名", "12": 5}]}
+
+        page.rpc = rpc
+        wrote = apply_campaign_goals(page, TARGET, "555", account_level, state, lambda _text: None)
+        self.assertTrue(wrote)
+        self.assertTrue(state["campaign_goal_applied"])
+        self.assertTrue(any(path == CAMPAIGN_GOAL_MUTATE_PATH for path, _request in page.calls))
 
 
 class SnapshotIdentityTest(unittest.TestCase):

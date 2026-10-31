@@ -327,7 +327,6 @@ def read_account_level(page: Any, ocid: str, campaign_id: str) -> dict[str, Any]
     campaign_id = str(campaign_id)
     gaps: list[dict[str, str]] = []
     found: dict[str, dict[str, Any]] = {}
-    failed = 0
     ignore = {ocid, campaign_id}
 
     for spec in SUITABILITY_SPECS:
@@ -336,7 +335,6 @@ def read_account_level(page: Any, ocid: str, campaign_id: str) -> dict[str, Any]
         except HumanActionRequired:
             raise
         except Exception as exc:
-            failed += 1
             gaps.append({
                 "section": spec.section,
                 "kind": spec.kind,
@@ -365,10 +363,6 @@ def read_account_level(page: Any, ocid: str, campaign_id: str) -> dict[str, Any]
                 if field not in current["write_fields"]:
                     current["write_fields"].append(field)
     exclusions = list(found.values())
-
-    if failed == len(SUITABILITY_SPECS):
-        detail = "；".join(item["reason"] for item in gaps[:2])
-        raise RuntimeError(f"账号内容适宜性全部读取失败：{detail}")
 
     inventory: dict[str, Any] | None = None
     try:
@@ -426,13 +420,26 @@ def read_account_level(page: Any, ocid: str, campaign_id: str) -> dict[str, Any]
             _campaign_list_request(ocid, campaign_id, CAMPAIGN_GOAL_FIELDS),
             "读取系列转化目标",
         )
+        skipped_campaign_shape = False
         for row in _as_rows(response):
-            if _row_has_payload(row):
-                campaign_goals.append({
-                    "write_fields": list(CAMPAIGN_GOAL_FIELDS),
-                    "mutate_path": CAMPAIGN_GOAL_MUTATE_PATH,
-                    "row": row,
-                })
+            if not _row_has_payload(row):
+                continue
+            # CampaignService.List still returns the campaign itself when the
+            # goal field mask is ignored. Name and status live on fields 11 and 12.
+            if "11" in row or "12" in row:
+                skipped_campaign_shape = True
+                continue
+            campaign_goals.append({
+                "write_fields": list(CAMPAIGN_GOAL_FIELDS),
+                "mutate_path": CAMPAIGN_GOAL_MUTATE_PATH,
+                "row": row,
+            })
+        if skipped_campaign_shape and not campaign_goals:
+            gaps.append({
+                "section": "系列转化目标",
+                "kind": "campaign_goal",
+                "reason": "读到的是广告系列本身，不是单独的转化目标",
+            })
     except HumanActionRequired:
         raise
     except Exception as exc:
@@ -454,6 +461,15 @@ def _source_ids(account_level: dict[str, Any]) -> tuple[str, str]:
         str(account_level.get("source_ocid") or ""),
         str(account_level.get("source_campaign_id") or ""),
     )
+
+
+def _human(exc: BaseException) -> bool:
+    return type(exc).__name__ == "HumanActionRequired"
+
+
+def _warn(state: dict[str, Any], log: Callable[[str], None], text: str) -> None:
+    _remember(state["account_level_warnings"], text)
+    log(text)
 
 
 def _note_export_gaps(account_level: dict[str, Any], state: dict[str, Any]) -> None:
@@ -497,16 +513,22 @@ def apply_inventory(
         log("广告资源类型和 A 一样，不改")
         return False
     entity = retarget_customer_row(source_row, target_ocid=target_ocid, source_ocid=source_ocid)
-    _call(
-        page,
-        CUSTOMER_MUTATE_PATH,
-        _mutate_request(target_ocid, [{
-            "1": 3,
-            "2": [INVENTORY_FIELD],
-            "3": entity,
-        }]),
-        "写入广告资源类型",
-    )
+    try:
+        _call(
+            page,
+            CUSTOMER_MUTATE_PATH,
+            _mutate_request(target_ocid, [{
+                "1": 3,
+                "2": [INVENTORY_FIELD],
+                "3": entity,
+            }]),
+            "写入广告资源类型",
+        )
+    except Exception as exc:
+        if _human(exc):
+            raise
+        _warn(state, log, f"广告资源类型没能改：{exc}")
+        return False
     state["inventory_applied"] = True
     log("广告资源类型已改成和 A 一样")
     return True
@@ -561,7 +583,7 @@ def apply_exclusions(
             raise
         except Exception as exc:
             failed += 1
-            _remember(state["account_level_warnings"], f"{spec.section}没能写入 B：{exc}")
+            _warn(state, log, f"{spec.section}没能写入 B：{exc}")
             continue
         already = []
         for entry in entries:
@@ -601,18 +623,26 @@ def apply_exclusions(
                     ),
                 })
                 keys.append(fingerprint)
-            _call(
-                page,
-                mutate_path,
-                _mutate_request(target_ocid, operations),
-                f"写入{spec.section}",
-            )
+            try:
+                _call(
+                    page,
+                    mutate_path,
+                    _mutate_request(target_ocid, operations),
+                    f"写入{spec.section}",
+                )
+            except Exception as exc:
+                if _human(exc):
+                    raise
+                failed += 1
+                _warn(state, log, f"{spec.section}没能写入 B：{exc}")
+                break
             applied.update(keys)
             state["account_exclusion_keys"] = sorted(applied)
             wrote = True
-        log(f"{spec.section}：已补上 {len(pending)} 条")
-    if kinds and failed == len(kinds):
-        raise RuntimeError("账号排除项全部写入失败：" + "；".join(state["account_level_warnings"][-2:]))
+        else:
+            log(f"{spec.section}：已补上 {len(pending)} 条")
+    if kinds and failed == len(kinds) and not wrote:
+        _warn(state, log, "账号排除项这次没有写上，系列仍会继续建")
     return wrote
 
 
@@ -647,7 +677,8 @@ def apply_conversion_actions(
         except Exception as exc:
             list_errors.append(str(exc))
     if target_rows is None:
-        raise RuntimeError("读取 B 的转化目标失败：" + "；".join(list_errors))
+        _warn(state, log, "读取 B 的转化目标失败：" + "；".join(list_errors))
+        return False
     existing = {exclusion_fingerprint(row, {str(target_ocid)}) for row in target_rows if is_contact_action(row)}
     pending: list[tuple[str, dict[str, Any]]] = []
     seen: set[str] = set()
@@ -679,7 +710,13 @@ def apply_conversion_actions(
             })
             keys.append(fingerprint)
         mutate_path = str(chunk[0][1].get("mutate_path") or list_path.replace("/List", "/Mutate"))
-        _call(page, mutate_path, _mutate_request(target_ocid, operations), "创建联系人转化目标")
+        try:
+            _call(page, mutate_path, _mutate_request(target_ocid, operations), "创建联系人转化目标")
+        except Exception as exc:
+            if _human(exc):
+                raise
+            _warn(state, log, f"联系人转化目标没能创建：{exc}")
+            return wrote
         ready.update(keys)
         state["conversion_actions_ready"] = sorted(ready)
         wrote = True
@@ -716,11 +753,15 @@ def apply_campaign_goals(
             _campaign_list_request(target_ocid, campaign_id, CAMPAIGN_GOAL_FIELDS),
             "读取目标系列转化目标",
         )
-        current = _as_rows(response)
+        current = [
+            row for row in _as_rows(response)
+            if "11" not in row and "12" not in row
+        ]
     except HumanActionRequired:
         raise
     except Exception as exc:
-        raise RuntimeError(f"读取新系列的转化目标失败：{exc}") from exc
+        _warn(state, log, f"读取新系列的转化目标失败：{exc}")
+        return False
     source_ignore = {item for item in (source_ocid, source_campaign_id) if item}
     target_ignore = {str(target_ocid), str(campaign_id)}
     current_keys = {exclusion_fingerprint(row, target_ignore) for row in current}
@@ -751,12 +792,18 @@ def apply_campaign_goals(
             ),
         })
     mutate_path = str(entries[0].get("mutate_path") or CAMPAIGN_GOAL_MUTATE_PATH)
-    _call(
-        page,
-        mutate_path,
-        _mutate_request(target_ocid, operations),
-        "写入系列转化目标",
-    )
+    try:
+        _call(
+            page,
+            mutate_path,
+            _mutate_request(target_ocid, operations),
+            "写入系列转化目标",
+        )
+    except Exception as exc:
+        if _human(exc):
+            raise
+        _warn(state, log, f"系列转化目标没能写上：{exc}")
+        return False
     state["campaign_goal_applied"] = True
     log(f"新系列已使用 A 的转化目标 {len(pending)} 条")
     return True

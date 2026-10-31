@@ -78,8 +78,13 @@ from .portable_copy import (
     campaign_shared_set_list_request,
     campaign_shared_set_mutate_request,
     create_shared_set_and_criteria_batch_request,
+    _campaign_status_name,
+    claim_named_group,
+    describe_named_rows,
     place_ad_with_retries,
     portable_ad_group_request,
+    recover_after_poll,
+    verification_failure,
     portable_app_ad_request,
     portable_campaign_batch_request,
     portable_display_ad_request,
@@ -733,7 +738,11 @@ class SnapshotImporter:
                     raise RuntimeError("目标 CID 已有多个同名广告系列，无法安全判断")
                 if matches:
                     if matches[0].get("status_raw") != target_status:
-                        raise RuntimeError("同名广告系列状态与本次重建目标不一致")
+                        raise RuntimeError(
+                            "同名广告系列已经在，状态是"
+                            f"{_campaign_status_name(matches[0].get('status_raw'))}，"
+                            f"和这次要的{_campaign_status_name(target_status)}不一样"
+                        )
                     created_campaign = matches[0]
                 else:
                     budget_id = str(existing_budget_id or "") or self._matching_budget(snapshot)
@@ -760,10 +769,16 @@ class SnapshotImporter:
                             f"新建广告系列失败：{error}。"
                             "如果提示预算已被占用，请再建一条相同金额的日预算，然后重新导入。"
                         )
-                    created_campaign = self._poll_one(
+                    created_campaign = recover_after_poll(
+                        lambda: self._poll_one(
+                            self._read_campaigns,
+                            lambda row: row.get("name") == name
+                            and row.get("status_raw") == target_status,
+                            "广告系列",
+                        ),
                         self._read_campaigns,
-                        lambda row: row.get("name") == name
-                        and row.get("status_raw") == target_status,
+                        lambda row: row.get("name") == name and row.get("status_raw") == target_status,
+                        lambda rows: describe_named_rows(rows, name, campaign=True),
                         "广告系列",
                     )
                 campaign_id = str(created_campaign["campaign_id"])
@@ -777,7 +792,7 @@ class SnapshotImporter:
                     and row.get("status_raw") == target_status
                 ), None)
                 if not created_campaign:
-                    raise RuntimeError("状态记录中的目标广告系列不存在或状态不符")
+                    raise RuntimeError("上次记下的广告系列现在不在，或者状态变了")
 
             if snapshot.get("account_level"):
                 if apply_campaign_goals(
@@ -799,17 +814,15 @@ class SnapshotImporter:
                     continue
                 source_name = str(source_group.get("11") or "Ad group")
                 mapped_group_ids = {str(value) for value in group_map.values()}
-                recoverable_groups = [
-                    row for row in self._read_groups()
-                    if str(row.get("campaign_id")) == campaign_id
-                    and row.get("name") == source_name
-                    and row.get("status_raw") == target_child_status
-                    and str(row.get("ad_group_id")) not in mapped_group_ids
-                ]
-                if len(recoverable_groups) > 1:
-                    raise RuntimeError("发现多个未记录的同名同状态广告组，无法安全恢复")
-                if recoverable_groups:
-                    group_map[source_group_id] = str(recoverable_groups[0]["ad_group_id"])
+                existing_group = claim_named_group(
+                    self._read_groups(),
+                    campaign_id=campaign_id,
+                    name=source_name,
+                    expected_status=target_child_status,
+                    mapped_ids=mapped_group_ids,
+                )
+                if existing_group:
+                    group_map[source_group_id] = str(existing_group["ad_group_id"])
                     state["current_step"] = "groups_created"
                     self._write_state(state_path, state)
                     continue
@@ -824,11 +837,23 @@ class SnapshotImporter:
                 wrote_this_run = True
                 error = _service_error(response)
                 if error:
+                    gate = human_gate_for_error("新建广告组", error)
+                    if gate:
+                        raise gate
                     raise RuntimeError(f"新建广告组失败：{error}")
-                created_group = self._poll_one(
+                created_group = recover_after_poll(
+                    lambda n=source_name: self._poll_one(
+                        self._read_groups,
+                        lambda row, group_name=n: row.get("campaign_id") == campaign_id
+                        and row.get("name") == group_name
+                        and row.get("status_raw") == target_child_status,
+                        "广告组",
+                    ),
                     self._read_groups,
-                    lambda row, n=source_name: row.get("campaign_id") == campaign_id
-                    and row.get("name") == n and row.get("status_raw") == target_child_status,
+                    lambda row, group_name=source_name: row.get("campaign_id") == campaign_id
+                    and row.get("name") == group_name
+                    and row.get("status_raw") == target_child_status,
+                    lambda rows, group_name=source_name: describe_named_rows(rows, group_name, campaign=False),
                     "广告组",
                 )
                 group_map[source_group_id] = str(created_group["ad_group_id"])
@@ -1045,9 +1070,15 @@ class SnapshotImporter:
                     error = _service_error(create_response)
                     if error:
                         raise RuntimeError(f"新建共享集合失败：{error}")
-                    created = self._poll_one(
+                    created = recover_after_poll(
+                        lambda sk=set_kind, n=shared_set_name: self._poll_one(
+                            lambda: self._target_shared_sets(sk, n),
+                            lambda row, set_name=n: row.get("name") == set_name,
+                            "共享集合",
+                        ),
                         lambda sk=set_kind, n=shared_set_name: self._target_shared_sets(sk, n),
                         lambda row, n=shared_set_name: row.get("name") == n,
+                        lambda rows: "没有读到同名共享集合" if not rows else f"读到 {len(rows)} 条共享集合",
                         "共享集合",
                     )
                     target_shared_set_id = str(created["shared_set_id"])
@@ -1150,7 +1181,7 @@ class SnapshotImporter:
             self._write_state(state_path, state)
             verification = self.verify(snapshot, state)
             if not verification["ok"]:
-                raise RuntimeError(verification["reason"])
+                raise RuntimeError(verification_failure(verification))
             state["status"] = "completed"
             state["current_step"] = "completed"
             self._write_state(state_path, state)

@@ -23,7 +23,13 @@ from .ads import (
 from .config import data_dir, format_cid
 from .image_upload import download_preview_image, upload_images
 from .protocol import AccountPage, CAMPAIGN_STATUS_ENABLED, CAMPAIGN_STATUS_PAUSED, ProtocolRunner
-from .protocol_catalog import CHILD_STATUS_ENABLED, CHILD_STATUS_PAUSED
+from .protocol_catalog import (
+    CAMPAIGN_STATUS_LABELS,
+    CHILD_STATUS_ENABLED,
+    CHILD_STATUS_LABELS,
+    CHILD_STATUS_PAUSED,
+    CHILD_STATUS_REMOVED,
+)
 
 
 APP_CHANNEL = 7
@@ -672,8 +678,22 @@ def _service_error(value: Any) -> str:
 AD_CREATE_ATTEMPTS = 3
 
 
+def _named_status(labels: dict[int, str], status: Any) -> str:
+    try:
+        number = int(status or 0)
+    except (TypeError, ValueError):
+        return f"状态 {status}"
+    if number == 0:
+        return "还没有状态"
+    return labels.get(number, f"状态 {number}")
+
+
 def _ad_status_name(status: Any) -> str:
-    return {1: "已启用", 2: "已暂停", 3: "已移除"}.get(int(status or 0), f"状态 {status}")
+    return _named_status(CHILD_STATUS_LABELS, status)
+
+
+def _campaign_status_name(status: Any) -> str:
+    return _named_status(CAMPAIGN_STATUS_LABELS, status)
 
 
 def describe_unreadable_ad(
@@ -747,7 +767,9 @@ def place_ad_with_retries(
                 log(f"第{attempt}次读到广告")
             return matched[0], submitted
         if len(matched) > 1:
-            raise RuntimeError("广告组里有多条新的暂停广告，无法判断用哪一条")
+            chosen = _prefer_newest_ad(matched)
+            log(f"广告组里有 {len(matched)} 条暂停广告，先用了 {chosen.get('ad_id')}")
+            return chosen, submitted
         fresh = [
             row for row in rows
             if str(row.get("ad_group_id") or "") == str(group_id)
@@ -805,13 +827,109 @@ def place_ad_with_retries(
                 if len(matched) == 1:
                     return matched[0], submitted
                 if len(matched) > 1:
-                    raise RuntimeError("广告组里有多条新的暂停广告，无法判断用哪一条")
+                    chosen = _prefer_newest_ad(matched)
+                    log(f"广告组里有 {len(matched)} 条暂停广告，先用了 {chosen.get('ad_id')}")
+                    return chosen, submitted
                 text = describe_unreadable_ad(latest, group_id, seen | known, expected_status)
             reasons.append(f"第{attempt}次：{text}")
             if attempt < attempts:
                 sleeper(1)
     detail = " ".join(reasons) if reasons else "广告组里没有新广告"
     raise RuntimeError(f"广告试了 {attempts} 次还没成功。{detail}")
+
+
+def _prefer_newest_ad(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    def rank(row: dict[str, Any]) -> tuple[bool, int]:
+        text = str(row.get("ad_id") or "")
+        return (text.isdigit(), int(text) if text.isdigit() else 0)
+
+    return max(rows, key=rank)
+
+
+_CHECK_LABELS = {
+    "campaign_exists_expected_status": "系列不在或状态不对",
+    "all_groups_mapped": "广告组没有全部记下",
+    "all_groups_exist_expected_status": "广告组不在或状态不对",
+    "all_ads_mapped": "广告没有全部记下",
+    "all_ads_exist_expected_status": "广告不在或状态不对",
+    "shared_sets_associated": "排除列表没有挂到系列上",
+    "audiences_synced": "受众没有对上",
+}
+
+
+def verification_failure(verification: dict[str, Any]) -> str:
+    failed = [
+        _CHECK_LABELS.get(str(name), str(name))
+        for name, ok in (verification.get("checks") or {}).items()
+        if not ok
+    ]
+    detail = "、".join(failed) if failed else "没有具体项目"
+    return f"写完之后对不上：{detail}"
+
+
+def claim_named_group(
+    rows: list[dict[str, Any]],
+    *,
+    campaign_id: str,
+    name: str,
+    expected_status: int,
+    mapped_ids: set[str],
+) -> dict[str, Any] | None:
+    """Reuse one matching ad group. A same-name group is not created again."""
+    same = [
+        row for row in rows
+        if str(row.get("campaign_id") or "") == str(campaign_id)
+        and str(row.get("name") or "") == str(name)
+        and str(row.get("ad_group_id") or "") not in mapped_ids
+        and int(row.get("status_raw") or 0) != CHILD_STATUS_REMOVED
+    ]
+    ready = [row for row in same if int(row.get("status_raw") or 0) == int(expected_status)]
+    if len(ready) > 1:
+        raise RuntimeError("发现多个未记录的同名同状态广告组，无法安全恢复")
+    if len(ready) == 1:
+        return ready[0]
+    if same:
+        shown = "、".join(_ad_status_name(row.get("status_raw")) for row in same[:3])
+        raise RuntimeError(
+            f"同名广告组已经在，状态是{shown}，和这次要的{_ad_status_name(expected_status)}不一样"
+        )
+    return None
+
+
+def describe_named_rows(rows: list[dict[str, Any]], name: str, *, campaign: bool) -> str:
+    same = [row for row in rows if str(row.get("name") or "") == str(name)]
+    label = _campaign_status_name if campaign else _ad_status_name
+    if not same:
+        return f"账号里没有名为「{name}」的对象"
+    shown = "、".join(label(row.get("status_raw")) for row in same[:3])
+    return f"找到「{name}」，状态是{shown}"
+
+
+def recover_after_poll(
+    poll: Callable[[], dict[str, Any]],
+    reader: Callable[[], list[dict[str, Any]]],
+    predicate: Callable[[dict[str, Any]], bool],
+    describe: Callable[[list[dict[str, Any]]], str],
+    label: str,
+) -> dict[str, Any]:
+    """One more read after the poll gives up, and say what was actually there."""
+    try:
+        return poll()
+    except Exception as exc:
+        if type(exc).__name__ == "HumanActionRequired" or "多个匹配" in str(exc):
+            raise
+        try:
+            rows = reader()
+        except Exception as read_exc:
+            if type(read_exc).__name__ == "HumanActionRequired":
+                raise
+            raise RuntimeError(f"{label}没有读到。再查一次也失败了：{read_exc}") from exc
+        matches = [row for row in rows if predicate(row)]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise RuntimeError(f"{label}有多条匹配，无法判断用哪一条") from exc
+        raise RuntimeError(f"{label}没有按预期出现。{describe(rows)}") from exc
 
 
 class PortableCampaignRebuilder:
