@@ -115,8 +115,9 @@ AD_GROUP_SPECS: tuple[CriterionSpec, ...] = (
 class HumanActionRequired(RuntimeError):
     """The next step has to be a real page click so the user can touch the key."""
 
-    def __init__(self, reason: str, instructions: str):
+    def __init__(self, reason: str, instructions: str, detail: str = ""):
         self.reason = reason
+        self.detail = detail
         super().__init__(instructions)
 
 
@@ -171,22 +172,20 @@ def final_url_gate_message(url: str, *, account: str = "") -> str:
 def reauth_wait_message(account: str = "") -> str:
     who = _account_label(account)
     return (
-        f"新建广告要先确认是你本人。软件正在等{who}的比特浏览器窗口，广告先不建。"
-        f"请把这个系列的日预算改一下再保存。"
-        f"有的账号会弹出摸钥匙，有的账号不弹窗，只出一行黑字「感谢您完成身份验证」。两种都算完成。"
+        f"新建广告要先确认是你本人。软件正在等{who}的比特浏览器窗口。"
+        f"页面上出现黑字「感谢您完成身份验证」就行，不弹钥匙也可以。"
+        f"这行黑字只会出现一次。看到以后不用再改预算，留在这个窗口。"
+        f"软件会自己把广告建上，图片和文案不用填。"
         f"摸的是这个目标账号的钥匙，不是来源账号的钥匙。"
-        f"看到黑字或摸完钥匙后留在这个窗口。软件会自己把广告建上，图片和文案不用填。"
-        f"广告出现以后，日预算可以改回去。"
     )
 
 
 def reauth_timeout_message(account: str = "") -> str:
     who = _account_label(account)
     return (
-        f"等了 3 分钟，没有在{who}的网页上看到验证完成，广告没有建。"
-        f"请重新点导入。软件停下后，再改一次这个系列的日预算并保存。"
-        f"弹出钥匙就摸。不弹窗也可以，只要页面上出现「感谢您完成身份验证」就留在这个窗口。"
-        f"软件会接着把广告建上。"
+        f"等了 3 分钟，{who}页面上的验证没有写进新建广告，广告没有建。"
+        f"黑字「感谢您完成身份验证」出现过就不用再改预算，再保存也不会重新出现那行字。"
+        f"请重新点一次导入。系列和广告组会接着用。"
     )
 
 
@@ -205,11 +204,14 @@ def human_gate_for_error(
     step: str, error: str, *, final_url: str = "", account: str = "",
 ) -> HumanActionRequired | None:
     text = str(error or "").upper()
+    gate: HumanActionRequired | None = None
     if "UNPHISHABLE" in text or ("FINAL_URL" in text and "PHISH" in text):
-        return HumanActionRequired("final_url", final_url_gate_message(final_url, account=account))
-    if "REAUTH" in text or "PROOF_TOKEN" in text:
-        return HumanActionRequired("reauth", reauth_gate_message(step, account=account))
-    return None
+        gate = HumanActionRequired("final_url", final_url_gate_message(final_url, account=account))
+    elif "REAUTH" in text or "PROOF_TOKEN" in text:
+        gate = HumanActionRequired("reauth", reauth_gate_message(step, account=account))
+    if gate is not None:
+        gate.detail = str(error or "")
+    return gate
 
 
 def _as_rows(response: dict[str, Any]) -> list[dict[str, Any]]:

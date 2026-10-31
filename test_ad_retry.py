@@ -427,7 +427,7 @@ class ReauthCaptureTest(unittest.TestCase):
         self.assertTrue(submitted)
         self.assertEqual(submits, [1, 1])
         self.assertEqual(page.extra_headers, {"X-Goog-First-Party-Reauth": "tok"})
-        self.assertTrue(any("日预算" in line for line in logs))
+        self.assertTrue(any("身份验证" in line for line in logs))
         self.assertTrue(any("正在把广告建上" in line for line in logs))
 
     def test_wait_ends_when_the_page_never_sends_a_token(self) -> None:
@@ -543,6 +543,54 @@ class ReauthCaptureTest(unittest.TestCase):
             pause=lambda _seconds: None,
         )
         self.assertEqual(ad["ad_id"], "8")
+
+    def test_a_stale_verification_line_does_not_ask_for_another_save(self) -> None:
+        class Page:
+            def __init__(self) -> None:
+                self.extra_headers: dict[str, str] = {}
+
+            def command(self, method: str, params: dict | None = None, timeout: float = 15) -> dict:
+                return {}
+
+            def drain_events(self, prefix: str = "") -> list:
+                return [{
+                    "params": {"request": {
+                        "method": "POST",
+                        "url": "https://ads.google.com/aw_cm/editing/_/rpc/BatchService/Batch",
+                        "headers": {},
+                    }},
+                }]
+
+            def evaluate(self, expression: str, timeout: float = 45) -> bool:
+                return "完成身份验证" in expression or expression.endswith(">= 0; })()")
+
+        submits: list[int] = []
+        logs: list[str] = []
+
+        def submit() -> dict:
+            submits.append(1)
+            return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
+
+        with self.assertRaises(HumanActionRequired) as caught:
+            place_ad_letting_user_unlock(
+                Page(),
+                account="110-669-3913",
+                log=logs.append,
+                read_ads=lambda: [],
+                submit=submit,
+                poll_new_ad=lambda _known: {},
+                group_id="g",
+                expected_status=2,
+                reserved_ids=set(),
+                gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+                pause=lambda _seconds: None,
+                reauth_timeout=0.05,
+            )
+        self.assertEqual(submits, [1, 1])
+        self.assertEqual(sum("正在把广告建上" in line for line in logs), 1)
+        self.assertTrue(any("不用再改预算" in line for line in logs))
+        self.assertNotIn("再改一次", " ".join(logs))
+        self.assertIn("不用再改预算", str(caught.exception))
 
 
 if __name__ == "__main__":

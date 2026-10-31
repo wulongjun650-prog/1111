@@ -1006,32 +1006,60 @@ def place_ad_letting_user_unlock(
             raise
         log(reauth_wait_message(account))
         deadline = time.monotonic() + max(0.0, float(reauth_timeout))
+        ignore_toast = False
+        ignore_plain_save = False
+        tried: set[str] = set()
+        told = False
+        holder = place_kwargs.get("pause")
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise HumanActionRequired("reauth", reauth_timeout_message(account)) from exc
             try:
-                name, value, ready = wait_for_ad_unlock(page, timeout=remaining)
+                name, value, reason = wait_for_ad_unlock(
+                    page,
+                    timeout=remaining,
+                    pause=holder if callable(holder) else None,
+                    ignore_toast=ignore_toast,
+                    ignore_plain_save=ignore_plain_save,
+                )
             except Exception as hook_exc:
                 raise HumanActionRequired(
                     "reauth", f"没能监听目标网页的验证：{hook_exc}",
                 ) from hook_exc
-            if not ready:
+            if not reason or (value and value in tried):
+                if value and value in tried:
+                    ignore_toast = True
+                    ignore_plain_save = True
+                    continue
                 raise HumanActionRequired("reauth", reauth_timeout_message(account)) from exc
             headers = getattr(page, "extra_headers", None)
-            if name:
+            if value:
                 if not isinstance(headers, dict):
                     raise HumanActionRequired("reauth", "当前页面不能附带验证，广告没有提交。")
-                headers[name] = value
+                tried.add(value)
+                headers[name or "X-Goog-First-Party-Reauth"] = value
+            elif reason == "toast":
+                ignore_toast = True
+            elif reason == "save":
+                ignore_plain_save = True
             log("网页上的验证已经完成，正在把广告建上")
             try:
                 return place_ad_with_retries(log=log, **place_kwargs)
             except HumanActionRequired as again:
                 if again.reason != "reauth":
                     raise
+                ignore_toast = True
+                ignore_plain_save = True
                 exc = again
-                log("这次验证还没被广告认下。请再改一次日预算并保存，看到黑字就留在窗口里。")
-                time.sleep(1)
+                if not told:
+                    told = True
+                    detail = str(getattr(again, "detail", "") or "").strip()
+                    suffix = f" Google 仍拒绝了：{detail}。" if detail else ""
+                    log(
+                        "页面上的验证已经看到了，但这条广告请求没有带上它。"
+                        f"{suffix}不用再改预算，黑字不会再出现一次。"
+                    )
 
 
 def _prefer_newest_ad(rows: list[dict[str, Any]]) -> dict[str, Any]:

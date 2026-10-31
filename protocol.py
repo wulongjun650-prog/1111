@@ -659,6 +659,9 @@ class CDPPage:
           for (const key of Object.keys(extra)) {
             if (extra[key]) headers[key] = String(extra[key]);
           }
+          if (headers['X-Goog-First-Party-Reauth']) {
+            form.set('rapt', headers['X-Goog-First-Party-Reauth']);
+          }
           const response = await fetch(args.path + '?authuser=0&xt=awn', {
             method: 'POST', credentials: 'include',
             headers,
@@ -744,17 +747,46 @@ def reauth_header_from_event(event: dict[str, Any]) -> tuple[str, str]:
     return "", ""
 
 
+_PROOF_IN_BODY = re.compile(
+    r"(?:rapt|proofToken|encodedProofOfReauthToken|X-Goog-First-Party-Reauth)"
+    r"[\s\"'=:>]+([A-Za-z0-9_\-\.]{20,})",
+    re.I,
+)
+
+
+def _event_body(event: dict[str, Any]) -> str:
+    params = event.get("params") if isinstance(event, dict) else None
+    if not isinstance(params, dict):
+        return ""
+    request = params.get("request") if isinstance(params.get("request"), dict) else {}
+    return str(request.get("postData") or params.get("postData") or "")
+
+
+def proof_from_event(event: dict[str, Any]) -> tuple[str, str]:
+    """Header or request body value that carries a reauth proof."""
+    name, value = reauth_header_from_event(event)
+    if name:
+        return name, value
+    headers, _url, _method = _event_request(event)
+    if _is_our_request(headers):
+        return "", ""
+    match = _PROOF_IN_BODY.search(_event_body(event))
+    if match:
+        return "X-Goog-First-Party-Reauth", match.group(1)
+    return "", ""
+
+
 def user_saved_on_page(event: dict[str, Any]) -> bool:
-    """A budget or campaign save in the Ads tab, not one of our own writes."""
+    """A budget save or account reauth in the Ads tab, not background batch traffic."""
     headers, url, method = _event_request(event)
     if not url or _is_our_request(headers):
         return False
     parsed = urllib.parse.urlsplit(url)
     host = (parsed.hostname or "").lower()
     path = (parsed.path or "").lower()
-    if host == "accounts.google.com" and any(bit in path for bit in ("reauth", "challenge", "signin")):
+    if host == "accounts.google.com" and any(bit in path for bit in ("reauth", "challenge")):
         return True
-    return host == "ads.google.com" and method == "POST" and ("/mutate" in path or path.endswith("/batch"))
+    return host == "ads.google.com" and method == "POST" and "budget" in path and "mutate" in path
 
 
 def page_shows_verification(page: Any) -> bool:
@@ -806,16 +838,57 @@ def _open_sibling_watchers(page: Any) -> list[Any]:
     return opened
 
 
+_PAGE_PROOF_JS = """
+(() => {
+  const found = [];
+  const take = (label, value) => {
+    const text = String(value || '');
+    if (text.length < 20 || text.length > 4000) return;
+    const blob = String(label || '') + ' ' + text.slice(0, 160);
+    if (!/reauth|rapt|proof/i.test(blob)) return;
+    found.push(text);
+  };
+  try {
+    for (const store of [sessionStorage, localStorage]) {
+      for (let i = 0; i < store.length; i++) {
+        const key = store.key(i);
+        take(key, store.getItem(key));
+      }
+    }
+  } catch (e) {}
+  try {
+    const wiz = window.WIZ_global_data || {};
+    Object.keys(wiz).slice(0, 80).forEach((key) => take(key, wiz[key]));
+  } catch (e) {}
+  return found[0] || '';
+})()
+"""
+
+
+def proof_from_page(page: Any) -> str:
+    try:
+        value = page.evaluate(_PAGE_PROOF_JS)
+    except Exception:
+        return ""
+    text = str(value or "").strip()
+    if len(text) < 20 or "AUTH_ERROR" in text:
+        return ""
+    return text
+
+
 def wait_for_ad_unlock(
     page: Any,
     *,
     timeout: float = 180.0,
     pause: Callable[[float], None] | None = None,
-) -> tuple[str, str, bool]:
-    """Wait until the Ads tab verifies, saves, or sends a reauth header.
+    ignore_toast: bool = False,
+    ignore_plain_save: bool = False,
+) -> tuple[str, str, str]:
+    """Wait for a proof header, a budget save, or the black verification line.
 
-    The third value is false when the wait ends with nothing to retry.
-    A save or the black “身份验证完成” line counts even when no key dialog appears.
+    The third value is ``header``, ``save``, ``toast``, or empty when time runs out.
+    A toast or plain save that was already used can be ignored so a stale black
+    line does not start another ad write.
     """
     page.command("Network.enable", {})
     extras = _open_sibling_watchers(page)
@@ -834,15 +907,21 @@ def wait_for_ad_unlock(
                 except Exception:
                     events = []
                 for event in events:
-                    name, value = reauth_header_from_event(event)
+                    name, value = proof_from_event(event)
                     if name:
-                        return name, value, True
-                    if user_saved_on_page(event):
-                        return "", "", True
-                if page_shows_verification(watcher):
-                    return "", "", True
+                        return name, value, "header"
+                    if user_saved_on_page(event) and not ignore_plain_save:
+                        token = proof_from_page(watcher)
+                        if token:
+                            return "X-Goog-First-Party-Reauth", token, "header"
+                        return "", "", "save"
+                if not ignore_toast and page_shows_verification(watcher):
+                    token = proof_from_page(watcher)
+                    if token:
+                        return "X-Goog-First-Party-Reauth", token, "header"
+                    return "", "", "toast"
             if time.monotonic() >= deadline:
-                return "", "", False
+                return "", "", ""
             sleeper(0.4)
     finally:
         for extra in extras:
