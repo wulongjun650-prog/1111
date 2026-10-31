@@ -225,6 +225,7 @@ def _json_response(text: str) -> Any:
 
 
 _ERROR_PREFIXES = (
+    ("AUTH_ERROR_REAUTH_PROOF_TOKEN_INVALID", "网页上没有弹出密钥，这条验证无效"),
     ("AUTH_ERROR_REAUTH", "需要你在网页上摸一下密钥"),
     ("AUTH_ERROR", "登录状态失效，需要重新确认"),
     ("UNPHISHABLE", "落地页需要你本人确认"),
@@ -839,42 +840,18 @@ def _open_sibling_watchers(page: Any) -> list[Any]:
     return opened
 
 
-_PAGE_PROOF_JS = """
-(() => {
-  const found = [];
-  const take = (label, value) => {
-    const text = String(value || '');
-    if (text.length < 20 || text.length > 4000) return;
-    const blob = String(label || '') + ' ' + text.slice(0, 160);
-    if (!/reauth|rapt|proof/i.test(blob)) return;
-    found.push(text);
-  };
-  try {
-    for (const store of [sessionStorage, localStorage]) {
-      for (let i = 0; i < store.length; i++) {
-        const key = store.key(i);
-        take(key, store.getItem(key));
-      }
-    }
-  } catch (e) {}
-  try {
-    const wiz = window.WIZ_global_data || {};
-    Object.keys(wiz).slice(0, 80).forEach((key) => take(key, wiz[key]));
-  } catch (e) {}
-  return found[0] || '';
-})()
-"""
-
-
-def proof_from_page(page: Any) -> str:
-    try:
-        value = page.evaluate(_PAGE_PROOF_JS)
-    except Exception:
-        return ""
-    text = str(value or "").strip()
-    if len(text) < 20 or "AUTH_ERROR" in text:
-        return ""
-    return text
+def clear_reauth_headers(page: Any) -> bool:
+    """Drop a proof already attached to this page so the next ad write is clean."""
+    headers = getattr(page, "extra_headers", None)
+    if not isinstance(headers, dict):
+        return False
+    removed = False
+    for key in list(headers):
+        lowered = str(key).lower().replace("_", "-")
+        if any(marker in lowered for marker in _REAUTH_HEADER_MARKERS):
+            headers.pop(key, None)
+            removed = True
+    return removed
 
 
 def wait_for_ad_unlock(
@@ -917,14 +894,8 @@ def wait_for_ad_unlock(
                     if name:
                         return name, value, "header"
                     if user_saved_on_page(event) and not ignore_plain_save:
-                        token = proof_from_page(watcher)
-                        if token:
-                            return "X-Goog-First-Party-Reauth", token, "header"
                         return "", "", "save"
                 if not ignore_toast and page_shows_verification(watcher):
-                    token = proof_from_page(watcher)
-                    if token:
-                        return "X-Goog-First-Party-Reauth", token, "header"
                     return "", "", "toast"
             if time.monotonic() >= deadline:
                 return "", "", ""

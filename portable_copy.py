@@ -29,6 +29,7 @@ from .protocol import (
     CAMPAIGN_STATUS_ENABLED,
     CAMPAIGN_STATUS_PAUSED,
     ProtocolRunner,
+    clear_reauth_headers,
     wait_for_ad_unlock,
     format_protocol_errors,
 )
@@ -1002,6 +1003,8 @@ def place_ad_letting_user_unlock(
     from .user_confirm import user_confirmation
 
     def submit_after_user_confirm() -> tuple[dict[str, Any], bool]:
+        if clear_reauth_headers(page):
+            log("刚才附在广告上的验证无效，已经丢掉。网页上没有密钥弹窗。")
         log("你已确认本人验证，正在继续建广告")
         try:
             created = place_ad_with_retries(log=log, **place_kwargs)
@@ -1009,10 +1012,12 @@ def place_ad_letting_user_unlock(
             if again.reason != "reauth":
                 raise
             detail = str(getattr(again, "detail", "") or "").strip()
-            suffix = f"：{detail}" if detail else ""
+            if detail:
+                log(f"广告仍被拒绝：{detail}")
             raise HumanActionRequired(
                 "reauth",
-                f"你已经确认过了，广告还是被拒绝{suffix}。系列和广告组还在，没有重来。",
+                "网页上没有弹出密钥，这一次广告没有建上。"
+                "系列和广告组还在，没有重来。预算不用再改。",
             ) from again
         user_confirmation.clear()
         return created
@@ -1075,14 +1080,22 @@ def place_ad_letting_user_unlock(
                 ignore_toast = True
                 ignore_plain_save = True
                 exc = again
+                if "PROOF_TOKEN_INVALID" in str(getattr(again, "detail", "") or ""):
+                    clear_reauth_headers(page)
                 if not told:
                     told = True
                     detail = str(getattr(again, "detail", "") or "").strip()
                     suffix = f" Google 仍拒绝了：{detail}。" if detail else ""
-                    log(
-                        "页面上的验证已经看到了，但这条广告请求没有带上它。"
-                        f"{suffix}不用再改预算，黑字不会再出现一次。"
-                    )
+                    if "PROOF_TOKEN_INVALID" in detail:
+                        log(
+                            "网页上没有弹出密钥。刚附上的验证无效，已经丢掉。"
+                            "不用再改预算，黑字不会再出现一次。"
+                        )
+                    else:
+                        log(
+                            "页面上的验证已经看到了，但这条广告请求没有带上它。"
+                            f"{suffix}不用再改预算，黑字不会再出现一次。"
+                        )
                 continue
             user_confirmation.clear()
             return created

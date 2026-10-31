@@ -17,6 +17,7 @@ from .portable_copy import (
 )
 from .protocol import (
     capture_reauth_header,
+    clear_reauth_headers,
     reauth_header_from_event,
     rpc_http_failure,
     rpc_rejected_message,
@@ -284,6 +285,12 @@ class PlaceAdRetryTest(unittest.TestCase):
         self.assertIn("AdGroupAdService/Mutate", message)
         self.assertIn("密钥", message)
         self.assertIn("AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED", message)
+        invalid = rpc_rejected_message("/aw/_/rpc/AdGroupAdService/Mutate", {
+            "5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_INVALID"]},
+        })
+        self.assertIn("没有弹出密钥", invalid)
+        self.assertIn("AUTH_ERROR_REAUTH_PROOF_TOKEN_INVALID", invalid)
+        self.assertNotIn("摸一下密钥", invalid)
         http = rpc_http_failure("/aw/_/rpc/CampaignService/List", 0, "<html>denied</html>")
         self.assertIn("HTTP 0", http)
         self.assertIn("没有连上页面", http)
@@ -673,8 +680,9 @@ class ReauthCaptureTest(unittest.TestCase):
                 submits,
             )
         self.assertEqual(submits, [1, 1])
-        self.assertIn("你已经确认过了", str(caught.exception))
+        self.assertIn("没有弹出密钥", str(caught.exception))
         self.assertIn("系列和广告组还在", str(caught.exception))
+        self.assertNotIn("摸一下密钥", str(caught.exception))
         self.assertNotIn("再改一次", str(caught.exception))
         self.assertNotIn("3 分钟", str(caught.exception))
         self.assertFalse(any("软件正在等" in line for line in logs))
@@ -740,7 +748,8 @@ class ReauthCaptureTest(unittest.TestCase):
                 reauth_timeout=5,
             )
         self.assertEqual(submits, [1, 1])
-        self.assertIn("你已经确认过了", str(caught.exception))
+        self.assertIn("没有弹出密钥", str(caught.exception))
+        self.assertNotIn("摸一下密钥", str(caught.exception))
         self.assertNotIn("再改一次", " ".join(logs) + str(caught.exception))
 
     def test_a_finished_ad_forgets_a_stale_confirmation(self) -> None:
@@ -764,6 +773,78 @@ class ReauthCaptureTest(unittest.TestCase):
         self.assertFalse(submitted)
         self.assertEqual(submits, [])
         self.assertFalse(user_confirmation.is_set())
+
+    def test_confirm_drops_the_invalid_token_before_creating_the_ad(self) -> None:
+        user_confirmation.confirm()
+        page = self._reauth_page()
+        page.extra_headers["X-Goog-First-Party-Reauth"] = "scraped-not-a-real-rapt-token"
+        logs: list[str] = []
+        seen: list[dict[str, str]] = []
+
+        def submit() -> dict:
+            seen.append(dict(page.extra_headers))
+            if seen[-1].get("X-Goog-First-Party-Reauth"):
+                return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_INVALID"]}}
+            return {}
+
+        ad, _submitted = place_ad_letting_user_unlock(
+            page,
+            account="110-669-3913",
+            log=logs.append,
+            read_ads=lambda: [{"ad_id": "9", "ad_group_id": "g", "status_raw": 2}] if len(seen) > 1 else [],
+            submit=submit,
+            poll_new_ad=lambda _known: {"ad_id": "9", "ad_group_id": "g", "status_raw": 2},
+            group_id="g",
+            expected_status=2,
+            reserved_ids=set(),
+            gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+            pause=lambda _seconds: None,
+            reauth_timeout=0,
+        )
+        self.assertEqual(ad["ad_id"], "9")
+        self.assertEqual(seen[0].get("X-Goog-First-Party-Reauth"), "scraped-not-a-real-rapt-token")
+        self.assertNotIn("X-Goog-First-Party-Reauth", seen[1])
+        self.assertTrue(any("已经丢掉" in line for line in logs))
+        self.assertFalse(clear_reauth_headers(page))
+
+    def test_the_black_line_does_not_attach_text_from_the_page(self) -> None:
+        class Page:
+            def __init__(self) -> None:
+                self.extra_headers: dict[str, str] = {}
+
+            def command(self, method: str, params: dict | None = None, timeout: float = 15) -> dict:
+                return {}
+
+            def drain_events(self, prefix: str = "") -> list:
+                return []
+
+            def evaluate(self, expression: str, timeout: float = 45) -> str:
+                return "reauth-proof-from-page-storage-" + ("x" * 40)
+
+        submits: list[dict[str, str]] = []
+        page = Page()
+
+        def submit() -> dict:
+            submits.append(dict(page.extra_headers))
+            if len(submits) == 1:
+                return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
+            return {}
+
+        ad, _submitted = place_ad_letting_user_unlock(
+            page,
+            account="110-669-3913",
+            log=lambda _text: None,
+            read_ads=lambda: [{"ad_id": "8", "ad_group_id": "g", "status_raw": 2}] if len(submits) > 1 else [],
+            submit=submit,
+            poll_new_ad=lambda _known: {"ad_id": "8", "ad_group_id": "g", "status_raw": 2},
+            group_id="g",
+            expected_status=2,
+            reserved_ids=set(),
+            gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+            pause=lambda _seconds: None,
+        )
+        self.assertEqual(ad["ad_id"], "8")
+        self.assertEqual(submits, [{}, {}])
 
 
 if __name__ == "__main__":
