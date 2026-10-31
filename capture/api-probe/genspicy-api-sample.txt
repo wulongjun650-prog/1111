@@ -1,0 +1,25 @@
+/api/analytics/country -> 200 {"country":"US"}
+/api/auth/sso/ticket/redeem -> 404 {   "error": true,   "url": "https://genspicy.ai/api/auth/sso/ticket/redeem",   "statusCode": 404,  
+/api/cms/explore-more -> 200 {"title":"Explore More In Genspicy","summary":"","items":[{"path":"/tools/ai-blowjob-generator","blu
+/api/cms/pages -> 404 {   "error": true,   "url": "https://genspicy.ai/api/cms/pages",   "statusCode": 404,   "statusMessa
+/api/generate/cached-inspiration-list -> 404 {   "error": true,   "url": "https://genspicy.ai/api/generate/cached-inspiration-list",   "statusCod
+/api/generate/cached-transform-library -> 404 {   "error": true,   "url": "https://genspicy.ai/api/generate/cached-transform-library",   "statusCo
+/api/generate/cached-undress-actor-list -> 404 {   "error": true,   "url": "https://genspicy.ai/api/generate/cached-undress-actor-list",   "statusC
+/api/geo-location -> 404 {   "error": true,   "url": "https://genspicy.ai/api/geo-location",   "statusCode": 404,   "statusMe
+/api/home/cached-card-list -> 404 {   "error": true,   "url": "https://genspicy.ai/api/home/cached-card-list",   "statusCode": 404,   
+/api/home/cached-content-feed -> 404 {   "error": true,   "url": "https://genspicy.ai/api/home/cached-content-feed",   "statusCode": 404,
+/api/home/cached-generation-template-list -> 200 {"code":0,"message":"ok","data":{"items":[{"id":"96a76f8a-39b2-4996-947e-9837e9805909","template_nam
+/api/home/generation-template-by-id -> 400 {   "error": true,   "url": "https://genspicy.ai/api/home/generation-template-by-id",   "statusCode"
+/api/home/generation-templates-by-ids -> 200 {"code":"OK","message":"","data":{"items":[]}}
+/api/homepage-optimized -> 404 {   "error": true,   "url": "https://genspicy.ai/api/homepage-optimized",   "statusCode": 404,   "st
+/api/home/restricted-characters -> 404 {   "error": true,   "url": "https://genspicy.ai/api/home/restricted-characters",   "statusCode": 40
+/api/home/ssr-content-feed -> 404 {   "error": true,   "url": "https://genspicy.ai/api/home/ssr-content-feed",   "statusCode": 404,   
+/api/home/telegram-generation-template-list -> 200 {"code":0,"message":"ok","data":{"items":[{"id":"96a76f8a-39b2-4996-947e-9837e9805909","template_nam
+/api/live-rooms -> 404 {   "error": true,   "url": "https://genspicy.ai/api/live-rooms",   "statusCode": 404,   "statusMess
+/api/_nuxt_icon -> 404 {   "error": true,   "url": "https://genspicy.ai/api/_nuxt_icon",   "statusCode": 404,   "statusMess
+/api/payment/orders/recent -> 404 {   "error": true,   "url": "https://genspicy.ai/api/payment/orders/recent",   "statusCode": 404,   
+/api/realtime-network-probe -> 404 {   "error": true,   "url": "https://genspicy.ai/api/realtime-network-probe",   "statusCode": 404,  
+/api/stories-content -> 404 {   "error": true,   "url": "https://genspicy.ai/api/stories-content",   "statusCode": 404,   "statu
+/api/v1/actor/album/image.unlock -> 404 {   "error": true,   "url": "https://genspicy.ai/api/v1/actor/album/image.unlock",   "statusCode": 4
+/api/v1/actor/album.level-counts -> 404 {   "error": true,   "url": "https://genspicy.ai/api/v1/actor/album.level-counts",   "statusCode": 4
+/api/v1/actor/album.status -> 404 {   "error": true,   "url": "https://genspicy.ai/api/v1/actor/album.status",   "statusCode": 404,   

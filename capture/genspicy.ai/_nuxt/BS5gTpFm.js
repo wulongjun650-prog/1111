@@ -1,0 +1,1 @@
+const o=.4,r=2.5,s=300,c=6e3;async function i(n){const t=URL.createObjectURL(n);try{return await new Promise((a,E)=>{const e=new Image;e.onload=()=>a({width:e.naturalWidth,height:e.naturalHeight}),e.onerror=()=>E(new Error("Unable to read the image dimensions.")),e.src=t})}finally{URL.revokeObjectURL(t)}}export{s as M,c as a,o as b,r as c,i as g};

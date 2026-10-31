@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en" data-brand="GenSpicy">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>This service is not available in your area. | GenSpicy</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page-background: #f2f4f5;
+        --text-primary: rgb(0 0 0 / 90%);
+        --button-background: #000000;
+        --button-hover: #242424;
+        --button-text: #ffffff;
+        --focus-ring: rgb(0 0 0 / 35%);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: grid;
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding: 24px;
+        place-items: center;
+        overflow-x: hidden;
+        background: var(--page-background);
+        color: var(--text-primary);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        display: flex;
+        width: min(342px, 100%);
+        flex-direction: column;
+        align-items: center;
+        gap: 48px;
+        text-align: center;
+      }
+
+      .message {
+        display: flex;
+        width: 100%;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .area-icon {
+        display: block;
+        width: 96px;
+        height: 96px;
+        flex: 0 0 96px;
+      }
+
+      h1 {
+        width: 100%;
+        margin: 0;
+        color: var(--text-primary);
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 32px;
+        overflow-wrap: anywhere;
+        text-wrap: balance;
+      }
+
+      .refresh-button {
+        display: inline-flex;
+        width: max-content;
+        min-width: 180px;
+        max-width: 100%;
+        min-height: 44px;
+        padding: 10px 48px 10px 44px;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        border-radius: 100px;
+        background: var(--button-background);
+        color: var(--button-text);
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 24px;
+        text-decoration: none;
+        transition: background-color 160ms ease, transform 160ms ease;
+      }
+
+      .refresh-button:hover {
+        background: var(--button-hover);
+      }
+
+      .refresh-button:active {
+        transform: translateY(1px);
+      }
+
+      .refresh-button:focus-visible {
+        outline: 3px solid var(--focus-ring);
+        outline-offset: 3px;
+      }
+
+      .refresh-icon {
+        display: block;
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+      }
+
+      @media (max-width: 360px) {
+        body {
+          padding-inline: 16px;
+        }
+
+        h1 {
+          font-size: 22px;
+          line-height: 30px;
+        }
+
+        .refresh-button {
+          padding-inline: 32px 36px;
+        }
+      }
+
+      @media (max-height: 360px) {
+        body {
+          padding-block: 16px;
+        }
+
+        main {
+          gap: 24px;
+        }
+
+        .area-icon {
+          width: 72px;
+          height: 72px;
+          flex-basis: 72px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .refresh-button {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="message" aria-labelledby="page-title">
+        <svg
+          class="area-icon"
+          width="96"
+          height="96"
+          viewBox="0 0 96 96"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path
+            opacity="0.15"
+            d="M50.4844 58.7833C49.9172 54.3251 43.9897 50.2602 38.7033 48.1264C44.803 45.9927 52.391 42.4881 51.9844 35.0201C51.7134 30.0415 47.1044 26.8409 43.4446 25.4185C39.2897 23.8036 33.0117 23.1379 27.5856 25.774C20.2657 29.3303 15.7926 42.4882 4 46.7556C14.5728 50.6674 19.046 65.959 25.959 69.8708C31.898 73.2315 40.1144 72.1356 43.8515 69.8708C47.4535 67.7062 51.1711 64.1809 50.4844 58.7833Z"
+            fill="black"
+          />
+          <path
+            opacity="0.15"
+            d="M45.5156 58.7833C46.0828 54.3251 52.0103 50.2602 57.2967 48.1264C51.197 45.9927 43.609 42.4881 44.0156 35.0201C44.2866 30.0415 48.8956 26.8409 52.5554 25.4185C56.7103 23.8036 62.9883 23.1379 68.4144 25.774C75.7343 29.3303 80.2074 42.4882 92 46.7556C81.4272 50.6674 76.954 65.959 70.041 69.8708C64.102 73.2315 55.8856 72.1356 52.1485 69.8708C48.5465 67.7062 44.8289 64.1809 45.5156 58.7833Z"
+            fill="black"
+          />
+        </svg>
+        <h1 id="page-title" data-i18n="title">This service is not available in your area.</h1>
+      </section>
+
+      <a class="refresh-button" href="https://genspicy.ai/">
+        <svg
+          class="refresh-icon"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path d="M19.5 11.5C19.5 9.51088 18.7098 7.60322 17.3033 6.1967C15.8968 4.79018 13.9891 4 12 4C9.90329 4.00789 7.89081 4.82602 6.38333 6.28333L4.5 8.16667" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M4.5 4.5V8.5H8.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M4.5 11.5C4.5 13.4891 5.29018 15.3968 6.6967 16.8033C8.10322 18.2098 10.0109 19 12 19C14.0967 18.9921 16.1092 18.174 17.6167 16.7167L19.5 14.8333" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M15.5 14.5H19.5V18.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M12 10.75C12.4142 10.75 12.75 11.0858 12.75 11.5C12.75 11.9142 12.4142 12.25 12 12.25C11.5858 12.25 11.25 11.9142 11.25 11.5C11.25 11.0858 11.5858 10.75 12 10.75Z" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span data-i18n="refresh">Refresh</span>
+      </a>
+    </main>
+
+    <script>
+      (() => {
+        const messages = {
+          en: {
+            title: "This service is not available in your area.",
+            refresh: "Refresh"
+          },
+          "zh-TW": {
+            title: "此服務目前無法在您所在的地區使用。",
+            refresh: "刷新"
+          },
+          vi: {
+            title: "Dịch vụ này không khả dụng tại khu vực của bạn.",
+            refresh: "Làm mới"
+          },
+          th: {
+            title: "บริการนี้ไม่พร้อมใช้งานในพื้นที่ของคุณ",
+            refresh: "รีเฟรช"
+          },
+          ja: {
+            title: "このサービスはお住まいの地域ではご利用いただけません。",
+            refresh: "更新"
+          },
+          ko: {
+            title: "이 서비스는 현재 지역에서 이용할 수 없습니다.",
+            refresh: "새로고침"
+          },
+          es: {
+            title: "Este servicio no está disponible en tu zona.",
+            refresh: "Actualizar"
+          }
+        };
+
+        /** 浏览器语言只决定展示文案，不参与地区访问权限判断。 */
+        const normalizeLocale = (locale) => {
+          const normalized = String(locale || "").toLowerCase();
+          if (normalized.startsWith("zh")) return "zh-TW";
+          if (normalized.startsWith("vi")) return "vi";
+          if (normalized.startsWith("th")) return "th";
+          if (normalized.startsWith("ja")) return "ja";
+          if (normalized.startsWith("ko")) return "ko";
+          if (normalized.startsWith("es")) return "es";
+          return "en";
+        };
+
+        const locale = normalizeLocale(navigator.languages?.[0] || navigator.language);
+        const copy = messages[locale];
+        const root = document.documentElement;
+
+        root.lang = locale;
+        document.title = `${copy.title} | ${root.dataset.brand}`;
+
+        Object.entries(copy).forEach(([key, value]) => {
+          const element = document.querySelector(`[data-i18n="${key}"]`);
+          if (element) element.textContent = value;
+        });
+      })();
+    </script>
+  </body>
+</html>

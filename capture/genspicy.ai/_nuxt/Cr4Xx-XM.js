@@ -1,0 +1,1 @@
+const i="/api/home/generation-template-by-id";async function n(e){const t=e.id.trim();if(!t)throw new Error("id is required");return $fetch(i,{method:"GET",query:{id:t},signal:e.signal})}export{n as g};

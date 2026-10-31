@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./Bpv-3v92.js","./CIZSxn6F.js","./entry.C1z6vq29.css","./Survey.CSq6Vt3F.css"])))=>i.map(i=>d[i]);
+import{x as e,N as o,bk as t}from"./CIZSxn6F.js";async function a(){const a=e(),n=(await o(async()=>{const{default:e}=await import("./Bpv-3v92.js");return{default:e}},__vite__mapDeps([0,1,2,3]),import.meta.url)).default,s=a.open(t(n),{modelValue:!0,onClose:()=>{a.closeById(s)},onSubmit:async()=>{a.closeById(s)}},{position:"center",anchor:"fullscreen",closeOnClickOverlay:!1});return s}export{a as openSurvey};
