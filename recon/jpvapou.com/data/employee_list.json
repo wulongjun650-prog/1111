@@ -1,0 +1,102 @@
+{
+  "Code": 1,
+  "Msg": "",
+  "Data": {
+    "Total": 7,
+    "Page": 0,
+    "PageCount": 0,
+    "List": [
+      {
+        "ID": 1,
+        "Name": "Admin",
+        "Uid": "Admin",
+        "Department": 1,
+        "DepartmentName": "管理员",
+        "WareHouse": 0,
+        "WareHouseIds": null,
+        "WareHouseName": null,
+        "State": 1,
+        "CreateTime": "2025-11-12 11:25:51",
+        "ChangeState": 0
+      },
+      {
+        "ID": 6,
+        "Name": "AU1",
+        "Uid": "AU1",
+        "Department": 3,
+        "DepartmentName": "仓库",
+        "WareHouse": 1,
+        "WareHouseIds": null,
+        "WareHouseName": "AU1",
+        "State": 1,
+        "CreateTime": "2025-12-09 17:32:08",
+        "ChangeState": 0
+      },
+      {
+        "ID": 7,
+        "Name": null,
+        "Uid": null,
+        "Department": 0,
+        "DepartmentName": null,
+        "WareHouse": null,
+        "WareHouseIds": null,
+        "WareHouseName": null,
+        "State": 1,
+        "CreateTime": "2025-12-09 18:35:23",
+        "ChangeState": 0
+      },
+      {
+        "ID": 8,
+        "Name": "徐",
+        "Uid": "xu007",
+        "Department": 6,
+        "DepartmentName": "国内客服",
+        "WareHouse": 11,
+        "WareHouseIds": "1,11",
+        "WareHouseName": "AU3",
+        "State": 1,
+        "CreateTime": "2026-03-05 09:45:51",
+        "ChangeState": 0
+      },
+      {
+        "ID": 9,
+        "Name": "abc",
+        "Uid": "abc",
+        "Department": 6,
+        "DepartmentName": "国内客服",
+        "WareHouse": 1,
+        "WareHouseIds": "1,11",
+        "WareHouseName": "AU1",
+        "State": 1,
+        "CreateTime": "2026-03-06 10:53:09",
+        "ChangeState": 0
+      },
+      {
+        "ID": 14,
+        "Name": "test2",
+        "Uid": "test2",
+        "Department": 1,
+        "DepartmentName": "管理员",
+        "WareHouse": 0,
+        "WareHouseIds": null,
+        "WareHouseName": null,
+        "State": 1,
+        "CreateTime": "2026-03-24 11:39:47",
+        "ChangeState": 0
+      },
+      {
+        "ID": 19,
+        "Name": "au21212",
+        "Uid": "au21212",
+        "Department": 11,
+        "DepartmentName": "2管理账户",
+        "WareHouse": 10,
+        "WareHouseIds": null,
+        "WareHouseName": null,
+        "State": 1,
+        "CreateTime": "2026-06-05 09:41:52",
+        "ChangeState": 0
+      }
+    ]
+  }
+}
