@@ -9,6 +9,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from .account_level_copy import (
+    apply_account_settings,
+    apply_campaign_goals,
+    ensure_account_level_state,
+    read_account_level,
+    summarize_account_level,
+)
 from .ads import (
     AdCatalog,
     ad_group_list_request,
@@ -45,6 +52,7 @@ from .portable_copy import (
     portable_display_ad_request,
 )
 from .protocol import AccountPage, ProtocolRunner
+from .targeting_copy import HumanActionRequired
 
 
 SNAPSHOT_SCHEMA_VERSION = 3
@@ -55,7 +63,7 @@ SCHEMA_NOTES = {
     "custom_audiences": "replicated",
     "campaign_criteria": "replicated",
     "ad_group_criteria": "replicated",
-    "content_suitability": "not_implemented",
+    "content_suitability": "replicated",
 }
 
 
@@ -196,6 +204,9 @@ def snapshot_identity(snapshot: dict[str, Any]) -> str:
     for key in ("campaign_criteria", "ad_group_criteria", "targeting_gaps"):
         if key in snapshot:
             content[key] = snapshot.get(key) or []
+    # account_level is new. Old files omit it, so their snapshot_id stays valid.
+    if "account_level" in snapshot:
+        content["account_level"] = snapshot.get("account_level") or {}
     return _sha256_json(content)
 
 
@@ -385,6 +396,12 @@ class PortableCampaignWorkflow:
                 "size": str(len(content)),
             })
         manifest = asset_reference_manifest(ads)
+        self.log(f"[{format_cid(self.source.cid)}] 读取账号内容适宜性和联系人转化目标")
+        account_level = read_account_level(self.source.page, self.source.ocid, campaign_id)
+        self.log(
+            f"[{format_cid(self.source.cid)}] 账号："
+            f"{summarize_account_level({'account_level': account_level})}"
+        )
         snapshot: dict[str, Any] = {
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
             "created_at": datetime.now().astimezone().isoformat(),
@@ -398,6 +415,7 @@ class PortableCampaignWorkflow:
             "shared_sets": [],
             "custom_audiences": [],
             "content_suitability": None,
+            "account_level": account_level,
             "schema_notes": dict(SCHEMA_NOTES),
         }
         snapshot["snapshot_id"] = snapshot_identity(snapshot)
@@ -466,6 +484,7 @@ class PortableCampaignWorkflow:
                 or str(state.get("idempotency_key")) != idempotency_key
             ):
                 raise RuntimeError("幂等状态与当前快照或目标 CID 不匹配")
+            ensure_account_level_state(state)
             return path, state
         state = {
             "schema_version": STATE_SCHEMA_VERSION,
@@ -481,6 +500,11 @@ class PortableCampaignWorkflow:
             "created_ad_groups": {},
             "created_ads": {},
             "asset_map": [],
+            "account_exclusion_keys": [],
+            "conversion_actions_ready": [],
+            "campaign_goal_applied": False,
+            "inventory_applied": False,
+            "account_level_warnings": [],
         }
         self._write_state(path, state)
         return path, state
@@ -597,6 +621,15 @@ class PortableCampaignWorkflow:
         wrote_this_run = False
         try:
             validate_snapshot_files(snapshot)
+            ensure_account_level_state(state)
+            if snapshot.get("account_level"):
+                self.log(f"[{format_cid(self.target.cid)}] 补账号内容适宜性和联系人转化目标")
+                if apply_account_settings(
+                    self.target.page, self.target.ocid, snapshot.get("account_level"), state, self.log,
+                ):
+                    wrote_this_run = True
+                state["current_step"] = "account_level_applied"
+                self._write_state(state_path, state)
             campaign_id = str(state.get("created_campaign_id") or "")
             name = self._campaign_name(snapshot, key)
             if not campaign_id:
@@ -641,6 +674,19 @@ class PortableCampaignWorkflow:
                 ), None)
                 if not created_campaign:
                     raise RuntimeError("状态记录中的目标广告系列不存在或状态不符")
+
+            if snapshot.get("account_level"):
+                if apply_campaign_goals(
+                    self.target.page,
+                    self.target.ocid,
+                    campaign_id,
+                    snapshot.get("account_level") or {},
+                    state,
+                    self.log,
+                ):
+                    wrote_this_run = True
+                state["current_step"] = "campaign_goals_applied"
+                self._write_state(state_path, state)
 
             group_map = state["created_ad_groups"]
             for index, source_group in enumerate(snapshot["ad_groups"], 1):
@@ -812,6 +858,11 @@ class PortableCampaignWorkflow:
                 snapshot, state_path, state, verification,
                 idempotent=not wrote_this_run,
             )
+        except HumanActionRequired as exc:
+            state["status"] = "needs_human"
+            state["failure_reason"] = str(exc)
+            self._write_state(state_path, state)
+            raise
         except Exception as exc:
             state["status"] = "failed"
             state["failure_reason"] = str(exc)

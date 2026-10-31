@@ -21,6 +21,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from .account_level_copy import (
+    apply_account_settings,
+    apply_campaign_goals,
+    ensure_account_level_state,
+    read_account_level,
+    summarize_account_level,
+)
 from .ads import (
     AdCatalog,
     ad_group_list_request,
@@ -358,6 +365,12 @@ class SnapshotExporter:
             f"[{format_cid(self.source.cid)}] 定向："
             f"{summarize_targeting(targeting)}"
         )
+        self.log(f"[{format_cid(self.source.cid)}] 读取账号内容适宜性和联系人转化目标")
+        account_level = read_account_level(self.source.page, self.source.ocid, campaign_id)
+        self.log(
+            f"[{format_cid(self.source.cid)}] 账号："
+            f"{summarize_account_level({'account_level': account_level})}"
+        )
         snapshot: dict[str, Any] = {
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
             "created_at": datetime.now().astimezone().isoformat(),
@@ -374,6 +387,7 @@ class SnapshotExporter:
             "ad_group_criteria": targeting["ad_group_criteria"],
             "targeting_gaps": targeting["targeting_gaps"],
             "content_suitability": None,
+            "account_level": account_level,
             "schema_notes": dict(SCHEMA_NOTES),
         }
         snapshot["snapshot_id"] = snapshot_identity(snapshot)
@@ -481,6 +495,7 @@ class SnapshotImporter:
             state.setdefault("shared_set_map", {})
             state.setdefault("shared_sets_associated_ids", [])
             state.setdefault("audience_sync", {})
+            ensure_account_level_state(state)
             return path, state
         state = {
             "schema_version": STATE_SCHEMA_VERSION,
@@ -501,6 +516,11 @@ class SnapshotImporter:
             "audience_sync": {},
             "criterion_applied": [],
             "targeting_warnings": [],
+            "account_exclusion_keys": [],
+            "conversion_actions_ready": [],
+            "campaign_goal_applied": False,
+            "inventory_applied": False,
+            "account_level_warnings": [],
         }
         self._write_state(path, state)
         return path, state
@@ -693,6 +713,15 @@ class SnapshotImporter:
         wrote_this_run = False
         try:
             validate_snapshot_files(snapshot)
+            ensure_account_level_state(state)
+            if snapshot.get("account_level"):
+                self.log(f"[{format_cid(self.target.cid)}] 补账号内容适宜性和联系人转化目标")
+                if apply_account_settings(
+                    self.target.page, self.target.ocid, snapshot.get("account_level"), state, self.log,
+                ):
+                    wrote_this_run = True
+                state["current_step"] = "account_level_applied"
+                self._write_state(state_path, state)
             campaign_id = str(state.get("created_campaign_id") or "")
             if not campaign_id:
                 matches = [
@@ -748,6 +777,19 @@ class SnapshotImporter:
                 ), None)
                 if not created_campaign:
                     raise RuntimeError("状态记录中的目标广告系列不存在或状态不符")
+
+            if snapshot.get("account_level"):
+                if apply_campaign_goals(
+                    self.target.page,
+                    self.target.ocid,
+                    campaign_id,
+                    snapshot.get("account_level") or {},
+                    state,
+                    self.log,
+                ):
+                    wrote_this_run = True
+                state["current_step"] = "campaign_goals_applied"
+                self._write_state(state_path, state)
 
             group_map = state["created_ad_groups"]
             for index, source_group in enumerate(snapshot["ad_groups"], 1):
@@ -1172,6 +1214,7 @@ class SnapshotImporter:
             "shared_set_map": dict(state.get("shared_set_map", {})),
             "audience_sync": dict(state.get("audience_sync", {})),
             "targeting_warnings": list(state.get("targeting_warnings") or []),
+            "account_level_warnings": list(state.get("account_level_warnings") or []),
             "post_read_verified": verification["ok"],
             "verification": verification,
             "rebuild_strategy": "local_portable_snapshot",

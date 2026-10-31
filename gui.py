@@ -152,6 +152,7 @@ from .snapshot_copy import (
     batch_recreate,
     compose_campaign_name,
 )
+from .account_level_copy import summarize_account_level
 from .targeting_copy import summarize_targeting
 from .warmup import (
     DEFAULT_DAILY_BUDGET,
@@ -11784,10 +11785,12 @@ class GGAdsApp(tk.Tk):
                 f"\n还有 {len(gaps)} 条定向没识别，导入时不会带上。"
                 if gaps else ""
             )
+            account_line = summarize_account_level(result)
+            account_text = f"\n账号：{account_line}" if account_line else ""
             messagebox.showinfo(
                 "导出成功",
                 f"快照已保存到：\n{result.get('snapshot_path')}"
-                f"\n定向：{summarize_targeting(result)}{gap_line}",
+                f"\n定向：{summarize_targeting(result)}{gap_line}{account_text}",
             )
 
         self._run_async("导出快照", task, success)
@@ -12066,6 +12069,8 @@ class GGAdsApp(tk.Tk):
                     if item.get("next_step"):
                         lines.append(f"{label}：{item['next_step']}")
                     for warning in item.get("targeting_warnings") or []:
+                        lines.append(f"{label}：{warning}")
+                    for warning in item.get("account_level_warnings") or []:
                         lines.append(f"{label}：{warning}")
                 elif item.get("error"):
                     lines.append(f"{label}：{item['error']}")
