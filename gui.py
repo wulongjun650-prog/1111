@@ -11631,14 +11631,14 @@ class GGAdsApp(tk.Tk):
 
     def _user_confirmed_continue_copy(self) -> None:
         user_confirmation.confirm()
-        self._log("已记下：用户已确认。正在继续建广告，不用再改预算。")
+        self._log("已记下：用户已确认。请在比特窗口新开的验证标签里摸密钥。")
         if self.running:
             return
         self._entity_copy_execute(already_confirmed=True)
 
     def _user_confirmed_continue_import(self) -> None:
         user_confirmation.confirm()
-        self._log("已记下：用户已确认。正在继续建广告，不用再改预算。")
+        self._log("已记下：用户已确认。请在比特窗口新开的验证标签里摸密钥。")
         if self.running:
             return
         self._snap_import_execute(already_confirmed=True)
@@ -11658,8 +11658,8 @@ class GGAdsApp(tk.Tk):
         kind_label = self.copy_kind.get()
         if already_confirmed:
             prompt = (
-                "你已经在网页上确认过。软件会接着建广告，系列和广告组不重来。\n"
-                "不用再改预算。确定继续？"
+                "软件会在比特窗口打开 Google 的验证页。请在那里摸密钥。\n"
+                "系列和广告组不重来。不用改预算。确定继续？"
             )
             if not messagebox.askyesno("继续建广告", prompt):
                 user_confirmation.clear()
@@ -12032,8 +12032,8 @@ class GGAdsApp(tk.Tk):
         )
         if already_confirmed:
             prompt = (
-                "你已经在网页上确认过。软件会接着建广告，系列和广告组不重来。\n"
-                "不用再改预算。确定继续？"
+                "软件会在比特窗口打开 Google 的验证页。请在那里摸密钥。\n"
+                "系列和广告组不重来。不用改预算。确定继续？"
             )
             if not messagebox.askyesno("继续建广告", prompt):
                 user_confirmation.clear()

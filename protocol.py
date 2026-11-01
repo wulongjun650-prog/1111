@@ -840,6 +840,131 @@ def _open_sibling_watchers(page: Any) -> list[Any]:
     return opened
 
 
+def security_key_page_url() -> str:
+    """Google's own signed-in reauth page. It is what asks for the security key."""
+    continue_to = "https://ads.google.com/aw/overview"
+    return (
+        "https://accounts.google.com/account/reauth?hl=zh-CN&authuser=0&continue="
+        + urllib.parse.quote(continue_to, safe="")
+    )
+
+
+def rapt_from_location(url: str) -> str:
+    parsed = urllib.parse.urlsplit(str(url or ""))
+    bags = (
+        urllib.parse.parse_qs(parsed.query),
+        urllib.parse.parse_qs(parsed.fragment),
+    )
+    for bag in bags:
+        for key in ("rapt", "reauth"):
+            values = bag.get(key) or []
+            token = str(values[0] or "").strip() if values else ""
+            if len(token) >= 20 and "AUTH_ERROR" not in token:
+                return token
+    return ""
+
+
+def _http_location(page: Any) -> str:
+    try:
+        value = page.evaluate("window.location.href", timeout=8)
+    except Exception:
+        return ""
+    text = str(value or "").strip()
+    if text.startswith("http://") or text.startswith("https://"):
+        return text
+    return ""
+
+
+def open_security_key_window(page: Any) -> Any | None:
+    """Open the verify-it's-you tab in the same browser and attach to it."""
+    url = security_key_page_url()
+    http = str(getattr(page, "browser_http", "") or "")
+    if http:
+        try:
+            target = open_cdp_target(http, url)
+            popup = CDPPage(target)
+            try:
+                ensure_page_url(popup, url, timeout=20)
+            except Exception:
+                pass
+            try:
+                popup.command("Network.enable", {})
+            except Exception:
+                pass
+            return popup
+        except Exception:
+            pass
+        try:
+            page.evaluate(
+                "window.open(" + json.dumps(url) + ", 'ggads_reauth', 'width=520,height=720')"
+            )
+        except Exception:
+            return None
+        try:
+            for target in _list_auth_pages(http):
+                location = str(target.get("url") or "")
+                if "accounts.google.com" in location and "reauth" in location:
+                    popup = CDPPage(target)
+                    try:
+                        popup.command("Network.enable", {})
+                    except Exception:
+                        pass
+                    return popup
+        except Exception:
+            return None
+    try:
+        page.evaluate(
+            "window.open(" + json.dumps(url) + ", 'ggads_reauth', 'width=520,height=720')"
+        )
+    except Exception:
+        return None
+    return None
+
+
+def wait_for_security_key(
+    page: Any,
+    *,
+    timeout: float = 180.0,
+    pause: Callable[[float], None] | None = None,
+) -> tuple[str, str]:
+    """Open Google's verify page and wait for a real rapt from that window.
+
+    A budget save or the black verification line is not a key result.
+    """
+    try:
+        page.command("Network.enable", {})
+    except Exception:
+        pass
+    popup = open_security_key_window(page)
+    sleeper = pause or time.sleep
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    try:
+        while True:
+            user_confirmation.consume()
+            watchers = (page, popup) if popup is not None else (page,)
+            for watcher in watchers:
+                try:
+                    events = watcher.drain_events("Network.")
+                except Exception:
+                    events = []
+                for event in events:
+                    name, value = proof_from_event(event)
+                    if name and value:
+                        return name, value
+                token = rapt_from_location(_http_location(watcher))
+                if token:
+                    return "X-Goog-First-Party-Reauth", token
+            if time.monotonic() >= deadline:
+                return "", ""
+            sleeper(0.4)
+    finally:
+        if popup is not None:
+            try:
+                popup.close()
+            except Exception:
+                pass
+
+
 def clear_reauth_headers(page: Any) -> bool:
     """Drop a proof already attached to this page so the next ad write is clean."""
     headers = getattr(page, "extra_headers", None)

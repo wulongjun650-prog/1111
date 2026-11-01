@@ -17,10 +17,11 @@ from .portable_copy import (
 )
 from .protocol import (
     capture_reauth_header,
-    clear_reauth_headers,
+    rapt_from_location,
     reauth_header_from_event,
     rpc_http_failure,
     rpc_rejected_message,
+    security_key_page_url,
     user_saved_on_page,
 )
 from .targeting_copy import HumanActionRequired, human_gate_for_error
@@ -374,6 +375,15 @@ class ReauthCaptureTest(unittest.TestCase):
         })
         self.assertEqual((name, value), ("X-Goog-First-Party-Reauth", "from-url"))
 
+    def test_rapt_in_the_verify_page_address_is_kept(self) -> None:
+        token = "real-rapt-from-the-key-window"
+        self.assertEqual(
+            rapt_from_location(f"https://ads.google.com/aw/overview?rapt={token}"),
+            token,
+        )
+        self.assertEqual(rapt_from_location("https://ads.google.com/aw/overview"), "")
+        self.assertIn("accounts.google.com/account/reauth", security_key_page_url())
+
     def test_xsrf_alone_is_not_a_reauth_token(self) -> None:
         self.assertEqual(reauth_header_from_event({
             "params": {"request": {"headers": {"X-Framework-Xsrf-Token": "abc:1"}}},
@@ -441,8 +451,8 @@ class ReauthCaptureTest(unittest.TestCase):
         self.assertTrue(submitted)
         self.assertEqual(submits, [1, 1])
         self.assertEqual(page.extra_headers, {"X-Goog-First-Party-Reauth": "tok"})
-        self.assertTrue(any("身份验证" in line for line in logs))
-        self.assertTrue(any("正在把广告建上" in line for line in logs))
+        self.assertTrue(any("密钥" in line for line in logs))
+        self.assertTrue(any("正在建广告" in line for line in logs))
 
     def test_wait_ends_when_the_page_never_sends_a_token(self) -> None:
         class Page:
@@ -504,22 +514,24 @@ class ReauthCaptureTest(unittest.TestCase):
                 return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
             return {}
 
-        ad, submitted = place_ad_letting_user_unlock(
-            Page(),
-            account="110-669-3913",
-            log=lambda _text: None,
-            read_ads=lambda: [{"ad_id": "9", "ad_group_id": "g", "status_raw": 2}] if len(submits) > 1 else [],
-            submit=submit,
-            poll_new_ad=lambda _known: {"ad_id": "9", "ad_group_id": "g", "status_raw": 2},
-            group_id="g",
-            expected_status=2,
-            reserved_ids=set(),
-            gate_for_error=lambda error: human_gate_for_error("新建广告", error),
-            pause=lambda _seconds: None,
-        )
-        self.assertEqual(ad["ad_id"], "9")
-        self.assertTrue(submitted)
-        self.assertEqual(submits, [1, 1])
+        with self.assertRaises(HumanActionRequired) as caught:
+            place_ad_letting_user_unlock(
+                Page(),
+                account="110-669-3913",
+                log=lambda _text: None,
+                read_ads=lambda: [],
+                submit=submit,
+                poll_new_ad=lambda _known: {},
+                group_id="g",
+                expected_status=2,
+                reserved_ids=set(),
+                gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+                pause=lambda _seconds: None,
+                reauth_timeout=0,
+            )
+        self.assertEqual(submits, [1])
+        self.assertIn("广告没有建", str(caught.exception))
+        self.assertIn("预算不用改", str(caught.exception))
 
     def test_black_verification_line_is_enough(self) -> None:
         class Page:
@@ -543,20 +555,23 @@ class ReauthCaptureTest(unittest.TestCase):
                 return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
             return {}
 
-        ad, _submitted = place_ad_letting_user_unlock(
-            Page(),
-            account="110-669-3913",
-            log=lambda _text: None,
-            read_ads=lambda: [{"ad_id": "8", "ad_group_id": "g", "status_raw": 2}] if len(submits) > 1 else [],
-            submit=submit,
-            poll_new_ad=lambda _known: {"ad_id": "8", "ad_group_id": "g", "status_raw": 2},
-            group_id="g",
-            expected_status=2,
-            reserved_ids=set(),
-            gate_for_error=lambda error: human_gate_for_error("新建广告", error),
-            pause=lambda _seconds: None,
-        )
-        self.assertEqual(ad["ad_id"], "8")
+        with self.assertRaises(HumanActionRequired) as caught:
+            place_ad_letting_user_unlock(
+                Page(),
+                account="110-669-3913",
+                log=lambda _text: None,
+                read_ads=lambda: [],
+                submit=submit,
+                poll_new_ad=lambda _known: {},
+                group_id="g",
+                expected_status=2,
+                reserved_ids=set(),
+                gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+                pause=lambda _seconds: None,
+                reauth_timeout=0,
+            )
+        self.assertEqual(submits, [1])
+        self.assertIn("验证页", str(caught.exception))
 
     def test_a_stale_verification_line_does_not_ask_for_another_save(self) -> None:
         class Page:
@@ -600,11 +615,11 @@ class ReauthCaptureTest(unittest.TestCase):
                 pause=lambda _seconds: None,
                 reauth_timeout=0.05,
             )
-        self.assertEqual(submits, [1, 1])
-        self.assertEqual(sum("正在把广告建上" in line for line in logs), 1)
-        self.assertTrue(any("不用再改预算" in line for line in logs))
+        self.assertEqual(submits, [1])
+        self.assertFalse(any("正在建广告" in line for line in logs))
         self.assertNotIn("再改一次", " ".join(logs))
-        self.assertIn("不用再改预算", str(caught.exception))
+        self.assertIn("广告没有建", str(caught.exception))
+        self.assertIn("预算不用改", str(caught.exception))
 
     def _reauth_page(self):
         class Page:
@@ -646,29 +661,7 @@ class ReauthCaptureTest(unittest.TestCase):
             reauth_timeout=0,
         )
 
-    def test_a_saved_confirmation_creates_the_ad_without_waiting(self) -> None:
-        user_confirmation.confirm()
-        page = self._reauth_page()
-        logs: list[str] = []
-        submits: list[int] = []
-
-        def submit() -> dict:
-            if submit.calls == 0:
-                submit.calls += 1
-                return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
-            submit.calls += 1
-            return {}
-
-        submit.calls = 0
-        ad, _submitted = self._place(page, submit, logs, submits)
-        self.assertEqual(ad["ad_id"], "9")
-        self.assertEqual(submits, [1, 1])
-        self.assertTrue(any("你已确认" in line for line in logs))
-        self.assertFalse(any("软件正在等" in line for line in logs))
-        self.assertEqual(page.commands, [])
-        self.assertFalse(user_confirmation.is_set())
-
-    def test_a_saved_confirmation_stops_after_one_rejected_ad(self) -> None:
+    def test_a_saved_confirmation_does_not_submit_without_the_key(self) -> None:
         user_confirmation.confirm()
         logs: list[str] = []
         submits: list[int] = []
@@ -679,14 +672,11 @@ class ReauthCaptureTest(unittest.TestCase):
                 logs,
                 submits,
             )
-        self.assertEqual(submits, [1, 1])
-        self.assertIn("没有弹出密钥", str(caught.exception))
-        self.assertIn("系列和广告组还在", str(caught.exception))
-        self.assertNotIn("摸一下密钥", str(caught.exception))
+        self.assertEqual(submits, [1])
+        self.assertIn("验证页", str(caught.exception))
+        self.assertIn("广告没有建", str(caught.exception))
         self.assertNotIn("再改一次", str(caught.exception))
-        self.assertNotIn("3 分钟", str(caught.exception))
-        self.assertFalse(any("软件正在等" in line for line in logs))
-        self.assertFalse(user_confirmation.is_set())
+        self.assertTrue(any("摸密钥" in line for line in logs))
 
     def test_the_confirm_button_during_the_wait_submits_once(self) -> None:
         page = self._reauth_page()
@@ -698,28 +688,25 @@ class ReauthCaptureTest(unittest.TestCase):
 
         def submit() -> dict:
             submits.append(1)
-            if len(submits) == 1:
-                return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
-            return {}
+            return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
 
-        ad, _submitted = place_ad_letting_user_unlock(
-            page,
-            account="110-669-3913",
-            log=logs.append,
-            read_ads=lambda: [{"ad_id": "9", "ad_group_id": "g", "status_raw": 2}] if len(submits) > 1 else [],
-            submit=submit,
-            poll_new_ad=lambda _known: {"ad_id": "9", "ad_group_id": "g", "status_raw": 2},
-            group_id="g",
-            expected_status=2,
-            reserved_ids=set(),
-            gate_for_error=lambda error: human_gate_for_error("新建广告", error),
-            pause=pause,
-            reauth_timeout=5,
-        )
-        self.assertEqual(ad["ad_id"], "9")
-        self.assertEqual(submits, [1, 1])
-        self.assertTrue(any("你已确认" in line for line in logs))
-        self.assertFalse(user_confirmation.is_set())
+        with self.assertRaises(HumanActionRequired) as caught:
+            place_ad_letting_user_unlock(
+                page,
+                account="110-669-3913",
+                log=logs.append,
+                read_ads=lambda: [],
+                submit=submit,
+                poll_new_ad=lambda _known: {},
+                group_id="g",
+                expected_status=2,
+                reserved_ids=set(),
+                gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+                pause=pause,
+                reauth_timeout=0,
+            )
+        self.assertEqual(submits, [1])
+        self.assertIn("广告没有建", str(caught.exception))
 
     def test_confirming_again_during_a_rejected_retry_does_not_loop(self) -> None:
         logs: list[str] = []
@@ -745,11 +732,10 @@ class ReauthCaptureTest(unittest.TestCase):
                 reserved_ids=set(),
                 gate_for_error=lambda error: human_gate_for_error("新建广告", error),
                 pause=pause,
-                reauth_timeout=5,
+                reauth_timeout=0,
             )
-        self.assertEqual(submits, [1, 1])
-        self.assertIn("没有弹出密钥", str(caught.exception))
-        self.assertNotIn("摸一下密钥", str(caught.exception))
+        self.assertEqual(submits, [1])
+        self.assertIn("广告没有建", str(caught.exception))
         self.assertNotIn("再改一次", " ".join(logs) + str(caught.exception))
 
     def test_a_finished_ad_forgets_a_stale_confirmation(self) -> None:
@@ -774,23 +760,34 @@ class ReauthCaptureTest(unittest.TestCase):
         self.assertEqual(submits, [])
         self.assertFalse(user_confirmation.is_set())
 
-    def test_confirm_drops_the_invalid_token_before_creating_the_ad(self) -> None:
-        user_confirmation.confirm()
-        page = self._reauth_page()
-        page.extra_headers["X-Goog-First-Party-Reauth"] = "scraped-not-a-real-rapt-token"
-        logs: list[str] = []
+    def test_a_real_key_replaces_the_invalid_token(self) -> None:
+        class Page:
+            def __init__(self) -> None:
+                self.extra_headers = {"X-Goog-First-Party-Reauth": "scraped-not-a-real-rapt-token"}
+
+            def command(self, method: str, params: dict | None = None, timeout: float = 15) -> dict:
+                return {}
+
+            def drain_events(self, prefix: str = "") -> list:
+                return [{
+                    "params": {"request": {"headers": {
+                        "X-Goog-First-Party-Reauth": "real-rapt-from-the-key-window",
+                    }}},
+                }]
+
+        page = Page()
         seen: list[dict[str, str]] = []
 
         def submit() -> dict:
             seen.append(dict(page.extra_headers))
-            if seen[-1].get("X-Goog-First-Party-Reauth"):
+            if seen[-1].get("X-Goog-First-Party-Reauth") != "real-rapt-from-the-key-window":
                 return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_INVALID"]}}
             return {}
 
         ad, _submitted = place_ad_letting_user_unlock(
             page,
             account="110-669-3913",
-            log=logs.append,
+            log=lambda _text: None,
             read_ads=lambda: [{"ad_id": "9", "ad_group_id": "g", "status_raw": 2}] if len(seen) > 1 else [],
             submit=submit,
             poll_new_ad=lambda _known: {"ad_id": "9", "ad_group_id": "g", "status_raw": 2},
@@ -799,13 +796,10 @@ class ReauthCaptureTest(unittest.TestCase):
             reserved_ids=set(),
             gate_for_error=lambda error: human_gate_for_error("新建广告", error),
             pause=lambda _seconds: None,
-            reauth_timeout=0,
         )
         self.assertEqual(ad["ad_id"], "9")
         self.assertEqual(seen[0].get("X-Goog-First-Party-Reauth"), "scraped-not-a-real-rapt-token")
-        self.assertNotIn("X-Goog-First-Party-Reauth", seen[1])
-        self.assertTrue(any("已经丢掉" in line for line in logs))
-        self.assertFalse(clear_reauth_headers(page))
+        self.assertEqual(seen[1].get("X-Goog-First-Party-Reauth"), "real-rapt-from-the-key-window")
 
     def test_the_black_line_does_not_attach_text_from_the_page(self) -> None:
         class Page:
@@ -830,21 +824,23 @@ class ReauthCaptureTest(unittest.TestCase):
                 return {"5": {"2": ["AUTH_ERROR_REAUTH_PROOF_TOKEN_REQUIRED"]}}
             return {}
 
-        ad, _submitted = place_ad_letting_user_unlock(
-            page,
-            account="110-669-3913",
-            log=lambda _text: None,
-            read_ads=lambda: [{"ad_id": "8", "ad_group_id": "g", "status_raw": 2}] if len(submits) > 1 else [],
-            submit=submit,
-            poll_new_ad=lambda _known: {"ad_id": "8", "ad_group_id": "g", "status_raw": 2},
-            group_id="g",
-            expected_status=2,
-            reserved_ids=set(),
-            gate_for_error=lambda error: human_gate_for_error("新建广告", error),
-            pause=lambda _seconds: None,
-        )
-        self.assertEqual(ad["ad_id"], "8")
-        self.assertEqual(submits, [{}, {}])
+        with self.assertRaises(HumanActionRequired):
+            place_ad_letting_user_unlock(
+                page,
+                account="110-669-3913",
+                log=lambda _text: None,
+                read_ads=lambda: [],
+                submit=submit,
+                poll_new_ad=lambda _known: {},
+                group_id="g",
+                expected_status=2,
+                reserved_ids=set(),
+                gate_for_error=lambda error: human_gate_for_error("新建广告", error),
+                pause=lambda _seconds: None,
+                reauth_timeout=0,
+            )
+        self.assertEqual(submits, [{}])
+        self.assertEqual(page.extra_headers, {})
 
 
 if __name__ == "__main__":
