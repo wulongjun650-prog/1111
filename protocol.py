@@ -4,6 +4,7 @@ import json
 import re
 import time
 import urllib.parse
+import urllib.request
 from datetime import date, datetime, timezone
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -30,6 +31,7 @@ from .config import (
     strip_content_comments,
 )
 from .reporting import ReportPeriod, coerce_report_period, protocol_day
+from .user_confirm import user_confirmation
 from .protocol_catalog import (
     CAMPAIGN_LIST_PATH,
     CAMPAIGN_STATUS_ENABLED,
@@ -218,7 +220,129 @@ def _json_response(text: str) -> Any:
     try:
         return json.loads(value)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Google Ads 返回的不是有效 JSON: {value[:300]}") from exc
+        snippet = value[:300] + ("…" if len(value) > 300 else "")
+        raise RuntimeError(f"Google Ads 返回的不是有效 JSON: {snippet}") from exc
+
+
+_ERROR_PREFIXES = (
+    ("AUTH_ERROR_REAUTH_PROOF_TOKEN_INVALID", "网页上没有弹出密钥，这条验证无效"),
+    ("AUTH_ERROR_REAUTH", "需要你在网页上摸一下密钥"),
+    ("AUTH_ERROR", "登录状态失效，需要重新确认"),
+    ("UNPHISHABLE", "落地页需要你本人确认"),
+    ("MUTATE_ERROR_RESOURCE_NOT_FOUND", "要改的对象不存在"),
+    ("MUTATE_ERROR_RESOURCE_ALREADY_EXISTS", "同样的对象已经存在"),
+    ("MUTATE_ERROR", "写入被拒绝"),
+    ("FIELD_ERROR", "有一项字段不合法"),
+    ("POLICY_ERROR", "被广告政策拦住"),
+    ("STRING_ERROR", "文字不符合要求"),
+    ("CRITERION_ERROR", "定向条件不合法"),
+    ("BUDGET_ERROR", "预算有问题"),
+    ("BIDDING_ERROR", "出价有问题"),
+    ("INTERNAL_ERROR", "Google 这边内部出错"),
+    ("QUOTA_ERROR", "请求太频繁"),
+    ("AUTHORIZATION_ERROR", "没有权限做这一步"),
+    ("DATABASE_ERROR", "Google 这边暂时写不进去"),
+)
+
+_HTTP_STATUS_NOTE = {
+    0: "没有连上页面",
+    400: "请求格式被拒绝",
+    401: "登录失效",
+    403: "没有权限",
+    404: "这个接口不存在",
+    408: "请求超时",
+    429: "请求太频繁",
+    500: "Google 服务器出错",
+    502: "Google 网关出错",
+    503: "Google 暂时不可用",
+}
+
+
+def gloss_protocol_code(code: str) -> str:
+    """Keep the raw code and put a short Chinese meaning in front of it."""
+    text = str(code or "").strip()
+    if not text:
+        return ""
+    for prefix, meaning in _ERROR_PREFIXES:
+        if prefix in text:
+            return text if meaning in text else f"{meaning}（{text}）"
+    return text
+
+
+def _looks_like_protocol_code(value: str) -> bool:
+    text = str(value or "").strip()
+    return bool(text) and "_" in text and text.upper() == text and len(text) < 160
+
+
+def format_protocol_error_item(item: Any) -> str:
+    if isinstance(item, str):
+        return gloss_protocol_code(item)
+    if isinstance(item, dict):
+        bits: list[str] = []
+        for key in ("1", "3", "4", "13", "2"):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                bit = value.strip()
+                bits.append(gloss_protocol_code(bit) if _looks_like_protocol_code(bit) else bit)
+            elif isinstance(value, dict):
+                for nested in value.values():
+                    if isinstance(nested, str) and nested.strip():
+                        bits.append(gloss_protocol_code(nested.strip()))
+        unique: list[str] = []
+        for bit in bits:
+            if bit and bit not in unique:
+                unique.append(bit)
+        if unique:
+            return "，".join(unique[:4])
+        raw = _compact(item)
+        return raw[:300] + ("…" if len(raw) > 300 else "")
+    if item is None:
+        return ""
+    return str(item)[:200]
+
+
+def format_protocol_errors(items: list[Any]) -> str:
+    shown: list[str] = []
+    for item in items[:5]:
+        text = format_protocol_error_item(item)
+        if text and text not in shown:
+            shown.append(text)
+    return "；".join(shown)
+
+
+def rpc_http_failure(path: str, status: Any, body: str) -> str:
+    try:
+        code = int(status or 0)
+    except (TypeError, ValueError):
+        code = 0
+    note = _HTTP_STATUS_NOTE.get(code, "")
+    head = f"{path} 返回 HTTP {status}"
+    if note:
+        head += f"（{note}）"
+    text = str(body or "").strip().replace("\r", " ").replace("\n", " ")
+    if text.startswith("<") or "DOCTYPE" in text[:80].upper():
+        text = "页面返回的不是广告数据，多半是登录掉了，或代理打不开"
+    elif len(text) > 400:
+        text = text[:400] + "…"
+    if text:
+        head += f"：{text}"
+    return head
+
+
+def rpc_rejected_message(path: str, payload: dict[str, Any]) -> str:
+    items: list[Any] = []
+    scope = payload.get("5")
+    if isinstance(scope, dict) and isinstance(scope.get("2"), list):
+        items.extend(scope.get("2") or [])
+    if payload.get("error"):
+        items.append(payload.get("error"))
+    shown = format_protocol_errors(items)
+    if shown:
+        return f"{path} 被拒绝：{shown}"
+    raw = _compact(payload)
+    if len(raw) > 500:
+        raw = raw[:500] + "…"
+    return f"{path} 被拒绝：{raw}"
 
 
 _MONEY_RE = re.compile(
@@ -397,12 +521,22 @@ def extract_billing_balance(payload: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _browser_http(ws_url: str) -> str:
+    parsed = urllib.parse.urlsplit(str(ws_url or "").replace("ws://", "http://", 1).replace("wss://", "https://", 1))
+    if not parsed.hostname or not parsed.port:
+        return ""
+    return f"http://{parsed.hostname}:{parsed.port}"
+
+
 class CDPPage:
     def __init__(self, target: dict):
         self.url = str(target.get("url") or "")
+        self.ws_url = str(target.get("webSocketDebuggerUrl") or "")
+        self.browser_http = _browser_http(self.ws_url)
         self.ws = ws_connect(target["webSocketDebuggerUrl"], max_size=None, open_timeout=15)
         self.counter = 0
         self.pending_events: list[dict] = []
+        self.extra_headers: dict[str, str] = {}
 
     def close(self) -> None:
         try:
@@ -495,32 +629,68 @@ class CDPPage:
             session["__lu"] = query["euid"][0]
         js = """
         (async (args) => {
-          let source = document.documentElement.outerHTML;
-          for (const script of document.scripts) source += script.textContent || '';
-          const match = source.match(/AA[A-Za-z0-9_\\-]{18,}:\\d{13}/);
-          if (!match) return JSON.stringify({status: 0, error: '页面中未找到 XSRF 令牌'});
+          const readToken = () => {
+            try {
+              const wiz = window.WIZ_global_data && window.WIZ_global_data.SNlM0e;
+              if (typeof wiz === 'string' && wiz.indexOf(':') > 0) return wiz;
+            } catch (e) {}
+            let source = '';
+            try { source = document.documentElement.outerHTML || ''; } catch (e) {}
+            for (const script of document.scripts) source += script.textContent || '';
+            const patterns = [
+              /SNlM0e["']?\\s*[:=]\\s*["']([A-Za-z0-9_\\-]{8,}:\\d{10,})["']/,
+              /(A[A-Za-z0-9_\\-]{18,}:\\d{13})/
+            ];
+            for (const pattern of patterns) {
+              const found = source.match(pattern);
+              if (found) return found[1];
+            }
+            return '';
+          };
+          const token = readToken();
+          if (!token) return JSON.stringify({status: 0, error: '页面中未找到 XSRF 令牌'});
           const form = new URLSearchParams(args.session);
           form.set('__ar', args.ar);
+          const headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Same-Domain': '1',
+            'X-Framework-Xsrf-Token': token,
+            'X-GGAds-Copy': '1'
+          };
+          const extra = args.extraHeaders || {};
+          for (const key of Object.keys(extra)) {
+            if (extra[key]) headers[key] = String(extra[key]);
+          }
+          if (headers['X-Goog-First-Party-Reauth']) {
+            form.set('rapt', headers['X-Goog-First-Party-Reauth']);
+          }
           const response = await fetch(args.path + '?authuser=0&xt=awn', {
             method: 'POST', credentials: 'include',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'X-Same-Domain': '1',
-              'X-Framework-Xsrf-Token': match[0]
-            },
+            headers,
             body: form.toString()
           });
           return JSON.stringify({status: response.status, text: await response.text()});
         })
         """
-        arg = _compact({"path": path, "session": session, "ar": _compact(request)})
+        extra_headers = {
+            str(key): str(value)
+            for key, value in self.extra_headers.items()
+            if str(key).strip() and str(value).strip()
+        }
+        arg = _compact({
+            "path": path,
+            "session": session,
+            "ar": _compact(request),
+            "extraHeaders": extra_headers,
+        })
         raw = self.evaluate(f"({js})({_compact(json.loads(arg))})", timeout=timeout)
         envelope = json.loads(raw)
         if envelope.get("status") != 200:
-            raise RuntimeError(
-                f"RPC {path} 失败，HTTP {envelope.get('status')}: "
-                f"{envelope.get('error') or envelope.get('text', '')[:500]}"
-            )
+            raise RuntimeError(rpc_http_failure(
+                path,
+                envelope.get("status"),
+                str(envelope.get("error") or envelope.get("text") or ""),
+            ))
         payload = _json_response(envelope.get("text") or "")
         if isinstance(payload, dict):
             # List responses legitimately use payload["2"]["2"] for projection
@@ -529,9 +699,358 @@ class CDPPage:
             service_scope = payload.get("5")
             server_errors = service_scope.get("2") if isinstance(service_scope, dict) else None
             if payload.get("error") or server_errors:
-                message = _compact(payload)
-                raise RuntimeError(f"Google Ads RPC 拒绝请求: {message[:800]}")
+                raise RuntimeError(rpc_rejected_message(path, payload))
         return payload
+
+
+_REAUTH_HEADER_MARKERS = ("reauth", "rapt", "proof-token", "prooftoken")
+
+
+def _event_request(event: dict[str, Any]) -> tuple[dict[str, str], str, str]:
+    params = event.get("params") if isinstance(event, dict) else None
+    if not isinstance(params, dict):
+        return {}, "", ""
+    request = params.get("request") if isinstance(params.get("request"), dict) else {}
+    headers: dict[str, str] = {}
+    for source in (request.get("headers"), params.get("headers")):
+        if isinstance(source, dict):
+            for key, value in source.items():
+                headers[str(key)] = str(value or "")
+    url = str(request.get("url") or params.get("url") or "")
+    method = str(request.get("method") or params.get("method") or "").upper()
+    return headers, url, method
+
+
+def _is_our_request(headers: dict[str, str]) -> bool:
+    return any(str(key).lower() == "x-ggads-copy" for key in headers)
+
+
+def reauth_header_from_event(event: dict[str, Any]) -> tuple[str, str]:
+    """Return the reauth header from a CDP network event, if the page sent one."""
+    headers, url, _method = _event_request(event)
+    if not headers and not url:
+        return "", ""
+    if _is_our_request(headers):
+        return "", ""
+    for key, value in headers.items():
+        name = str(key or "").strip()
+        lowered = name.lower().replace("_", "-")
+        if not any(marker in lowered for marker in _REAUTH_HEADER_MARKERS):
+            continue
+        text = str(value or "").strip()
+        if text and text.lower() not in {"0", "1", "true", "false"}:
+            return name, text
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+    for key in ("rapt", "reauth"):
+        values = query.get(key) or []
+        token = str(values[0] or "").strip() if values else ""
+        if token:
+            return "X-Goog-First-Party-Reauth", token
+    return "", ""
+
+
+_PROOF_IN_BODY = re.compile(
+    r"(?:rapt|proofToken|encodedProofOfReauthToken|X-Goog-First-Party-Reauth)"
+    r"[\s\"'=:>]+([A-Za-z0-9_\-\.]{20,})",
+    re.I,
+)
+
+
+def _event_body(event: dict[str, Any]) -> str:
+    params = event.get("params") if isinstance(event, dict) else None
+    if not isinstance(params, dict):
+        return ""
+    request = params.get("request") if isinstance(params.get("request"), dict) else {}
+    return str(request.get("postData") or params.get("postData") or "")
+
+
+def proof_from_event(event: dict[str, Any]) -> tuple[str, str]:
+    """Header or request body value that carries a reauth proof."""
+    name, value = reauth_header_from_event(event)
+    if name:
+        return name, value
+    headers, _url, _method = _event_request(event)
+    if _is_our_request(headers):
+        return "", ""
+    match = _PROOF_IN_BODY.search(_event_body(event))
+    if match:
+        return "X-Goog-First-Party-Reauth", match.group(1)
+    return "", ""
+
+
+def user_saved_on_page(event: dict[str, Any]) -> bool:
+    """A budget save or account reauth in the Ads tab, not background batch traffic."""
+    headers, url, method = _event_request(event)
+    if not url or _is_our_request(headers):
+        return False
+    parsed = urllib.parse.urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    path = (parsed.path or "").lower()
+    if host == "accounts.google.com" and any(bit in path for bit in ("reauth", "challenge")):
+        return True
+    return host == "ads.google.com" and method == "POST" and "budget" in path and "mutate" in path
+
+
+def page_shows_verification(page: Any) -> bool:
+    try:
+        value = page.evaluate(
+            "(() => { const text = document.body ? document.body.innerText : ''; "
+            "const tail = text.slice(-12000); "
+            "return tail.indexOf('完成身份验证') >= 0 || tail.indexOf('您现在可以继续操作') >= 0; })()"
+        )
+    except Exception:
+        return False
+    return bool(value)
+
+
+def _list_auth_pages(http_base: str) -> list[dict[str, Any]]:
+    if not http_base:
+        return []
+    with urllib.request.urlopen(http_base.rstrip("/") + "/json/list", timeout=3) as response:  # noqa: S310
+        targets = json.loads(response.read().decode("utf-8", "replace"))
+    pages: list[dict[str, Any]] = []
+    for target in targets if isinstance(targets, list) else []:
+        if target.get("type") != "page" or not target.get("webSocketDebuggerUrl"):
+            continue
+        host = (urllib.parse.urlsplit(str(target.get("url") or "")).hostname or "").lower()
+        if host in {"ads.google.com", "accounts.google.com"}:
+            pages.append(target)
+    return pages
+
+
+def _open_sibling_watchers(page: Any) -> list[Any]:
+    http_base = str(getattr(page, "browser_http", "") or "")
+    own = str(getattr(page, "ws_url", "") or "")
+    if not http_base:
+        return []
+    try:
+        targets = _list_auth_pages(http_base)
+    except Exception:
+        return []
+    opened: list[Any] = []
+    for target in targets:
+        if own and str(target.get("webSocketDebuggerUrl") or "") == own:
+            continue
+        if len(opened) >= 4:
+            break
+        try:
+            opened.append(CDPPage(target))
+        except Exception:
+            continue
+    return opened
+
+
+def security_key_page_url() -> str:
+    """Google's own signed-in reauth page. It is what asks for the security key."""
+    continue_to = "https://ads.google.com/aw/overview"
+    return (
+        "https://accounts.google.com/account/reauth?hl=zh-CN&authuser=0&continue="
+        + urllib.parse.quote(continue_to, safe="")
+    )
+
+
+def rapt_from_location(url: str) -> str:
+    parsed = urllib.parse.urlsplit(str(url or ""))
+    bags = (
+        urllib.parse.parse_qs(parsed.query),
+        urllib.parse.parse_qs(parsed.fragment),
+    )
+    for bag in bags:
+        for key in ("rapt", "reauth"):
+            values = bag.get(key) or []
+            token = str(values[0] or "").strip() if values else ""
+            if len(token) >= 20 and "AUTH_ERROR" not in token:
+                return token
+    return ""
+
+
+def _http_location(page: Any) -> str:
+    try:
+        value = page.evaluate("window.location.href", timeout=8)
+    except Exception:
+        return ""
+    text = str(value or "").strip()
+    if text.startswith("http://") or text.startswith("https://"):
+        return text
+    return ""
+
+
+def open_security_key_window(page: Any) -> Any | None:
+    """Open the verify-it's-you tab in the same browser and attach to it."""
+    url = security_key_page_url()
+    http = str(getattr(page, "browser_http", "") or "")
+    if http:
+        try:
+            target = open_cdp_target(http, url)
+            popup = CDPPage(target)
+            try:
+                ensure_page_url(popup, url, timeout=20)
+            except Exception:
+                pass
+            try:
+                popup.command("Network.enable", {})
+            except Exception:
+                pass
+            return popup
+        except Exception:
+            pass
+        try:
+            page.evaluate(
+                "window.open(" + json.dumps(url) + ", 'ggads_reauth', 'width=520,height=720')"
+            )
+        except Exception:
+            return None
+        try:
+            for target in _list_auth_pages(http):
+                location = str(target.get("url") or "")
+                if "accounts.google.com" in location and "reauth" in location:
+                    popup = CDPPage(target)
+                    try:
+                        popup.command("Network.enable", {})
+                    except Exception:
+                        pass
+                    return popup
+        except Exception:
+            return None
+    try:
+        page.evaluate(
+            "window.open(" + json.dumps(url) + ", 'ggads_reauth', 'width=520,height=720')"
+        )
+    except Exception:
+        return None
+    return None
+
+
+def wait_for_security_key(
+    page: Any,
+    *,
+    timeout: float = 180.0,
+    pause: Callable[[float], None] | None = None,
+) -> tuple[str, str]:
+    """Open Google's verify page and wait for a real rapt from that window.
+
+    A budget save or the black verification line is not a key result.
+    """
+    try:
+        page.command("Network.enable", {})
+    except Exception:
+        pass
+    popup = open_security_key_window(page)
+    sleeper = pause or time.sleep
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    try:
+        while True:
+            user_confirmation.consume()
+            watchers = (page, popup) if popup is not None else (page,)
+            for watcher in watchers:
+                try:
+                    events = watcher.drain_events("Network.")
+                except Exception:
+                    events = []
+                for event in events:
+                    name, value = proof_from_event(event)
+                    if name and value:
+                        return name, value
+                token = rapt_from_location(_http_location(watcher))
+                if token:
+                    return "X-Goog-First-Party-Reauth", token
+            if time.monotonic() >= deadline:
+                return "", ""
+            sleeper(0.4)
+    finally:
+        if popup is not None:
+            try:
+                popup.close()
+            except Exception:
+                pass
+
+
+def clear_reauth_headers(page: Any) -> bool:
+    """Drop a proof already attached to this page so the next ad write is clean."""
+    headers = getattr(page, "extra_headers", None)
+    if not isinstance(headers, dict):
+        return False
+    removed = False
+    for key in list(headers):
+        lowered = str(key).lower().replace("_", "-")
+        if any(marker in lowered for marker in _REAUTH_HEADER_MARKERS):
+            headers.pop(key, None)
+            removed = True
+    return removed
+
+
+def wait_for_ad_unlock(
+    page: Any,
+    *,
+    timeout: float = 180.0,
+    pause: Callable[[float], None] | None = None,
+    ignore_toast: bool = False,
+    ignore_plain_save: bool = False,
+) -> tuple[str, str, str]:
+    """Wait for a proof header, a budget save, the black line, or the confirm button.
+
+    The third value is ``header``, ``save``, ``toast``, ``confirmed``, or empty
+    when time runs out. A toast or plain save that was already used can be
+    ignored so a stale black line does not start another ad write. The confirm
+    button is checked before those signals so one click continues the ad.
+    """
+    if user_confirmation.consume():
+        return "", "", "confirmed"
+    page.command("Network.enable", {})
+    extras = _open_sibling_watchers(page)
+    for extra in extras:
+        try:
+            extra.command("Network.enable", {})
+        except Exception:
+            pass
+    sleeper = pause or time.sleep
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    try:
+        while True:
+            if user_confirmation.consume():
+                return "", "", "confirmed"
+            for watcher in (page, *extras):
+                try:
+                    events = watcher.drain_events("Network.")
+                except Exception:
+                    events = []
+                for event in events:
+                    name, value = proof_from_event(event)
+                    if name:
+                        return name, value, "header"
+                    if user_saved_on_page(event) and not ignore_plain_save:
+                        return "", "", "save"
+                if not ignore_toast and page_shows_verification(watcher):
+                    return "", "", "toast"
+            if time.monotonic() >= deadline:
+                return "", "", ""
+            sleeper(0.4)
+    finally:
+        for extra in extras:
+            try:
+                extra.close()
+            except Exception:
+                pass
+
+
+def capture_reauth_header(
+    page: Any,
+    *,
+    timeout: float = 180.0,
+    pause: Callable[[float], None] | None = None,
+) -> tuple[str, str]:
+    """Watch the open Google Ads tab until its own request carries a reauth token."""
+    page.command("Network.enable", {})
+    sleeper = pause or time.sleep
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    while True:
+        for event in page.drain_events("Network."):
+            name, value = reauth_header_from_event(event)
+            if name:
+                return name, value
+        if time.monotonic() >= deadline:
+            return "", ""
+        sleeper(0.4)
 
 
 def customer_read_request(ocid: str) -> dict:
@@ -808,6 +1327,97 @@ def classify_account_status(
     return "状态未知", raw
 
 
+_SELECTACCOUNT_URL = "https://ads.google.com/nav/selectaccount?authuser=0"
+_LOGIN_HOSTS = {"accounts.google.com", "myaccount.google.com"}
+_XSRF_PATTERNS = (
+    re.compile(r"""SNlM0e["']?\s*[:=]\s*["']([A-Za-z0-9_\-]{8,}:\d{10,})["']"""),
+    re.compile(r"""(A[A-Za-z0-9_\-]{18,}:\d{13})"""),
+)
+_LOGIN_PAGE_MESSAGE = (
+    "这个比特窗口打开的是 Google 登录页。"
+    "请先在窗口里登录 Google Ads，看到账户列表后再点刷新。"
+)
+_XSRF_PAGE_MESSAGE = (
+    "选择账户页面里没有 XSRF 令牌。"
+    "请在这个比特窗口里打开并登录 Google Ads，确认能看到账户列表后再点刷新。"
+)
+
+
+def is_google_login_url(url: str) -> bool:
+    parsed = urllib.parse.urlsplit(str(url or ""))
+    host = (parsed.hostname or "").lower()
+    if host in _LOGIN_HOSTS or host.endswith(".accounts.google.com"):
+        return True
+    path = parsed.path or ""
+    return "ServiceLogin" in path or path.startswith("/signin") or path.startswith("/v3/signin")
+
+
+def _same_document(current: str, url: str) -> bool:
+    left = urllib.parse.urlsplit(str(current or ""))
+    right = urllib.parse.urlsplit(str(url or ""))
+    return (
+        (left.hostname or "").lower() == (right.hostname or "").lower()
+        and (left.path or "").rstrip("/") == (right.path or "").rstrip("/")
+    )
+
+
+def extract_xsrf_token(*chunks: str) -> str:
+    source = "\n".join(chunk for chunk in chunks if chunk)
+    for pattern in _XSRF_PATTERNS:
+        match = pattern.search(source)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _page_href(page: Any) -> str:
+    try:
+        value = page.evaluate("window.location.href", timeout=8)
+    except Exception:
+        return ""
+    return str(value or "")
+
+
+def ensure_page_url(page: Any, url: str, *, timeout: float = 25.0) -> str:
+    """Finish navigation when the new tab is still blank or on another site.
+
+    Current Chromium builds can ignore the URL on ``PUT /json/new`` and leave
+    the tab at ``about:blank``. Google Ads then has no XSRF token to read.
+    """
+    current = _page_href(page)
+    if is_google_login_url(current):
+        return current
+    if not _same_document(current, url):
+        page.command("Page.navigate", {"url": url}, timeout=min(float(timeout), 20.0))
+    deadline = time.monotonic() + float(timeout)
+    blank_deadline = time.monotonic() + min(float(timeout), 8.0)
+    last = current
+    stable_ads = 0
+    while time.monotonic() < deadline:
+        last = _page_href(page) or last
+        if is_google_login_url(last):
+            return last
+        try:
+            ready = str(page.evaluate("document.readyState", timeout=8) or "")
+        except Exception:
+            ready = ""
+        if _same_document(last, url) and ready == "complete":
+            return last
+        parsed = urllib.parse.urlsplit(last)
+        host = (parsed.hostname or "").lower()
+        path = parsed.path or ""
+        if host == "ads.google.com" and path not in {"", "/"} and ready == "complete":
+            stable_ads += 1
+            if stable_ads >= 2:
+                return last
+        else:
+            stable_ads = 0
+        if last in {"", "about:blank", "chrome://newtab/"} and time.monotonic() >= blank_deadline:
+            break
+        time.sleep(0.4)
+    return last
+
+
 class ProtocolRunner:
     def __init__(
         self,
@@ -849,9 +1459,14 @@ class ProtocolRunner:
         also serve as the carrier page for querying every newly discovered scope.
         The caller is responsible for closing the returned page/target.
         """
-        target = open_cdp_target(endpoint, "https://ads.google.com/nav/selectaccount?authuser=0")
+        target = open_cdp_target(endpoint, _SELECTACCOUNT_URL)
         page = CDPPage(target)
         try:
+            landed = ensure_page_url(page, _SELECTACCOUNT_URL)
+            if landed:
+                page.url = landed
+            if is_google_login_url(landed):
+                raise RuntimeError(_LOGIN_PAGE_MESSAGE)
             gaia_response = None
             last_error: Exception | None = None
             for attempt in range(10):
@@ -863,6 +1478,8 @@ class ProtocolRunner:
                 except Exception as exc:  # page still loading / xsrf token not rendered yet
                     last_error = exc
             if gaia_response is None:
+                if last_error is not None and "未找到 XSRF" in str(last_error):
+                    raise RuntimeError(_XSRF_PAGE_MESSAGE) from last_error
                 raise last_error or RuntimeError("身份识别页面加载超时")
             user_id = str((gaia_response.get("1") or {}).get("2") or "")
             if not user_id:

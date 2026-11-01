@@ -25,7 +25,8 @@ from .bitbrowser import (
     health as bitbrowser_health,
     list_profiles as list_bitbrowser_profiles,
     load_api_base as load_bitbrowser_api_base,
-    save_api_base as save_bitbrowser_api_base,
+    load_api_token as load_bitbrowser_api_token,
+    save_local_api as save_bitbrowser_local_api,
 )
 from .browser_provider import (
     ADSPOWER,
@@ -151,6 +152,9 @@ from .snapshot_copy import (
     batch_recreate,
     compose_campaign_name,
 )
+from .account_level_copy import summarize_account_level
+from .targeting_copy import summarize_targeting
+from .user_confirm import user_confirmation
 from .warmup import (
     DEFAULT_DAILY_BUDGET,
     SOURCE_CAMPAIGN_NAME,
@@ -282,7 +286,8 @@ HELP_TEXT = """GGAds 协议管理器使用帮助
 1. 指纹浏览器窗口
    就是比特浏览器或 AdsPower 中相互隔离的浏览器环境；每个窗口下面可以添加多个 Google Ads CID。
    本软件默认使用比特浏览器：在“批量任务”点击“导入比特浏览器窗口”，可批量读取窗口编号、名称和运行状态。
-   比特浏览器 Local API 默认为 http://127.0.0.1:54345，可通过“比特 Local API 设置”修改并测试连接。
+   比特浏览器 7.1.5 的本地接口在「系统设置 → Local API」里查看。当前这版优先连接 http://127.0.0.1:54346，连不上再试 54345。
+   「开启鉴权控制」是关掉的时候，不用填 API Token。只有打开那个开关后，才把 Token 填到“比特 Local API 设置”，请求会带 X-API-KEY。
    导入只保存窗口资料，不会启动窗口；后续账户刷新、预检或业务任务才会按需打开选中的已停止窗口。
    AdsPower 继续兼容：在“兼容操作”中选择“添加 AdsPower 窗口”或“读取 AdsPower 窗口编号”。
    AdsPower 请在左侧“API & MCP”页面启用 Local API（默认端口 50325）；API 暂时不可用时，已有编号会保留。
@@ -314,7 +319,7 @@ HELP_TEXT = """GGAds 协议管理器使用帮助
 
 二、推荐使用流程
 
-1. 启动比特浏览器并启用 Local API；首次使用可点击“比特 Local API 设置”检查默认 54345 端口。
+1. 启动并登录比特浏览器 7.1.5。打开「系统设置 → Local API」，确认本地接口是 http://127.0.0.1:54346。鉴权控制关着就不要填 Token。
 2. 在“批量任务”页点击“导入比特浏览器窗口”；导入时窗口可以是运行中或已停止。
    使用 AdsPower 时，请从“兼容操作”选择“添加 AdsPower 窗口”。
 3. 选中窗口，点击“添加 CID”，填写 CID 和引用的内容方案。
@@ -868,18 +873,19 @@ class _ManagedBitBrowserDialog(tk.Toplevel):
 
 
 class BitBrowserSettingsDialog(_ManagedBitBrowserDialog):
-    """Edit only the loopback BitBrowser Local API address."""
+    """Edit the loopback BitBrowser Local API address and 7.1.5 API token."""
 
     def __init__(self, parent: tk.Misc) -> None:
         super().__init__(parent)
         self._init_lifecycle()
         self.title("比特浏览器 Local API 设置")
-        self.geometry("650x220")
+        self.geometry("700x360")
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
         self.results: queue.Queue[tuple[bool, str]] = queue.Queue()
         self.columnconfigure(1, weight=1)
+        self._token_visible = tk.BooleanVar(value=False)
 
         ttk.Label(self, text="Local API 地址").grid(
             row=0, column=0, padx=14, pady=(18, 8), sticky="w"
@@ -889,13 +895,33 @@ class BitBrowserSettingsDialog(_ManagedBitBrowserDialog):
         self.api_base.insert(0, load_bitbrowser_api_base())
         ttk.Label(
             self,
-            text="仅允许本机 HTTP 地址，例如 http://127.0.0.1:54345。",
+            text="7.1.5 的系统设置里本地接口是 http://127.0.0.1:54346。程序会先连这个端口。",
             foreground=COLOR_MUTED,
+            wraplength=660,
         ).grid(row=1, column=0, columnspan=2, padx=14, pady=5, sticky="w")
-        self.status = ttk.Label(self, text="尚未测试连接", foreground=COLOR_MUTED)
-        self.status.grid(row=2, column=0, columnspan=2, padx=14, pady=5, sticky="w")
+        ttk.Label(self, text="API Token").grid(row=2, column=0, padx=14, pady=(8, 4), sticky="w")
+        self.api_token = ttk.Entry(self, show="*")
+        self.api_token.grid(row=2, column=1, padx=14, pady=(8, 4), sticky="ew")
+        self.api_token.insert(0, load_bitbrowser_api_token())
+        token_hint = ttk.Frame(self)
+        token_hint.grid(row=3, column=0, columnspan=2, padx=14, pady=5, sticky="ew")
+        ttk.Label(
+            token_hint,
+            text="鉴权控制关着就留空。只有打开那个开关后才填写，请求会带上 X-API-KEY。",
+            foreground=COLOR_MUTED,
+        ).pack(side="left")
+        ttk.Checkbutton(
+            token_hint,
+            text="显示",
+            variable=self._token_visible,
+            command=self._toggle_token,
+        ).pack(side="right")
+        self.status = ttk.Label(
+            self, text="尚未测试连接", foreground=COLOR_MUTED, wraplength=660
+        )
+        self.status.grid(row=4, column=0, columnspan=2, padx=14, pady=5, sticky="w")
         actions = ttk.Frame(self)
-        actions.grid(row=3, column=0, columnspan=2, padx=14, pady=(14, 12), sticky="e")
+        actions.grid(row=5, column=0, columnspan=2, padx=14, pady=(14, 12), sticky="e")
         ttk.Button(actions, text="取消", command=self._close).pack(side="right")
         ttk.Button(
             actions, text="保存", command=self._save, style="Success.TButton"
@@ -912,9 +938,12 @@ class BitBrowserSettingsDialog(_ManagedBitBrowserDialog):
         self.api_base.focus_set()
         self.wait_window(self)
 
+    def _toggle_token(self) -> None:
+        self.api_token.configure(show="" if self._token_visible.get() else "*")
+
     def _save(self) -> bool:
         try:
-            save_bitbrowser_api_base(self.api_base.get())
+            save_bitbrowser_local_api(self.api_base.get(), self.api_token.get())
         except Exception as exc:
             messagebox.showerror("保存失败", str(exc), parent=self)
             return False
@@ -4316,6 +4345,13 @@ class GGAdsApp(tk.Tk):
             style="Write.TButton",
         )
         self.copy_execute_button.pack(side="left", padx=8)
+        self.copy_confirm_button = ttk.Button(
+            copy_actions,
+            text="密钥摸完了，读取新广告",
+            command=self._user_confirmed_continue_copy,
+            style="Success.TButton",
+        )
+        self.copy_confirm_button.pack(side="left", padx=8)
 
         ttk.Label(result, text="协议预检 / 复制结果", font=("Microsoft YaHei UI", 10, "bold")).grid(
             row=0, column=0, sticky="w", pady=(0, 5)
@@ -4492,6 +4528,13 @@ class GGAdsApp(tk.Tk):
             style="Write.TButton",
         )
         self.snap_import_button.pack(side="left", padx=8)
+        self.snap_confirm_button = ttk.Button(
+            import_actions,
+            text="密钥摸完了，读取新广告",
+            command=self._user_confirmed_continue_import,
+            style="Success.TButton",
+        )
+        self.snap_confirm_button.pack(side="left", padx=8)
 
         result_box = ttk.Frame(tab)
         result_box.grid(row=2, column=0, sticky="nsew")
@@ -11586,7 +11629,21 @@ class GGAdsApp(tk.Tk):
 
         self._run_async("层级复制协议预检（只读）", task, success)
 
-    def _entity_copy_execute(self) -> None:
+    def _user_confirmed_continue_copy(self) -> None:
+        user_confirmation.confirm()
+        self._log("已记下：密钥摸完了。软件只去广告列表读取新广告，不再提交创建协议。")
+        if self.running:
+            return
+        self._entity_copy_execute(already_confirmed=True)
+
+    def _user_confirmed_continue_import(self) -> None:
+        user_confirmation.confirm()
+        self._log("已记下：密钥摸完了。软件只去广告列表读取新广告，不再提交创建协议。")
+        if self.running:
+            return
+        self._snap_import_execute(already_confirmed=True)
+
+    def _entity_copy_execute(self, *, already_confirmed: bool = False) -> None:
         try:
             context = self._entity_copy_loaded_context()
             params = self._entity_copy_parameters()
@@ -11594,20 +11651,31 @@ class GGAdsApp(tk.Tk):
                 self.copy_source_campaign.get()
             ) or {}
         except Exception as exc:
+            if already_confirmed:
+                user_confirmation.clear()
             messagebox.showerror("不能复制", str(exc))
             return
         kind_label = self.copy_kind.get()
-        prompt = (
-            f"复制范围：{kind_label}\n"
-            f"来源：{format_cid(context[2])} · {source.get('name') or source.get('campaign_id')}\n"
-            f"目标：{format_cid(context[5])}\n\n"
-            "Google 会创建新对象；软件随后强制暂停并回读校验。\n"
-            "执行前会重新读取目标 CID 余额，只有余额可识别且大于 0 才创建。\n"
-            "跨窗口广告系列会先下载到本地快照，再用目标窗口权限重新创建；"
-            "图片会重新上传，所有新对象保持暂停。确定继续？"
-        )
-        if not messagebox.askyesno("确认层级复制", prompt):
-            return
+        if already_confirmed:
+            prompt = (
+                "如果网页上的密钥已经摸过，软件会读取刚保存的暂停广告。\n"
+                "系列和广告组不重来。不用改预算，也不用自己填广告。确定继续？"
+            )
+            if not messagebox.askyesno("读取新广告", prompt):
+                user_confirmation.clear()
+                return
+        else:
+            prompt = (
+                f"复制范围：{kind_label}\n"
+                f"来源：{format_cid(context[2])} · {source.get('name') or source.get('campaign_id')}\n"
+                f"目标：{format_cid(context[5])}\n\n"
+                "Google 会创建新对象；软件随后强制暂停并回读校验。\n"
+                "执行前会重新读取目标 CID 余额，只有余额可识别且大于 0 才创建。\n"
+                "跨窗口广告系列会先下载到本地快照，再用目标窗口权限重新创建；"
+                "图片会重新上传，所有新对象保持暂停。确定继续？"
+            )
+            if not messagebox.askyesno("确认层级复制", prompt):
+                return
 
         def task():
             report = self._entity_copy_report(*context, "entity_copy")
@@ -11752,7 +11820,18 @@ class GGAdsApp(tk.Tk):
                 f"{len(result.get('ads') or [])} 广告 / "
                 f"{len(result.get('assets') or [])} 图片\n{result.get('snapshot_path')}"
             )
-            messagebox.showinfo("导出成功", f"快照已保存到：\n{result.get('snapshot_path')}")
+            gaps = result.get("targeting_gaps") or []
+            gap_line = (
+                f"\n还有 {len(gaps)} 条定向没识别，导入时不会带上。"
+                if gaps else ""
+            )
+            account_line = summarize_account_level(result)
+            account_text = f"\n账号：{account_line}" if account_line else ""
+            messagebox.showinfo(
+                "导出成功",
+                f"快照已保存到：\n{result.get('snapshot_path')}"
+                f"\n定向：{summarize_targeting(result)}{gap_line}{account_text}",
+            )
 
         self._run_async("导出快照", task, success)
 
@@ -11898,19 +11977,25 @@ class GGAdsApp(tk.Tk):
             f"素材来源：{self.snap_asset_override_dir.get().strip() or '快照自带素材'}",
         )
 
-    def _snap_import_execute(self) -> None:
+    def _snap_import_execute(self, *, already_confirmed: bool = False) -> None:
         snapshot = self.snap_import_snapshot
         if not snapshot:
+            if already_confirmed:
+                user_confirmation.clear()
             messagebox.showerror("不能执行", "请先选择快照文件")
             return
         try:
             validate_snapshot(snapshot)
             validate_snapshot_files(snapshot)
         except Exception as exc:
+            if already_confirmed:
+                user_confirmation.clear()
             messagebox.showerror("快照校验失败", str(exc))
             return
         selection = list(self.snap_target_tree.selection())
         if not selection:
+            if already_confirmed:
+                user_confirmation.clear()
             messagebox.showerror("不能执行", "请先勾选至少一个目标账户")
             return
         targets: list[dict[str, Any]] = []
@@ -11919,6 +12004,8 @@ class GGAdsApp(tk.Tk):
             cid = item["cid"]
             label = self.snap_target_labels.get(cid, "").strip()
             if not label:
+                if already_confirmed:
+                    user_confirmation.clear()
                 messagebox.showerror(
                     "不能执行",
                     f"目标账户 {format_cid(cid)} 尚未设置命名标签（双击命名标签列编辑）",
@@ -11939,9 +12026,20 @@ class GGAdsApp(tk.Tk):
             f"素材来源：{asset_override_dir or '快照自带素材'}\n\n"
             "执行前会重新读取每个目标 CID 余额，只有余额可识别且大于 0 才创建；"
             "币种不同时会尝试按日预算自动换算汇率（出价目标金额不换算，需人工核对）。"
+            "不会新建预算：目标账号里要先有一条金额相同的日预算。"
+            "系列、广告组和图片仍由协议写好。自适应展示广告由软件在已登录的目标网页里填写，并保存为暂停。"
+            "保存时密钥框由网页自己弹出，请在那个框上摸钥匙。不用改预算，也不用自己填广告。"
             "单个账户失败不影响其余账户继续执行。确定继续？"
         )
-        if not messagebox.askyesno("确认批量导入", prompt):
+        if already_confirmed:
+            prompt = (
+                "如果网页上的密钥已经摸过，软件会读取刚保存的暂停广告。\n"
+                "系列和广告组不重来。不用改预算，也不用自己填广告。确定继续？"
+            )
+            if not messagebox.askyesno("读取新广告", prompt):
+                user_confirmation.clear()
+                return
+        elif not messagebox.askyesno("确认批量导入", prompt):
             return
 
         def task():
@@ -12021,10 +12119,19 @@ class GGAdsApp(tk.Tk):
             self.snap_batch_results = results
             self._render_snap_batch_results(results)
             ok = sum(1 for item in results if item.get("success"))
-            messagebox.showinfo(
-                "批量导入完成",
-                f"成功 {ok} / {len(results)} 个目标账户，详见结果区与运行报告。",
-            )
+            lines = [f"成功 {ok} / {len(results)} 个目标账户"]
+            for item in results:
+                label = str(item.get("cid_display") or item.get("cid") or "")
+                if item.get("success"):
+                    if item.get("next_step"):
+                        lines.append(f"{label}：{item['next_step']}")
+                    for warning in item.get("targeting_warnings") or []:
+                        lines.append(f"{label}：{warning}")
+                    for warning in item.get("account_level_warnings") or []:
+                        lines.append(f"{label}：{warning}")
+                elif item.get("error"):
+                    lines.append(f"{label}：{item['error']}")
+            messagebox.showinfo("批量导入完成", "\n".join(lines))
 
         self._run_async("批量导入快照", task, success)
 

@@ -15,6 +15,8 @@ from .ads import (
     ad_list_request,
     build_batch_request,
     campaign_list_request,
+    _asset_text,
+    _text_asset,
     image_asset_wrapper,
     parse_ad_groups,
     parse_ads,
@@ -22,8 +24,22 @@ from .ads import (
 )
 from .config import data_dir, format_cid
 from .image_upload import download_preview_image, upload_images
-from .protocol import AccountPage, CAMPAIGN_STATUS_ENABLED, CAMPAIGN_STATUS_PAUSED, ProtocolRunner
-from .protocol_catalog import CHILD_STATUS_ENABLED, CHILD_STATUS_PAUSED
+from .protocol import (
+    AccountPage,
+    CAMPAIGN_STATUS_ENABLED,
+    CAMPAIGN_STATUS_PAUSED,
+    ProtocolRunner,
+    clear_reauth_headers,
+    wait_for_security_key,
+    format_protocol_errors,
+)
+from .protocol_catalog import (
+    CAMPAIGN_STATUS_LABELS,
+    CHILD_STATUS_ENABLED,
+    CHILD_STATUS_LABELS,
+    CHILD_STATUS_PAUSED,
+    CHILD_STATUS_REMOVED,
+)
 
 
 APP_CHANNEL = 7
@@ -568,6 +584,13 @@ def portable_app_ad_request(
         } for asset in target_assets]
     else:
         app_ad.pop("4", None)
+    allowed_assets = {
+        str(asset["target_asset_id"])
+        for asset in target_assets
+        if asset.get("target_asset_id")
+    }
+    app_ad = _drop_unmapped_assets(app_ad, allowed_assets)
+    mutable = _drop_unmapped_assets(mutable, allowed_assets)
     mutable["9"] = str(temporary_id)
     mutable["44"] = app_ad
     outer = {
@@ -612,15 +635,35 @@ def portable_display_ad_request(
         raise ValueError("来源广告不是可重建的响应式展示广告")
     if not landscape_assets or not square_assets:
         raise ValueError("响应式展示广告必须同时包含横图和方图素材映射")
-    creative["1"] = [image_asset_wrapper(a["target_asset_id"], a.get("filename") or "") for a in landscape_assets]
-    creative["2"] = [image_asset_wrapper(a["target_asset_id"], a.get("filename") or "") for a in square_assets]
-    if portrait_assets:
-        creative["20"] = [image_asset_wrapper(a["target_asset_id"], a.get("filename") or "") for a in portrait_assets]
+    landscape = [image_asset_wrapper(a["target_asset_id"], a.get("filename") or "") for a in landscape_assets]
+    square = [image_asset_wrapper(a["target_asset_id"], a.get("filename") or "") for a in square_assets]
+    portraits = [
+        image_asset_wrapper(a["target_asset_id"], a.get("filename") or "")
+        for a in (portrait_assets or [])
+    ]
+    headlines = _creative_texts(creative.get("5"))
+    long_headline = " ".join(_creative_texts(creative.get("6")))
+    descriptions = _creative_texts(creative.get("7"))
+    business_name = " ".join(_creative_texts(creative.get("8")))
+    if not headlines or not long_headline or not descriptions or not business_name:
+        raise ValueError("来源展示广告缺少标题、长标题、描述或商家名称，不能新建广告")
+    allowed_assets = {
+        str(asset["target_asset_id"])
+        for asset in (*landscape_assets, *square_assets, *(portrait_assets or []))
+        if asset.get("target_asset_id")
+    }
+    creative["1"] = landscape
+    creative["2"] = square
+    if portraits:
+        creative["20"] = portraits
     else:
         creative.pop("20", None)
-    creative["5"] = _without_source_text_ids(creative.get("5"))
-    creative["6"] = _without_source_text_id(creative.get("6"))
-    creative["7"] = _without_source_text_ids(creative.get("7"))
+    creative["5"] = [_text_asset(value) for value in headlines]
+    creative["6"] = _text_asset(long_headline)
+    creative["7"] = [_text_asset(value) for value in descriptions]
+    creative["8"] = business_name
+    creative = _drop_unmapped_assets(creative, allowed_assets)
+    mutable = _drop_unmapped_assets(mutable, allowed_assets)
     mutable["9"] = str(temporary_id)
     mutable["41"] = creative
     final_urls = [str(value) for value in (mutable.get("1") or outer_source.get("5") or []) if value]
@@ -646,7 +689,9 @@ def portable_display_ad_request(
     return build_batch_request(request)
 
 
-def _service_error(value: Any) -> str:
+def _service_error(value: Any, depth: int = 0) -> str:
+    if depth > 4:
+        return ""
     if isinstance(value, dict):
         # 字段号 "5"/"2" 只在错误响应结构里代表错误列表；同样的字段号在其他消息
         # 类型里可能被复用为字符串/数字（如 ad_group 响应的 "21.5" 是出价金额），
@@ -654,19 +699,634 @@ def _service_error(value: Any) -> str:
         field5 = value.get("5")
         errors = (field5.get("2") if isinstance(field5, dict) else None) or []
         if errors and isinstance(errors, list):
-            return str(errors[0])
+            shown = format_protocol_errors(errors)
+            if shown:
+                return shown
         for nested in value.values():
-            found = _service_error(nested)
+            found = _service_error(nested, depth + 1)
             if found:
                 return found
     elif isinstance(value, list):
         for nested in value:
-            found = _service_error(nested)
+            found = _service_error(nested, depth + 1)
             if found:
                 return found
-    elif isinstance(value, str) and value.startswith(("MUTATE_ERROR_", "INTERNAL_ERROR")):
-        return value
+    elif isinstance(value, str):
+        text = value.strip()
+        if text[:1] in "{[":
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, (dict, list)):
+                found = _service_error(parsed, depth + 1)
+                if found:
+                    return found
+        if text.startswith((
+            "MUTATE_ERROR_", "INTERNAL_ERROR", "FIELD_ERROR", "AUTH_ERROR",
+            "POLICY", "STRING_ERROR", "AUTHORIZATION_ERROR",
+        )):
+            return format_protocol_errors([text]) or text
     return ""
+
+
+def _response_hint(response: Any) -> str:
+    if response is None or response == "" or response == {}:
+        return "接口没有带回具体内容"
+    try:
+        text = response if isinstance(response, str) else json.dumps(response, ensure_ascii=False)
+    except TypeError:
+        text = str(response)
+    text = " ".join(text.split())
+    if len(text) > 280:
+        text = text[:280] + "…"
+    return f"接口返回：{text}"
+
+
+_NO_RETRY_MARKERS = (
+    "FIELD_ERROR", "POLICY", "STRING_ERROR", "MUTATE_ERROR",
+    "CRITERION_ERROR", "AUTHORIZATION_ERROR", "REQUEST_ERROR",
+)
+
+
+def _can_retry_ad_error(error: str) -> bool:
+    text = str(error or "").upper()
+    return not any(marker in text for marker in _NO_RETRY_MARKERS)
+
+
+def _creative_texts(value: Any) -> list[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text and not text.isdigit() else []
+    if isinstance(value, dict):
+        text = _asset_text(value).strip()
+        if text:
+            return [text]
+        raw = value.get("1")
+        if isinstance(raw, str) and raw.strip() and not raw.strip().isdigit():
+            return [raw.strip()]
+        return []
+    if isinstance(value, list):
+        texts: list[str] = []
+        for item in value:
+            for text in _creative_texts(item):
+                if text not in texts:
+                    texts.append(text)
+        return texts
+    return []
+
+
+def _wrapper_asset_id(value: dict[str, Any]) -> str:
+    inner = value.get("1")
+    if not isinstance(inner, dict):
+        return ""
+    asset_id = str(inner.get("1") or "")
+    if asset_id.isdigit() and len(asset_id) >= 8:
+        return asset_id
+    return ""
+
+
+_DROP_ASSET = object()
+
+
+def _drop_unmapped_assets(value: Any, allowed: set[str]) -> Any:
+    """Remove asset wrappers that still point at the source account."""
+    if isinstance(value, list):
+        kept = []
+        for item in value:
+            cleaned = _drop_unmapped_assets(item, allowed)
+            if cleaned is _DROP_ASSET:
+                continue
+            kept.append(cleaned)
+        return kept
+    if isinstance(value, dict):
+        if _wrapper_asset_id(value) and _wrapper_asset_id(value) not in allowed:
+            return _DROP_ASSET
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            child = _drop_unmapped_assets(item, allowed)
+            if child is _DROP_ASSET:
+                continue
+            cleaned[key] = child
+        return cleaned
+    return value
+
+
+AD_CREATE_ATTEMPTS = 3
+
+
+def _named_status(labels: dict[int, str], status: Any) -> str:
+    try:
+        number = int(status or 0)
+    except (TypeError, ValueError):
+        return f"状态 {status}"
+    if number == 0:
+        return "还没有状态"
+    return labels.get(number, f"状态 {number}")
+
+
+def _ad_status_name(status: Any) -> str:
+    return _named_status(CHILD_STATUS_LABELS, status)
+
+
+def _campaign_status_name(status: Any) -> str:
+    return _named_status(CAMPAIGN_STATUS_LABELS, status)
+
+
+def describe_unreadable_ad(
+    rows: list[dict[str, Any]],
+    group_id: str,
+    known_ids: set[str],
+    expected_status: int,
+) -> str:
+    """Say what the ad group actually contained when the new paused ad was missing."""
+    expected = _ad_status_name(expected_status)
+    fresh = [
+        row for row in rows
+        if str(row.get("ad_group_id") or "") == str(group_id)
+        and str(row.get("ad_id") or "") not in known_ids
+        and int(row.get("status_raw") or 0) != 3
+    ]
+    if not fresh:
+        return "广告组里没有新广告"
+    names = "、".join(_ad_status_name(row.get("status_raw")) for row in fresh[:3])
+    if len(fresh) > 3:
+        names += f" 等 {len(fresh)} 条"
+    return f"新广告是{names}，不是{expected}"
+
+
+def _matching_ads(
+    rows: list[dict[str, Any]], group_id: str, known_ids: set[str], expected_status: int,
+) -> list[dict[str, Any]]:
+    return [
+        row for row in rows
+        if str(row.get("ad_group_id") or "") == str(group_id)
+        and str(row.get("ad_id") or "") not in known_ids
+        and int(row.get("status_raw") or 0) == int(expected_status)
+    ]
+
+
+def place_ad_with_retries(
+    *,
+    read_ads: Callable[[], list[dict[str, Any]]],
+    submit: Callable[[], Any],
+    poll_new_ad: Callable[[set[str]], dict[str, Any]],
+    group_id: str,
+    expected_status: int,
+    reserved_ids: set[str],
+    log: Callable[[str], None],
+    gate_for_error: Callable[[str], BaseException | None] | None = None,
+    attempts: int = AD_CREATE_ATTEMPTS,
+    pause: Callable[[float], None] | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Create one ad, then read it back. Try up to three times, then say why.
+
+    A paused ad already in the group is reused. An ad with another status is not
+    created again. A USB-key prompt stops immediately.
+    """
+    reasons: list[str] = []
+    submitted = False
+    known = {str(item) for item in reserved_ids}
+    sleeper = pause or time.sleep
+    for attempt in range(1, attempts + 1):
+        try:
+            rows = read_ads()
+        except Exception as exc:
+            if type(exc).__name__ == "HumanActionRequired":
+                raise
+            reasons.append(f"第{attempt}次：读取广告失败：{exc}")
+            if attempt < attempts:
+                sleeper(1)
+            continue
+        matched = _matching_ads(rows, group_id, known, expected_status)
+        if len(matched) == 1:
+            if attempt > 1:
+                log(f"第{attempt}次读到广告")
+            return matched[0], submitted
+        if len(matched) > 1:
+            chosen = _prefer_newest_ad(matched)
+            log(f"广告组里有 {len(matched)} 条暂停广告，先用了 {chosen.get('ad_id')}")
+            return chosen, submitted
+        fresh = [
+            row for row in rows
+            if str(row.get("ad_group_id") or "") == str(group_id)
+            and str(row.get("ad_id") or "") not in known
+            and int(row.get("status_raw") or 0) != 3
+        ]
+        if fresh:
+            reasons.append(f"第{attempt}次：{describe_unreadable_ad(rows, group_id, known, expected_status)}")
+            if attempt < attempts:
+                sleeper(1)
+            continue
+        if attempt > 1:
+            log(f"广告还没出现，第{attempt}次再试")
+        seen = {
+            str(row.get("ad_id") or "")
+            for row in rows
+            if str(row.get("ad_group_id") or "") == str(group_id) and row.get("ad_id")
+        }
+        try:
+            response = submit()
+        except Exception as exc:
+            if type(exc).__name__ == "HumanActionRequired":
+                raise
+            reasons.append(f"第{attempt}次：{exc}")
+            if attempt < attempts:
+                sleeper(1)
+            continue
+        submitted = True
+        error = _service_error(response)
+        if error:
+            gate = gate_for_error(error) if gate_for_error else None
+            if gate:
+                raise gate
+            if not _can_retry_ad_error(error):
+                raise RuntimeError(f"新建广告被拒绝：{error}")
+            reasons.append(f"第{attempt}次：{error}")
+            if attempt < attempts:
+                sleeper(1)
+            continue
+        try:
+            return poll_new_ad(seen), submitted
+        except Exception as exc:
+            if type(exc).__name__ == "HumanActionRequired":
+                raise
+            text = str(exc)
+            if "多个匹配" in text:
+                raise
+            try:
+                latest = read_ads()
+            except Exception as read_exc:
+                if type(read_exc).__name__ == "HumanActionRequired":
+                    raise
+                latest = []
+                text = f"读取广告失败：{read_exc}"
+            else:
+                matched = _matching_ads(latest, group_id, known, expected_status)
+                if len(matched) == 1:
+                    return matched[0], submitted
+                if len(matched) > 1:
+                    chosen = _prefer_newest_ad(matched)
+                    log(f"广告组里有 {len(matched)} 条暂停广告，先用了 {chosen.get('ad_id')}")
+                    return chosen, submitted
+                text = describe_unreadable_ad(latest, group_id, seen | known, expected_status)
+            hint = _response_hint(response)
+            if hint:
+                text = f"{text}。{hint}"
+            reasons.append(f"第{attempt}次：{text}")
+            if attempt < attempts:
+                sleeper(1)
+    detail = " ".join(reasons) if reasons else "广告组里没有新广告"
+    raise RuntimeError(
+        f"广告试了 {attempts} 次还没成功。这 {attempts} 次都只提交了广告，"
+        f"没有再建系列，也没有再建广告组。{detail} "
+        f"返回里没有要求物理密钥。如果目标账号的网页自己弹出了密钥，"
+        f"摸的是正在导入的那个窗口里、这个目标账号绑定的钥匙，不是来源账号的。"
+    )
+
+
+def place_ad_letting_user_unlock(
+    page: Any,
+    *,
+    account: str,
+    log: Callable[[str], None],
+    reauth_timeout: float = 180.0,
+    **place_kwargs: Any,
+) -> tuple[dict[str, Any], bool]:
+    """Create the ad. If Google asks for the key, wait for the page and retry once."""
+    from .targeting_copy import (
+        HumanActionRequired,
+        reauth_timeout_message,
+        reauth_wait_message,
+    )
+
+    from .user_confirm import user_confirmation
+
+    try:
+        created = place_ad_with_retries(log=log, **place_kwargs)
+    except HumanActionRequired as exc:
+        if exc.reason != "reauth":
+            user_confirmation.clear()
+            raise
+        clear_reauth_headers(page)
+        log(reauth_wait_message(account))
+        holder = place_kwargs.get("pause")
+        try:
+            name, value = wait_for_security_key(
+                page,
+                timeout=reauth_timeout,
+                pause=holder if callable(holder) else None,
+            )
+        except Exception as hook_exc:
+            raise HumanActionRequired(
+                "reauth", f"没能打开目标网页的密钥验证：{hook_exc}",
+            ) from hook_exc
+        if not value:
+            raise HumanActionRequired("reauth", reauth_timeout_message(account)) from exc
+        headers = getattr(page, "extra_headers", None)
+        if not isinstance(headers, dict):
+            raise HumanActionRequired("reauth", "当前页面不能附带验证，广告没有提交。")
+        headers[name or "X-Goog-First-Party-Reauth"] = value
+        log("密钥验证已经拿到，正在建广告")
+        try:
+            created = place_ad_with_retries(log=log, **place_kwargs)
+        except HumanActionRequired as again:
+            if again.reason != "reauth":
+                raise
+            clear_reauth_headers(page)
+            detail = str(getattr(again, "detail", "") or "").strip()
+            if detail:
+                log(f"广告仍被拒绝：{detail}")
+            raise HumanActionRequired(
+                "reauth",
+                "密钥结果已经带到广告上，Google 还是拒绝了。"
+                "系列和广告组还在，没有重来。预算不用改。",
+            ) from again
+    user_confirmation.clear()
+    return created
+
+
+def _prefer_newest_ad(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    def rank(row: dict[str, Any]) -> tuple[bool, int]:
+        text = str(row.get("ad_id") or "")
+        return (text.isdigit(), int(text) if text.isdigit() else 0)
+
+    return max(rows, key=rank)
+
+
+_CHECK_LABELS = {
+    "campaign_exists_expected_status": "系列不在或状态不对",
+    "all_groups_mapped": "广告组没有全部记下",
+    "all_groups_exist_expected_status": "广告组不在或状态不对",
+    "all_ads_mapped": "广告没有全部记下",
+    "all_ads_exist_expected_status": "广告不在或状态不对",
+    "shared_sets_associated": "排除列表没有挂到系列上",
+    "audiences_synced": "受众没有对上",
+}
+
+
+def verification_failure(verification: dict[str, Any]) -> str:
+    failed = [
+        _CHECK_LABELS.get(str(name), str(name))
+        for name, ok in (verification.get("checks") or {}).items()
+        if not ok
+    ]
+    detail = "、".join(failed) if failed else "没有具体项目"
+    extra = [str(item) for item in (verification.get("details") or []) if str(item)]
+    if extra:
+        detail = f"{detail}。{' '.join(extra)}"
+    return f"写完之后对不上：{detail}"
+
+
+def explain_verification_gaps(
+    *,
+    checks: dict[str, Any],
+    snapshot: dict[str, Any],
+    campaign_id: str,
+    campaigns: list[dict[str, Any]],
+    expected_status: int,
+    expected_child_status: int,
+    group_map: dict[str, str],
+    groups_by_id: dict[str, dict[str, Any]],
+    ad_map: dict[str, str],
+    ads_by_id: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Name the objects that failed the post-write check."""
+    lines: list[str] = []
+    if checks.get("campaign_exists_expected_status") is False:
+        if len(campaigns) != 1:
+            lines.append(f"记下的系列 {campaign_id or '（空）'} 现在不在账号里")
+        else:
+            lines.append(
+                f"系列 {campaign_id} 状态是{_campaign_status_name(campaigns[0].get('status_raw'))}，"
+                f"要的是{_campaign_status_name(expected_status)}"
+            )
+    if checks.get("all_groups_mapped") is False:
+        lines.append(
+            f"广告组记下了 {len(group_map)} 个，快照里有 {len(snapshot.get('ad_groups') or [])} 个"
+        )
+    if checks.get("all_groups_exist_expected_status") is False:
+        problems: list[str] = []
+        for target_id in list(group_map.values())[:5]:
+            row = groups_by_id.get(target_id)
+            if row is None:
+                problems.append(f"{target_id} 不在")
+            elif int(row.get("status_raw") or 0) != int(expected_child_status):
+                problems.append(f"{target_id} 是{_ad_status_name(row.get('status_raw'))}")
+            elif str(row.get("campaign_id") or "") != str(campaign_id):
+                problems.append(f"{target_id} 不在这个系列里")
+        if problems:
+            lines.append("广告组：" + "、".join(problems))
+    if checks.get("all_ads_mapped") is False:
+        lines.append(
+            f"广告记下了 {len(ad_map)} 条，快照里有 {len(snapshot.get('ads') or [])} 条"
+        )
+    if checks.get("all_ads_exist_expected_status") is False:
+        problems = []
+        for source_ad in snapshot.get("ads") or []:
+            source_id = str(source_ad.get("4") or "")
+            target_id = ad_map.get(source_id, "")
+            row = ads_by_id.get(target_id) if target_id else None
+            if not target_id:
+                problems.append(f"来源 {source_id or '未知'} 没有记下")
+            elif row is None:
+                problems.append(f"{target_id} 不在")
+            elif int(row.get("status_raw") or 0) != int(expected_child_status):
+                problems.append(f"{target_id} 是{_ad_status_name(row.get('status_raw'))}")
+            elif str(row.get("ad_group_id") or "") != group_map.get(str(source_ad.get("3") or ""), ""):
+                problems.append(f"{target_id} 不在对应广告组里")
+            if len(problems) >= 5:
+                break
+        if problems:
+            lines.append("广告：" + "、".join(problems))
+    return lines
+
+
+_STEP_LABELS = {
+    "initialized": "刚开始，还没写进账号",
+    "account_level_applied": "账号内容适宜性",
+    "campaign_created": "广告系列已经记下",
+    "campaign_goals_applied": "系列转化目标",
+    "groups_created": "广告组",
+    "criteria_applied": "主题、地区、语言这些定向",
+    "assets_uploaded": "图片",
+    "ad_form": "网页填写广告",
+    "ads_created": "广告",
+    "shared_sets_merged": "排除列表",
+    "audiences_applied": "受众",
+    "verifying": "写完后的核对",
+    "completed": "已完成",
+}
+
+
+def copy_failure_message(reason: BaseException, *, step: str, state_path: str) -> str:
+    """Dialog text: last finished step, the real reason, then the progress file."""
+    where = _STEP_LABELS.get(str(step or ""), str(step or "还没记下步骤"))
+    return (
+        f"可移植复制失败。\n"
+        f"上次完成到：{where}\n"
+        f"原因：{reason}\n"
+        f"进度文件：{state_path}"
+    )
+
+
+def saved_campaign_problem(
+    rows: list[dict[str, Any]], campaign_id: str, expected_status: int,
+) -> str:
+    found = next(
+        (row for row in rows if str(row.get("campaign_id") or "") == str(campaign_id)),
+        None,
+    )
+    if not found:
+        return f"上次记下的广告系列 {campaign_id} 现在不在这个账号里"
+    return (
+        f"上次记下的广告系列 {campaign_id} 还在，状态是"
+        f"{_campaign_status_name(found.get('status_raw'))}，"
+        f"和这次要的{_campaign_status_name(expected_status)}不一样"
+    )
+
+
+def duplicate_campaigns_message(matches: list[dict[str, Any]], *, marked: bool = False) -> str:
+    shown = "、".join(
+        f"{row.get('campaign_id')}（{_campaign_status_name(row.get('status_raw'))}）"
+        for row in matches[:5]
+    )
+    kind = "同一个幂等标记的" if marked else "同名"
+    return f"目标账号有 {len(matches)} 个{kind}广告系列，无法判断用哪一个。{shown}"
+
+
+def incomplete_assets_message(ad_id: str, label: str, wanted: list[str], have: set[str]) -> str:
+    missing = [item for item in wanted if item not in have]
+    shown = "、".join(missing[:8]) or "未知素材"
+    return f"广告 {ad_id} 的{label}素材映射不完整，缺 {shown}"
+
+
+def describe_match_rows(rows: list[dict[str, Any]], *, campaign: bool) -> str:
+    if not rows:
+        return "列表是空的"
+    status_name = _campaign_status_name if campaign else _ad_status_name
+    parts: list[str] = []
+    for row in rows[:5]:
+        name = str(row.get("name") or "").strip()
+        ident = str(
+            row.get("ad_id") or row.get("ad_group_id") or row.get("campaign_id")
+            or row.get("shared_set_id") or ""
+        )
+        label = f"{name}（{ident}）" if name and ident else (name or ident or "未命名")
+        if row.get("status_raw") is not None:
+            label += f"，状态 {status_name(row.get('status_raw'))}"
+        parts.append(label)
+    return f"读到 {'、'.join(parts)}，一共 {len(rows)} 条"
+
+
+def poll_until_one(
+    reader: Callable[[], list[dict[str, Any]]],
+    predicate: Callable[[dict[str, Any]], bool],
+    label: str,
+    *,
+    campaign: bool = False,
+    attempts: int = 14,
+    pause: Callable[[float], None] | None = None,
+) -> dict[str, Any]:
+    """Read until one row matches. The error names what the last read actually saw."""
+    sleeper = pause or time.sleep
+    last_rows: list[dict[str, Any]] = []
+    last_read_error = ""
+    for attempt in range(attempts):
+        if attempt:
+            sleeper(0.8 + attempt * 0.2)
+        try:
+            rows = reader()
+        except Exception as exc:
+            if type(exc).__name__ == "HumanActionRequired":
+                raise
+            last_read_error = str(exc)
+            continue
+        last_rows = rows if isinstance(rows, list) else []
+        matches = [row for row in last_rows if predicate(row)]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise RuntimeError(
+                f"{label}写后出现多个匹配，无法判断用哪一条。"
+                f"{describe_match_rows(matches, campaign=campaign)}"
+            )
+    if last_rows:
+        seen = describe_match_rows(last_rows, campaign=campaign)
+    elif last_read_error:
+        seen = f"最后一次读取失败：{last_read_error}"
+    else:
+        seen = "一次都没读到"
+    raise RuntimeError(f"{label}写完后查了 {attempts} 次，没有按预期出现。{seen}")
+
+
+def claim_named_group(
+    rows: list[dict[str, Any]],
+    *,
+    campaign_id: str,
+    name: str,
+    expected_status: int,
+    mapped_ids: set[str],
+) -> dict[str, Any] | None:
+    """Reuse one matching ad group. A same-name group is not created again."""
+    same = [
+        row for row in rows
+        if str(row.get("campaign_id") or "") == str(campaign_id)
+        and str(row.get("name") or "") == str(name)
+        and str(row.get("ad_group_id") or "") not in mapped_ids
+        and int(row.get("status_raw") or 0) != CHILD_STATUS_REMOVED
+    ]
+    ready = [row for row in same if int(row.get("status_raw") or 0) == int(expected_status)]
+    if len(ready) > 1:
+        shown = "、".join(str(row.get("ad_group_id") or "") for row in ready[:5])
+        raise RuntimeError(f"发现 {len(ready)} 个未记录的同名暂停广告组（{shown}），无法判断用哪一个")
+    if len(ready) == 1:
+        return ready[0]
+    if same:
+        shown = "、".join(_ad_status_name(row.get("status_raw")) for row in same[:3])
+        raise RuntimeError(
+            f"同名广告组已经在，状态是{shown}，和这次要的{_ad_status_name(expected_status)}不一样"
+        )
+    return None
+
+
+def describe_named_rows(rows: list[dict[str, Any]], name: str, *, campaign: bool) -> str:
+    same = [row for row in rows if str(row.get("name") or "") == str(name)]
+    label = _campaign_status_name if campaign else _ad_status_name
+    if not same:
+        return f"账号里没有名为「{name}」的对象"
+    shown = "、".join(label(row.get("status_raw")) for row in same[:3])
+    return f"找到「{name}」，状态是{shown}"
+
+
+def recover_after_poll(
+    poll: Callable[[], dict[str, Any]],
+    reader: Callable[[], list[dict[str, Any]]],
+    predicate: Callable[[dict[str, Any]], bool],
+    describe: Callable[[list[dict[str, Any]]], str],
+    label: str,
+) -> dict[str, Any]:
+    """One more read after the poll gives up, and say what was actually there."""
+    try:
+        return poll()
+    except Exception as exc:
+        if type(exc).__name__ == "HumanActionRequired" or "多个匹配" in str(exc):
+            raise
+        try:
+            rows = reader()
+        except Exception as read_exc:
+            if type(read_exc).__name__ == "HumanActionRequired":
+                raise
+            raise RuntimeError(f"{label}没有读到。再查一次也失败了：{read_exc}") from exc
+        matches = [row for row in rows if predicate(row)]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise RuntimeError(
+                f"{label}有多条匹配，无法判断用哪一条。"
+                f"{describe_match_rows(matches, campaign=label == '广告系列')} 前面的结果：{exc}"
+            ) from exc
+        raise RuntimeError(f"{label}没有按预期出现。{describe(rows)} 前面的结果：{exc}") from exc
 
 
 class PortableCampaignRebuilder:
@@ -795,15 +1455,7 @@ class PortableCampaignRebuilder:
 
     @staticmethod
     def _poll_one(reader: Callable[[], list[dict[str, Any]]], predicate: Callable[[dict[str, Any]], bool], label: str) -> dict[str, Any]:
-        for attempt in range(14):
-            if attempt:
-                time.sleep(0.8 + attempt * 0.2)
-            matches = [row for row in reader() if predicate(row)]
-            if len(matches) == 1:
-                return matches[0]
-            if len(matches) > 1:
-                raise RuntimeError(f"{label}写后出现多个匹配对象，停止自动判断")
-        raise RuntimeError(f"{label}协议返回后未能回读新对象")
+        return poll_until_one(reader, predicate, label, campaign=label == "广告系列")
 
     def recreate(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         campaign = snapshot["campaign"]
