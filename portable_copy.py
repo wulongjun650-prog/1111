@@ -1150,6 +1150,7 @@ _STEP_LABELS = {
     "groups_created": "广告组",
     "criteria_applied": "主题、地区、语言这些定向",
     "assets_uploaded": "图片",
+    "ad_form": "网页填写广告",
     "ads_created": "广告",
     "shared_sets_merged": "排除列表",
     "audiences_applied": "受众",

@@ -25,6 +25,7 @@ from .ads import (
     parse_campaigns,
 )
 from .config import data_dir, format_cid
+from .display_ad_form import place_display_ad_on_page
 from .image_upload import (
     download_first_preview,
     manager_ocid_from_page,
@@ -60,7 +61,6 @@ from .portable_copy import (
     verification_failure,
     portable_app_ad_request,
     portable_campaign_batch_request,
-    portable_display_ad_request,
 )
 from .protocol import AccountPage, ProtocolRunner
 from .targeting_copy import HumanActionRequired, human_gate_for_error
@@ -837,6 +837,44 @@ class PortableCampaignWorkflow:
                         source_ad=source_ad, target_assets=mapped_assets,
                         target_child_status=target_child_status,
                     )
+                    final_urls = [
+                        str(value)
+                        for value in (
+                            ((source_ad.get("13") or {}).get("100") or {}).get("1")
+                            or (source_ad.get("13") or {}).get("5")
+                            or []
+                        )
+                        if value
+                    ]
+
+                    def submit(request: dict[str, Any] = ad_request) -> Any:
+                        return self.target.page.rpc(
+                            "/aw_cm/editing/_/rpc/BatchService/Batch", request,
+                        )
+
+                    def poll(known: set[str], gid: str = target_group_id) -> dict[str, Any]:
+                        return self._poll_one(
+                            lambda group_id=gid: self._read_ads(group_id),
+                            lambda row, existing=known: str(row.get("ad_group_id")) == gid
+                            and str(row.get("ad_id")) not in existing
+                            and row.get("status_raw") == target_child_status,
+                            "广告",
+                        )
+
+                    created_ad, submitted = place_ad_letting_user_unlock(
+                        self.target.page,
+                        account=format_cid(self.target.cid),
+                        log=self.log,
+                        read_ads=lambda gid=target_group_id: self._read_ads(gid),
+                        submit=submit,
+                        poll_new_ad=poll,
+                        group_id=target_group_id,
+                        expected_status=target_child_status,
+                        reserved_ids=mapped_ad_ids,
+                        gate_for_error=lambda error, url=final_urls[:1], cid=format_cid(self.target.cid): human_gate_for_error(
+                            "新建广告", error, final_url=url[0] if url else "", account=cid,
+                        ),
+                    )
                 else:
                     display_creative = creative_path.get("41") or {}
                     asset_by_source_id = {item["source_asset_id"]: item for item in asset_map}
@@ -856,53 +894,25 @@ class PortableCampaignWorkflow:
                     landscape_assets = _mapped("1", "横图")
                     square_assets = _mapped("2", "方图")
                     portrait_assets = _mapped("20", "竖图")
-                    ad_request = portable_display_ad_request(
-                        ocid=self.target.ocid, campaign_id=campaign_id,
-                        ad_group_id=target_group_id, temporary_id=f"-{index}",
+                    state["current_step"] = "ad_form"
+                    self._write_state(state_path, state)
+                    created_ad, submitted = place_display_ad_on_page(
+                        self.target.page,
+                        account=format_cid(self.target.cid),
+                        ocid=self.target.ocid,
+                        campaign_id=campaign_id,
+                        ad_group_id=target_group_id,
                         source_ad=source_ad,
                         landscape_assets=landscape_assets,
                         square_assets=square_assets,
                         portrait_assets=portrait_assets,
-                        target_child_status=target_child_status,
+                        snapshot_assets=list(snapshot.get("assets") or []),
+                        read_ads=lambda gid=target_group_id: self._read_ads(gid),
+                        group_id=target_group_id,
+                        expected_status=target_child_status,
+                        reserved_ids=mapped_ad_ids,
+                        log=self.log,
                     )
-                final_urls = [
-                    str(value)
-                    for value in (
-                        ((source_ad.get("13") or {}).get("100") or {}).get("1")
-                        or (source_ad.get("13") or {}).get("5")
-                        or []
-                    )
-                    if value
-                ]
-
-                def submit(request: dict[str, Any] = ad_request) -> Any:
-                    return self.target.page.rpc(
-                        "/aw_cm/editing/_/rpc/BatchService/Batch", request,
-                    )
-
-                def poll(known: set[str], gid: str = target_group_id) -> dict[str, Any]:
-                    return self._poll_one(
-                        lambda group_id=gid: self._read_ads(group_id),
-                        lambda row, existing=known: str(row.get("ad_group_id")) == gid
-                        and str(row.get("ad_id")) not in existing
-                        and row.get("status_raw") == target_child_status,
-                        "广告",
-                    )
-
-                created_ad, submitted = place_ad_letting_user_unlock(
-                    self.target.page,
-                    account=format_cid(self.target.cid),
-                    log=self.log,
-                    read_ads=lambda gid=target_group_id: self._read_ads(gid),
-                    submit=submit,
-                    poll_new_ad=poll,
-                    group_id=target_group_id,
-                    expected_status=target_child_status,
-                    reserved_ids=mapped_ad_ids,
-                    gate_for_error=lambda error, url=final_urls[:1], cid=format_cid(self.target.cid): human_gate_for_error(
-                        "新建广告", error, final_url=url[0] if url else "", account=cid,
-                    ),
-                )
                 if submitted:
                     wrote_this_run = True
                 ad_map[source_ad_id] = str(created_ad["ad_id"])

@@ -843,5 +843,242 @@ class ReauthCaptureTest(unittest.TestCase):
         self.assertEqual(page.extra_headers, {})
 
 
+class DisplayAdFormTest(unittest.TestCase):
+    def test_ad_list_url_keeps_the_session_and_names_the_group(self) -> None:
+        from .display_ad_form import display_ad_list_url
+
+        url = display_ad_list_url(
+            "https://ads.google.com/aw/overview?ocid=1&euid=5&hl=zh_CN",
+            "99",
+            "10",
+            "20",
+        )
+        self.assertIn("campaignId=10", url)
+        self.assertIn("adGroupId=20", url)
+        self.assertIn("ocid=99", url)
+        self.assertIn("euid=5", url)
+        self.assertNotIn("BatchService", url)
+
+    def test_page_script_does_not_forge_a_key_request(self) -> None:
+        from .display_ad_form import DISPLAY_AD_PAGE_SCRIPT
+
+        self.assertNotIn("BatchService", DISPLAY_AD_PAGE_SCRIPT)
+        self.assertNotIn("accounts.google.com", DISPLAY_AD_PAGE_SCRIPT)
+        self.assertNotIn("X-Goog-First-Party-Reauth", DISPLAY_AD_PAGE_SCRIPT)
+        self.assertNotIn("fetch(", DISPLAY_AD_PAGE_SCRIPT)
+        self.assertIn("自适应展示广告", DISPLAY_AD_PAGE_SCRIPT)
+        self.assertIn("上传", DISPLAY_AD_PAGE_SCRIPT)
+
+    def _source_ad(self, headline: str = "标题一") -> dict:
+        return {"13": {"3": 103, "19": 35, "100": {"1": ["https://shop.example/a"], "41": {
+            "5": [{"1": {"3": {"1": headline}, "17": 1}}],
+            "6": {"1": {"3": {"1": "长标题"}, "17": 1}},
+            "7": [{"1": {"3": {"1": "描述一"}, "17": 1}}],
+            "8": "商店名",
+        }}}}
+
+    def _assets(self) -> tuple[list[dict], list[dict], list[dict]]:
+        landscape = [{"source_asset_id": "s1", "target_asset_id": "111111111111", "filename": "banner.jpg"}]
+        square = [{"source_asset_id": "s2", "target_asset_id": "222222222222", "filename": "square.jpg"}]
+        portrait = [{"source_asset_id": "s3", "target_asset_id": "333333333333", "filename": "tall.jpg"}]
+        return landscape, square, portrait
+
+    def _page(self, scripted: dict | None = None):
+        import json as json_mod
+
+        from .display_ad_form import _page_expression
+
+        class Page:
+            def __init__(self) -> None:
+                self.url = "https://ads.google.com/aw/overview?ocid=99&euid=5&hl=zh_CN"
+                self.actions: list[dict] = []
+                self.commands: list[str] = []
+                self.scripted = dict(scripted or {})
+
+            def evaluate(self, expression: str, timeout: float = 45):
+                if "return ggadsDisplayAd(" not in expression:
+                    if expression.strip() == "window.location.href":
+                        return self.url
+                    if expression.strip() == "document.readyState":
+                        return "complete"
+                    raise AssertionError(expression[:80])
+                payload, _end = json_mod.JSONDecoder().raw_decode(
+                    expression[expression.rfind("return ggadsDisplayAd(") + len("return ggadsDisplayAd("):]
+                )
+                self.actions.append(payload)
+                action = payload.get("action")
+                if action in self.scripted:
+                    item = self.scripted[action]
+                    if isinstance(item, list):
+                        return item.pop(0)
+                    return item
+                if action == "look":
+                    editor = any(item.get("action") == "click_responsive" for item in self.actions[:-1])
+                    return {
+                        "ok": True,
+                        "saw": "广告 最终到达网址 商家名称",
+                        "editor": editor,
+                        "key": False,
+                    }
+                return {"ok": True, "saw": "最终到达网址 商家名称 已暂停", "control": payload.get("control") or action}
+
+            def command(self, method: str, params: dict | None = None, timeout: float = 15) -> dict:
+                if method != "Page.navigate":
+                    raise AssertionError(method)
+                self.commands.append(method)
+                self.url = str((params or {}).get("url") or self.url)
+                return {}
+
+            def rpc(self, path: str, request: dict, timeout: float = 60):
+                raise AssertionError(path)
+
+        Page._page_expression = _page_expression
+        return Page()
+
+    def _place(self, page, read_ads, **extra):
+        from .display_ad_form import place_display_ad_on_page
+
+        landscape, square, portrait = self._assets()
+        return place_display_ad_on_page(
+            page,
+            account="110-669-3913",
+            ocid="99",
+            campaign_id="10",
+            ad_group_id="20",
+            source_ad=self._source_ad(),
+            landscape_assets=landscape,
+            square_assets=square,
+            portrait_assets=portrait if extra.get("with_portrait") else [],
+            snapshot_assets=[
+                {"source_asset_id": "s1", "filename": "banner.jpg", "relative_path": "assets/001-s1.png"},
+                {"source_asset_id": "s2", "filename": "square.jpg", "relative_path": "assets/002-s2.png"},
+                {"source_asset_id": "s3", "filename": "tall.jpg", "relative_path": "assets/003-s3.png"},
+            ],
+            read_ads=read_ads,
+            group_id="20",
+            expected_status=2,
+            reserved_ids=set(),
+            log=extra.get("log", lambda _text: None),
+            key_timeout=extra.get("key_timeout", 5),
+            pause=lambda _seconds: None,
+        )
+
+    def test_form_clicks_responsive_ad_and_reads_the_paused_ad(self) -> None:
+        page = self._page()
+        logs: list[str] = []
+
+        def read_ads() -> list:
+            if any(item.get("action") == "save" for item in page.actions):
+                return [{"ad_id": "42", "ad_group_id": "20", "status_raw": 2}]
+            return []
+
+        ad, submitted = self._place(page, read_ads, log=logs.append, with_portrait=True)
+        actions = [item.get("action") for item in page.actions]
+        self.assertEqual(ad["ad_id"], "42")
+        self.assertTrue(submitted)
+        self.assertEqual(page.commands, ["Page.navigate"])
+        self.assertIn("campaignId=10", page.url)
+        self.assertIn("adGroupId=20", page.url)
+        self.assertLess(actions.index("click_plus"), actions.index("click_responsive"))
+        self.assertLess(actions.index("click_responsive"), actions.index("save"))
+        self.assertEqual(actions.count("save"), 1)
+        filenames = [item.get("filename") for item in page.actions if item.get("action") == "choose_file"]
+        self.assertEqual(filenames, ["001-s1.png", "002-s2.png", "003-s3.png"])
+        self.assertIn("portrait", [item.get("role") for item in page.actions if item.get("action") == "open_image"])
+        status = [item.get("label") for item in page.actions if item.get("action") == "set_status"]
+        self.assertEqual(status, ["已暂停"])
+        self.assertTrue(any("正在网页上填写自适应展示广告" in line for line in logs))
+        self.assertTrue(any("网页自己弹" in line for line in logs))
+        self.assertNotIn("BatchService", page.url)
+
+    def test_stopped_control_includes_the_text_on_the_page(self) -> None:
+        from .display_ad_form import DisplayFormStopped
+
+        page = self._page({"click_plus": {
+            "ok": False,
+            "control": "蓝色加号",
+            "saw": "页面上只有上传展示广告，没有蓝色加号",
+        }})
+        with self.assertRaises(DisplayFormStopped) as caught:
+            self._place(page, lambda: [])
+        message = str(caught.exception)
+        self.assertIn("蓝色加号", message)
+        self.assertIn("上传展示广告", message)
+        self.assertIn("页面上实际看到", message)
+        self.assertIn("没有重来", message)
+        self.assertNotIn("save", [item.get("action") for item in page.actions])
+
+    def test_existing_paused_ad_skips_the_form(self) -> None:
+        page = self._page()
+        ad, submitted = self._place(
+            page,
+            lambda: [{"ad_id": "7", "ad_group_id": "20", "status_raw": 2}],
+        )
+        self.assertEqual(ad["ad_id"], "7")
+        self.assertFalse(submitted)
+        self.assertEqual(page.actions, [])
+        self.assertEqual(page.commands, [])
+
+    def test_wrong_status_does_not_fill_another_ad(self) -> None:
+        page = self._page()
+        with self.assertRaises(RuntimeError) as caught:
+            self._place(page, lambda: [{"ad_id": "7", "ad_group_id": "20", "status_raw": 1}])
+        self.assertIn("已启用", str(caught.exception))
+        self.assertIn("网页还没填", str(caught.exception))
+        self.assertEqual(page.actions, [])
+
+    def test_long_headline_is_rejected_before_the_page_opens(self) -> None:
+        from .display_ad_form import place_display_ad_on_page
+
+        page = self._page()
+        source = self._source_ad(headline="标" * 31)
+        landscape, square, _portrait = self._assets()
+        with self.assertRaises(ValueError) as caught:
+            place_display_ad_on_page(
+                page,
+                account="110-669-3913",
+                ocid="99",
+                campaign_id="10",
+                ad_group_id="20",
+                source_ad=source,
+                landscape_assets=landscape,
+                square_assets=square,
+                read_ads=lambda: [],
+                group_id="20",
+                expected_status=2,
+                reserved_ids=set(),
+                log=lambda _text: None,
+                pause=lambda _seconds: None,
+            )
+        self.assertIn("30", str(caught.exception))
+        self.assertEqual(page.commands, [])
+
+    def test_save_waits_for_the_page_key_and_does_not_retry_the_batch(self) -> None:
+        page = self._page()
+        with self.assertRaises(HumanActionRequired) as caught:
+            self._place(page, lambda: [], key_timeout=0)
+        message = str(caught.exception)
+        self.assertIn("保存", message)
+        self.assertIn("页面上实际看到", message)
+        self.assertIn("不用改预算", message)
+        self.assertIn("不用自己填广告", message)
+        self.assertIn("密钥摸完了，读取新广告", message)
+        self.assertEqual([item.get("action") for item in page.actions].count("save"), 1)
+        joined = " ".join(str(item) for item in page.actions)
+        self.assertNotIn("BatchService", joined)
+
+    def test_both_copy_paths_fill_the_display_ad_on_the_page(self) -> None:
+        import inspect
+
+        from .portable_copy_workflow import PortableCampaignWorkflow
+        from .snapshot_copy import SnapshotImporter
+
+        for method in (PortableCampaignWorkflow.recreate, SnapshotImporter.recreate):
+            source = inspect.getsource(method)
+            self.assertIn("place_display_ad_on_page", source)
+            self.assertIn("place_ad_letting_user_unlock", source)
+            self.assertIn('current_step"] = "ad_form"', source)
+
+
 if __name__ == "__main__":
     unittest.main()

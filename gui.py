@@ -4347,7 +4347,7 @@ class GGAdsApp(tk.Tk):
         self.copy_execute_button.pack(side="left", padx=8)
         self.copy_confirm_button = ttk.Button(
             copy_actions,
-            text="用户已确认，继续建广告",
+            text="密钥摸完了，读取新广告",
             command=self._user_confirmed_continue_copy,
             style="Success.TButton",
         )
@@ -4530,7 +4530,7 @@ class GGAdsApp(tk.Tk):
         self.snap_import_button.pack(side="left", padx=8)
         self.snap_confirm_button = ttk.Button(
             import_actions,
-            text="用户已确认，继续建广告",
+            text="密钥摸完了，读取新广告",
             command=self._user_confirmed_continue_import,
             style="Success.TButton",
         )
@@ -11631,14 +11631,14 @@ class GGAdsApp(tk.Tk):
 
     def _user_confirmed_continue_copy(self) -> None:
         user_confirmation.confirm()
-        self._log("已记下：用户已确认。请在比特窗口新开的验证标签里摸密钥。")
+        self._log("已记下：密钥摸完了。软件只去广告列表读取新广告，不再提交创建协议。")
         if self.running:
             return
         self._entity_copy_execute(already_confirmed=True)
 
     def _user_confirmed_continue_import(self) -> None:
         user_confirmation.confirm()
-        self._log("已记下：用户已确认。请在比特窗口新开的验证标签里摸密钥。")
+        self._log("已记下：密钥摸完了。软件只去广告列表读取新广告，不再提交创建协议。")
         if self.running:
             return
         self._snap_import_execute(already_confirmed=True)
@@ -11658,10 +11658,10 @@ class GGAdsApp(tk.Tk):
         kind_label = self.copy_kind.get()
         if already_confirmed:
             prompt = (
-                "软件会在比特窗口打开 Google 的验证页。请在那里摸密钥。\n"
-                "系列和广告组不重来。不用改预算。确定继续？"
+                "如果网页上的密钥已经摸过，软件会读取刚保存的暂停广告。\n"
+                "系列和广告组不重来。不用改预算，也不用自己填广告。确定继续？"
             )
-            if not messagebox.askyesno("继续建广告", prompt):
+            if not messagebox.askyesno("读取新广告", prompt):
                 user_confirmation.clear()
                 return
         else:
@@ -12027,15 +12027,16 @@ class GGAdsApp(tk.Tk):
             "执行前会重新读取每个目标 CID 余额，只有余额可识别且大于 0 才创建；"
             "币种不同时会尝试按日预算自动换算汇率（出价目标金额不换算，需人工核对）。"
             "不会新建预算：目标账号里要先有一条金额相同的日预算。"
-            "系列先暂停。最后请你在网页上点发布，弹出密钥时摸一下 U 盘。"
+            "系列、广告组和图片仍由协议写好。自适应展示广告由软件在已登录的目标网页里填写，并保存为暂停。"
+            "保存时密钥框由网页自己弹出，请在那个框上摸钥匙。不用改预算，也不用自己填广告。"
             "单个账户失败不影响其余账户继续执行。确定继续？"
         )
         if already_confirmed:
             prompt = (
-                "软件会在比特窗口打开 Google 的验证页。请在那里摸密钥。\n"
-                "系列和广告组不重来。不用改预算。确定继续？"
+                "如果网页上的密钥已经摸过，软件会读取刚保存的暂停广告。\n"
+                "系列和广告组不重来。不用改预算，也不用自己填广告。确定继续？"
             )
-            if not messagebox.askyesno("继续建广告", prompt):
+            if not messagebox.askyesno("读取新广告", prompt):
                 user_confirmation.clear()
                 return
         elif not messagebox.askyesno("确认批量导入", prompt):
