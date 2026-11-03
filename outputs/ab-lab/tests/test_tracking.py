@@ -102,6 +102,59 @@ function go() {
     assert "send_to: CONFIG.googleSendTo" in text
 
 
+def test_a_stored_ads_label_is_conversion_code_whatever_the_field_is_called():
+    """7gt23.sbs keeps the target in googleConversionSendTo and fires it from there."""
+    jump = "window.location.href=buildWaUrl(message);"
+    page = '''<!doctype html><html><head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-364192896"></script>
+<script>
+  function gtag(){dataLayer.push(arguments);}
+  gtag('config', 'G-Q6YP0DZLSY');
+  gtag('config', 'AW-364192896');
+</script>
+</head><body><script>
+const CONFIG = {
+  whatsappNumber: '85200000000',
+  googleConversionSendTo: 'AW-364192896/4AipCP_viZYdEIDJ1K0B',
+};
+function fireGoogleConversion(){
+  try{ if(CONFIG.googleConversionSendTo && typeof gtag==='function') gtag('event','conversion',{'send_to':CONFIG.googleConversionSendTo}); }catch(e){}
+}
+function goWhatsApp(){
+  %s
+  fireGoogleConversion();
+}
+</script></body></html>''' % jump
+    found = read_pages([('index.html', page.encode())])
+    assert found['ga4'] == 'G-Q6YP0DZLSY'
+    assert found['conversion'] == 'AW-364192896/4AipCP_viZYdEIDJ1K0B'
+    assert "googleConversionSendTo: 'AW-364192896/4AipCP_viZYdEIDJ1K0B'" in found['conversion_body']
+    assert "gtag('event','conversion',{'send_to':CONFIG.googleConversionSendTo})" in found['conversion_body']
+    assert 'gtag_report_conversion' not in found['conversion_body']
+    quoted = page.replace(
+        "googleConversionSendTo: 'AW-364192896/4AipCP_viZYdEIDJ1K0B'",
+        '"googleConversionSendTo": "AW-364192896/4AipCP_viZYdEIDJ1K0B"',
+    )
+    assert read_pages([('index.html', quoted.encode())])['conversion'] == 'AW-364192896/4AipCP_viZYdEIDJ1K0B'
+    renamed = '''<script>
+const adsLabel = 'AW-11421360067/Z7iXCK6y948dEMO_kMYq';
+function fire(){ gtag("event", "conversion", {"send_to": adsLabel}); }
+</script>'''
+    assert read_pages([('index.html', renamed.encode())])['conversion'] == 'AW-11421360067/Z7iXCK6y948dEMO_kMYq'
+    mention = '<p>说明里出现 AW-11421360067/Z7iXCK6y948dEMO_kMYq 不是代码</p>'
+    assert read_pages([('index.html', mention.encode())])['conversion'] == ''
+    updated, changed = rewrite_pages([('index.html', page.encode())], None, CONVERSION.replace('Z7iXCK6y948dEMO_kMYq', 'NEWLABEL1234'))
+    text = dict(updated)['index.html'].decode()
+    assert changed
+    assert "googleConversionSendTo: 'AW-11421360067/NEWLABEL1234'" in text
+    assert '4AipCP_viZYdEIDJ1K0B' not in text
+    assert 'function gtag_report_conversion' not in text
+    assert jump in text
+    assert "gtag('event','conversion',{'send_to':CONFIG.googleConversionSendTo})" in text
+    assert "gtag('config', 'AW-364192896');" in text
+    assert "gtag('config', 'AW-11421360067');" in text
+
+
 def test_read_pages_returns_the_full_blocks():
     found = read_pages([('index.html', OLD_PAGE.encode())])
     assert found['ga4'] == 'G-OLDOLDOLD1'
