@@ -20,6 +20,7 @@
     gtag('js', new Date());
     gtag('config', 'G-GVPNN75RYK');
     gtag('config', 'AW-364192896');
+    gtag('config', 'AW-11421397839');
 
 
 
@@ -534,7 +535,7 @@
 
       // 追蹤／號碼
       whatsappNumber: '85246589466',
-      googleConversionSendTo: 'AW-364192896/ysJlCPLYirEdEIDJ1K0B',
+      googleConversionSendTo: 'AW-11421397839/IQueCMfd1LEdEM_mksYq',
       youtubeUrl: 'https://www.youtube.com/@money-tab'
     };
     window.CONFIG = CONFIG;
@@ -643,8 +644,25 @@
       document.body.classList.remove('modal-open');
       track('lead_modal_close',{reason});
     }
+    function gtag_report_conversion(url) {
+      var callback = function () {
+        if (typeof(url) != 'undefined') {
+          window.location = url;
+        }
+      };
+      try {
+        if (CONFIG.googleConversionSendTo && typeof gtag === 'function') {
+          gtag('event', 'conversion', {
+            'send_to': CONFIG.googleConversionSendTo,
+            'transaction_id': '',
+            'event_callback': callback
+          });
+        }
+      } catch (e) {}
+      return false;
+    }
     function fireGoogleConversion(){
-      try{ if(CONFIG.googleConversionSendTo && typeof gtag==='function') gtag('event','conversion',{'send_to':CONFIG.googleConversionSendTo}); }catch(e){}
+      gtag_report_conversion();
     }
 
     const UA = navigator.userAgent || '';
