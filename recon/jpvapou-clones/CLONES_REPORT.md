@@ -25,6 +25,7 @@
 | 方法 | 规模 | 同款命中 |
 |------|------|----------|
 | 反查 IP 15.204.67.21（Hackertarget，约 388 域名）+ HTTP 指纹 | 388 | **仅 www.jpvapou.com** |
+| 反查合并 15.204.67.21/20 + 107.x + 23.x，清洗后 236 域名 | 236 | **0**（无第二实例） |
 | RapidDNS 同 IP / hygjcdn 子域 | 100+ CDN 节点名 | 0 客户域名 |
 | 字典爆破（jpv*/hygj*/vapou* 等）+ 指纹 | 320+ | **仅 www.jpvapou.com** |
 | 公网搜索（Brave/DDG/GitHub/Leakix）`GetOrderDetailByMainOrder`、`NuclearProtesterFee` | — | 无公开索引 |
@@ -65,3 +66,9 @@ python3 recon/jpvapou-clones/fingerprint_probe.py --file candidates.txt --json-o
 ## 工具
 
 - `fingerprint_probe.py`：批量探针（见上）
+- `fofa_shodan_search.py`：FOFA/Shodan 语句批量拉域名（需 API 密钥，见 `RUNBOOK.md`）
+- `candidates_rev_sanitized.txt` / `hits_rev.json`：无 API 反查候选与探针结果（当前 `hits_rev.json` 为空）
+
+## FOFA 网页验证
+
+对 `body="/Client/GetClientInfoByID"` 的公开结果页需登录，且提示 **824001：body 语法需注册用户** → 必须使用 FOFA API + 账号密钥后才能做 body 级全网搜。
