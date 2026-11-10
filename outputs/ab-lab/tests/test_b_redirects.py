@@ -1222,6 +1222,77 @@ def test_whatsapp_number_replace_keeps_the_quotes_and_the_jump(console):
     assert 'window.location.href=buildWaUrl(message);' in text
 
 
+LANDING_PAGE = r'''<!doctype html>
+<button data-wa>领取</button>
+<div id="quiz-backdrop"></div>
+<script>
+const CONFIG = { whatsappNumber: '85290001111' };
+const DEFAULT_MODE = 'ABC';
+function resolveModeFromUrl(){
+  const params = new URLSearchParams(location.search);
+  const raw = (params.get('mode') || '').toUpperCase();
+  return raw === 'ABC' || raw === 'CBA' ? raw : DEFAULT_MODE;
+}
+let landingMode = resolveModeFromUrl();
+function buildWhatsAppUrl(message){
+  return 'https://api.whatsapp.com/send?phone=' + CONFIG.whatsappNumber + '&text=' + message;
+}
+function goWhatsApp(message){
+  window.location.assign(buildWhatsAppUrl(message));
+}
+function openQuiz(trigger){ return trigger; }
+function openLeadFlow(trigger){
+  if(landingMode === 'CBA') {
+    goWhatsApp('你好');
+  } else {
+    openQuiz(trigger);
+  }
+}
+</script>
+'''
+
+
+def test_secret_weapon_toggles_the_landing_default_mode(console):
+    client, app = console
+    base = _upload_html(client, LANDING_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    base_text = (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+    assert text == base_text.replace("const DEFAULT_MODE = 'ABC';", "const DEFAULT_MODE = 'CBA';", 1)
+    assert "return raw === 'ABC' || raw === 'CBA' ? raw : DEFAULT_MODE;" in text
+    assert "landingMode === 'CBA'" in text
+    assert '85290001111' in text
+    assert client.get('/api/state').json()['direct_mode'] == 'ABC'
+    for name in ('goWhatsApp', 'buildWhatsAppUrl', 'openLeadFlow', 'openQuiz'):
+        _same_function(LANDING_PAGE, text, name)
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    assert published_html(app) == base_text
+    assert client.get('/api/state').json()['direct_mode'] == 'CBA'
+
+
+def test_secret_weapon_refuses_a_landing_mode_it_cannot_edit(console):
+    client, app = console
+    page = LANDING_PAGE.replace("landingMode === 'CBA'", "landingMode === 'SKIP'")
+    base = _upload_html(client, page)
+    scan = client.get('/api/b-redirects').json()
+    refused = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert refused.status_code == 400, refused.text
+    assert '没有改动' in refused.json()['detail']
+    assert app.state.store.slots()['B'] == base
+    assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+
+
 def test_secret_weapon_refuses_an_unrecognized_query_code_switch(console):
     client, app = console
     page = CONTACT_PAGE.replace("params.get('code')||params.get('mode')||'ABC'", 'window.flowCode')

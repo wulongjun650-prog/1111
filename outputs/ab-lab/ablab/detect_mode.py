@@ -153,7 +153,7 @@ def fetch_public_html(domain):
 
 
 def _fold_mode(text):
-    from .redirects import _CONTACT_FALLBACK, _DIRECT_MODE
+    from .redirects import _CONTACT_FALLBACK, _DEFAULT_MODE, _DIRECT_MODE
 
     def contact(match):
         start = match.start(4) - match.start()
@@ -163,7 +163,10 @@ def _fold_mode(text):
     def direct(match):
         return f"{match.group(1)}{match.group(2)}{_FOLD_TOKEN}{match.group(2)}"
 
-    return _DIRECT_MODE.sub(direct, _CONTACT_FALLBACK.sub(contact, text))
+    def landing(match):
+        return f"{match.group('prefix')}{match.group('q')}{_FOLD_TOKEN}{match.group('q')}"
+
+    return _DEFAULT_MODE.sub(landing, _DIRECT_MODE.sub(direct, _CONTACT_FALLBACK.sub(contact, text)))
 
 
 def _fold_phones(text, phones):
