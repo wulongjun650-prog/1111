@@ -72,6 +72,33 @@ const useContactGate=contactFlowMode==='ABC';
     assert read_direct_mode((source.pages / source.slots()['B'] / 'index.html').read_text()) == 'ABC'
 
 
+def test_mirror_keeps_the_landing_questionnaire(tmp_path):
+    registry = Registry(tmp_path)
+    source_site = registry.add('source.test')
+    mirror_site = registry.add('watch.test')
+    source = registry.store(source_site['id'])
+    mirror = registry.store(mirror_site['id'])
+    html = """<html><div id="quiz-backdrop"></div><script>
+const DEFAULT_MODE = 'CBA';
+function resolveModeFromUrl(){ return DEFAULT_MODE; }
+let landingMode = resolveModeFromUrl();
+function goWhatsApp(message){ window.location.assign(message); }
+function openQuiz(trigger){ return trigger; }
+function openLeadFlow(trigger){
+  if(landingMode === 'CBA') goWhatsApp('你好');
+  else openQuiz(trigger);
+}
+</script></html>""".encode()
+    publish(source, 'B', html)
+    assert sync_mirror_content(source, mirror) is True
+    copied = (mirror.pages / mirror.slots()['B'] / 'index.html').read_text()
+    assert "const DEFAULT_MODE = 'ABC';" in copied
+    assert "const DEFAULT_MODE = 'CBA';" not in copied
+    assert read_direct_mode(copied) == 'CBA'
+    assert read_direct_mode((source.pages / source.slots()['B'] / 'index.html').read_text()) == 'ABC'
+    assert "window.location.assign(message)" in copied
+
+
 def test_binding_rejects_a_mirror_used_as_the_source(tmp_path):
     registry = Registry(tmp_path)
     source = registry.add('source.test')

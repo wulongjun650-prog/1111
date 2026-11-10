@@ -1818,13 +1818,20 @@ _LEAD_DIRECT_CALL = re.compile(
 )
 
 
+# Landing pages store the default in one assignment. ABC shows the quiz. CBA skips it.
+_DEFAULT_MODE = re.compile(
+    r"(?P<prefix>\bDEFAULT_MODE\s*=\s*)(?P<q>['\"])(?P<token>ABC|CBA)(?P=q)",
+    re.IGNORECASE,
+)
+
+
 def flow_kind(text):
-    """'config' for directMode, 'contact' for the query-code ABC/CBA page."""
+    """'config' for directMode, 'contact' for a two-way ABC/CBA page."""
     if not isinstance(text, str):
         return None
     if re.search(r'directMode\s*:', text):
         return 'config'
-    if 'getContactFlowMode' in text or _request_modal_shape(text) or _lead_modal_shape(text) or _lead_entry_shape(text):
+    if 'getContactFlowMode' in text or _request_modal_shape(text) or _lead_modal_shape(text) or _lead_entry_shape(text) or _DEFAULT_MODE.search(text):
         return 'contact'
     return None
 
@@ -2068,6 +2075,41 @@ def _replace_contact_token(text, token):
     raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
 
 
+def _landing_shape(text):
+    if not isinstance(text, str) or len(list(_DEFAULT_MODE.finditer(text))) != 1:
+        return False
+    if len(re.findall(r'\bDEFAULT_MODE\b', text)) < 2:
+        return False
+    if not re.search(r"""\blandingMode\s*===\s*(['"])CBA\1""", text):
+        return False
+    return 'openQuiz' in text or 'quiz-backdrop' in text
+
+
+def _landing_token(text):
+    found = list(_DEFAULT_MODE.finditer(text))
+    if len(found) != 1:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+    return found[0].group('token').upper()
+
+
+def _replace_landing_token(text, token):
+    def repl(match):
+        if match.group('token').upper() == token:
+            return match.group(0)
+        return f"{match.group('prefix')}{match.group('q')}{token}{match.group('q')}"
+
+    updated, count = _DEFAULT_MODE.subn(repl, text)
+    if count != 1:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+
+    def fold(value):
+        return _DEFAULT_MODE.sub(lambda match: f"{match.group('prefix')}{match.group('q')}ABC{match.group('q')}", value)
+
+    if fold(text) != fold(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    return updated
+
+
 def _weapon_mode(token):
     """ABC on the weapon means the questionnaire is already skipped."""
     return 'ABC' if token == 'CBA' else 'CBA'
@@ -2106,6 +2148,10 @@ def read_direct_mode(text):
             return 'CBA' if opens else 'ABC'
         if _lead_entry_shape(text):
             return _weapon_mode(_lead_entry_file_token(text))
+        if _DEFAULT_MODE.search(text):
+            if not _landing_shape(text):
+                raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+            return _weapon_mode(_landing_token(text))
         return None
     if not _contact_shape(text):
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
@@ -2144,6 +2190,10 @@ def set_direct_mode(text, mode):
         return _replace_lead_calls(text, skip=(mode == 'ABC'))
     if _lead_entry_shape(text):
         return _replace_lead_entry(text, mode)
+    if isinstance(text, str) and _DEFAULT_MODE.search(text) and not re.search(r'directMode\s*:', text):
+        if not _landing_shape(text):
+            raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+        return _replace_landing_token(text, _file_token(mode))
     if not isinstance(text, str) or not re.search(r'directMode\s*:', text):
         return None
     if not _DIRECT_MODE.search(text):
@@ -2181,4 +2231,6 @@ def blank_direct_mode(text):
         text = _replace_lead_calls(text, skip=False)
     if _lead_entry_shape(text):
         text = _replace_lead_entry(text, 'CBA')
+    if _landing_shape(text):
+        text = _replace_landing_token(text, 'ABC')
     return text

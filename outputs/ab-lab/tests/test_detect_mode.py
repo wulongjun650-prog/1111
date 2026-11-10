@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from ablab.detect_mode import FetchError, _require_public_address, parse_domain
+from ablab.detect_mode import FetchError, _require_public_address, parse_domain, snapshot_html
 from ablab.web import create_admin
 
 PAGE = '''<!doctype html>
@@ -63,6 +63,25 @@ def test_a_typed_domain_need_not_belong_to_this_system(tmp_path):
     removed = admin.delete('/api/detect-mode', params={'domain': 'watch.example'}, headers=headers)
     assert removed.status_code == 200, removed.text
     assert removed.json()['targets'] == []
+
+
+def test_landing_default_mode_is_a_questionnaire_and_not_other_content():
+    page = '''<div id="quiz-backdrop"></div><script>
+const DEFAULT_MODE = 'ABC';
+function resolveModeFromUrl(){ return DEFAULT_MODE; }
+let landingMode = resolveModeFromUrl();
+function goWhatsApp(){ window.location.assign('https://api.whatsapp.com/send?phone=85290001111'); }
+function openQuiz(){}
+function openLeadFlow(){ if(landingMode === 'CBA') goWhatsApp(); else openQuiz(); }
+</script>'''
+    shown = snapshot_html(page)
+    skipped = snapshot_html(page.replace("const DEFAULT_MODE = 'ABC';", "const DEFAULT_MODE = 'CBA';", 1))
+    assert shown['questionnaire'] == 'CBA'
+    assert shown['label'] == '先出问卷'
+    assert skipped['questionnaire'] == 'ABC'
+    assert skipped['label'] == '已跳过问卷'
+    assert shown['digest'] == skipped['digest']
+    assert '85290001111' in shown['phones']
 
 
 def test_domain_text_accepts_a_bare_host():
