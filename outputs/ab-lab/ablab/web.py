@@ -39,6 +39,7 @@ from .redirects import has_whatsapp_builder, public_occurrences, rewrite_recepti
 from .rules import decide
 from .cloudflare import Cloudflare
 from .human_check import stamp_published
+from . import visitor_surface as surface
 from .provisioning import ProvisioningError
 from .reputation import GoogleReputation
 from .speedcheck import SpeedBusy, SpeedCheckInput, SpeedChecker
@@ -1853,7 +1854,9 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if len(sites) != 1:
             raise HTTPException(404, '没有这个域名')
         try:
-            payload, slot = served_landing_bytes(registry.store(sites[0]['id']), jump_event_endpoint(deployment))
+            site_store = registry.store(sites[0]['id'])
+            prefer = 'B' if site_store.slots().get('B') else None
+            payload, slot = served_landing_bytes(site_store, jump_event_endpoint(deployment), prefer_slot=prefer)
         except FileNotFoundError:
             raise HTTPException(404, '当前发布页没有可导出的 HTML') from None
         return Response(payload, media_type='text/html; charset=utf-8', headers={'Content-Disposition': f'attachment; filename="landing-{slot}.html"'})
@@ -1934,11 +1937,11 @@ def assign_visitor_page(data, relative, occurrences, link_url, number):
 
 
 _NUMBER_SPLIT_SCRIPT = (
-    '<script id="ab-number-split">(function(){'
+    f'<script id="{surface.NUMBER_POOL_SCRIPT_ID}">(function(){{'
     'var spec=__SPEC__;'
     'var pool=spec.pool||[];'
     'if(!pool.length)return;'
-    'var key="ab_wa_pick",saved="",pick=null,i;'
+    'var key="pg_wa_pick",saved="",pick=null,i;'
     'try{saved=localStorage.getItem(key)||"";}catch(e){}'
     'for(i=0;i<pool.length;i++){if(pool[i].phone===saved){pick=pool[i];break;}}'
     'if(!pick){'
@@ -1969,7 +1972,7 @@ _NUMBER_SPLIT_SCRIPT = (
 # does the same for a group link while WhatsApp event names stay put.
 # YouTube fields are copied from the address bar and the referrer; event names stay until the link changes.
 _DEST_APP_SCRIPT = (
-    '<script id="ab-dest-app">(function(){'
+    f'<script id="{surface.CONTACT_BRIDGE_SCRIPT_ID}">(function(){{'
     'function ytFrom(raw){'
     'var text=String(raw||"").replace(/^\\s+|\\s+$/g,"");'
     'if(!text)return null;'
@@ -2030,11 +2033,20 @@ _DEST_APP_SCRIPT = (
 )
 
 
+def _served_script_present(data: bytes, script_id: str) -> bool:
+    token = f'id="{script_id}"'.encode()
+    return token in data
+
+
 def inject_dest_app(data, relative=''):
     """Serve-time wrapper. The stored page and its WhatsApp jump stay as uploaded."""
     if Path(str(relative)).suffix.lower() not in ('.html', '.htm'):
         return data
-    if b'buildWhatsAppUrls' not in data or b'id="ab-dest-app"' in data:
+    if b'buildWhatsAppUrls' not in data:
+        return data
+    if _served_script_present(data, surface.CONTACT_BRIDGE_SCRIPT_ID) or _served_script_present(
+        data, surface.LEGACY_CONTACT_BRIDGE_SCRIPT_ID
+    ):
         return data
     bom = data.startswith(b'\xef\xbb\xbf')
     raw = data[3:] if bom else data
@@ -2042,7 +2054,9 @@ def inject_dest_app(data, relative=''):
         text = raw.decode('utf-8')
     except UnicodeError:
         return data
-    if 'id="ab-dest-app"' in text or 'buildWhatsAppUrls' not in text:
+    if 'buildWhatsAppUrls' not in text:
+        return data
+    if f'id="{surface.CONTACT_BRIDGE_SCRIPT_ID}"' in text or f'id="{surface.LEGACY_CONTACT_BRIDGE_SCRIPT_ID}"' in text:
         return data
     match = None
     for found in re.finditer(r'</body\s*>', text, re.IGNORECASE):
@@ -2150,7 +2164,7 @@ def inject_number_split(data, members, mode, event_endpoint=''):
         text = raw.decode('utf-8')
     except UnicodeError:
         return data
-    if 'id="ab-number-split"' in text:
+    if f'id="{surface.NUMBER_POOL_SCRIPT_ID}"' in text or f'id="{surface.LEGACY_NUMBER_POOL_SCRIPT_ID}"' in text:
         return data
     match = None
     for found in re.finditer(r'</body\s*>', text, re.IGNORECASE):
@@ -2171,10 +2185,12 @@ def _landing_html(root):
     return found[0], found[0].resolve().relative_to(root.resolve()).as_posix()
 
 
-def served_landing_bytes(store, endpoint):
+def served_landing_bytes(store, endpoint, prefer_slot=None):
     """The published page plus the scripts added at serve time. No visitor row is written."""
     config, _ = store.config()
-    if config.routing == 'FORCE_A':
+    if prefer_slot in ('A', 'B'):
+        slot = prefer_slot
+    elif config.routing == 'FORCE_A':
         slot = 'A'
     elif config.routing == 'FORCE_B':
         slot = 'B'
@@ -2244,7 +2260,10 @@ def prepare_split(store, request, version_id):
 
 def content_response(store, version_id, path, method='GET', transform=None):
     if not version_id:
-        return HTMLResponse('<!doctype html><meta charset="utf-8"><h1>页面尚未发布</h1><p>请在管理后台为当前槽位导入并发布内容。</p>', status_code=503)
+        return HTMLResponse(
+            f'<!doctype html><meta charset="utf-8"><h1>{surface.EMPTY_SLOT_TITLE}</h1><p>{surface.EMPTY_SLOT_DETAIL}</p>',
+            status_code=503,
+        )
     try:
         root = store.pages / version_id
         file = resolve_file(root, path)

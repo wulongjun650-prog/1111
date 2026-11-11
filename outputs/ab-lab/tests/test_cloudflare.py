@@ -943,7 +943,7 @@ def test_button_switch_writes_the_published_page_and_not_the_zone_level(tmp_path
     assert not any(method == 'PUT' and 'cache' in path for method, path in api.calls)
     page = Registry(tmp_path).store(site_id).pages / Registry(tmp_path).store(site_id).slots()['B'] / 'index.html'
     text = page.read_text(encoding='utf-8')
-    assert 'id="ab-human-click"' in text
+    assert 'id="pg-click-guard"' in text
     assert 'https://example.com/go' in text
     again = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': True})
     assert again.status_code == 200
@@ -958,7 +958,7 @@ def test_button_switch_writes_the_published_page_and_not_the_zone_level(tmp_path
     assert closed.json()['site']['cf_challenge'] == 0
     assert api.page_rules == []
     assert api.security_level == 'medium'
-    assert 'ab-human-click' not in page.read_text(encoding='utf-8')
+    assert 'pg-click-guard' not in page.read_text(encoding='utf-8')
 
 
 def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
@@ -987,9 +987,9 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert '不用点按钮' in body['detail']
     assert not any(method == 'PUT' and 'cache' in path for method, path in api.calls)
     text = page.read_text(encoding='utf-8')
-    script = page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
-    assert 'id="ab-human-browse"' in text
-    assert 'src="ab-human-browse.js"' in text
+    script = page.with_name('pg-verify.js').read_text(encoding='utf-8')
+    assert 'id="pg-verify-slot"' in text
+    assert 'src="pg-verify.js"' in text
     assert 'position:fixed' not in text
     assert 'margin:28px 0 20px' in text
     assert 'function show' not in text
@@ -1012,9 +1012,9 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     published = http.post(f'/api/sites/{site_id}/publish/B', json={'version_id': uploaded.json()['version']['id']})
     assert published.status_code == 200, published.text
     live = Registry(tmp_path).store(site_id).pages / uploaded.json()['version']['id'] / 'index.html'
-    assert 'id="ab-human-browse"' in live.read_text(encoding='utf-8')
+    assert 'id="pg-verify-slot"' in live.read_text(encoding='utf-8')
     assert 'function show' not in live.read_text(encoding='utf-8')
-    assert live.with_name('ab-human-browse.js').is_file()
+    assert live.with_name('pg-verify.js').is_file()
     assert '新的一版' in live.read_text(encoding='utf-8')
     closed = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': False})
     assert closed.status_code == 200, closed.text
@@ -1022,8 +1022,8 @@ def test_browse_switch_keeps_the_page_open_and_adds_a_corner_check(tmp_path):
     assert closed.json()['site']['cf_challenge'] == 0
     assert closed.json()['site']['cf_turnstile_sitekey'] == ''
     assert api.widgets == []
-    assert 'ab-human-browse' not in live.read_text(encoding='utf-8')
-    assert not live.with_name('ab-human-browse.js').exists()
+    assert 'pg-verify' not in live.read_text(encoding='utf-8')
+    assert not live.with_name('pg-verify.js').exists()
     assert api.security_level == 'medium'
 
 
@@ -1043,20 +1043,20 @@ def test_wait_switch_blocks_the_click_until_the_check_finishes(tmp_path):
     assert body['site']['cf_challenge'] == 8
     assert '请稍等，正在验证是否是真人' in body['detail']
     text = page.read_text(encoding='utf-8')
-    script = page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
+    script = page.with_name('pg-verify.js').read_text(encoding='utf-8')
     assert '请稍等，正在验证是否是真人' not in text
     assert '请稍等，正在验证是否是真人' in script
-    assert 'abHumanPending' in script
-    assert 'src="ab-human-browse.js"' in text
+    assert 'pgVerifyPending' in script
+    assert 'src="pg-verify.js"' in text
     assert api.widgets[0]['mode'] == 'non-interactive'
     kept = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True, 'wait': True})
     assert kept.status_code == 200, kept.text
     assert kept.json()['site']['cf_challenge'] == 12
-    assert '请稍等，正在验证是否是真人' in page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
+    assert '请稍等，正在验证是否是真人' in page.with_name('pg-verify.js').read_text(encoding='utf-8')
     closed = http.post(f'/api/sites/{site_id}/cloudflare/challenge', json={'entry': False, 'button': False, 'browse': True, 'wait': False})
     assert closed.status_code == 200, closed.text
     assert closed.json()['wait'] is False and closed.json()['site']['cf_challenge'] == 4
-    assert '请稍等' not in page.with_name('ab-human-browse.js').read_text(encoding='utf-8')
+    assert '请稍等' not in page.with_name('pg-verify.js').read_text(encoding='utf-8')
 
 
 def test_browse_switch_rewrites_a_click_widget_so_the_check_finishes_itself(tmp_path):
@@ -1101,7 +1101,7 @@ def test_browse_switch_stays_off_when_the_widget_is_forbidden(tmp_path):
     saved = http.get('/api/sites').json()['sites']
     site = next(item for item in saved if item['id'] == site_id)
     assert site['cf_challenge'] == 0
-    assert 'ab-human-browse' not in page.read_text(encoding='utf-8')
+    assert 'pg-verify' not in page.read_text(encoding='utf-8')
 
 
 def test_closing_cloudflare_turns_the_human_check_off_before_greying(tmp_path):

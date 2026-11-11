@@ -15,9 +15,7 @@ _EVENTS = (
     'wa_copy_number',
     'wa_copy_message',
 )
-_MARKER = '/* ab-event-implant */'
 _SEND_EVENT = '''
-    /* ab-event-implant */
     function sendEvent(name, extra) {
       if (typeof CONFIG !== "object" || !CONFIG || !CONFIG.eventEndpoint) return;
       try {
@@ -43,17 +41,16 @@ _SEND_EVENT = '''
         }, extra || {}));
         if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.eventEndpoint, new Blob([body], {type: "text/plain"}))) return;
         fetch(CONFIG.eventEndpoint, {method: "POST", body: body, mode: "no-cors", keepalive: true});
-      } catch (abSkip) {}
+      } catch (_skip) {}
     }
 '''
 _WRAP = '''
-    /* ab-event-implant */
-    var abGoWhatsApp = goWhatsApp;
+    var _pgGoWhatsApp = goWhatsApp;
     goWhatsApp = function () {
-      var abResult;
-      try { abResult = abGoWhatsApp.apply(this, arguments); }
-      finally { try { sendEvent("whatsapp_click", {}); } catch (abSkip) {} }
-      return abResult;
+      var _pgResult;
+      try { _pgResult = _pgGoWhatsApp.apply(this, arguments); }
+      finally { try { sendEvent("whatsapp_click", {}); } catch (_skip) {} }
+      return _pgResult;
     };
 '''
 
@@ -188,7 +185,7 @@ def _scan_text(text, html):
     calls_ready = _calls_paired(text, html)
     attempt_ready = not _needs_attempt(text, html)
     if has_endpoint and has_function and calls_ready and attempt_ready and not _needs_wrap(text, html):
-        if _MARKER in text:
+        if '_pgGoWhatsApp' in text or 'abGoWhatsApp' in text or '/* ab-event-implant */' in text:
             return _status('implanted')
         return _status('ready')
     return _status('missing')

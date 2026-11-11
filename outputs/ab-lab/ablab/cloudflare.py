@@ -12,6 +12,7 @@ import httpx
 
 from .provisioning import ProvisioningError, public_ipv4
 from .sites import normalize_domain
+from .visitor_surface import HUMAN_BUTTON_QUERY_FLAG
 
 
 API = 'https://api.cloudflare.com/client/v4'
@@ -29,7 +30,7 @@ BROWSER_CACHE_MAX = 3600
 CHALLENGE_PHASE = 'http_request_firewall_custom'
 CHALLENGE_DESCRIPTION = '双子星人机验证'
 CHALLENGE_EXPRESSION = '(http.request.method eq "GET" and any(http.request.headers["accept"][*] contains "text/html"))'
-BUTTON_QUERY = 'ab_human=1'
+BUTTON_QUERY = f'{HUMAN_BUTTON_QUERY_FLAG}=1'
 BROWSE_WIDGET = '双子星浏览时加载'
 SITEKEY_RE = re.compile(r'^0x[A-Za-z0-9_-]{20,80}$')
 WIDGET_ROOM = 10

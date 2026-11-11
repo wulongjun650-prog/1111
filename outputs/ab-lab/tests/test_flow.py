@@ -203,5 +203,5 @@ def test_iphone_and_android_show_up_in_the_visit_detail_and_the_raw_log(tmp_path
     assert source.status_code == 200
     assert 'landing-B.html' in source.headers['content-disposition']
     assert 'https://hhucuq.top/wa-events' in source.text
-    assert 'id="ab-dest-app"' in source.text
+    assert 'id="pg-contact-bridge"' in source.text
     assert 'function buildWhatsAppUrls' in source.text
