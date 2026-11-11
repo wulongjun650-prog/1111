@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upload changed ablab modules and restart services via aaPanel. Run on a machine with panel access."""
+"""Upload changed ablab modules and restart services via aaPanel."""
 from __future__ import annotations
 
 import base64
@@ -9,6 +9,7 @@ import re
 import sys
 import tarfile
 import tempfile
+import textwrap
 import time
 from pathlib import Path
 
@@ -20,7 +21,7 @@ UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 FILES = [
     'visitor_surface.py', 'web.py', 'auth.py', 'human_check.py', 'page_implant.py', 'models.py',
     'cloudflare.py', 'watrust.py', 'certificate_acceptance.py', 'nginx_entry.py', 'nginx_tls.py',
-    'origin_setup.py', 'panel_sites.py', 'site_erasure.py', 'speedcheck.py',
+    'origin_setup.py', 'panel_sites.py', 'site_erasure.py', 'speedcheck.py', 'linkcheck.py',
 ]
 REMOTE_ROOT = '/opt/ab-lab/ablab'
 SWITCH = '/opt/ab-lab/deploy/switch_admin_origin.sh'
@@ -34,31 +35,49 @@ def _handoff_panel():
     return m.group(1).rstrip('/'), m.group(2), m.group(3)
 
 
-def _login(client: httpx.Client, base: str, user: str, password: str) -> str:
-    page = client.get(f'{base}/login', follow_redirects=True)
-    page.raise_for_status()
-    token_m = re.search(r'id="request_token_head"[^>]*token="([^"]+)"', page.text)
-    key_m = re.search(r'id="request_token_head"[^>]*public_key="([^"]+)"', page.text)
+def _page_tokens(text: str) -> tuple[str, str]:
+    token_m = re.search(r'class="apsess_token"[^>]*data="([^"]+)"', text)
+    key_m = re.search(r'class="public_key"[^>]*data="([^"]+)"', text)
+    if token_m and key_m:
+        return token_m.group(1), key_m.group(1)
+    token_m = re.search(r'id="request_token_head"[^>]*token="([^"]+)"', text)
+    key_m = re.search(r'id="request_token_head"[^>]*public_key="([^"]+)"', text)
     if not token_m or not key_m:
         raise SystemExit('panel login page tokens missing')
+    return token_m.group(1), key_m.group(1)
+
+
+def _pem_bytes(pem: str) -> bytes:
+    if '\n' in pem.strip():
+        return pem.encode()
+    inner = pem.replace('-----BEGIN PUBLIC KEY-----', '').replace('-----END PUBLIC KEY-----', '')
+    body = '\n'.join(textwrap.wrap(inner, 64))
+    return f'-----BEGIN PUBLIC KEY-----\n{body}\n-----END PUBLIC KEY-----\n'.encode()
+
+
+def _login(client: httpx.Client, base: str, user: str, password: str) -> str:
+    client.get(f'{base}/', follow_redirects=True)
+    page = client.get(f'{base}/login', follow_redirects=True)
+    page.raise_for_status()
+    token, pem = _page_tokens(page.text)
     import rsa  # noqa: WPS433
 
     digest = hashlib.md5(hashlib.md5(password.encode()).hexdigest().encode()).hexdigest()
-    encrypted = base64.b64encode(rsa.encrypt(digest.encode(), rsa.PublicKey.load_pkcs1_openssl_pem(key_m.group(1).encode()))).decode()
-    resp = client.post(f'{base}/login', data={'username': user, 'password': encrypted}, headers={'x-http-token': token_m.group(1)})
-    resp.raise_for_status()
-    if '宝塔Linux面板' not in resp.text and resp.status_code != 302:
-        raise SystemExit('panel login failed')
-    session = resp.cookies.get('bt_session') or client.cookies.get('bt_session')
-    if not session:
-        for cookie in client.cookies.jar:
-            if cookie.name == 'bt_session':
-                session = cookie.value
+    encrypted = base64.b64encode(rsa.encrypt(digest.encode(), rsa.PublicKey.load_pkcs1_openssl_pem(_pem_bytes(pem)))).decode()
+    resp = client.post(
+        f'{base}/login',
+        data={'username': user, 'password': encrypted, 'code': ''},
+        headers={'x-http-token': token, 'x-requested-with': 'XMLHttpRequest'},
+    )
+    try:
+        payload = resp.json()
+    except json.JSONDecodeError:
+        payload = {}
+    if payload.get('status') is not True:
+        raise SystemExit(f'panel login failed: {payload!r}')
     home = client.get(f'{base}/', follow_redirects=True)
-    token_m = re.search(r'id="request_token_head"[^>]*token="([^"]+)"', home.text)
-    if not token_m:
-        raise SystemExit('panel session token missing')
-    return token_m.group(1)
+    session, _ = _page_tokens(home.text)
+    return session
 
 
 def _save_file(client: httpx.Client, base: str, token: str, path: str, body: str) -> None:
@@ -75,7 +94,11 @@ def _save_file(client: httpx.Client, base: str, token: str, path: str, body: str
 def _exec(client: httpx.Client, base: str, token: str, shell: str) -> str:
     nonce = f'ABSHIP{int(time.time())}'
     script = f'echo {nonce}; {shell}; echo EXIT:$?'
-    client.post(f'{base}/files?action=SaveFileBody', data={'data': script, 'path': '/tmp/panelShell.sh', 'encoding': 'utf-8'}, headers={'x-http-token': token})
+    client.post(
+        f'{base}/files?action=SaveFileBody',
+        data={'data': script, 'path': '/tmp/panelShell.sh', 'encoding': 'utf-8'},
+        headers={'x-http-token': token},
+    )
     client.post(f'{base}/files?action=ExecShell', data={'shell': '/tmp/panelShell.sh', 'path': '/tmp'}, headers={'x-http-token': token})
     for _ in range(30):
         time.sleep(1)
@@ -92,9 +115,6 @@ def main() -> int:
     base, user, password = _handoff_panel()
     with httpx.Client(headers={'User-Agent': UA}, timeout=60, verify=False) as client:
         token = _login(client, base, user, password)
-        session_prefix = client.cookies.get('bt_session_id') or ''
-        if session_prefix:
-            client.headers['Cookie'] = client.headers.get('Cookie', '')
         for name in FILES:
             text = (ABLAB / name).read_text(encoding='utf-8')
             _save_file(client, base, token, f'{REMOTE_ROOT}/{name}', text)
@@ -104,7 +124,7 @@ def main() -> int:
             f'/opt/ab-lab/.venv/bin/python -m py_compile {" ".join(REMOTE_ROOT + "/" + f for f in FILES)}'
         )
         _exec(client, base, token, compile_cmd)
-        _exec(client, base, token, f'chmod +x {SWITCH} && bash {SWITCH}')
+        _exec(client, base, token, 'systemctl restart ab-lab-admin && systemctl restart ab-lab-target')
     print('ship_ok')
     return 0
 
