@@ -2121,6 +2121,11 @@ def _rewrite_event_endpoints(text, endpoint):
     return updated
 
 
+def _visitor_bytes(data, relative, endpoint):
+    data = surface.polish_visitor_bytes(data, relative)
+    return inject_dest_app(fill_event_endpoint(data, endpoint), relative)
+
+
 def fill_event_endpoint(data, url):
     """Write the receiver into an empty CONFIG.eventEndpoint. Leave every other byte alone."""
     if not url or b'eventEndpoint' not in data:
@@ -2227,7 +2232,7 @@ def served_landing_bytes(store, endpoint, prefer_slot=None):
         except ValueError:
             pass
         data = inject_number_split(data, split['members'], split['mode'], endpoint)
-    return inject_dest_app(fill_event_endpoint(data, endpoint), relative), slot
+    return _visitor_bytes(data, relative, endpoint), slot
 
 
 def prepare_number_split(store, request, version_id):
@@ -2561,7 +2566,8 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
         redirect = directory_redirect(store, [version_id], path, request)
         if redirect is not None:
             return redirect
-        return content_response(store, version_id, path, request.method, lambda data, relative: inject_dest_app(fill_event_endpoint(data, jump_event_endpoint(deployment)), relative))
+        endpoint = jump_event_endpoint(deployment)
+        return content_response(store, version_id, path, request.method, lambda data, relative: _visitor_bytes(data, relative, endpoint))
 
     @app.post(surface.EVENT_INGEST_PATH)
     @app.post(surface.LEGACY_EVENT_INGEST_PATH)
@@ -2664,7 +2670,7 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
                     data = inject_number_split(data, numbered['members'], numbered['mode'], endpoint)
             elif prepared:
                 data = prepared['transform'](data, relative)
-            return inject_dest_app(fill_event_endpoint(data, endpoint), relative)
+            return _visitor_bytes(data, relative, endpoint)
 
         transform = visitor_transform
         response = content_response(store, version_id, path, request.method, transform)

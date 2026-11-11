@@ -131,7 +131,7 @@ def _fetch(url, vetted_ip, deadline):
         stream.settimeout(_remaining(deadline))
         target = urlunsplit(('', '', parsed.path or '/', parsed.query, ''))
         request = (f'GET {target} HTTP/1.1\r\nHost: {parsed.netloc}\r\n'
-                   'User-Agent: AB-Lab-LinkCheck/1.0\r\nAccept: text/html,*/*;q=0.1\r\n'
+                   'User-Agent: Mozilla/5.0 (compatible; SiteCheck/1.0)\r\nAccept: text/html,*/*;q=0.1\r\n'
                    'Accept-Encoding: identity\r\nConnection: close\r\n\r\n').encode('ascii')
         stream.sendall(request)
         response = http.client.HTTPResponse(stream, method='GET')

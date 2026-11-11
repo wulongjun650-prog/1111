@@ -189,6 +189,7 @@ def _stamp_file(path, button, browse_html, browse_js):
     except UnicodeError:
         return _sync_script(path, browse_js)
     stripped = _strip_stamped(text)
+    stripped = surface.polish_visitor_text(stripped, path.name)
     updated = stripped
     if browse_html:
         updated = _insert(updated, browse_html)
