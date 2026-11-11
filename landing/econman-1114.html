@@ -20,13 +20,20 @@
     gtag('js', new Date());
     gtag('config', 'AW-16466498508');
 
-    function gtag_report_conversion() {
+    // 购买转化。调用时不传 url：先跳 WhatsApp，再上报，不等回调。
+    function gtag_report_conversion(url) {
+      var callback = function () {
+        if (typeof(url) != 'undefined') {
+          window.location = url;
+        }
+      };
       try {
         gtag('event', 'conversion', {
           'send_to': 'AW-16466498508/J181CLvR-bUdEMyn66s9',
           'value': 1.0,
           'currency': 'USD',
-          'transaction_id': ''
+          'transaction_id': '',
+          'event_callback': callback
         });
       } catch(e) {}
       return false;
