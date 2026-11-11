@@ -8,6 +8,7 @@ import re
 from . import visitor_surface as surface
 
 _FLAG = surface.HUMAN_BUTTON_QUERY_FLAG
+_LEGACY_FLAG = surface.LEGACY_HUMAN_BUTTON_QUERY_FLAG
 _CLICK_ID = surface.HUMAN_CLICK_SCRIPT_ID
 _LEGACY_CLICK_ID = surface.LEGACY_HUMAN_CLICK_SCRIPT_ID
 _STYLE_ID = surface.HUMAN_BROWSE_STYLE_ID
@@ -27,19 +28,20 @@ _SESSION_GO = 'pg-verify-go'
 
 SCRIPT = (
     f'<script id="{_CLICK_ID}">(function(){{'
-    f'var FLAG="{_FLAG}",NEXT="{_SESSION_NEXT}",GO="{_SESSION_GO}";'
+    f'var FLAG="{_FLAG}",LEGACY="{_LEGACY_FLAG}",NEXT="{_SESSION_NEXT}",GO="{_SESSION_GO}";'
     'function read(key){try{return sessionStorage.getItem(key)||"";}catch(e){return "";}}'
     'function write(key,value){try{sessionStorage.setItem(key,value);}catch(e){}}'
     'function drop(key){try{sessionStorage.removeItem(key);}catch(e){}}'
     'function clean(){var params;try{params=new URLSearchParams(location.search);}catch(e){return location.pathname+location.hash;}'
-    'params.delete(FLAG);var query=params.toString();return location.pathname+(query?"?"+query:"")+location.hash;}'
+    'params.delete(FLAG);params.delete(LEGACY);var query=params.toString();return location.pathname+(query?"?"+query:"")+location.hash;}'
+    'function flagged(){return [FLAG,LEGACY].some(function(name){return new RegExp("[?&]"+name+"=1(?:&|$)").test(location.search||"");});}'
     'if(read(GO)==="1"){drop(GO);var saved=read(NEXT);drop(NEXT);var index=-1;'
     'try{index=JSON.parse(saved).index;}catch(e){}'
     'var again=document.querySelectorAll("a,button")[index];'
     'if(again){var dest=again.href||again.getAttribute("href")||"";'
     'if(again.tagName==="A"&&/^https?:\\/\\//i.test(dest))location.assign(dest);'
     'else again.click();}return;}'
-    'if(new RegExp("[?&]"+FLAG+"=1(?:&|$)").test(location.search||"")){write(GO,"1");location.replace(clean());return;}'
+    'if(flagged()){write(GO,"1");location.replace(clean());return;}'
     'document.addEventListener("click",function(event){'
     f'if(window.{_PENDING})return;'
     'var node=event.target&&event.target.closest?event.target.closest("a,button"):null;'
@@ -129,9 +131,7 @@ def browse_javascript(sitekey, wait=False):
             f'function(){{ready=true;window.{_PENDING}=false;'
             f'var note=document.getElementById("{_WAIT_ID}");if(note)note.remove();}}'
         )
-    mark = _JS_MARK.decode('ascii')
     return (
-        f'{mark}\n'
         '(function(){'
         f'var KEY="{sitekey}";'
         f'{gate}'

@@ -44,7 +44,7 @@ def test_acceptance_binds_fixed_ip_sni_host_fingerprint_and_route_identity():
         'https': True, 'route': True, 'renewal': False}
     assert versions.calls == [(IDENTITY, 22, DIGEST)]
     assert calls == [('8.8.8.8', IDENTITY['domain'],
-                      '/.well-known/ab-lab-route/' + IDENTITY['site_id'], 10, 4096)]
+                      '/.well-known/site-verify/' + IDENTITY['site_id'], 10, 4096)]
 
 
 @pytest.mark.parametrize('result', [
@@ -172,11 +172,11 @@ def test_default_transport_uses_system_context_sni_and_exact_host(monkeypatch):
     monkeypatch.setattr(module.http.client, 'HTTPResponse', HTTPResponse)
 
     result = module._https_exchange('8.8.8.8', IDENTITY['domain'],
-                                    '/.well-known/ab-lab-route/' + IDENTITY['site_id'], 10, 4096)
+                                    '/.well-known/site-verify/' + IDENTITY['site_id'], 10, 4096)
     assert result == response(headers=[('Content-Type', 'application/json'),
                                        ('Cache-Control', 'no-store')])
     request = next(item for item in events if isinstance(item, bytes))
-    assert request.startswith(b'GET /.well-known/ab-lab-route/')
+    assert request.startswith(b'GET /.well-known/site-verify/')
     assert b'Host: new.example.com\r\n' in request
     assert ('connect', ('8.8.8.8', 443), 10) in events
     assert ('sni', raw, IDENTITY['domain']) in events

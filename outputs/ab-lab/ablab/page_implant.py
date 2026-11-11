@@ -45,13 +45,8 @@ _SEND_EVENT = '''
     }
 '''
 _WRAP = '''
-    var _pgGoWhatsApp = goWhatsApp;
-    goWhatsApp = function () {
-      var _pgResult;
-      try { _pgResult = _pgGoWhatsApp.apply(this, arguments); }
-      finally { try { sendEvent("whatsapp_click", {}); } catch (_skip) {} }
-      return _pgResult;
-    };
+    var _g0=goWhatsApp;
+    goWhatsApp=function(){var _r0;try{_r0=_g0.apply(this,arguments);}finally{try{sendEvent("whatsapp_click",{});}catch(_e){}}return _r0;};
 '''
 
 
@@ -185,7 +180,7 @@ def _scan_text(text, html):
     calls_ready = _calls_paired(text, html)
     attempt_ready = not _needs_attempt(text, html)
     if has_endpoint and has_function and calls_ready and attempt_ready and not _needs_wrap(text, html):
-        if '_pgGoWhatsApp' in text or 'abGoWhatsApp' in text or '/* ab-event-implant */' in text:
+        if '_g0' in text or '_pgGoWhatsApp' in text or 'abGoWhatsApp' in text or '/* ab-event-implant */' in text:
             return _status('implanted')
         return _status('ready')
     return _status('missing')

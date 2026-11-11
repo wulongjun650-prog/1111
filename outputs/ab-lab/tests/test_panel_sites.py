@@ -66,7 +66,7 @@ def fixture(sites=(), domains=(), create=None, bindings=()):
 
 def owned_site(**changes):
     result = {'id': 22, 'name': IDENTITY['domain'], 'path': IDENTITY['path'],
-              'ps': 'ab-lab:' + IDENTITY['site_id'] + ':' + IDENTITY['owner'], 'status': '1'}
+              'ps': 'pg:' + IDENTITY['site_id'] + ':' + IDENTITY['owner'], 'status': '1'}
     result.update(changes)
     return result
 

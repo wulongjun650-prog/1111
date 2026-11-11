@@ -55,7 +55,8 @@ class TlsRouteProbe:
             raise ValueError('证书指纹无效')
         if authorize() is not True:
             raise ProvisioningError('HTTPS 验收已暂停或归属未确认')
-        path = '/.well-known/ab-lab-route/' + identity['site_id']
+        from .visitor_surface import ROUTE_PROOF_PREFIX
+        path = ROUTE_PROOF_PREFIX + identity['site_id']
         try:
             peer, status, headers, body = self.transport(
                 self.server_ip, identity['domain'], path, self.timeout, self.limit)

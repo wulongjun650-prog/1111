@@ -73,7 +73,7 @@ def erase(tmp_path, folder, runner, panel):
 
 def owned_conf(root):
     return (
-        f'# AB Lab managed HTTPS entry {SITE}\n'
+        f'# {SITE}\n'
         'server {\n'
         f'    listen 443 ssl;\n'
         f'    server_name {DOMAIN};\n'

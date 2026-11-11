@@ -171,7 +171,7 @@ def test_number_split_assigns_on_open_and_leaves_jump_links(apps):
     original = published_page(admin)
     before = target.get('/')
     assert '本次由助理 Chloe 接待' in before.text and '85264150954' in before.text
-    assert before.cookies.get('ab_wa') is None and before.cookies.get('ab_split') is None
+    assert before.cookies.get('pg_wa') is None and before.cookies.get('pg_split') is None
     vivian = admin.post('/api/b-redirects/numbers', json={'phones': ['85211112222'], 'note': '', 'display_name': 'Vivian 關詠怡'}).json()['numbers'][0]
     chloe = admin.post('/api/b-redirects/numbers', json={'phones': ['85233334444'], 'note': '', 'display_name': 'Chloe 陳'}).json()['numbers'][0]
     opened = admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'random', 'members': [{'number_id': vivian['id'], 'weight': 1}]})
@@ -179,7 +179,7 @@ def test_number_split_assigns_on_open_and_leaves_jump_links(apps):
     assert admin.get('/api/b-redirects').json()['split']['enabled'] is False
     first = target.get('/')
     assert first.status_code == 200
-    assert first.cookies.get('ab_wa') and first.cookies.get('ab_split') is None
+    assert first.cookies.get('pg_wa') and first.cookies.get('pg_split') is None
     assert first.text.count('本次由助理Vivian 關詠怡 接待') == 1
     assert 'Vivian 關詠怡本次由助理' not in first.text
     body, _, picker = first.text.partition('<script id="pg-number-pool">')
@@ -211,7 +211,7 @@ def test_number_split_assigns_on_open_and_leaves_jump_links(apps):
     admin.put('/api/b-redirects/numbers/split', json={'enabled': True, 'mode': 'weighted', 'members': [{'number_id': vivian['id'], 'weight': 80}]})
     both = TestClient(target.app, base_url='http://127.0.0.1:8766', client=('127.0.0.1', 50003))
     mixed = both.get('/')
-    assert mixed.cookies.get('ab_split') and mixed.cookies.get('ab_wa')
+    assert mixed.cookies.get('pg_split') and mixed.cookies.get('pg_wa')
     assert 'https://split.example/landing' in mixed.text and 'old.example' not in mixed.text
     assert '85211112222' in mixed.text and '85264150954' not in mixed.text
     assert mixed.text.count('本次由助理Vivian 關詠怡 接待') == 1
@@ -427,7 +427,7 @@ def test_b_split_rewrites_the_page_before_it_is_sent(apps):
     assert first.status_code == 200
     assert 'https://split.example/landing' in first.text
     assert 'old.example' not in first.text
-    assert first.cookies.get('ab_split')
+    assert first.cookies.get('pg_split')
     assert target.get('/').text == first.text
     admin.put('/api/b-redirects/split', json={'enabled': False, 'mode': 'random', 'members': [{'preset_id': preset.json()['presets'][0]['id'], 'weight': 1}]})
     assert 'old.example' in target.get('/').text

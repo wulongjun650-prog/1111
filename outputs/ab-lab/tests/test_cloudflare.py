@@ -162,9 +162,9 @@ class Api:
             body = json.loads(request.content)
             assert body['priority'] == 1 and body['status'] == 'active'
             assert body['actions'] == [{'id': 'security_level', 'value': 'under_attack'}]
-            assert 'ab_human=1' in body['targets'][0]['constraint']['value']
+            assert 'pg_human=1' in body['targets'][0]['constraint']['value']
             saved = {'id': 'f' * 32, 'targets': body['targets'], 'actions': body['actions'], 'priority': 1, 'status': 'active'}
-            self.page_rules = [rule for rule in self.page_rules if 'ab_human=1' not in json.dumps(rule.get('targets'))]
+            self.page_rules = [rule for rule in self.page_rules if 'pg_human=1' not in json.dumps(rule.get('targets'))]
             self.page_rules.insert(0, saved)
             return envelope(saved)
         if rest.startswith('pagerules/') and request.method == 'PATCH':
@@ -210,7 +210,7 @@ class Api:
         body = json.loads(request.content or b'{}')
         if tail == 'challenges/widgets' and request.method == 'POST':
             assert body['mode'] == 'non-interactive' and body['clearance_level'] == 'jschallenge'
-            assert body['name'] == '双子星浏览时加载'
+            assert body['name'] == '浏览验证挂件'
             assert 1 <= len(body['domains']) <= 10
             saved = {
                 'sitekey': '0x4AAAAAAAB8lYQJSCAI6WbG' + str(len(self.widgets)),
@@ -791,7 +791,7 @@ def test_human_check_keeps_other_firewall_rules_and_leaves_cache_alone():
     assert api.firewall_rules[0]['action'] == 'block'
     challenge = api.firewall_rules[1]
     assert challenge['action'] == 'managed_challenge'
-    assert challenge['description'] == '双子星人机验证'
+    assert challenge['description'] == '落地页人机验证'
     assert 'text/html' in challenge['expression']
     assert 'id' not in challenge
     assert api.page_rules == []
@@ -847,7 +847,7 @@ def test_button_check_uses_a_page_rule_and_keeps_the_landing_level():
     opened = client(api).set_human_challenge(ZONE, 'shop.example.com', False, True)
     assert opened == {'entry': False, 'button': True, 'browse': False, 'previous': '', 'sitekey': ''}
     assert api.security_level == 'medium'
-    assert api.page_rules[0]['targets'][0]['constraint']['value'] == '*shop.example.com/*ab_human=1*'
+    assert api.page_rules[0]['targets'][0]['constraint']['value'] == '*shop.example.com/*pg_human=1*'
     assert api.page_rules[0]['actions'] == [{'id': 'security_level', 'value': 'under_attack'}]
     assert api.page_rules[1] == kept
     again = client(api).set_human_challenge(ZONE, 'shop.example.com', False, True)
@@ -1068,7 +1068,7 @@ def test_browse_switch_rewrites_a_click_widget_so_the_check_finishes_itself(tmp_
     sitekey = '0x4AAAAAAAB8lYQJSCAI6WbGexisting1'
     api.widgets = [{
         'sitekey': sitekey,
-        'name': '双子星浏览时加载',
+        'name': '浏览验证挂件',
         'domains': ['shop.example.com'],
         'mode': 'managed',
         'clearance_level': 'managed',

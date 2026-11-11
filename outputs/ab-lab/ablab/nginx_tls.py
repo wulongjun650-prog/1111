@@ -25,7 +25,7 @@ def render_tls_entry(identity, version_path):
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_certificate "{path}/fullchain.pem";
     ssl_certificate_key "{path}/privkey.pem";''', 1)
-    return f'''# AB Lab managed TLS entry {identity['site_id']}
+    return f'''# {identity['site_id']}
 server {{
     listen 80;
     server_name {identity['domain']};
