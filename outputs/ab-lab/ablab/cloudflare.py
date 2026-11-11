@@ -12,6 +12,7 @@ import httpx
 
 from .provisioning import ProvisioningError, public_ipv4
 from .sites import normalize_domain
+from .visitor_surface import HUMAN_BUTTON_QUERY_FLAG, LEGACY_HUMAN_BUTTON_QUERY_FLAG
 
 
 API = 'https://api.cloudflare.com/client/v4'
@@ -27,10 +28,11 @@ RULE_KEYS = ('expression', 'action', 'action_parameters', 'description', 'enable
 # Cloudflare uses 0 for "Respect Existing Headers". Longer than an hour overrides the origin no-store.
 BROWSER_CACHE_MAX = 3600
 CHALLENGE_PHASE = 'http_request_firewall_custom'
-CHALLENGE_DESCRIPTION = '双子星人机验证'
+CHALLENGE_DESCRIPTION = '落地页人机验证'
 CHALLENGE_EXPRESSION = '(http.request.method eq "GET" and any(http.request.headers["accept"][*] contains "text/html"))'
-BUTTON_QUERY = 'ab_human=1'
-BROWSE_WIDGET = '双子星浏览时加载'
+BUTTON_QUERY = f'{HUMAN_BUTTON_QUERY_FLAG}=1'
+LEGACY_BUTTON_QUERY = f'{LEGACY_HUMAN_BUTTON_QUERY_FLAG}=1'
+BROWSE_WIDGET = '浏览验证挂件'
 SITEKEY_RE = re.compile(r'^0x[A-Za-z0-9_-]{20,80}$')
 WIDGET_ROOM = 10
 SECURITY_LEVELS = ('off', 'essentially_off', 'low', 'medium', 'high', 'under_attack')
@@ -440,8 +442,9 @@ class Cloudflare:
 
     def _set_button_rule(self, client, zone_id, domain, enabled):
         pattern = f'*{domain}/*{BUTTON_QUERY}*'
+        legacy_pattern = f'*{domain}/*{LEGACY_BUTTON_QUERY}*'
         rules = self._page_rules(client, zone_id)
-        ours = [rule for rule in rules if _button_rule(rule, pattern)]
+        ours = [rule for rule in rules if _button_rule(rule, pattern) or _button_rule(rule, legacy_pattern)]
         others = [rule for rule in rules if rule not in ours]
         if not enabled:
             for rule in ours:

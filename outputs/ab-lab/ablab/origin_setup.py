@@ -137,7 +137,7 @@ def render_origin_https(identity, fullchain, key_path):
     validate_identity(identity)
     fullchain = _safe_pem(fullchain, identity['site_id'], 'fullchain.pem')
     key_path = _safe_pem(key_path, identity['site_id'], 'privkey.pem')
-    return f'''# AB Lab managed HTTPS entry {identity['site_id']}
+    return f'''# {identity['site_id']}
 server {{
     listen 80;
     server_name {identity['domain']};

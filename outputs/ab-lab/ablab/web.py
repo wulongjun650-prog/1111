@@ -39,17 +39,20 @@ from .redirects import has_whatsapp_builder, public_occurrences, rewrite_recepti
 from .rules import decide
 from .cloudflare import Cloudflare
 from .human_check import stamp_published
+from . import visitor_surface as surface
 from .provisioning import ProvisioningError
 from .reputation import GoogleReputation
 from .speedcheck import SpeedBusy, SpeedCheckInput, SpeedChecker
 from .store import Conflict, Store
-from .auth import Auth, COOKIE, SESSION_SECONDS
+from .auth import Auth, COOKIE, LEGACY_COOKIE, SESSION_SECONDS
 from .sites import Registry
 
 ROOT = Path(__file__).resolve().parent.parent
 LOGGER = logging.getLogger('ablab')
-SPLIT_COOKIE = 'ab_split'
-WA_COOKIE = 'ab_wa'
+SPLIT_COOKIE = surface.SPLIT_COOKIE
+LEGACY_SPLIT_COOKIE = surface.LEGACY_SPLIT_COOKIE
+WA_COOKIE = surface.WA_COOKIE
+LEGACY_WA_COOKIE = surface.LEGACY_WA_COOKIE
 _split_scans = {}
 _split_scan_lock = threading.Lock()
 Slot = Literal['A', 'B']
@@ -135,7 +138,7 @@ class LocalBoundary:
         state = scope.setdefault('state', {})
         site = None
         is_ingest = self.admin and scope['method'] == 'POST' and re.fullmatch(r'/api/wa-trust/screen/[A-Za-z0-9_-]{20,80}', scope['path']) is not None
-        is_beacon = scope['method'] == 'POST' and scope['path'] == '/wa-events'
+        is_beacon = scope['method'] == 'POST' and scope['path'] in (surface.EVENT_INGEST_PATH, surface.LEGACY_EVENT_INGEST_PATH)
         if self.deployment:
             allowed_hosts = (self.deployment.host(self.admin),)
             if not self.admin and self.registry:
@@ -179,7 +182,7 @@ class LocalBoundary:
             state['site_id'] = site['id']
         if self.admin and self.auth:
             request = Request(scope)
-            session = self.auth.session(request.cookies.get(COOKIE))
+            session = self.auth.session(request.cookies.get(COOKIE) or request.cookies.get(LEGACY_COOKIE))
             public = is_beacon or is_ingest or (scope['path'] == '/api/login' and scope['method'] == 'POST') or (scope['method'] in ('GET', 'HEAD') and scope['path'] in ('/login', '/static/login.js', '/static/app.css'))
             if not public and session is None:
                 response = RedirectResponse('/login', status_code=307) if scope['path'] == '/' else JSONResponse({'detail': '请先登录'}, status_code=401)
@@ -997,6 +1000,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             auth.logout(request.cookies[COOKIE])
             response = JSONResponse({'ok': True})
             response.delete_cookie(COOKIE, path='/', secure=True, httponly=True, samesite='strict')
+            response.delete_cookie(LEGACY_COOKIE, path='/', secure=True, httponly=True, samesite='strict')
             return response
 
     @routes.get('/state')
@@ -1602,7 +1606,7 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             row.update(device_name=details.get('device', ''), device_model=details.get('model', ''), os=details.get('os', ''), browser=details.get('browser', ''))
             values = [str(row.get(key) or '') for key in fields]
             writer.writerow(["'" + value if value.startswith(('=', '+', '-', '@', '\t', '\r')) else value for value in values])
-        return Response('\ufeff' + stream.getvalue(), media_type='text/csv; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="ab-lab-visits.csv"'})
+        return Response('\ufeff' + stream.getvalue(), media_type='text/csv; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="visits.csv"'})
 
     @routes.get('/audit')
     def audit(request: Request, store=Depends(site_store)):
@@ -1853,7 +1857,9 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
         if len(sites) != 1:
             raise HTTPException(404, '没有这个域名')
         try:
-            payload, slot = served_landing_bytes(registry.store(sites[0]['id']), jump_event_endpoint(deployment))
+            site_store = registry.store(sites[0]['id'])
+            prefer = 'B' if site_store.slots().get('B') else None
+            payload, slot = served_landing_bytes(site_store, jump_event_endpoint(deployment), prefer_slot=prefer)
         except FileNotFoundError:
             raise HTTPException(404, '当前发布页没有可导出的 HTML') from None
         return Response(payload, media_type='text/html; charset=utf-8', headers={'Content-Disposition': f'attachment; filename="landing-{slot}.html"'})
@@ -1872,7 +1878,8 @@ def create_admin(data_dir, port=8765, target_port=8766, deployment=None, registr
             raise HTTPException(404, '检测不存在')
         return job
 
-    @app.post('/wa-events')
+    @app.post(surface.EVENT_INGEST_PATH)
+    @app.post(surface.LEGACY_EVENT_INGEST_PATH)
     async def wa_events(request: Request):
         return await accept_jump_event(request, registry, store)
 
@@ -1934,11 +1941,11 @@ def assign_visitor_page(data, relative, occurrences, link_url, number):
 
 
 _NUMBER_SPLIT_SCRIPT = (
-    '<script id="ab-number-split">(function(){'
+    f'<script id="{surface.NUMBER_POOL_SCRIPT_ID}">(function(){{'
     'var spec=__SPEC__;'
     'var pool=spec.pool||[];'
     'if(!pool.length)return;'
-    'var key="ab_wa_pick",saved="",pick=null,i;'
+    'var key="pg_wa_pick",saved="",pick=null,i;'
     'try{saved=localStorage.getItem(key)||"";}catch(e){}'
     'for(i=0;i<pool.length;i++){if(pool[i].phone===saved){pick=pool[i];break;}}'
     'if(!pick){'
@@ -1969,7 +1976,7 @@ _NUMBER_SPLIT_SCRIPT = (
 # does the same for a group link while WhatsApp event names stay put.
 # YouTube fields are copied from the address bar and the referrer; event names stay until the link changes.
 _DEST_APP_SCRIPT = (
-    '<script id="ab-dest-app">(function(){'
+    f'<script id="{surface.CONTACT_BRIDGE_SCRIPT_ID}">(function(){{'
     'function ytFrom(raw){'
     'var text=String(raw||"").replace(/^\\s+|\\s+$/g,"");'
     'if(!text)return null;'
@@ -2030,11 +2037,20 @@ _DEST_APP_SCRIPT = (
 )
 
 
+def _served_script_present(data: bytes, script_id: str) -> bool:
+    token = f'id="{script_id}"'.encode()
+    return token in data
+
+
 def inject_dest_app(data, relative=''):
     """Serve-time wrapper. The stored page and its WhatsApp jump stay as uploaded."""
     if Path(str(relative)).suffix.lower() not in ('.html', '.htm'):
         return data
-    if b'buildWhatsAppUrls' not in data or b'id="ab-dest-app"' in data:
+    if b'buildWhatsAppUrls' not in data:
+        return data
+    if _served_script_present(data, surface.CONTACT_BRIDGE_SCRIPT_ID) or _served_script_present(
+        data, surface.LEGACY_CONTACT_BRIDGE_SCRIPT_ID
+    ):
         return data
     bom = data.startswith(b'\xef\xbb\xbf')
     raw = data[3:] if bom else data
@@ -2042,7 +2058,9 @@ def inject_dest_app(data, relative=''):
         text = raw.decode('utf-8')
     except UnicodeError:
         return data
-    if 'id="ab-dest-app"' in text or 'buildWhatsAppUrls' not in text:
+    if 'buildWhatsAppUrls' not in text:
+        return data
+    if f'id="{surface.CONTACT_BRIDGE_SCRIPT_ID}"' in text or f'id="{surface.LEGACY_CONTACT_BRIDGE_SCRIPT_ID}"' in text:
         return data
     match = None
     for found in re.finditer(r'</body\s*>', text, re.IGNORECASE):
@@ -2090,7 +2108,22 @@ def _with_youtube_channels(report):
 
 def jump_event_endpoint(deployment):
     origin = deployment.admin_origin if deployment else PUBLIC_ORIGIN
-    return origin.rstrip('/') + '/wa-events'
+    return origin.rstrip('/') + surface.EVENT_INGEST_PATH
+
+
+def _rewrite_event_endpoints(text, endpoint):
+    if not endpoint:
+        return text
+    updated = text
+    for legacy_origin in surface.LEGACY_ADMIN_ORIGINS:
+        for suffix in (surface.LEGACY_EVENT_INGEST_PATH, surface.EVENT_INGEST_PATH):
+            updated = updated.replace(f'{legacy_origin.rstrip("/")}{suffix}', endpoint)
+    return updated
+
+
+def _visitor_bytes(data, relative, endpoint):
+    data = surface.polish_visitor_bytes(data, relative)
+    return inject_dest_app(fill_event_endpoint(data, endpoint), relative)
 
 
 def fill_event_endpoint(data, url):
@@ -2104,12 +2137,15 @@ def fill_event_endpoint(data, url):
     except UnicodeError:
         return data
 
+    updated = _rewrite_event_endpoints(text, url)
+
     def replace(match):
         if match.group(3).strip():
             return match.group(0)
         return f'{match.group(1)}{match.group(2)}{url}{match.group(2)}'
 
-    updated = _EVENT_ENDPOINT.sub(replace, text)
+    if url:
+        updated = _EVENT_ENDPOINT.sub(replace, updated)
     if updated == text:
         return data
     payload = updated.encode('utf-8')
@@ -2150,7 +2186,7 @@ def inject_number_split(data, members, mode, event_endpoint=''):
         text = raw.decode('utf-8')
     except UnicodeError:
         return data
-    if 'id="ab-number-split"' in text:
+    if f'id="{surface.NUMBER_POOL_SCRIPT_ID}"' in text or f'id="{surface.LEGACY_NUMBER_POOL_SCRIPT_ID}"' in text:
         return data
     match = None
     for found in re.finditer(r'</body\s*>', text, re.IGNORECASE):
@@ -2171,10 +2207,12 @@ def _landing_html(root):
     return found[0], found[0].resolve().relative_to(root.resolve()).as_posix()
 
 
-def served_landing_bytes(store, endpoint):
+def served_landing_bytes(store, endpoint, prefer_slot=None):
     """The published page plus the scripts added at serve time. No visitor row is written."""
     config, _ = store.config()
-    if config.routing == 'FORCE_A':
+    if prefer_slot in ('A', 'B'):
+        slot = prefer_slot
+    elif config.routing == 'FORCE_A':
         slot = 'A'
     elif config.routing == 'FORCE_B':
         slot = 'B'
@@ -2194,14 +2232,14 @@ def served_landing_bytes(store, endpoint):
         except ValueError:
             pass
         data = inject_number_split(data, split['members'], split['mode'], endpoint)
-    return inject_dest_app(fill_event_endpoint(data, endpoint), relative), slot
+    return _visitor_bytes(data, relative, endpoint), slot
 
 
 def prepare_number_split(store, request, version_id):
     split = store.whatsapp_split()
     if not version_id or not split['enabled']:
         return None
-    token = request.cookies.get(WA_COOKIE, '')
+    token = request.cookies.get(WA_COOKIE) or request.cookies.get(LEGACY_WA_COOKIE) or ''
     is_new = not re.fullmatch(r'[a-f0-9]{64}', token)
     if is_new:
         token = secrets.token_hex(32)
@@ -2221,7 +2259,7 @@ def prepare_number_split(store, request, version_id):
 def prepare_split(store, request, version_id):
     if not version_id or not store.redirect_split()['enabled']:
         return None
-    token = request.cookies.get(SPLIT_COOKIE, '')
+    token = request.cookies.get(SPLIT_COOKIE) or request.cookies.get(LEGACY_SPLIT_COOKIE) or ''
     is_new = not re.fullmatch(r'[a-f0-9]{64}', token)
     if is_new:
         token = secrets.token_hex(32)
@@ -2244,7 +2282,10 @@ def prepare_split(store, request, version_id):
 
 def content_response(store, version_id, path, method='GET', transform=None):
     if not version_id:
-        return HTMLResponse('<!doctype html><meta charset="utf-8"><h1>页面尚未发布</h1><p>请在管理后台为当前槽位导入并发布内容。</p>', status_code=503)
+        return HTMLResponse(
+            f'<!doctype html><meta charset="utf-8"><h1>{surface.EMPTY_SLOT_TITLE}</h1><p>{surface.EMPTY_SLOT_DETAIL}</p>',
+            status_code=503,
+        )
     try:
         root = store.pages / version_id
         file = resolve_file(root, path)
@@ -2505,13 +2546,17 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
     def site_store(request: Request):
         return registry.store(request.state.site_id)
 
-    @app.get('/.well-known/ab-lab-route/{site_id}')
     def route_proof(site_id: str, request: Request):
         if (not re.fullmatch('[a-f0-9]{32}', site_id)
                 or request.state.site_id != site_id):
             raise HTTPException(404, '路由证明不存在')
         site = registry.get(site_id)
         return {'schema': 1, 'site_id': site_id, 'domain': site['domain']}
+
+    @app.get(surface.ROUTE_PROOF_PREFIX.rstrip('/') + '/{site_id}')
+    @app.get(surface.LEGACY_ROUTE_PROOF_PREFIX.rstrip('/') + '/{site_id}')
+    def route_proof_alias(site_id: str, request: Request):
+        return route_proof(site_id, request)
 
     @app.api_route('/_preview/{expiry}/{version_id}/{issuer}/{signature}/{path:path}', methods=['GET', 'HEAD'])
     def preview(expiry: int, version_id: str, issuer: str, signature: str, path: str, request: Request, store=Depends(site_store)):
@@ -2521,9 +2566,11 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
         redirect = directory_redirect(store, [version_id], path, request)
         if redirect is not None:
             return redirect
-        return content_response(store, version_id, path, request.method, lambda data, relative: inject_dest_app(fill_event_endpoint(data, jump_event_endpoint(deployment)), relative))
+        endpoint = jump_event_endpoint(deployment)
+        return content_response(store, version_id, path, request.method, lambda data, relative: _visitor_bytes(data, relative, endpoint))
 
-    @app.post('/wa-events')
+    @app.post(surface.EVENT_INGEST_PATH)
+    @app.post(surface.LEGACY_EVENT_INGEST_PATH)
     async def wa_events(request: Request, store=Depends(site_store)):
         return await accept_jump_event(request, registry, store)
 
@@ -2623,7 +2670,7 @@ def create_target(data_dir, port=8766, deployment=None, registry_dir=None):
                     data = inject_number_split(data, numbered['members'], numbered['mode'], endpoint)
             elif prepared:
                 data = prepared['transform'](data, relative)
-            return inject_dest_app(fill_event_endpoint(data, endpoint), relative)
+            return _visitor_bytes(data, relative, endpoint)
 
         transform = visitor_transform
         response = content_response(store, version_id, path, request.method, transform)

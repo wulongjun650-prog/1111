@@ -18,12 +18,14 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
+from .visitor_surface import DEFAULT_ADMIN_ORIGIN
+
 LOGGER = logging.getLogger('ablab.watrust')
 
 HOST = 'https://api.vmoscloud.com'
 API_HOST = 'api.vmoscloud.com'
 SERVICE = 'armcloud-paas'
-PUBLIC_ORIGIN = 'https://hhucuq.top'
+PUBLIC_ORIGIN = os.environ.get('AB_ADMIN_ORIGIN', DEFAULT_ADMIN_ORIGIN).strip() or DEFAULT_ADMIN_ORIGIN
 WHATSAPP_PACKAGE = 'com.whatsapp'
 DUMP_PATH = '/sdcard/ab-wa-trust.xml'
 OPEN_TIMEOUT = 20

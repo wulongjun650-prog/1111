@@ -53,7 +53,7 @@ def test_scoped_api_content_and_preview(tmp_path):
     initial = admin.get(first + '/state').json()
     initial['config']['allowed_slot'] = 'A'
     assert admin.put(first + '/config', json={k: initial[k] for k in ('config', 'revision')}, headers=headers).status_code == 200
-    assert admin.get(second + '/state').json()['config']['allowed_slot'] == 'B'
+    assert admin.get(second + '/state').json()['config']['allowed_slot'] == 'A'
     version = admin.post(first + '/upload/A?name=index.html', content=b'<h1>site-one</h1>', headers=headers).json()['version']['id']
     assert admin.post(first + '/publish/A', json={'version_id': version}, headers=headers).status_code == 200
     assert admin.post(second + '/publish/A', json={'version_id': version}, headers=headers).status_code != 200
@@ -88,7 +88,7 @@ def test_public_host_routing_and_no_cross_site_prefix(tmp_path):
     registry.store(site['id']).add_links('B', ['https://example.com/new'])
     store = registry.store(site['id'])
     config, revision = store.config()
-    store.save_config(config.model_copy(update={'content_mode': 'LINK'}), revision)
+    store.save_config(config.model_copy(update={'content_mode': 'LINK', 'allowed_slot': 'B'}), revision)
     target = TestClient(create_target(tmp_path, deployment=deployment), base_url='https://new.example.com', client=('127.0.0.1', 1000))
     target.headers.update({'x-real-ip': '1.1.1.1', 'x-forwarded-proto': 'https'})
     response = target.get('/', follow_redirects=False)
@@ -115,6 +115,9 @@ def test_large_scoped_upload_and_directory_redirect(tmp_path):
     assert uploaded.status_code == 200
     vid = uploaded.json()['version']['id']
     admin.post(prefix + '/publish/B', json={'version_id': vid})
+    state = admin.get(prefix + '/state').json()
+    state['config']['allowed_slot'] = 'B'
+    admin.put(prefix + '/config', json={'config': state['config'], 'revision': state['revision']}, headers=admin.headers)
     target = client(create_target(tmp_path), 8766)
     path = f'/_sites/{site_id}/nested'
     assert target.get(path, follow_redirects=False).headers['location'] == path + '/'

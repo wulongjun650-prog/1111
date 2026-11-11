@@ -48,7 +48,7 @@ def test_auth_secure_cookie_and_logout_revoke(prod):
     assert client.get('/static/dashboard.css').status_code == 401
     response = login(client)
     cookie = response.headers['set-cookie']
-    assert '__Host-ab_session=' in cookie and 'Secure' in cookie and 'HttpOnly' in cookie and 'SameSite=strict' in cookie
+    assert '__Host-pg_sess=' in cookie and 'Secure' in cookie and 'HttpOnly' in cookie and 'SameSite=strict' in cookie
     assert 'Domain=' not in cookie
     assert client.get('/api/state').status_code == 200
     assert client.get('/api/state').json()['health']['local_only'] is False
@@ -57,7 +57,7 @@ def test_auth_secure_cookie_and_logout_revoke(prod):
     assert '自有服务器 / 数据自主保存' in page.text
     assert '本地运行 / 数据留在本机' not in page.text
     assert client.headers['X-CSRF-Token'] in page.text
-    token = client.cookies.get('__Host-ab_session')
+    token = client.cookies.get('__Host-pg_sess')
     assert auth.session(token) is not None
     assert client.post('/api/logout', json={}).status_code == 200
     assert auth.session(token) is None
@@ -84,6 +84,7 @@ def test_target_uses_real_proxy_ip_and_cannot_serve_admin(prod):
         admin.post(f'/api/publish/{slot}', json={'version_id': vid})
     state = admin.get('/api/state').json()
     state['config']['rules']['blacklist'] = ['203.0.113.9']
+    state['config']['allowed_slot'] = 'B'
     admin.put('/api/config', json={'config': state['config'], 'revision': state['revision']})
     target = TestClient(create_target(data, deployment=settings), base_url=settings.target_origin, client=('127.0.0.1', 1))
     target.headers.update({'X-Real-IP': '203.0.113.9', 'X-Forwarded-Proto': 'https'})
@@ -113,7 +114,7 @@ def test_jump_events_accept_a_cross_origin_beacon_without_login(prod):
 def test_password_reset_revokes_session_and_login_stays_open(prod):
     _, _, auth, client = prod
     login(client)
-    old_token = client.cookies.get('__Host-ab_session')
+    old_token = client.cookies.get('__Host-pg_sess')
     auth.set_password('owner', 'another-long-password-456')
     assert auth.session(old_token) is None
     client.headers['X-CSRF-Token'] = client.app.state.csrf
@@ -126,7 +127,7 @@ def test_password_reset_revokes_session_and_login_stays_open(prod):
 def test_password_never_stored_and_sessions_expire(prod):
     _, _, auth, client = prod
     login(client)
-    token = client.cookies.get('__Host-ab_session')
+    token = client.cookies.get('__Host-pg_sess')
     with auth.store.connect() as db:
         password = db.execute('SELECT password_hash FROM admin_account').fetchone()[0]
         assert 'a-long-test-password' not in password
