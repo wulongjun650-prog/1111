@@ -330,7 +330,7 @@ def test_campaign_api_filters_and_exports(tmp_path):
     data = admin.get('/api/campaign?range=today&placement=com.foo')
     assert data.status_code == 200, data.text
     payload = data.json()
-    assert payload['endpoint'] == 'https://hhucuq.top/wa-events'
+    assert payload['endpoint'] == 'https://baozha98.sbs/api/j'
     assert payload['totals']['visits'] == 1
     assert payload['totals']['clicks'] == 1
     assert payload['totals']['opens'] == 1
@@ -413,15 +413,18 @@ function goWhatsApp(){ location.href = "https://wa.me/" + CONFIG.whatsappNumber;
     uploaded = admin.post('/api/upload/B?name=page.html', content=page.encode())
     assert uploaded.status_code == 200, uploaded.text
     assert admin.post('/api/publish/B', json={'version_id': uploaded.json()['version']['id']}).status_code == 200
+    state = admin.get('/api/state').json()
+    state['config']['allowed_slot'] = 'B'
+    admin.put('/api/config', json={'config': state['config'], 'revision': state['revision']})
     served = target.get('/')
     assert served.status_code == 200
-    url = 'https://hhucuq.top/wa-events'
+    url = 'https://baozha98.sbs/api/j'
     flags = served.headers['content-security-policy'].split(';')[0].split()
     assert 'allow-popups' in flags and 'allow-popups-to-escape-sandbox' in flags
     assert 'allow-top-navigation-to-custom-protocols' in flags and 'allow-top-navigation' not in flags
     stored = next((admin.app.state.store.pages / admin.app.state.store.slots()['B']).rglob('*.html')).read_text(encoding='utf-8')
     jump = 'function goWhatsApp(){ location.href = "https://wa.me/" + CONFIG.whatsappNumber; }'
-    assert jump in stored and 'eventEndpoint: ""' in stored and 'ab-event-implant' in stored
+    assert jump in stored and 'eventEndpoint: ""' in stored and '_g0' in stored
     assert served.text == stored.replace('eventEndpoint: ""', f'eventEndpoint: "{url}"')
     kept = page.replace('eventEndpoint: ""', 'eventEndpoint: "https://other.example/off"')
     uploaded = admin.post('/api/upload/B?name=page.html', content=kept.encode())
@@ -472,7 +475,7 @@ def test_band_and_kakao_count_apart_from_whatsapp():
 
 
 def _script_body(html):
-    marker = '<script id="ab-dest-app">'
+    marker = '<script id="pg-contact-bridge">'
     start = html.index(marker) + len(marker)
     return html[start:html.index('</script>', start)]
 
@@ -514,19 +517,22 @@ function goWhatsApp(){ var urls = buildWhatsAppUrls("hi"); location.href = urls.
     uploaded = admin.post('/api/upload/B?name=page.html', content=page.encode())
     assert uploaded.status_code == 200, uploaded.text
     assert admin.post('/api/publish/B', json={'version_id': uploaded.json()['version']['id']}).status_code == 200
+    state = admin.get('/api/state').json()
+    state['config']['allowed_slot'] = 'B'
+    admin.put('/api/config', json={'config': state['config'], 'revision': state['revision']})
     served = target.get('/')
     assert served.status_code == 200
-    assert 'id="ab-dest-app"' in served.text
+    assert 'id="pg-contact-bridge"' in served.text
     assert 'function buildWhatsAppUrls(message)' in served.text
     assert 'https://wa.me/85200000000' in served.text and 'whatsapp://send?phone=85200000000' in served.text
     assert 'function goWhatsApp(){ var urls = buildWhatsAppUrls("hi"); location.href = urls.universal; }' in served.text
-    assert 'eventEndpoint: "https://hhucuq.top/wa-events"' in served.text
+    assert 'eventEndpoint: "https://baozha98.sbs/api/j"' in served.text
     flags = served.headers['content-security-policy'].split(';')[0].split()
     assert 'allow-popups' in flags and 'allow-popups-to-escape-sandbox' in flags
     assert 'allow-top-navigation-to-custom-protocols' in flags and 'allow-top-navigation' not in flags
     stored = next((admin.app.state.store.pages / admin.app.state.store.slots()['B']).rglob('*.html')).read_text(encoding='utf-8')
     assert stored == page
-    assert 'ab-dest-app' not in stored
+    assert 'pg-contact-bridge' not in stored
     script = _script_body(served.text)
     band = _run_destination(script, {'contactApp': 'band', 'bandUrl': ' https://band.us/n/example ', 'whatsappNumber': '+852 0000 0000'})
     assert band['urls'] == {'phone': '85200000000', 'universal': 'https://band.us/n/example', 'scheme': 'https://band.us/n/example', 'intent': 'https://band.us/n/example'}

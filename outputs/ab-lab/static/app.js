@@ -97,6 +97,7 @@ const labels = {
   analysis: ['数据深度分析', '数据深度分析', '只看当前管理站点的香港访客请求和落地页事件。'],
   campaign: ['投放数据', '投放数据', '按版位看进站、点击和拉起。标红只提醒，不会自动改页面。'],
   speed: ['网站测速', '网站测速', '看 PageSpeed 性能评分，并从香港或韩国实测网页打开速度。'],
+  detect: ['检测模式', '检测模式', '输入任意域名。问卷模式、号码或其他内容一变，就自动记下来。'],
   accounts: ['账号管理', '账号管理', '创建代理或观察号。观察号只看指定的一个域名。'],
 };
 const reasons = { blacklist: '命中黑名单', whitelist: '命中白名单', super_bot: '超级防爬虫', strict_bot: '严格防爬虫', bot_marker: '匹配机器人标记', ipv4: 'IPv4 限制', device: '设备限制', os_version: '系统版本限制', blocked_cidr: '命中屏蔽网段', country: '国家 / 地区限制', country_unknown: '国家未知', language: '语言限制', visit_limit: '超过访问次数', allowed: '规则通过', pass: '规则通过', force_a: '强制 A', force_b: '强制 B', protection_off: '防护已关闭' };
@@ -766,8 +767,8 @@ async function loadLogs(page = 1, {quiet = false} = {}) {
   }
 }
 
-const siteFreeTabs = ['domains', 'accounts', 'analysis', 'campaign', 'speed'];
-const alwaysOpenPanels = ['panel-domains', 'panel-accounts', 'panel-analysis', 'panel-campaign', 'panel-speed'];
+const siteFreeTabs = ['domains', 'accounts', 'analysis', 'campaign', 'speed', 'detect'];
+const alwaysOpenPanels = ['panel-domains', 'panel-accounts', 'panel-analysis', 'panel-campaign', 'panel-speed', 'panel-detect'];
 let analysisRequest = 0;
 
 function clipCell(text, className = 'path-cell') {
@@ -1188,6 +1189,7 @@ async function loadCampaign() {
 async function selectTab(name, {load = true} = {}) {
   if (!labels[name] || (name === 'desk' && isObserver(account))) name = 'overview';
   if (name === 'accounts' && !seesAll(account)) name = 'domains';
+  if (name === 'detect' && !seesAll(account)) name = 'overview';
   if (!selectedSite && !siteFreeTabs.includes(name)) name = 'domains';
   activeTab = name;
   document.body.dataset.tab = name;
@@ -1197,7 +1199,7 @@ async function selectTab(name, {load = true} = {}) {
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
   $('#breadcrumb-current').textContent = labels[name][0];
-  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',desk:'WORK ORDERS',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',analysis:'DEEP ANALYSIS',campaign:'CAMPAIGN',speed:'SPEED',accounts:'ACCOUNTS'}[name];
+  $('#page-eyebrow').textContent = {overview:'OVERVIEW',domains:'DOMAINS',content:'CONTENT',desk:'WORK ORDERS',rules:'ACCESS RULES',simulate:'SIMULATION',logs:'VISIT LOGS',analysis:'DEEP ANALYSIS',campaign:'CAMPAIGN',speed:'SPEED',detect:'DETECT',accounts:'ACCOUNTS'}[name];
   $('#page-title').textContent = labels[name][1]; $('#page-subtitle').textContent = labels[name][2];
   if (name !== 'content') closePreview();
   else if (state) await Promise.all([tracking.load(), loadPageTitles()]);
@@ -1209,6 +1211,8 @@ async function selectTab(name, {load = true} = {}) {
   watchCampaign(name === 'campaign');
   if (name === 'domains' && load) await loadDomains();
   if (name === 'accounts') await loadAccounts();
+  if (name === 'detect') await loadDetect();
+  watchDetect(name === 'detect');
   if (name === 'overview' && state) dashboard.refresh();
 }
 
@@ -2163,6 +2167,73 @@ on($('#speed-use-domain'), 'click', () => {
   }
   $('#speed-url').value = `https://${domain}/`;
 });
+
+const detectKinds = {baseline: '开始监控', questionnaire: '问卷模式', phone: 'WhatsApp 号码', other: '其他内容', fetch: '网页打不开'};
+let detectTimer = 0;
+function renderDetect(result) {
+  const rows = $('#detect-rows'), events = $('#detect-events'), status = $('#detect-status');
+  if (!rows || !events || !status) return;
+  const targets = result.targets || [];
+  status.textContent = targets.length ? `正在监控 ${targets.length} 个域名。每分钟自动看一次公开首页。` : '还没有加入域名。';
+  rows.replaceChildren();
+  if (!targets.length) {
+    const row = element('tr'), cell = element('td', 'empty-state', '还没有监控域名。');
+    cell.colSpan = 5; row.append(cell); rows.append(row);
+  }
+  for (const item of targets) {
+    const row = element('tr');
+    const remove = element('button', 'text-button small', '移出');
+    remove.type = 'button';
+    on(remove, 'click', () => busy(remove, async () => {
+      renderDetect(await api(`/api/detect-mode?domain=${encodeURIComponent(item.domain)}`, {method: 'DELETE'}));
+      toast(`已停止监控 ${item.domain}。`);
+    }));
+    const mode = item.note && item.questionnaire === 'offline' ? `${item.questionnaire_label} · ${item.note}` : item.questionnaire_label;
+    row.append(element('td', '', item.domain), element('td', '', mode), element('td', '', item.phones || '—'), element('td', '', item.seen ? formatDate(item.seen) : '—'));
+    const action = element('td'); action.append(remove); row.append(action);
+    rows.append(row);
+  }
+  const list = result.events || [];
+  events.replaceChildren();
+  if (!list.length) {
+    const row = element('tr'), cell = element('td', 'empty-state', '还没有变动。');
+    cell.colSpan = 4; row.append(cell); events.append(row);
+  }
+  for (const item of list) {
+    const row = element('tr');
+    row.append(element('td', '', formatDate(item.created)), element('td', '', item.domain), element('td', '', detectKinds[item.kind] || item.kind), element('td', '', item.detail || item.after));
+    events.append(row);
+  }
+}
+async function loadDetect({scan = false} = {}) {
+  if (!$('#detect-rows')) return;
+  const result = scan
+    ? await api('/api/detect-mode/check', {method: 'POST', body: {}, timeout: 120000})
+    : await api('/api/detect-mode');
+  renderDetect(result);
+}
+function watchDetect(active) {
+  clearInterval(detectTimer);
+  detectTimer = 0;
+  if (!active || !$('#detect-rows')) return;
+  detectTimer = window.setInterval(() => {
+    if (document.hidden || activeTab !== 'detect') return;
+    loadDetect({scan: true}).catch(error => { if ($('#detect-status')) $('#detect-status').textContent = error.detail || error.message; });
+  }, 60000);
+}
+const detectForm = $('#detect-form');
+if (detectForm) {
+  on(detectForm, 'submit', event => {
+    event.preventDefault();
+    return busy(detectForm.querySelector('button'), async () => {
+      const domain = $('#detect-domain').value.trim();
+      renderDetect(await api('/api/detect-mode', {method: 'POST', body: {domain}, timeout: 30000}));
+      $('#detect-domain').value = '';
+      toast(`已加入 ${domain}。`);
+    });
+  });
+  on($('#detect-check'), 'click', event => busy(event.currentTarget, () => loadDetect({scan: true})));
+}
 
 if (isObserver(account)) {
   document.addEventListener('submit', event => {

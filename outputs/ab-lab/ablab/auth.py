@@ -9,8 +9,10 @@ import time
 import uuid
 
 from .store import Conflict
+from .visitor_surface import LEGACY_SESSION_COOKIE, SESSION_COOKIE
 
-COOKIE = '__Host-ab_session'
+COOKIE = SESSION_COOKIE
+LEGACY_COOKIE = LEGACY_SESSION_COOKIE
 SESSION_SECONDS = 8 * 3600
 # One expensive password operation at a time keeps memory bounded on small VPSs.
 PASSWORD_LOCK = threading.Lock()

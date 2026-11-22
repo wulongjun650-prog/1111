@@ -59,7 +59,7 @@ class Rules(StrictModel):
 
 class Config(StrictModel):
     routing: Literal['RULES', 'FORCE_A', 'FORCE_B'] = 'RULES'
-    allowed_slot: Literal['A', 'B'] = 'B'
+    allowed_slot: Literal['A', 'B'] = 'A'
     protection: bool = True
     content_mode: Literal['PAGE', 'LINK'] = 'PAGE'
     distribution: Literal['random', 'round_robin', 'equal'] = 'round_robin'

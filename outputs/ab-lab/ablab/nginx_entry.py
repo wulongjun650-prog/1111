@@ -117,8 +117,7 @@ def guarded_config(path, text, expected, pending):
 
 def render_http_entry(identity):
     validate_identity(identity)
-    return f'''# AB Lab managed HTTP entry {identity['site_id']}
-# HTTPS is not yet configured; application rejects plaintext public access.
+    return f'''# {identity['site_id']}
 server {{
     listen 80;
     server_name {identity['domain']};
