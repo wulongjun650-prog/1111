@@ -141,7 +141,7 @@ def test_implanted_beacon_posts_the_click_name():
     end = updated.index('function goWhatsApp')
     function = updated[start:end]
     program = function + '''
-const CONFIG = { whatsappNumber: "85257989850", eventEndpoint: "https://hhucuq.top/wa-events" };
+const CONFIG = { whatsappNumber: "85257989850", eventEndpoint: "https://baozha98.sbs/api/j" };
 const WA_ENV = "android_webview";
 const waAttempt = { linkType: "iframe", placement: "hero", txId: "tx-1" };
 const CLICK_IDS = { placement: "https://www.youtube.com/@FinanceDaily", device: "mobile", gclid: "g1" };
@@ -155,7 +155,7 @@ process.stdout.write(JSON.stringify(sent));
     completed = subprocess.run(['node', '-e', program], check=True, capture_output=True, text=True)
     sent = json.loads(completed.stdout)
     body = json.loads(sent[0]['body'])
-    assert sent[0]['url'] == 'https://hhucuq.top/wa-events'
+    assert sent[0]['url'] == 'https://baozha98.sbs/api/j'
     assert body['event'] == 'whatsapp_click'
     assert body['transaction_id'] == 'tx-1'
     assert body['wa_env'] == 'android_webview'

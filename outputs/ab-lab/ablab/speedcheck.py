@@ -477,7 +477,7 @@ class SpeedChecker:
             timeout=httpx.Timeout(20.0, connect=10.0),
             follow_redirects=False,
             trust_env=False,
-            headers={'User-Agent': 'ab-lab/speedcheck', 'Accept': 'application/json'},
+            headers={'User-Agent': 'Mozilla/5.0 (compatible; SiteCheck/1.0)', 'Accept': 'application/json'},
         )
 
     def _measure(self, client, job, index):

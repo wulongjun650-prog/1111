@@ -142,7 +142,8 @@ def _apply(record, paths):
 
 def _conf_belongs(text, site_id, domain, root):
     marker = (
-        f'# AB Lab managed HTTPS entry {site_id}\n' in text
+        f'# {site_id}\n' in text
+        or f'# AB Lab managed HTTPS entry {site_id}\n' in text
         or f'# AB Lab managed HTTP entry {site_id}\n' in text
     )
     return marker and f'    server_name {domain};\n' in text and f'    root {root};\n' in text

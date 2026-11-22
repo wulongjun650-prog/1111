@@ -109,7 +109,7 @@ class PanelSites(PanelPreflight):
         if len(sites) != 1 or not matches:
             raise ProvisioningError('域名已被其他站点或别名占用')
         site = sites[0]
-        marker = re.fullmatch(r'ab-lab:([a-f0-9]{32}):([a-f0-9]{32})', site['ps'])
+        marker = re.fullmatch(r'(?:ab-lab|pg):([a-f0-9]{32}):([a-f0-9]{32})', site['ps'])
         if (site['path'] != path or not marker or marker[1] != path.rsplit('/', 1)[1]
                 or any(row['pid'] != site['id'] or row['name'].lower().rstrip('.') != domain for row in matches)
                 or any(row['subdirectory'] or row['name'].lower().rstrip('.') != domain
@@ -125,7 +125,7 @@ class PanelSites(PanelPreflight):
         result = self._request('/v2/site', 'AddSite', {
             'webname': json.dumps({'domain': identity['domain'], 'domainlist': [], 'count': 0}),
             'type': 'PHP', 'project_type': 'PHP', 'port': '80', 'type_id': '0',
-            'ps': 'ab-lab:' + identity['site_id'] + ':' + identity['owner'],
+            'ps': 'pg:' + identity['site_id'] + ':' + identity['owner'],
             'path': identity['path'], 'version': '00', 'ftp': 'false', 'sql': 'false',
             'datapassword': '', 'codeing': 'utf8', 'set_ssl': '0', 'force_ssl': '0',
             'ssl_auto': '0', 'is_create_default_file': 'false',

@@ -7,7 +7,7 @@ def visit(**changes):
     return Visitor(**({'ip': '203.0.113.7', 'ua': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) Mobile', 'country': 'HK', 'language': 'zh-HK,zh;q=0.9', 'visits': 1} | changes))
 
 
-@pytest.mark.parametrize('routing,protection,expected', [('FORCE_A', False, 'A'), ('FORCE_B', True, 'B'), ('RULES', False, 'B')])
+@pytest.mark.parametrize('routing,protection,expected', [('FORCE_A', False, 'A'), ('FORCE_B', True, 'B'), ('RULES', False, 'A')])
 def test_manual_modes_precede_filters(routing, protection, expected):
     config = Config(routing=routing, protection=protection, rules={'blacklist': ['203.0.113.7']})
     assert decide(config, visit())['slot'] == expected
@@ -43,7 +43,7 @@ def test_each_filter_returns_explainable_block(rules, visitor, reason):
 
 def test_first_n_allowed_and_language_prefix_matches():
     result = decide(Config(rules={'max_visits': 2, 'languages': ['zh'], 'countries': ['HK']}), visit(visits=2))
-    assert result['slot'] == 'B'
+    assert result['slot'] == 'A'
 
 
 IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS {os} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/{safari} Mobile/15E148 Safari/604.1'
@@ -157,7 +157,7 @@ def test_strict_crawler_leaves_normal_phones_and_stays_off_by_default():
 
 
 def test_unknown_country_is_not_a_block_when_filter_disabled():
-    assert decide(Config(), visit(country=None))['slot'] == 'B'
+    assert decide(Config(), visit(country=None))['slot'] == 'A'
 
 
 @pytest.mark.parametrize('slot', ['A', 'B'])

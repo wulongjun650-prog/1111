@@ -291,6 +291,12 @@ def _phone_digits(token):
     return digits if 8 <= len(digits) <= 15 else None
 
 
+_WHATSAPP_NUMBER_FIELD = re.compile(
+    r"whatsappNumber\s*:\s*(['\"])(\d{8,15})\1",
+    re.IGNORECASE,
+)
+
+
 def _whatsapp_phone_at(url):
     """Offsets of the phone token inside a WhatsApp URL, plus its digits."""
     if not isinstance(url, str) or not _whatsapp_url(url):
@@ -421,7 +427,14 @@ class Scanner:
         definitions = {scope:{} for scope in parents}
         for index, token in enumerate(tokens[:-1]):
             if token.kind == 'identifier' and tokens[index + 1].value == '=' and (index == 0 or tokens[index-1].value not in ('.', ']')):
-                end = _expression_end(tokens, index + 2, text)
+                try:
+                    end = _expression_end(tokens, index + 2, text)
+                except ValueError as error:
+                    if '过于复杂' not in str(error):
+                        raise
+                    line = bisect.bisect_right(self.lines, offset + token.start)
+                    self.warnings.append(f'{self.path}:{line} 有一段赋值过长，已跳过，其余号码仍会扫描。')
+                    continue
                 definitions[scopes[index]].setdefault(token.value, []).append(tokens[index + 2:end])
         # Plain functions and arrows that build a URL and hand it to location.
         # Only the returned expression is replaceable; the call itself is not.
@@ -1034,7 +1047,14 @@ class Scanner:
             if _url(resolved):
                 digits = _phone_digits(phone_token) if phone_token and _whatsapp_url(resolved) else None
                 if digits:
-                    # The built chat URL stays in source. Only the phone literal is replaceable.
+                    # The built chat URL stays in source. Only the digit run is replaceable.
+                    raw_token = phone_token.value
+                    at = raw_token.find(digits)
+                    if at >= 0 and not mapping:
+                        start = phone_token.start + at
+                        end = start + len(digits)
+                        self.add(offset + start, offset + end, digits, 'whatsapp_number', mode='js_digits')
+                        return True
                     start, end = phone_token.start, phone_token.end
                 else:
                     digits = None
@@ -1150,6 +1170,7 @@ class Scanner:
                 argument = tokens[beginning:finish]
                 collect(argument, 'js_location', scope_of(argument, scopes[index]))
         self._note_loose_whatsapp_numbers(tokens, offset, mapping)
+        self._note_whatsapp_number_fields(text, offset)
 
     def _overlaps(self, start, end):
         return any(start < span['_end'] and end > span['_start'] for span in self.spans)
@@ -1177,6 +1198,14 @@ class Scanner:
             if self._overlaps(start, end):
                 continue
             self.add(start, end, digits, 'whatsapp_number', mode='js_digits')
+
+    def _note_whatsapp_number_fields(self, text, offset):
+        """CONFIG.whatsappNumber is the value the page copies into wa.me at load."""
+        for match in _WHATSAPP_NUMBER_FIELD.finditer(text):
+            start, end = offset + match.start(2), offset + match.end(2)
+            if self._overlaps(start, end):
+                continue
+            self.add(start, end, match.group(2), 'whatsapp_number', mode='js_digits')
 
 
 class PageParser(HTMLParser):
@@ -1755,20 +1784,59 @@ _CONTACT_GATE = re.compile(
     r"useContactGate\s*=\s*contactFlowMode\s*===\s*(['\"])ABC\1",
     re.IGNORECASE,
 )
+# Some pages keep the mode on CONFIG.flowMode and only use || 'ABC' when that field is empty.
+_CONFIG_FLOW = re.compile(
+    r"(flowMode\s*:\s*)(['\"])(ABC|CBA|ABCABC)\2",
+    re.IGNORECASE,
+)
+_CONFIG_FLOW_READ = re.compile(
+    r"CONFIG\.flowMode\s*\|\|\s*(['\"])(?:ABC|CBA|ABCABC)\1",
+    re.IGNORECASE,
+)
+_QUESTION_GATE = re.compile(
+    r"useQuestionnaire\s*=\s*getContactFlowMode\(\s*\)\s*===\s*(['\"])ABC\1",
+    re.IGNORECASE,
+)
+# A choice modal stores ABC on requestMode. CBA skips the modal and opens WhatsApp.
+_REQUEST_MODE = re.compile(
+    r"(requestMode\s*:\s*)(['\"])(ABC|CBA)\2",
+    re.IGNORECASE,
+)
+_REQUEST_GATE = re.compile(
+    r"requestMode\s*===\s*(['\"])CBA\1",
+    re.IGNORECASE,
+)
+# lead-modal pages open the picker with openLeadConfirm. Skipping still uses buildWhatsAppUrl.
+# This page keeps ABC/CBA in questionGateEnabled and the initial leadEntryMode.
+_GATE_ENABLED = re.compile(r"(questionGateEnabled\s*:\s*)(true|false)\b")
+_LEAD_ENTRY_INIT = re.compile(
+    r"(let\s+leadEntryMode\s*=\s*)(['\"])(notice|question|direct)\2"
+)
+_LEAD_OPEN_CALL = re.compile(r"(?<!function )openLeadConfirm\(\s*(el|this)\s*\)")
+_LEAD_DIRECT_CALL = re.compile(
+    r"completeLeadAndGo\(\s*(el|this)\.dataset\.message\s*\|\|\s*(['\"])\2\s*,\s*(['\"])direct\3\s*\)"
+)
+
+
+# Landing pages store the default in one assignment. ABC shows the quiz. CBA skips it.
+_DEFAULT_MODE = re.compile(
+    r"(?P<prefix>\bDEFAULT_MODE\s*=\s*)(?P<q>['\"])(?P<token>ABC|CBA)(?P=q)",
+    re.IGNORECASE,
+)
 
 
 def flow_kind(text):
-    """'config' for directMode, 'contact' for the query-code ABC/CBA page."""
+    """'config' for directMode, 'contact' for a two-way ABC/CBA page."""
     if not isinstance(text, str):
         return None
     if re.search(r'directMode\s*:', text):
         return 'config'
-    if 'getContactFlowMode' in text:
+    if 'getContactFlowMode' in text or _request_modal_shape(text) or _lead_modal_shape(text) or _lead_entry_shape(text) or _DEFAULT_MODE.search(text):
         return 'contact'
     return None
 
 
-def _contact_shape(text):
+def _query_contact_shape(text):
     return (
         isinstance(text, str)
         and 'getContactFlowMode' in text
@@ -1778,14 +1846,166 @@ def _contact_shape(text):
     )
 
 
+def _config_flow_shape(text):
+    if not (
+        isinstance(text, str)
+        and 'getContactFlowMode' in text
+        and _CONTACT_CBA.search(text)
+        and _QUESTION_GATE.search(text)
+        and _CONFIG_FLOW_READ.search(text)
+    ):
+        return False
+    tokens = {match.group(3).upper() for match in _CONFIG_FLOW.finditer(text)}
+    return len(tokens) == 1
+
+
+def _lead_calls(text):
+    opens = list(_LEAD_OPEN_CALL.finditer(text))
+    directs = list(_LEAD_DIRECT_CALL.finditer(text))
+    return opens, directs
+
+
+def _lead_modal_shape(text):
+    """The picker is optional. The WhatsApp jump stays location.assign(buildWhatsAppUrl())."""
+    if not isinstance(text, str):
+        return False
+    if 'id="lead-modal"' not in text and "id='lead-modal'" not in text:
+        return False
+    if 'function buildWhatsAppUrl' not in text or 'function openLeadConfirm' not in text:
+        return False
+    if 'function completeLeadAndGo' not in text or 'window.location.assign(buildWhatsAppUrl(' not in text:
+        return False
+    opens, directs = _lead_calls(text)
+    if opens and directs:
+        return False
+    subjects = [match.group(1) for match in opens or directs]
+    return sorted(subjects) == ['el', 'this']
+
+
+def _replace_lead_calls(text, skip):
+    """skip=True goes straight to the existing WhatsApp builder. The builder itself stays."""
+    def repl_open(match):
+        if not skip:
+            return match.group(0)
+        return f"completeLeadAndGo({match.group(1)}.dataset.message || '', 'direct')"
+
+    def repl_direct(match):
+        if skip:
+            return match.group(0)
+        return f"openLeadConfirm({match.group(1)})"
+
+    updated = _LEAD_DIRECT_CALL.sub(repl_direct, _LEAD_OPEN_CALL.sub(repl_open, text))
+
+    def fold(value):
+        value = _LEAD_OPEN_CALL.sub(lambda match: f"LEAD({match.group(1)})", value)
+        return _LEAD_DIRECT_CALL.sub(lambda match: f"LEAD({match.group(1)})", value)
+
+    if fold(text) != fold(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    if text.count('window.location.assign(buildWhatsAppUrl(') != updated.count('window.location.assign(buildWhatsAppUrl('):
+        raise ValueError('跳转代码发生了变化，已取消')
+    return updated
+
+
+def _lead_entry_parts(text):
+    return list(_GATE_ENABLED.finditer(text)), list(_LEAD_ENTRY_INIT.finditer(text))
+
+
+def _lead_entry_shape(text):
+    """The questionnaire is the 我明白了 notice. CBA skips it and uses buildWaUrl."""
+    if not isinstance(text, str):
+        return False
+    if 'id="wa-infobg"' not in text and "id='wa-infobg'" not in text:
+        return False
+    if 'id="lead-modal"' not in text and "id='lead-modal'" not in text:
+        return False
+    if 'function setLeadEntryMode' not in text or 'function buildWaUrl' not in text:
+        return False
+    if not re.search(r'window\.location\.href\s*=\s*buildWaUrl\s*\(', text):
+        return False
+    if "leadEntryMode = 'question'" not in text and 'leadEntryMode = "question"' not in text:
+        return False
+    if "leadEntryMode = 'direct'" not in text and 'leadEntryMode = "direct"' not in text:
+        return False
+    gates, modes = _lead_entry_parts(text)
+    return len(gates) == 1 and len(modes) == 1
+
+
+def _lead_entry_file_token(text):
+    _gates, modes = _lead_entry_parts(text)
+    # direct skips the notice. notice is the 我明白了 picture.
+    return 'CBA' if modes[0].group(3) == 'direct' else 'ABC'
+
+
+def _replace_lead_entry(text, mode):
+    """mode is the weapon mode. Only the gate boolean and the initial mode word change."""
+    if mode == 'ABCABC':
+        raise ValueError('这页的开关只有 ABC 和 CBA，没有改动')
+    # CBA on the weapon means the notice is showing. ABC means the click skips it.
+    gate = 'false'
+    entry = 'notice' if mode == 'CBA' else 'direct'
+
+    def repl_gate(match):
+        if match.group(2) == gate:
+            return match.group(0)
+        return match.group(1) + gate
+
+    def repl_mode(match):
+        if match.group(3) == entry:
+            return match.group(0)
+        return f"{match.group(1)}{match.group(2)}{entry}{match.group(2)}"
+
+    updated = _LEAD_ENTRY_INIT.sub(repl_mode, _GATE_ENABLED.sub(repl_gate, text), count=1)
+
+    def fold(value):
+        value = _GATE_ENABLED.sub(lambda match: match.group(1) + 'BOOL', value, count=1)
+        return _LEAD_ENTRY_INIT.sub(
+            lambda match: match.group(1) + match.group(2) + 'MODE' + match.group(2),
+            value,
+            count=1,
+        )
+
+    if fold(text) != fold(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    for name in ('setLeadEntryMode', 'buildWaUrl', 'goWhatsApp', 'routeLead'):
+        old = _js_function_span(text, name)
+        new = _js_function_span(updated, name)
+        if (old is None) != (new is None) or (old and text[old[0]:old[1]] != updated[new[0]:new[1]]):
+            raise ValueError('跳转代码发生了变化，已取消')
+    return updated
+
+
+def _request_modal_shape(text):
+    if not (
+        isinstance(text, str)
+        and 'request-modal' in text
+        and 'whatsappNumber' in text
+        and _REQUEST_GATE.search(text)
+    ):
+        return False
+    tokens = {match.group(3).upper() for match in _REQUEST_MODE.finditer(text)}
+    return len(tokens) == 1
+
+
+def _contact_shape(text):
+    return _query_contact_shape(text) or _config_flow_shape(text) or _request_modal_shape(text)
+
+
 def _contact_tokens(text):
-    tokens = [match.group(4).upper() for match in _CONTACT_FALLBACK.finditer(text)]
+    if _query_contact_shape(text):
+        tokens = [match.group(4).upper() for match in _CONTACT_FALLBACK.finditer(text)]
+    elif _config_flow_shape(text):
+        tokens = [match.group(3).upper() for match in _CONFIG_FLOW.finditer(text)]
+    elif _request_modal_shape(text):
+        tokens = [match.group(3).upper() for match in _REQUEST_MODE.finditer(text)]
+    else:
+        tokens = []
     if len(set(tokens)) != 1:
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
     return tokens[0]
 
 
-def _replace_contact_token(text, token):
+def _replace_query_token(text, token):
     def repl(match):
         if match.group(4).upper() == token:
             return match.group(0)
@@ -1805,6 +2025,87 @@ def _replace_contact_token(text, token):
         updated,
     )
     if folded != folded_updated:
+        raise ValueError('跳转代码发生了变化，已取消')
+    return updated
+
+
+def _replace_config_flow_token(text, token):
+    def repl(match):
+        if match.group(3).upper() == token:
+            return match.group(0)
+        return f"{match.group(1)}{match.group(2)}{token}{match.group(2)}"
+
+    updated, count = _CONFIG_FLOW.subn(repl, text)
+    if count == 0:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+
+    def fold(value):
+        return _CONFIG_FLOW.sub(lambda match: f"{match.group(1)}{match.group(2)}ABC{match.group(2)}", value)
+
+    if fold(text) != fold(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    return updated
+
+
+def _replace_request_mode(text, token):
+    def repl(match):
+        if match.group(3).upper() == token:
+            return match.group(0)
+        return f"{match.group(1)}{match.group(2)}{token}{match.group(2)}"
+
+    updated, count = _REQUEST_MODE.subn(repl, text)
+    if count == 0:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+
+    def fold(value):
+        return _REQUEST_MODE.sub(lambda match: f"{match.group(1)}{match.group(2)}ABC{match.group(2)}", value)
+
+    if fold(text) != fold(updated):
+        raise ValueError('跳转代码发生了变化，已取消')
+    return updated
+
+
+def _replace_contact_token(text, token):
+    if _query_contact_shape(text):
+        return _replace_query_token(text, token)
+    if _config_flow_shape(text):
+        return _replace_config_flow_token(text, token)
+    if _request_modal_shape(text):
+        return _replace_request_mode(text, token)
+    raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+
+
+def _landing_shape(text):
+    if not isinstance(text, str) or len(list(_DEFAULT_MODE.finditer(text))) != 1:
+        return False
+    if len(re.findall(r'\bDEFAULT_MODE\b', text)) < 2:
+        return False
+    if not re.search(r"""\blandingMode\s*===\s*(['"])CBA\1""", text):
+        return False
+    return 'openQuiz' in text or 'quiz-backdrop' in text
+
+
+def _landing_token(text):
+    found = list(_DEFAULT_MODE.finditer(text))
+    if len(found) != 1:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+    return found[0].group('token').upper()
+
+
+def _replace_landing_token(text, token):
+    def repl(match):
+        if match.group('token').upper() == token:
+            return match.group(0)
+        return f"{match.group('prefix')}{match.group('q')}{token}{match.group('q')}"
+
+    updated, count = _DEFAULT_MODE.subn(repl, text)
+    if count != 1:
+        raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+
+    def fold(value):
+        return _DEFAULT_MODE.sub(lambda match: f"{match.group('prefix')}{match.group('q')}ABC{match.group('q')}", value)
+
+    if fold(text) != fold(updated):
         raise ValueError('跳转代码发生了变化，已取消')
     return updated
 
@@ -1840,6 +2141,17 @@ def read_direct_mode(text):
                 return mode
         return 'CBA'
     if 'getContactFlowMode' not in text:
+        if _request_modal_shape(text):
+            return _weapon_mode(_contact_tokens(text))
+        if _lead_modal_shape(text):
+            opens, _directs = _lead_calls(text)
+            return 'CBA' if opens else 'ABC'
+        if _lead_entry_shape(text):
+            return _weapon_mode(_lead_entry_file_token(text))
+        if _DEFAULT_MODE.search(text):
+            if not _landing_shape(text):
+                raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+            return _weapon_mode(_landing_token(text))
         return None
     if not _contact_shape(text):
         raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
@@ -1870,6 +2182,18 @@ def set_direct_mode(text, mode):
         if not _contact_shape(text):
             raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
         return _replace_contact_token(text, _file_token(mode))
+    if _request_modal_shape(text):
+        return _replace_request_mode(text, _file_token(mode))
+    if _lead_modal_shape(text):
+        if mode == 'ABCABC':
+            raise ValueError('这页的开关只有 ABC 和 CBA，没有改动')
+        return _replace_lead_calls(text, skip=(mode == 'ABC'))
+    if _lead_entry_shape(text):
+        return _replace_lead_entry(text, mode)
+    if isinstance(text, str) and _DEFAULT_MODE.search(text) and not re.search(r'directMode\s*:', text):
+        if not _landing_shape(text):
+            raise ValueError('这页有 ABC 开关，但不是可以直接填写的写法，没有改动')
+        return _replace_landing_token(text, _file_token(mode))
     if not isinstance(text, str) or not re.search(r'directMode\s*:', text):
         return None
     if not _DIRECT_MODE.search(text):
@@ -1903,4 +2227,10 @@ def blank_direct_mode(text):
         text = _DIRECT_MODE.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(2)}", text)
     if _contact_shape(text):
         text = _replace_contact_token(text, 'ABC')
+    if _lead_modal_shape(text):
+        text = _replace_lead_calls(text, skip=False)
+    if _lead_entry_shape(text):
+        text = _replace_lead_entry(text, 'CBA')
+    if _landing_shape(text):
+        text = _replace_landing_token(text, 'ABC')
     return text

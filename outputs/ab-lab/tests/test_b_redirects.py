@@ -969,6 +969,330 @@ def test_secret_weapon_accepts_the_spaced_ternary_abc_switch(console):
     assert published_html(app) == base_text
 
 
+CONFIG_FLOW_PAGE = r'''<!doctype html>
+<button type="button" data-contact>领取</button>
+<dialog id="contact-gate"></dialog>
+<script>
+const CONFIG = {
+  // 網址 ?code=CBA 或 ?mode=CBA 會覆蓋這裡
+  flowMode: 'ABC'
+};
+function getContactFlowMode() {
+  const params = new URLSearchParams(location.search);
+  const fromUrl = String(params.get('code') || params.get('mode') || '').trim().toUpperCase();
+  const fromConfig = String(CONFIG.flowMode || 'ABC').trim().toUpperCase();
+  const code = fromUrl || fromConfig;
+  return code === 'CBA' ? 'CBA' : 'ABC';
+}
+const useQuestionnaire = getContactFlowMode() === 'ABC';
+function startContact(){ return useQuestionnaire ? 'gate' : 'direct'; }
+</script>
+'''
+
+
+def test_secret_weapon_toggles_a_config_flow_mode_page(console):
+    client, app = console
+    base = _upload_html(client, CONFIG_FLOW_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    assert "flowMode: 'CBA'" in text
+    assert "CONFIG.flowMode || 'ABC'" in text
+    assert "useQuestionnaire = getContactFlowMode() === 'ABC'" in text
+    assert client.get('/api/state').json()['direct_mode'] == 'ABC'
+    _same_function(CONFIG_FLOW_PAGE, text, 'startContact')
+    _same_function(CONFIG_FLOW_PAGE, text, 'getContactFlowMode')
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+
+
+REQUEST_MODAL_PAGE = r'''<!doctype html>
+<a class="js-whatsapp" href="#request-modal">Demander</a>
+<a class="request-choice" href="https://wa.me/33778635545">FR</a>
+<div id="request-modal" hidden></div>
+<script>
+const CAC = [__HUGE__];
+const CONFIG = { whatsappNumber: '33778635545', requestMode: 'ABC' };
+const number = CONFIG.whatsappNumber.trim();
+const numberIsValid = /^[1-9][0-9]{7,14}$/.test(number);
+const actions = [...document.querySelectorAll('.js-whatsapp')];
+const requestMode = String(CONFIG.requestMode || 'ABC').trim().toUpperCase();
+if (requestMode === 'CBA' && numberIsValid) {
+  actions.forEach(link => { link.href = 'https://wa.me/' + number; });
+}
+function openRequest(evt) { evt.preventDefault(); }
+actions.forEach(link => link.addEventListener('click', evt => {
+  if (requestMode === 'CBA') return;
+  openRequest(evt);
+}));
+</script>
+'''.replace('__HUGE__', ','.join('1' for _ in range(400)))
+
+
+def test_a_long_chart_still_exposes_the_whatsapp_number():
+    from ablab.redirects import PageParser, Scanner
+    scanner = Scanner('index.html', REQUEST_MODAL_PAGE)
+    PageParser(scanner).feed(scanner.text)
+    phones = [item['url'] for item in scanner.spans if item['kind'] == 'whatsapp_number']
+    assert phones.count('33778635545') == 2
+    assert any('赋值过长' in item for item in scanner.warnings)
+
+
+def test_secret_weapon_toggles_a_request_modal(console):
+    client, app = console
+    base = _upload_html(client, REQUEST_MODAL_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    numbers = [item['url'] for item in scan['occurrences'] if item['kind'] == 'whatsapp_number']
+    assert numbers.count('33778635545') == 2
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    assert "requestMode: 'CBA'" in text
+    assert "requestMode === 'CBA'" in text
+    assert "whatsappNumber: '33778635545'" in text
+    _same_function(REQUEST_MODAL_PAGE, text, 'openRequest')
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+
+
+LEAD_MODAL_PAGE = r'''<!doctype html>
+<button type="button" data-wa data-location="hero" data-message="你好，我想免費領取今日港股心水股名單，麻煩發給我，謝謝。">领取</button>
+<div id="lead-modal" class="lead-modal" hidden></div>
+<button type="button" id="floating-btn">浮条</button>
+<script>
+function buildWhatsAppUrl(message){
+  const phone = String(CONFIG.whatsappNumber || '').replace(/\D/g,'');
+  const p = new URLSearchParams();
+  p.set('phone', phone);
+  p.set('text', message || '你好，我想免費領取今日完整港股名單，麻煩發給我，謝謝。');
+  p.set('type','phone_number');
+  p.set('app_absent','0');
+  return 'https://api.whatsapp.com/send?' + p.toString();
+}
+function openLeadConfirm(el){ leadModal.classList.add('open'); }
+function completeLeadAndGo(message, choice){
+  window.location.assign(buildWhatsAppUrl(message));
+}
+document.querySelectorAll('[data-wa]').forEach(el=>el.addEventListener('click',e=>{
+  e.preventDefault();
+  openLeadConfirm(el);
+}));
+document.getElementById('floating-btn').addEventListener('click',function(){ openLeadConfirm(this); });
+</script>
+'''
+
+
+def test_secret_weapon_toggles_the_lead_modal_without_touching_the_jump(console):
+    client, app = console
+    base = _upload_html(client, LEAD_MODAL_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    assert "completeLeadAndGo(el.dataset.message || '', 'direct')" in text
+    assert "completeLeadAndGo(this.dataset.message || '', 'direct')" in text
+    assert "openLeadConfirm(el);" not in text
+    assert "function openLeadConfirm(el)" in text
+    assert "window.location.assign(buildWhatsAppUrl(message))" in text
+    _same_function(LEAD_MODAL_PAGE, text, 'buildWhatsAppUrl')
+    _same_function(LEAD_MODAL_PAGE, text, 'completeLeadAndGo')
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+
+
+LEAD_ENTRY_PAGE = r'''<!doctype html>
+<div class="wa-infobg" id="wa-infobg"></div>
+<div class="lead-modal" id="lead-modal"></div>
+<a href="https://www.youtube.com/@money-tab">YouTube</a>
+<script>
+const CONFIG = {
+  questionGateEnabled: false,
+  whatsappNumber: '85291658064',
+  googleConversionSendTo: 'AW-17612748781/vDRpCIalsp0dEO3vtM5B'
+};
+let QUESTION_GATE_ENABLED = gateParam === 'off' ? false : gateParam === 'on' ? true : CONFIG.questionGateEnabled;
+let leadEntryMode = 'notice';
+function setLeadEntryMode(code){
+  if(code === 'ABC'){
+    leadEntryMode = 'question';
+    QUESTION_GATE_ENABLED = true;
+  }else if(code === 'CBA'){
+    leadEntryMode = 'direct';
+    QUESTION_GATE_ENABLED = false;
+  }else{return;}
+}
+function buildWaUrl(message){
+  const phone=String(CONFIG.whatsappNumber||'').replace(/\D/g,'');
+  return 'https://api.whatsapp.com/send?phone='+encodeURIComponent(phone)+'&text='+encodeURIComponent(message)+'&type=phone_number&app_absent=0';
+}
+function goWhatsApp(){
+  const message = '你好，我想領取港美股精選名單，依家可以發畀我嗎？';
+  window.location.href=buildWaUrl(message);
+}
+function routeLead(direction,source){
+  if(leadEntryMode === 'question'){
+    openLead(direction);
+  }else if(leadEntryMode === 'direct'){
+    goWhatsApp();
+  }else{
+    openWaInfo(source);
+  }
+}
+</script>
+'''
+
+
+def test_secret_weapon_toggles_lead_entry_without_touching_the_jump(console):
+    client, app = console
+    base = _upload_html(client, LEAD_ENTRY_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    assert 'questionGateEnabled: false' in text
+    assert "let leadEntryMode = 'direct'" in text
+    assert "let leadEntryMode = 'question'" not in text.split('function setLeadEntryMode')[0]
+    assert "whatsappNumber: '85291658064'" in text
+    assert 'window.location.href=buildWaUrl(message);' in text
+    _same_function(LEAD_ENTRY_PAGE, text, 'setLeadEntryMode')
+    _same_function(LEAD_ENTRY_PAGE, text, 'buildWaUrl')
+    _same_function(LEAD_ENTRY_PAGE, text, 'goWhatsApp')
+    _same_function(LEAD_ENTRY_PAGE, text, 'routeLead')
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    shown = published_html(app)
+    assert 'questionGateEnabled: false' in shown
+    assert "let leadEntryMode = 'notice'" in shown
+    _same_function(LEAD_ENTRY_PAGE, shown, 'buildWaUrl')
+    _same_function(LEAD_ENTRY_PAGE, shown, 'goWhatsApp')
+    assert app.state.store.slots()['B'] != base
+
+
+def test_whatsapp_number_replace_keeps_the_quotes_and_the_jump(console):
+    client, app = console
+    base = _upload_html(client, LEAD_ENTRY_PAGE)
+    before = (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+    scan = client.get('/api/b-redirects').json()
+    numbers = [item for item in scan['occurrences'] if item['kind'] == 'whatsapp_number']
+    assert [item['url'] for item in numbers] == ['85291658064']
+    added = client.post('/api/b-redirects/numbers', json={'phones': ['85211112222'], 'note': '一线'})
+    assert added.status_code == 200, added.text
+    chosen = added.json()['numbers'][0]
+    response = client.post('/api/b-redirects/numbers/apply', json={
+        'version_id': scan['version']['id'], 'number_id': chosen['id'],
+        'occurrence_ids': [numbers[0]['id']], 'expected_published': scan['published_version']})
+    assert response.status_code == 200, response.text
+    text = published_html(app)
+    assert "whatsappNumber: '85211112222'" in text
+    assert '85291658064' not in text
+    assert text.replace('85211112222', '85291658064') == before
+    assert 'https://www.youtube.com/@money-tab' in text
+    assert 'window.location.href=buildWaUrl(message);' in text
+
+
+LANDING_PAGE = r'''<!doctype html>
+<button data-wa>领取</button>
+<div id="quiz-backdrop"></div>
+<script>
+const CONFIG = { whatsappNumber: '85290001111' };
+const DEFAULT_MODE = 'ABC';
+function resolveModeFromUrl(){
+  const params = new URLSearchParams(location.search);
+  const raw = (params.get('mode') || '').toUpperCase();
+  return raw === 'ABC' || raw === 'CBA' ? raw : DEFAULT_MODE;
+}
+let landingMode = resolveModeFromUrl();
+function buildWhatsAppUrl(message){
+  return 'https://api.whatsapp.com/send?phone=' + CONFIG.whatsappNumber + '&text=' + message;
+}
+function goWhatsApp(message){
+  window.location.assign(buildWhatsAppUrl(message));
+}
+function openQuiz(trigger){ return trigger; }
+function openLeadFlow(trigger){
+  if(landingMode === 'CBA') {
+    goWhatsApp('你好');
+  } else {
+    openQuiz(trigger);
+  }
+}
+</script>
+'''
+
+
+def test_secret_weapon_toggles_the_landing_default_mode(console):
+    client, app = console
+    base = _upload_html(client, LANDING_PAGE)
+    state = client.get('/api/state').json()
+    assert state['direct_mode'] == 'CBA'
+    assert state['direct_switch'] == 'contact'
+    scan = client.get('/api/b-redirects').json()
+    wrote = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert wrote.status_code == 200, wrote.text
+    assert wrote.json()['kind'] == 'abc'
+    text = published_html(app)
+    base_text = (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+    assert text == base_text.replace("const DEFAULT_MODE = 'ABC';", "const DEFAULT_MODE = 'CBA';", 1)
+    assert "return raw === 'ABC' || raw === 'CBA' ? raw : DEFAULT_MODE;" in text
+    assert "landingMode === 'CBA'" in text
+    assert '85290001111' in text
+    assert client.get('/api/state').json()['direct_mode'] == 'ABC'
+    for name in ('goWhatsApp', 'buildWhatsAppUrl', 'openLeadFlow', 'openQuiz'):
+        _same_function(LANDING_PAGE, text, name)
+    again = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': wrote.json()['version']['id'], 'expected_published': wrote.json()['version']['id']})
+    assert again.status_code == 200, again.text
+    assert again.json()['kind'] == 'cba'
+    assert published_html(app) == base_text
+    assert client.get('/api/state').json()['direct_mode'] == 'CBA'
+
+
+def test_secret_weapon_refuses_a_landing_mode_it_cannot_edit(console):
+    client, app = console
+    page = LANDING_PAGE.replace("landingMode === 'CBA'", "landingMode === 'SKIP'")
+    base = _upload_html(client, page)
+    scan = client.get('/api/b-redirects').json()
+    refused = client.post('/api/b-redirects/direct-entry', json={
+        'version_id': scan['version']['id'], 'expected_published': scan['published_version']})
+    assert refused.status_code == 400, refused.text
+    assert '没有改动' in refused.json()['detail']
+    assert app.state.store.slots()['B'] == base
+    assert published_html(app) == (app.state.store.pages / base / 'index.html').read_text(encoding='utf-8')
+
+
 def test_secret_weapon_refuses_an_unrecognized_query_code_switch(console):
     client, app = console
     page = CONTACT_PAGE.replace("params.get('code')||params.get('mode')||'ABC'", 'window.flowCode')

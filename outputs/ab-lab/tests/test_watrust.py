@@ -53,7 +53,7 @@ def test_english_trust_popup_is_not_read_as_a_clear_chat():
 
 
 def test_open_script_only_views_the_send_link_and_back_is_the_return_key():
-    upload = 'https://hhucuq.top/api/wa-trust/screen/tokenvalue1234567890abcd'
+    upload = 'https://baozha98.sbs/api/wa-trust/screen/tokenvalue1234567890abcd'
     script = open_script(PHONE_A, upload, '1.2.3.4')
     assert f'phone={PHONE_A}' in script
     assert upload in script
@@ -103,7 +103,7 @@ def test_screen_text_is_posted_back_and_back_still_runs():
 
     from ablab.watrust import VmosClient
     client = VmosClient('access', 'secret', 'PAD1', transport=transport, clock=lambda: 1767225600)
-    phone = CloudPhone(client, origin='https://hhucuq.top', resolve_ip='', wait_timeout=1)
+    phone = CloudPhone(client, origin='https://baozha98.sbs', resolve_ip='', wait_timeout=1)
     holder['phone'] = phone
     assert phone.read(PHONE_A) == CLEAR_SCREEN
     assert [url.rsplit('/', 1)[-1] for url, *_ in calls] == ['asyncCmd', 'asyncCmd']
